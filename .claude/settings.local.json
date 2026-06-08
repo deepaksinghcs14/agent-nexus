@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go build *)",
+      "Bash(go mod *)",
+      "Bash(node_modules/.bin/next build *)",
+      "Bash(curl -s -X POST http://localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' -c /tmp/cookies.txt -d '{\"email\":\"test@example.com\",\"password\":\"password123\"}')",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s -X POST http://localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"test@example.com\",\"password\":\"password123\"}')",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/)",
+      "Bash(docker compose ps *)",
+      "Bash(make help *)",
+      "Bash(make postgres *)",
+      "Bash(docker compose *)",
+      "Bash(lsof -ti:8080)",
+      "Bash(xargs kill -9)",
+      "Bash(lsof -ti:3000)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/login)",
+      "Bash(npx tsc *)",
+      "Bash(curl -s http://localhost:8080/health)"
+    ]
+  }
+}

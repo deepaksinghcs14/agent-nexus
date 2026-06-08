@@ -1,0 +1,83 @@
+package repository
+
+import (
+	"context"
+	"github.com/agentNexus/agent-nexus/services/api/internal/domain"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type ToolRepository struct{ pool *pgxpool.Pool }
+
+func NewToolRepository(p *pgxpool.Pool) *ToolRepository { return &ToolRepository{p} }
+
+const toolCols = `id::text,COALESCE(workspace_id::text,''),name,description,type,input_schema,output_schema,risk_level,requires_approval,timeout_ms,enabled,created_at,updated_at`
+
+func scanTool(r interface{ Scan(...any) error }) (domain.Tool, error) {
+	var t domain.Tool
+	e := r.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.Type, &t.InputSchema, &t.OutputSchema, &t.RiskLevel, &t.RequiresApproval, &t.TimeoutMs, &t.Enabled, &t.CreatedAt, &t.UpdatedAt)
+	return t, e
+}
+func (r *ToolRepository) List(c context.Context, w string) ([]domain.Tool, error) {
+	rows, e := r.pool.Query(c, `SELECT `+toolCols+` FROM tools WHERE workspace_id IS NULL OR workspace_id=$1::uuid ORDER BY name`, w)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	a := []domain.Tool{}
+	for rows.Next() {
+		t, e := scanTool(rows)
+		if e != nil {
+			return nil, e
+		}
+		a = append(a, t)
+	}
+	return a, rows.Err()
+}
+func (r *ToolRepository) Create(c context.Context, t *domain.Tool) error {
+	_, e := r.pool.Exec(c, `INSERT INTO tools(id,workspace_id,name,description,type,input_schema,output_schema,risk_level,requires_approval,timeout_ms,enabled)VALUES($1::uuid,NULLIF($2,'')::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, t.ID, t.WorkspaceID, t.Name, t.Description, t.Type, t.InputSchema, t.OutputSchema, t.RiskLevel, t.RequiresApproval, t.TimeoutMs, t.Enabled)
+	return e
+}
+func (r *ToolRepository) Get(c context.Context, id string) (*domain.Tool, error) {
+	t, e := scanTool(r.pool.QueryRow(c, `SELECT `+toolCols+` FROM tools WHERE id=$1::uuid`, id))
+	return &t, e
+}
+func (r *ToolRepository) Update(c context.Context, t *domain.Tool) error {
+	_, e := r.pool.Exec(c, `UPDATE tools SET name=$2,description=$3,type=$4,input_schema=$5,output_schema=$6,risk_level=$7,requires_approval=$8,timeout_ms=$9,enabled=$10,updated_at=NOW()WHERE id=$1::uuid`, t.ID, t.Name, t.Description, t.Type, t.InputSchema, t.OutputSchema, t.RiskLevel, t.RequiresApproval, t.TimeoutMs, t.Enabled)
+	return e
+}
+func (r *ToolRepository) Delete(c context.Context, id string) error {
+	_, e := r.pool.Exec(c, `DELETE FROM tools WHERE id=$1::uuid`, id)
+	return e
+}
+func (r *ToolRepository) ListForAgent(c context.Context, id string) ([]domain.AgentTool, error) {
+	rows, e := r.pool.Query(c, `SELECT agent_id::text,tool_id::text,enabled,overrides FROM agent_tools WHERE agent_id=$1::uuid`, id)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	a := []domain.AgentTool{}
+	for rows.Next() {
+		var x domain.AgentTool
+		if e := rows.Scan(&x.AgentID, &x.ToolID, &x.Enabled, &x.Overrides); e != nil {
+			return nil, e
+		}
+		a = append(a, x)
+	}
+	return a, rows.Err()
+}
+func (r *ToolRepository) SetAgentTools(c context.Context, id string, tools []string) error {
+	tx, e := r.pool.Begin(c)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback(c)
+	if _, e = tx.Exec(c, `DELETE FROM agent_tools WHERE agent_id=$1::uuid`, id); e != nil {
+		return e
+	}
+	for _, t := range tools {
+		if _, e = tx.Exec(c, `INSERT INTO agent_tools(agent_id,tool_id)VALUES($1::uuid,$2::uuid)`, id, t); e != nil {
+			return e
+		}
+	}
+	return tx.Commit(c)
+}

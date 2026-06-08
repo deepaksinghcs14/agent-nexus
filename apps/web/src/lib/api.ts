@@ -1,0 +1,244 @@
+// src/lib/api.ts — all API calls go through this wrapper
+import type { WorkspaceWithRole, Workspace, APIToken, CreatedAPIToken, InvokeRunResponse } from '@/types'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
+
+class APIClient {
+  private baseURL: string
+
+  constructor(baseURL: string) {
+    this.baseURL = baseURL
+  }
+
+  private getToken(): string | null {
+    if (typeof window === 'undefined') return null
+    return localStorage.getItem('access_token')
+  }
+
+  private headers(): HeadersInit {
+    const h: HeadersInit = { 'Content-Type': 'application/json' }
+    const token = this.getToken()
+    if (token) h['Authorization'] = `Bearer ${token}`
+    return h
+  }
+
+  async get<T>(path: string): Promise<T> {
+    const res = await fetch(`${this.baseURL}/api/v1${path}`, {
+      headers: this.headers(),
+      credentials: 'include',
+    })
+    return this.handle<T>(res)
+  }
+
+  async post<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`${this.baseURL}/api/v1${path}`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'include',
+    })
+    return this.handle<T>(res)
+  }
+
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`${this.baseURL}/api/v1${path}`, {
+      method: 'PUT',
+      headers: this.headers(),
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'include',
+    })
+    return this.handle<T>(res)
+  }
+
+  async patch<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(`${this.baseURL}/api/v1${path}`, {
+      method: 'PATCH',
+      headers: this.headers(),
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'include',
+    })
+    return this.handle<T>(res)
+  }
+
+  async delete<T>(path: string): Promise<T> {
+    const res = await fetch(`${this.baseURL}/api/v1${path}`, {
+      method: 'DELETE',
+      headers: this.headers(),
+      credentials: 'include',
+    })
+    return this.handle<T>(res)
+  }
+
+  // Returns a native EventSource for SSE streams.
+  sse(path: string): EventSource {
+    const token = this.getToken()
+    const url = new URL(`${this.baseURL}/api/v1${path}`)
+    if (token) url.searchParams.set('token', token)
+    return new EventSource(url.toString())
+  }
+
+  private async handle<T>(res: Response): Promise<T> {
+    if (res.status === 401) {
+      // Try token refresh
+      const refreshed = await this.refreshToken()
+      if (!refreshed) {
+        window.location.href = '/login'
+        throw new Error('Unauthorized')
+      }
+      // Retry once (caller should retry via React Query)
+      throw new Error('Token refreshed — retry request')
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }))
+      throw new Error(err.error ?? err.message ?? 'Unknown error')
+    }
+
+    if (res.status === 204) return undefined as T
+    return res.json()
+  }
+
+  private async refreshToken(): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseURL}/api/v1/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include', // refresh token in httpOnly cookie
+      })
+      if (!res.ok) return false
+      const data = await res.json()
+      localStorage.setItem('access_token', data.access_token)
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+
+export const api = new APIClient(API_URL)
+
+// Convenience wrappers used by React Query hooks
+export const agentsAPI = {
+  list: () => api.get('/agents'),
+  get: (id: string) => api.get(`/agents/${id}`),
+  create: (body: unknown) => api.post('/agents', body),
+  update: (id: string, body: unknown) => api.put(`/agents/${id}`, body),
+  delete: (id: string) => api.delete(`/agents/${id}`),
+  getTools: (id: string) => api.get(`/agents/${id}/tools`),
+  setTools: (id: string, body: unknown) => api.put(`/agents/${id}/tools`, body),
+}
+
+export const runsAPI = {
+  list: (params?: string) => api.get(`/runs${params ? '?' + params : ''}`),
+  get: (id: string) => api.get(`/runs/${id}`),
+  start: (conversationId: string, body: unknown) =>
+    api.post(`/conversations/${conversationId}/runs`, body),
+  approve: (id: string, body: unknown) => api.post(`/runs/${id}/approve`, body),
+  cancel: (id: string) => api.post(`/runs/${id}/cancel`),
+}
+
+export const memoryAPI = {
+  list: (params?: string) => api.get(`/memory${params ? '?' + params : ''}`),
+  delete: (id: string) => api.delete(`/memory/${id}`),
+  bulkDelete: (params?: string) => api.delete(`/memory${params ? '?' + params : ''}`),
+}
+
+export const toolsAPI = {
+  list: () => api.get('/tools'),
+  create: (body: unknown) => api.post('/tools', body),
+  update: (id: string, body: unknown) => api.put(`/tools/${id}`, body),
+  delete: (id: string) => api.delete(`/tools/${id}`),
+}
+
+export const connectorsAPI = {
+  list: () => api.get('/connectors'),
+  create: (body: unknown) => api.post('/connectors', body),
+  sync: (id: string) => api.post(`/connectors/${id}/sync`),
+  documents: (id: string) => api.get(`/connectors/${id}/documents`),
+  syncJobs: (id: string) => api.get(`/connectors/${id}/sync-jobs`),
+  delete: (id: string) => api.delete(`/connectors/${id}`),
+}
+
+export const mcpAPI = {
+  list: () => api.get('/mcp-servers'),
+  create: (body: unknown) => api.post('/mcp-servers', body),
+  sync: (id: string) => api.post(`/mcp-servers/${id}/sync`),
+  tools: (id: string) => api.get(`/mcp-servers/${id}/tools`),
+  delete: (id: string) => api.delete(`/mcp-servers/${id}`),
+}
+
+export const authAPI = {
+  login: (body: { email: string; password: string }) =>
+    api.post<{ access_token: string; user: Record<string, unknown>; workspace_id: string }>('/auth/login', body),
+  register: (body: { email: string; password: string; full_name: string }) =>
+    api.post<{ access_token: string; user: Record<string, unknown>; workspace_id: string }>('/auth/register', body),
+  logout: () => api.post('/auth/logout'),
+  me: () => api.get<{ user: Record<string, unknown>; workspace: Record<string, unknown> }>('/auth/me'),
+  refresh: () => api.post<{ access_token: string }>('/auth/refresh'),
+}
+
+export const providersAPI = {
+  list: () => api.get('/providers'),
+  create: (body: unknown) => api.post('/providers', body),
+  update: (id: string, body: unknown) => api.put(`/providers/${id}`, body),
+  delete: (id: string) => api.delete(`/providers/${id}`),
+  models: (id: string) => api.get(`/providers/${id}/models`),
+}
+
+export const conversationsAPI = {
+  list: () => api.get('/conversations'),
+  create: (body: { agent_id: string; title?: string }) => api.post('/conversations', body),
+  get: (id: string) => api.get(`/conversations/${id}`),
+  delete: (id: string) => api.delete(`/conversations/${id}`),
+}
+
+export const workspaceAPI = {
+  get: () => api.get('/workspace'),
+  update: (body: { display_name: string; workspace_type?: string }) => api.patch('/workspace', body),
+  members: () => api.get('/workspace/members'),
+  addMember: (body: unknown) => api.post('/workspace/members', body),
+  updateMember: (id: string, body: unknown) => api.patch(`/workspace/members/${id}`, body),
+  removeMember: (id: string) => api.delete(`/workspace/members/${id}`),
+}
+
+export const workspacesAPI = {
+  list: () => api.get<{ data: WorkspaceWithRole[] }>('/workspaces'),
+  create: (body: { display_name: string; workspace_type: string }) =>
+    api.post<Workspace>('/workspaces', body),
+  switch: (workspace_id: string) =>
+    api.post<{ access_token: string; workspace_id: string }>('/workspaces/switch', { workspace_id }),
+  delete: (id: string) => api.delete<void>(`/workspaces/${id}`),
+}
+
+export const groupsAPI = {
+  list: () => api.get('/agent-groups'),
+  create: (body: unknown) => api.post('/agent-groups', body),
+  get: (id: string) => api.get(`/agent-groups/${id}`),
+  update: (id: string, body: unknown) => api.put(`/agent-groups/${id}`, body),
+  delete: (id: string) => api.delete(`/agent-groups/${id}`),
+  run: (id: string, body?: unknown) => api.post(`/agent-groups/${id}/runs`, body),
+}
+
+export const apiTokensAPI = {
+  list: () => api.get<{ data: APIToken[] }>('/api-tokens'),
+  create: (body: { name: string; expires_at?: string | null; scopes?: string[] }) =>
+    api.post<CreatedAPIToken>('/api-tokens', body),
+  revoke: (id: string) => api.delete<void>(`/api-tokens/${id}`),
+}
+
+export const invokeAPI = {
+  agent: (agentId: string, body: { input: string; conversation_id?: string; stream?: boolean }) =>
+    api.post<InvokeRunResponse>(`/invoke/agents/${agentId}`, body),
+  group: (groupId: string, body: { input: string; stream?: boolean }) =>
+    api.post<InvokeRunResponse>(`/invoke/groups/${groupId}`, body),
+}
+
+export const adminAPI = {
+  users: () => api.get('/admin/users'),
+  updateUser: (id: string, body: unknown) => api.patch(`/admin/users/${id}`, body),
+  workspaces: () => api.get('/admin/workspaces'),
+  updateWorkspace: (id: string, body: unknown) => api.patch(`/admin/workspaces/${id}`, body),
+  auditLogs: (params?: string) => api.get(`/admin/audit-logs${params ? '?' + params : ''}`),
+  usage: () => api.get('/admin/usage'),
+  policies: () => api.get('/admin/policies'),
+  setPolicies: (body: unknown) => api.put('/admin/policies', body),
+}

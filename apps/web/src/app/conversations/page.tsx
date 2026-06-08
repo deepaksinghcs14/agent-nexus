@@ -1,0 +1,73 @@
+'use client'
+
+import Link from 'next/link'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { MessageSquare, Trash2, Plus } from 'lucide-react'
+import { conversationsAPI } from '@/lib/api'
+import { relativeTime } from '@/lib/utils'
+import type { Conversation } from '@/types'
+
+export default function ConversationsPage() {
+  const queryClient = useQueryClient()
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['conversations'],
+    queryFn: () => conversationsAPI.list() as Promise<{ data: Conversation[] }>,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => conversationsAPI.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+  })
+
+  const conversations = data?.data ?? []
+
+  return (
+    <div className="p-6 max-w-4xl">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Conversations</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{conversations.length} conversation{conversations.length !== 1 ? 's' : ''}</p>
+        </div>
+        <Link href="/playground">
+          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700">
+            <Plus size={15} /> New Chat
+          </button>
+        </Link>
+      </div>
+
+      {isLoading && <div className="text-sm text-gray-400 py-12 text-center">Loading…</div>}
+
+      {!isLoading && conversations.length === 0 && (
+        <div className="border border-dashed border-gray-200 rounded-xl p-12 text-center">
+          <MessageSquare size={32} className="mx-auto text-gray-300 mb-3" />
+          <p className="text-gray-500 text-sm">No conversations yet. Start one from the Playground.</p>
+          <Link href="/playground">
+            <button className="mt-4 px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700">
+              Open Playground
+            </button>
+          </Link>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {conversations.map((c) => (
+          <div key={c.id} className="flex items-center justify-between border border-gray-100 rounded-xl p-4 bg-white hover:border-gray-200">
+            <Link href={`/playground/${c.id}`} className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">{c.title}</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {c.message_count} message{c.message_count !== 1 ? 's' : ''} · {relativeTime(c.updated_at)}
+              </p>
+            </Link>
+            <button
+              onClick={() => { if (confirm('Delete this conversation?')) deleteMutation.mutate(c.id) }}
+              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg ml-3"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}

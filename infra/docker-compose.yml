@@ -1,0 +1,63 @@
+services:
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agent-nexus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: nexus
+      POSTGRES_DB: agent_nexus
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus -d agent_nexus"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../services/api
+      dockerfile: Dockerfile
+    container_name: agent-nexus-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://nexus:nexus@postgres:5432/agent_nexus?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-change-me-dev-32-chars-minimum!!}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-change-me-dev-32-bytes-minimum!!}
+      PORT: 8080
+      CORS_ORIGINS: http://localhost:3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      STORAGE_PATH: /data/files
+      GOOGLE_OAUTH_CLIENT_ID: REDACTED
+      GOOGLE_OAUTH_CLIENT_SECRET: REDACTED
+      PUBLIC_API_URL: http://localhost:8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - api_storage:/data/files
+
+  web:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    container_name: agent-nexus-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_APP_NAME: Agent Nexus
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  api_storage:
