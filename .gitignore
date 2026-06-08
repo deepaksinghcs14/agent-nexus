@@ -7,4 +7,7 @@
 /dataSources/
 /dataSources.local.xml
 /apps/web/node_modules/
+.next/
+.backend-staging/
+.idea/
 /apps/web/.next/
