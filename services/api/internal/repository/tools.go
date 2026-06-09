@@ -70,7 +70,7 @@ func (r *ToolRepository) SetAgentTools(c context.Context, id string, tools []str
 	if e != nil {
 		return e
 	}
-	defer tx.Rollback(c)
+	defer func() { _ = tx.Rollback(c) }()
 	if _, e = tx.Exec(c, `DELETE FROM agent_tools WHERE agent_id=$1::uuid`, id); e != nil {
 		return e
 	}

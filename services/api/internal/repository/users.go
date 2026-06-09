@@ -26,7 +26,7 @@ func (r *UserRepository) Register(ctx context.Context, u *domain.User, passwordH
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	_, err = tx.Exec(ctx,
 		`INSERT INTO users (id, email, password_hash, full_name, is_active, is_admin, created_at, updated_at)
