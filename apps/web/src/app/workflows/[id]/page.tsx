@@ -1457,7 +1457,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   useEffect(() => {
     if (graphInitialised || !graphData || !agentsData) return
     if (graphData.nodes?.length) {
-      setNodes(graphData.nodes.map((n) => toRFNode(n, agents)))
+      setNodes(graphData.nodes.map((n: WorkflowNode) => toRFNode(n, agents)))
       setEdges(graphData.edges.map(toRFEdge))
     }
     setGraphInitialised(true)

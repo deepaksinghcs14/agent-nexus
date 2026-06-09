@@ -232,6 +232,26 @@ export const groupsAPI = {
   saveGraph: (id: string, body: WorkflowGraph) => api.put<WorkflowGraph>(`/agent-groups/${id}/graph`, body),
 }
 
+export const workflowsAPI = groupsAPI
+
+export const nexusAIAPI = {
+  chat: (
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    opts?: { provider?: string; model?: string },
+  ): Promise<Response> => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+    return fetch(`${API_URL}/api/v1/nexus-ai/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify({ messages, ...opts }),
+    })
+  },
+}
+
 export const apiTokensAPI = {
   list: () => api.get<{ data: APIToken[] }>('/api-tokens'),
   create: (body: { name: string; expires_at?: string | null; scopes?: string[] }) =>

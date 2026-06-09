@@ -282,7 +282,9 @@ export interface AgentGroup {
 }
 
 // Workflow graph types (agent groups visual builder)
-export type WorkflowNodeType = 'start' | 'end' | 'agent' | 'condition' | 'parallel' | 'join' | 'loop'
+export type WorkflowNodeType = 'start' | 'end' | 'agent' | 'supervisor' | 'condition' | 'parallel' | 'join' | 'loop'
+
+export type Workflow = AgentGroup
 
 export interface WorkflowNode {
   id: string
@@ -329,6 +331,7 @@ export interface SSEEvent {
   usage?: { input: number; output: number }
   cost?: number
   message?: string
+  error?: string
   node_id?: string
   node_name?: string
   node_type?: string
@@ -357,6 +360,23 @@ export interface APIToken {
 
 export interface CreatedAPIToken extends APIToken {
   token: string // only present on creation response
+}
+
+// Nexus AI chat
+export interface NexusMessage {
+  id: string
+  role: 'user' | 'assistant' | 'tool_event'
+  content: string
+  toolEvent?: {
+    status: 'started' | 'completed' | 'error'
+    tool: string
+    label?: string
+    input?: unknown
+    output?: unknown
+    result?: { id: string; name: string }
+    link?: string
+    error?: string
+  }
 }
 
 // Invoke API
