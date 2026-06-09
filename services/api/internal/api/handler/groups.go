@@ -87,7 +87,7 @@ func (h *GroupsHandler) save(w http.ResponseWriter, r *http.Request, id string, 
 		errs.Write(w, errs.Internal("failed to save group"))
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer func() { _ = tx.Rollback(r.Context()) }()
 	if create {
 		_, e = tx.Exec(r.Context(), `INSERT INTO agent_groups(id,workspace_id,name,description,mode,status,created_by)VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7::uuid)`, id, middleware.WorkspaceIDFromCtx(r.Context()), q.Name, q.Description, q.Mode, q.Status, middleware.UserIDFromCtx(r.Context()))
 	} else {
@@ -287,7 +287,7 @@ func (h *GroupsHandler) SaveGraph(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.Internal("failed to start transaction"))
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer func() { _ = tx.Rollback(r.Context()) }()
 
 	// Delete existing graph — cascade removes edges too
 	if _, err := tx.Exec(r.Context(),

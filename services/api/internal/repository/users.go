@@ -171,7 +171,7 @@ func (r *UserRepository) CreateWorkspace(ctx context.Context, ws *domain.Workspa
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	wsType := ws.WorkspaceType
 	if wsType == "" {
 		wsType = "personal"
