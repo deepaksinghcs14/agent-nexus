@@ -1,15 +1,25 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
-	"github.com/agentNexus/agent-nexus/services/api/internal/api/middleware"
-	"github.com/agentNexus/agent-nexus/services/api/internal/config"
-	"github.com/agentNexus/agent-nexus/services/api/internal/domain"
-	"github.com/agentNexus/agent-nexus/services/api/pkg/errs"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"net/http"
+
+	"github.com/agentNexus/agent-nexus/services/api/internal/api/middleware"
+	"github.com/agentNexus/agent-nexus/services/api/internal/config"
+	"github.com/agentNexus/agent-nexus/services/api/internal/connector"
+	"github.com/agentNexus/agent-nexus/services/api/internal/connector/providers/filesystem"
+	"github.com/agentNexus/agent-nexus/services/api/internal/domain"
+	"github.com/agentNexus/agent-nexus/services/api/internal/repository"
+	"github.com/agentNexus/agent-nexus/services/api/pkg/errs"
 )
 
 type ConnectorsHandler struct {
@@ -28,6 +38,7 @@ func scanConnector(row interface{ Scan(...any) error }) (domain.Connector, error
 	e := row.Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Provider, &c.Type, &c.AuthType, &c.Status, &c.Config, &c.CreatedBy, &c.CreatedAt, &c.UpdatedAt)
 	return c, e
 }
+
 func (h *ConnectorsHandler) List(w http.ResponseWriter, r *http.Request) {
 	rows, e := h.pool.Query(r.Context(), connectorSelect+` WHERE workspace_id=$1::uuid ORDER BY created_at DESC`, middleware.WorkspaceIDFromCtx(r.Context()))
 	if e != nil {
@@ -46,6 +57,7 @@ func (h *ConnectorsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	errs.WriteJSON(w, 200, map[string]any{"data": a})
 }
+
 func (h *ConnectorsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var c domain.Connector
 	if json.NewDecoder(r.Body).Decode(&c) != nil || c.Name == "" || c.Provider == "" {
@@ -73,6 +85,7 @@ func (h *ConnectorsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeAudit(r, h.pool, "connector.created", "connector", c.ID)
 	errs.WriteJSON(w, 201, c)
 }
+
 func (h *ConnectorsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	c, e := scanConnector(h.pool.QueryRow(r.Context(), connectorSelect+` WHERE id=$1::uuid AND workspace_id=$2::uuid`, chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context())))
 	if e != nil {
@@ -81,6 +94,7 @@ func (h *ConnectorsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	errs.WriteJSON(w, 200, c)
 }
+
 func (h *ConnectorsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	connID := chi.URLParam(r, "id")
 	t, e := h.pool.Exec(r.Context(), `DELETE FROM connectors WHERE id=$1::uuid AND workspace_id=$2::uuid`, connID, middleware.WorkspaceIDFromCtx(r.Context()))
@@ -95,23 +109,62 @@ func (h *ConnectorsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	writeAudit(r, h.pool, "connector.deleted", "connector", connID)
 	w.WriteHeader(204)
 }
+
 func (h *ConnectorsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
+
 	var ok bool
 	if h.pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM connectors WHERE id=$1::uuid AND workspace_id=$2::uuid)`, id, ws).Scan(&ok) != nil || !ok {
 		errs.Write(w, errs.NotFound("connector not found"))
 		return
 	}
-	j := domain.ConnectorSyncJob{ID: uuid.NewString(), ConnectorID: id, Status: "completed"}
-	e := h.pool.QueryRow(r.Context(), `INSERT INTO connector_sync_jobs(id,connector_id,status,started_at,completed_at)VALUES($1::uuid,$2::uuid,'completed',NOW(),NOW())RETURNING started_at,completed_at,created_at`, j.ID, j.ConnectorID).Scan(&j.StartedAt, &j.CompletedAt, &j.CreatedAt)
-	if e != nil {
-		errs.Write(w, errs.Internal("failed to sync connector"))
+
+	// Mark connector as syncing and create a running job record
+	h.pool.Exec(r.Context(), `UPDATE connectors SET status='syncing', updated_at=NOW() WHERE id=$1::uuid`, id) //nolint:errcheck
+
+	jobID := uuid.NewString()
+	now := time.Now()
+	j := domain.ConnectorSyncJob{
+		ID:          jobID,
+		ConnectorID: id,
+		Status:      "running",
+		StartedAt:   &now,
+	}
+	repo := repository.NewConnectorRepository(h.pool)
+	if err := repo.CreateSyncJob(r.Context(), &j); err != nil {
+		errs.Write(w, errs.Internal("failed to create sync job"))
 		return
 	}
-	_, _ = h.pool.Exec(r.Context(), `UPDATE connectors SET status='connected',updated_at=NOW() WHERE id=$1::uuid`, id)
-	errs.WriteJSON(w, 200, j)
+
+	// Get best-effort embedder; nil means chunks will be stored without embeddings
+	embedder, _ := buildAnyProvider(r.Context(), h.pool, h.cfg, ws)
+
+	go func() {
+		ctx := context.Background()
+		pipeline := connector.NewPipeline(h.pool, h.cfg)
+		err := pipeline.Sync(ctx, id, ws, filesystem.New(), embedder)
+
+		completed := time.Now()
+		j.CompletedAt = &completed
+		if err != nil {
+			j.Status = "failed"
+			j.ErrorMessage = err.Error()
+			h.pool.Exec(ctx, `UPDATE connectors SET status='error', updated_at=NOW() WHERE id=$1::uuid`, id) //nolint:errcheck
+		} else {
+			j.Status = "completed"
+			// Count indexed documents
+			h.pool.QueryRow(ctx, `SELECT COUNT(*) FROM connector_documents WHERE connector_id=$1::uuid`, id).Scan(&j.DocumentsIndexed) //nolint:errcheck
+			j.DocumentsFound = j.DocumentsIndexed
+		}
+		repo.UpdateSyncJob(ctx, &j) //nolint:errcheck
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(j) //nolint:errcheck
 }
+
 func (h *ConnectorsHandler) ListDocuments(w http.ResponseWriter, r *http.Request) {
 	rows, e := h.pool.Query(r.Context(), `SELECT d.id::text,d.connector_id::text,d.workspace_id::text,d.source,d.source_document_id,d.title,d.url,d.author,d.content_hash,d.last_modified_at,d.indexed_at,d.metadata FROM connector_documents d JOIN connectors c ON c.id=d.connector_id WHERE d.connector_id=$1::uuid AND c.workspace_id=$2::uuid ORDER BY d.indexed_at DESC NULLS LAST`, chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()))
 	if e != nil {
@@ -130,6 +183,37 @@ func (h *ConnectorsHandler) ListDocuments(w http.ResponseWriter, r *http.Request
 	}
 	errs.WriteJSON(w, 200, map[string]any{"data": a})
 }
+
+func (h *ConnectorsHandler) BrowseFilesystem(w http.ResponseWriter, r *http.Request) {
+	raw := r.URL.Query().Get("path")
+	if raw == "" {
+		raw = "/"
+	}
+	clean := filepath.Clean(raw)
+	entries, err := os.ReadDir(clean)
+	if err != nil {
+		errs.Write(w, errs.BadRequest("cannot read directory: "+err.Error()))
+		return
+	}
+	type entry struct {
+		Name  string `json:"name"`
+		Path  string `json:"path"`
+		IsDir bool   `json:"is_dir"`
+	}
+	result := []entry{}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		result = append(result, entry{Name: e.Name(), Path: filepath.Join(clean, e.Name()), IsDir: e.IsDir()})
+	}
+	parent := ""
+	if clean != "/" {
+		parent = filepath.Dir(clean)
+	}
+	errs.WriteJSON(w, 200, map[string]any{"path": clean, "parent": parent, "entries": result})
+}
+
 func (h *ConnectorsHandler) ListSyncJobs(w http.ResponseWriter, r *http.Request) {
 	rows, e := h.pool.Query(r.Context(), `SELECT j.id::text,j.connector_id::text,j.status,j.started_at,j.completed_at,j.documents_found,j.documents_indexed,j.error_message,j.created_at FROM connector_sync_jobs j JOIN connectors c ON c.id=j.connector_id WHERE j.connector_id=$1::uuid AND c.workspace_id=$2::uuid ORDER BY j.created_at DESC`, chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()))
 	if e != nil {

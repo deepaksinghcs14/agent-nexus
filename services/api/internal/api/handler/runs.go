@@ -19,6 +19,7 @@ import (
 	agentprompt "github.com/agentNexus/agent-nexus/services/api/internal/runtime/agent"
 	contextretrieval "github.com/agentNexus/agent-nexus/services/api/internal/runtime/context"
 	"github.com/agentNexus/agent-nexus/services/api/internal/runtime/memory"
+	"github.com/agentNexus/agent-nexus/services/api/internal/tools"
 	"github.com/agentNexus/agent-nexus/services/api/pkg/encrypt"
 	"github.com/agentNexus/agent-nexus/services/api/pkg/errs"
 	"github.com/go-chi/chi/v5"
@@ -31,13 +32,15 @@ type RunsHandler struct {
 	pool          *pgxpool.Pool
 	cfg           *config.Config
 	conversations *repository.ConversationRepository
+	registry      *tools.Registry
+	executor      *tools.Executor
 }
 
-func NewRunsHandler(p *pgxpool.Pool, c *config.Config) *RunsHandler {
-	return &RunsHandler{p, c, repository.NewConversationRepository(p)}
+func NewRunsHandler(p *pgxpool.Pool, c *config.Config, reg *tools.Registry, exec *tools.Executor) *RunsHandler {
+	return &RunsHandler{p, c, repository.NewConversationRepository(p), reg, exec}
 }
 
-const runSelect = `SELECT id::text,workspace_id::text,agent_id::text,conversation_id::text,user_id::text,input,output,status,started_at,completed_at,total_input_tokens,total_output_tokens,cost_estimate,error_message FROM runs`
+const runSelect = `SELECT id::text,workspace_id::text,COALESCE(agent_id::text,''),conversation_id::text,user_id::text,input,output,status,started_at,completed_at,total_input_tokens,total_output_tokens,cost_estimate,error_message FROM runs`
 
 func scanRun(row interface{ Scan(...any) error }) (domain.Run, error) {
 	var x domain.Run
@@ -49,7 +52,6 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	uid := middleware.UserIDFromCtx(r.Context())
 
-	// Early validations — can still return normal HTTP errors before SSE starts
 	c, e := h.conversations.Get(r.Context(), chi.URLParam(r, "id"), ws)
 	if e != nil {
 		errs.Write(w, errs.NotFound("conversation not found"))
@@ -74,8 +76,6 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Open the SSE stream immediately — the browser sees the connection and can show a spinner.
-	// All errors from here on are sent as SSE events, not HTTP status codes.
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -111,9 +111,13 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	if a.ContextRetrievalEnabled {
 		start := time.Now()
 		connectorIDs, err := h.agentConnectorIDs(r.Context(), a.ID)
+		var queryEmbedding []float32
+		if err == nil {
+			queryEmbedding, _ = llm.Embed(r.Context(), q.Input)
+		}
 		chunks := []contextretrieval.Chunk{}
 		if err == nil {
-			chunks, err = contextretrieval.NewRetriever(h.pool).Retrieve(r.Context(), ws, connectorIDs, nil, 8)
+			chunks, err = contextretrieval.NewRetriever(h.pool).Retrieve(r.Context(), ws, connectorIDs, queryEmbedding, 8)
 		}
 		if err == nil {
 			for _, chunk := range chunks {
@@ -142,66 +146,191 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		History:            history,
 	})
 
+	// Load tool definitions for this agent
+	toolDefs, dbTools, _ := loadAgentToolDefs(r.Context(), h.pool, a.ID)
+
 	emit(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, id))
 
-	stream, e := llm.Complete(r.Context(), provider.CompletionRequest{
-		Model:       a.Model,
-		Messages:    prompt,
-		Temperature: a.Temperature,
-		MaxTokens:   a.MaxTokens,
-		Stream:      true,
-	})
-	if e != nil {
-		_ = h.failRun(r.Context(), id, e.Error())
-		sseErr(e.Error())
-		return
-	}
+	// ── Tool calling loop ──────────────────────────────────────────────────────
+	messages := prompt
+	stepCount := 0
+	totalInput, totalOutput := 0, 0
 
-	modelStart := time.Now()
-	reply := ""
-	usage := provider.Usage{}
-	for event := range stream {
-		switch event.Type {
-		case provider.EventDelta:
-			reply += event.Delta
-			emit(fmt.Sprintf(`{"type":"delta","content":%q}`, event.Delta))
-		case provider.EventDone:
-			if event.Usage != nil {
-				usage = *event.Usage
-			}
-		case provider.EventError:
-			msg := "model call failed"
-			if event.Error != nil {
-				msg = event.Error.Error()
-			}
-			_ = h.createStep(r.Context(), id, domain.StepError, map[string]any{"provider": a.Provider, "model": a.Model}, map[string]any{}, modelStart, 0, "", msg)
-			_ = h.failRun(r.Context(), id, msg)
-			sseErr(msg)
+	for {
+		stream, e := llm.Complete(r.Context(), provider.CompletionRequest{
+			Model:       a.Model,
+			Messages:    messages,
+			Tools:       toolDefs,
+			Temperature: a.Temperature,
+			MaxTokens:   a.MaxTokens,
+			Stream:      true,
+		})
+		if e != nil {
+			_ = h.failRun(r.Context(), id, e.Error())
+			sseErr(e.Error())
 			return
 		}
-	}
-	if strings.TrimSpace(reply) == "" {
-		msg := "model returned an empty response"
-		_ = h.failRun(r.Context(), id, msg)
-		sseErr(msg)
-		return
-	}
-	_ = h.createStep(r.Context(), id, domain.StepModelCall, map[string]any{"provider": a.Provider, "model": a.Model, "messages": len(prompt)}, map[string]any{"content": reply}, modelStart, usage.InputTokens+usage.OutputTokens, "", "")
-	if e := h.conversations.AddMessage(r.Context(), &domain.Message{ID: uuid.NewString(), ConversationID: c.ID, Role: "assistant", Content: reply, Tokens: usage.OutputTokens}); e != nil {
-		_ = h.failRun(r.Context(), id, e.Error())
-		sseErr("failed to save assistant message")
-		return
-	}
-	if a.MemoryEnabled {
-		mem := &domain.Memory{WorkspaceID: ws, UserID: uid, AgentID: a.ID, Scope: domain.MemoryScope(a.MemoryScope), Content: "User: " + q.Input + "\nAssistant: " + reply, SourceRunID: id}
-		if a.MemoryScope == string(domain.MemoryScopeWorkspace) {
-			mem.AgentID = ""
+
+		modelStart := time.Now()
+		reply := ""
+		usage := provider.Usage{}
+		var pendingCalls []provider.ToolCall
+
+		for event := range stream {
+			switch event.Type {
+			case provider.EventDelta:
+				reply += event.Delta
+				emit(fmt.Sprintf(`{"type":"delta","content":%q}`, event.Delta))
+			case provider.EventToolCall:
+				if event.ToolCall != nil {
+					pendingCalls = append(pendingCalls, *event.ToolCall)
+				}
+			case provider.EventDone:
+				if event.Usage != nil {
+					usage = *event.Usage
+				}
+			case provider.EventError:
+				msg := "model call failed"
+				if event.Error != nil {
+					msg = event.Error.Error()
+				}
+				_ = h.createStep(r.Context(), id, domain.StepError, map[string]any{"provider": a.Provider, "model": a.Model}, map[string]any{}, modelStart, 0, "", msg)
+				_ = h.failRun(r.Context(), id, msg)
+				sseErr(msg)
+				return
+			}
 		}
-		_ = memory.NewEngine(h.pool).Store(r.Context(), mem)
+
+		totalInput += usage.InputTokens
+		totalOutput += usage.OutputTokens
+		_ = h.createStep(r.Context(), id, domain.StepModelCall,
+			map[string]any{"provider": a.Provider, "model": a.Model, "messages": len(messages)},
+			map[string]any{"content": reply, "tool_calls": len(pendingCalls)},
+			modelStart, usage.InputTokens+usage.OutputTokens, "", "")
+
+		if len(pendingCalls) == 0 {
+			// No tool calls — this is the final response
+			if strings.TrimSpace(reply) == "" {
+				msg := "model returned an empty response"
+				_ = h.failRun(r.Context(), id, msg)
+				sseErr(msg)
+				return
+			}
+			if e := h.conversations.AddMessage(r.Context(), &domain.Message{ID: uuid.NewString(), ConversationID: c.ID, Role: "assistant", Content: reply, Tokens: usage.OutputTokens}); e != nil {
+				_ = h.failRun(r.Context(), id, e.Error())
+				sseErr("failed to save assistant message")
+				return
+			}
+			if a.MemoryEnabled {
+				mem := &domain.Memory{WorkspaceID: ws, UserID: uid, AgentID: a.ID, Scope: domain.MemoryScope(a.MemoryScope), Content: "User: " + q.Input + "\nAssistant: " + reply, SourceRunID: id}
+				if a.MemoryScope == string(domain.MemoryScopeWorkspace) {
+					mem.AgentID = ""
+				}
+				_ = memory.NewEngine(h.pool).Store(r.Context(), mem)
+			}
+			_ = h.createStep(r.Context(), id, domain.StepFinalResponse, map[string]any{}, map[string]any{"content": reply}, time.Now(), usage.OutputTokens, "", "")
+			_, _ = h.pool.Exec(r.Context(), `UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4 WHERE id=$1::uuid`, id, reply, totalInput, totalOutput)
+			emit(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":0}`, id, totalInput, totalOutput))
+			return
+		}
+
+		// Append assistant turn (with tool calls) to the message history
+		messages = append(messages, provider.Message{
+			Role:      "assistant",
+			Content:   reply,
+			ToolCalls: pendingCalls,
+		})
+
+		for _, call := range pendingCalls {
+			dbTool, toolExists := dbTools[call.Name]
+
+			// Approval gate for high-risk tools
+			if toolExists && dbTool.RequiresApproval {
+				arID := uuid.NewString()
+				h.pool.Exec(r.Context(), //nolint:errcheck
+					`INSERT INTO approval_requests(id,run_id,tool_name,tool_input,status)VALUES($1::uuid,$2::uuid,$3,$4::jsonb,'pending')`,
+					arID, id, call.Name, call.Input)
+				h.pool.Exec(r.Context(), `UPDATE runs SET status='approval_wait' WHERE id=$1::uuid`, id) //nolint:errcheck
+
+				ch := RegisterApprovalWait(id)
+				emit(fmt.Sprintf(`{"type":"approval_required","tool":%q,"input":%s,"approval_id":%q}`,
+					call.Name, string(call.Input), arID))
+
+				var decision ApprovalDecision
+				select {
+				case decision = <-ch:
+				case <-time.After(10 * time.Minute):
+					UnregisterApprovalWait(id)
+					_ = h.failRun(r.Context(), id, "approval timed out")
+					sseErr("approval timed out after 10 minutes")
+					return
+				}
+				h.pool.Exec(r.Context(), `UPDATE runs SET status='running' WHERE id=$1::uuid`, id) //nolint:errcheck
+
+				if decision.Decision == "rejected" {
+					messages = append(messages, provider.Message{Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: "Tool call rejected by user."})
+					continue
+				}
+			}
+
+			// Execute the tool — HTTP tools bypass the native registry
+			var result *tools.ExecutionResult
+			var execErr error
+			if toolExists && dbTool.Type == "http" {
+				var cfg tools.HTTPToolConfig
+				_ = json.Unmarshal(dbTool.Config, &cfg)
+				result = tools.ExecuteHTTP(r.Context(), cfg, call.Input, dbTool.TimeoutMs)
+			} else {
+				result, execErr = h.executor.Execute(r.Context(), call.Name, call.Input)
+			}
+			var resultContent, errMsg string
+			latencyMs := 0
+			if result != nil {
+				latencyMs = result.LatencyMs
+				if result.Error != "" {
+					errMsg = result.Error
+					resultContent = fmt.Sprintf(`{"error":%q}`, result.Error)
+				} else {
+					b, _ := json.Marshal(result.Output)
+					resultContent = string(b)
+				}
+			} else if execErr != nil {
+				errMsg = execErr.Error()
+				resultContent = fmt.Sprintf(`{"error":%q}`, execErr.Error())
+			}
+
+			_ = h.createStep(r.Context(), id, domain.StepToolCall,
+				map[string]any{"tool": call.Name, "input": call.Input},
+				map[string]any{"output": resultContent},
+				time.Now(), 0, call.Name, errMsg)
+
+			emit(fmt.Sprintf(`{"type":"tool_call","tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
+				call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
+
+			messages = append(messages, provider.Message{
+				Role:       "tool",
+				ToolCallID: call.ID,
+				ToolName:   call.Name,
+				Content:    resultContent,
+			})
+
+			stepCount++
+			if stepCount > a.MaxSteps {
+				_ = h.failRun(r.Context(), id, "max steps exceeded")
+				sseErr("max steps exceeded")
+				return
+			}
+		}
+		// Loop: call model again with tool results in messages
 	}
-	_ = h.createStep(r.Context(), id, domain.StepFinalResponse, map[string]any{}, map[string]any{"content": reply}, time.Now(), usage.OutputTokens, "", "")
-	_, _ = h.pool.Exec(r.Context(), `UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4 WHERE id=$1::uuid`, id, reply, usage.InputTokens, usage.OutputTokens)
-	emit(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":0}`, id, usage.InputTokens, usage.OutputTokens))
+}
+
+func jsonOrStr(b []byte) string {
+	if json.Valid(b) {
+		return string(b)
+	}
+	s, _ := json.Marshal(string(b))
+	return string(s)
 }
 
 func (h *RunsHandler) providerFor(ctx context.Context, workspaceID, providerName string) (provider.Provider, error) {
@@ -387,7 +516,6 @@ func (h *RunsHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		arID, req.Decision, uid)
 
 	if !SendApprovalDecision(runID, ApprovalDecision{Decision: req.Decision, Input: inp}) {
-		// No goroutine waiting (server restarted or browser-based run). Mark as failed.
 		h.pool.Exec(r.Context(), //nolint:errcheck
 			`UPDATE runs SET status='failed', completed_at=NOW(), error_message='Approval received but run goroutine no longer active' WHERE id=$1::uuid`,
 			runID)

@@ -2,13 +2,15 @@ package handler
 
 import (
 	"encoding/json"
-	"github.com/agentNexus/agent-nexus/services/api/internal/api/middleware"
-	"github.com/agentNexus/agent-nexus/services/api/internal/config"
-	"github.com/agentNexus/agent-nexus/services/api/pkg/errs"
+	"net/http"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"net/http"
+
+	"github.com/agentNexus/agent-nexus/services/api/internal/api/middleware"
+	"github.com/agentNexus/agent-nexus/services/api/internal/config"
+	"github.com/agentNexus/agent-nexus/services/api/pkg/errs"
 )
 
 type GroupsHandler struct {
@@ -140,4 +142,221 @@ func (h *GroupsHandler) Run(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	errs.WriteJSON(w, 202, map[string]any{"group": g, "status": "accepted", "message": "group run queued"})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Workflow graph types (local to this handler, not stored in domain package
+// because they are only used by the graph endpoints and executeGroupRun).
+// ─────────────────────────────────────────────────────────────────────────────
+
+// WorkflowNode represents a single node in the visual workflow graph.
+type WorkflowNode struct {
+	ID        string          `json:"id"`
+	NodeType  string          `json:"node_type"`
+	AgentID   string          `json:"agent_id,omitempty"`
+	PositionX float64         `json:"position_x"`
+	PositionY float64         `json:"position_y"`
+	Config    json.RawMessage `json:"config"`
+}
+
+// WorkflowEdge represents a directed connection between two nodes.
+type WorkflowEdge struct {
+	ID           string `json:"id"`
+	SourceNodeID string `json:"source_node_id"`
+	TargetNodeID string `json:"target_node_id"`
+	Label        string `json:"label,omitempty"`
+}
+
+// saveGraphRequest is the body accepted by SaveGraph.
+type saveGraphRequest struct {
+	Nodes []saveGraphNode `json:"nodes"`
+	Edges []saveGraphEdge `json:"edges"`
+}
+
+type saveGraphNode struct {
+	// ID is the client-side identifier used to cross-reference edges.
+	// The server replaces it with a new UUID on every save.
+	ID        string          `json:"id"`
+	NodeType  string          `json:"node_type"`
+	AgentID   *string         `json:"agent_id"`
+	PositionX float64         `json:"position_x"`
+	PositionY float64         `json:"position_y"`
+	Config    json.RawMessage `json:"config"`
+}
+
+type saveGraphEdge struct {
+	SourceNodeID string `json:"source_node_id"`
+	TargetNodeID string `json:"target_node_id"`
+	Label        string `json:"label"`
+}
+
+// GetGraph handles GET /api/v1/agent-groups/{id}/graph
+// Returns all nodes and edges for the workflow.
+func (h *GroupsHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
+	workflowID := chi.URLParam(r, "id")
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+
+	// Verify ownership
+	var exists bool
+	if err := h.pool.QueryRow(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM agent_groups WHERE id=$1::uuid AND workspace_id=$2::uuid)`,
+		workflowID, ws).Scan(&exists); err != nil || !exists {
+		errs.Write(w, errs.NotFound("group not found"))
+		return
+	}
+
+	// Load nodes
+	nodeRows, err := h.pool.Query(r.Context(),
+		`SELECT id::text, node_type, COALESCE(agent_id::text,''), position_x, position_y, config::text
+		 FROM workflow_nodes WHERE workflow_id=$1::uuid ORDER BY created_at`,
+		workflowID)
+	if err != nil {
+		errs.Write(w, errs.Internal("failed to load graph nodes"))
+		return
+	}
+	defer nodeRows.Close()
+
+	nodes := []WorkflowNode{}
+	for nodeRows.Next() {
+		var n WorkflowNode
+		var configStr string
+		if err := nodeRows.Scan(&n.ID, &n.NodeType, &n.AgentID, &n.PositionX, &n.PositionY, &configStr); err != nil {
+			errs.Write(w, errs.Internal("failed to scan graph node"))
+			return
+		}
+		n.Config = json.RawMessage(configStr)
+		nodes = append(nodes, n)
+	}
+	if err := nodeRows.Err(); err != nil {
+		errs.Write(w, errs.Internal("failed to read graph nodes"))
+		return
+	}
+
+	// Load edges
+	edgeRows, err := h.pool.Query(r.Context(),
+		`SELECT id::text, source_node_id::text, target_node_id::text, COALESCE(label,'')
+		 FROM workflow_edges WHERE workflow_id=$1::uuid ORDER BY created_at`,
+		workflowID)
+	if err != nil {
+		errs.Write(w, errs.Internal("failed to load graph edges"))
+		return
+	}
+	defer edgeRows.Close()
+
+	edges := []WorkflowEdge{}
+	for edgeRows.Next() {
+		var e WorkflowEdge
+		if err := edgeRows.Scan(&e.ID, &e.SourceNodeID, &e.TargetNodeID, &e.Label); err != nil {
+			errs.Write(w, errs.Internal("failed to scan graph edge"))
+			return
+		}
+		edges = append(edges, e)
+	}
+	if err := edgeRows.Err(); err != nil {
+		errs.Write(w, errs.Internal("failed to read graph edges"))
+		return
+	}
+
+	errs.WriteJSON(w, 200, map[string]any{"nodes": nodes, "edges": edges})
+}
+
+// SaveGraph handles PUT /api/v1/agent-groups/{id}/graph
+// Replaces the entire node/edge set for the workflow in a single transaction.
+// Client-side IDs in edges are mapped to the newly generated server-side UUIDs.
+func (h *GroupsHandler) SaveGraph(w http.ResponseWriter, r *http.Request) {
+	workflowID := chi.URLParam(r, "id")
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+
+	var req saveGraphRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errs.Write(w, errs.BadRequest("invalid request body"))
+		return
+	}
+
+	// Verify workspace ownership
+	var exists bool
+	if err := h.pool.QueryRow(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM agent_groups WHERE id=$1::uuid AND workspace_id=$2::uuid)`,
+		workflowID, ws).Scan(&exists); err != nil || !exists {
+		errs.Write(w, errs.NotFound("group not found"))
+		return
+	}
+
+	tx, err := h.pool.Begin(r.Context())
+	if err != nil {
+		errs.Write(w, errs.Internal("failed to start transaction"))
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	// Delete existing graph — cascade removes edges too
+	if _, err := tx.Exec(r.Context(),
+		`DELETE FROM workflow_nodes WHERE workflow_id=$1::uuid`, workflowID); err != nil {
+		errs.Write(w, errs.Internal("failed to clear existing graph"))
+		return
+	}
+
+	// Insert nodes and build client_id → server_id map
+	clientToServer := make(map[string]string, len(req.Nodes))
+	for _, n := range req.Nodes {
+		serverID := uuid.NewString()
+		if n.ID != "" {
+			clientToServer[n.ID] = serverID
+		}
+
+		configJSON := n.Config
+		if len(configJSON) == 0 {
+			configJSON = json.RawMessage(`{}`)
+		}
+
+		if n.AgentID != nil && *n.AgentID != "" {
+			_, err = tx.Exec(r.Context(),
+				`INSERT INTO workflow_nodes(id,workflow_id,node_type,agent_id,position_x,position_y,config)
+				 VALUES($1::uuid,$2::uuid,$3,$4::uuid,$5,$6,$7::jsonb)`,
+				serverID, workflowID, n.NodeType, *n.AgentID, n.PositionX, n.PositionY, string(configJSON))
+		} else {
+			_, err = tx.Exec(r.Context(),
+				`INSERT INTO workflow_nodes(id,workflow_id,node_type,position_x,position_y,config)
+				 VALUES($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`,
+				serverID, workflowID, n.NodeType, n.PositionX, n.PositionY, string(configJSON))
+		}
+		if err != nil {
+			errs.Write(w, errs.Internal("failed to insert node"))
+			return
+		}
+	}
+
+	// Insert edges using mapped server-side UUIDs
+	for _, e := range req.Edges {
+		srcID, srcOK := clientToServer[e.SourceNodeID]
+		tgtID, tgtOK := clientToServer[e.TargetNodeID]
+		if !srcOK || !tgtOK {
+			errs.Write(w, errs.BadRequest("edge references unknown node id"))
+			return
+		}
+		label := e.Label // may be empty
+		var insertErr error
+		if label != "" {
+			_, insertErr = tx.Exec(r.Context(),
+				`INSERT INTO workflow_edges(id,workflow_id,source_node_id,target_node_id,label)
+				 VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5)`,
+				uuid.NewString(), workflowID, srcID, tgtID, label)
+		} else {
+			_, insertErr = tx.Exec(r.Context(),
+				`INSERT INTO workflow_edges(id,workflow_id,source_node_id,target_node_id)
+				 VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid)`,
+				uuid.NewString(), workflowID, srcID, tgtID)
+		}
+		if insertErr != nil {
+			errs.Write(w, errs.Internal("failed to insert edge"))
+			return
+		}
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		errs.Write(w, errs.Internal("failed to commit graph"))
+		return
+	}
+
+	errs.WriteJSON(w, 200, map[string]any{"ok": true})
 }

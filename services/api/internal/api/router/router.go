@@ -90,6 +90,8 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Delete("/agents/{id}", h.Agents.Delete)
 			r.Get("/agents/{id}/tools", h.Agents.ListTools)
 			r.Put("/agents/{id}/tools", h.Agents.SetTools)
+			r.Get("/agents/{id}/connectors", h.Agents.ListConnectors)
+			r.Put("/agents/{id}/connectors", h.Agents.SetConnectors)
 
 			// Tools
 			r.Get("/tools", h.Tools.List)
@@ -105,6 +107,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Delete("/mcp-servers/{id}", h.MCP.Delete)
 			r.Post("/mcp-servers/{id}/sync", h.MCP.Sync)
 			r.Get("/mcp-servers/{id}/tools", h.MCP.ListTools)
+			r.Patch("/mcp-servers/{id}/tools/{toolId}", h.MCP.UpdateToolRisk)
 
 			// Connectors
 			r.Get("/connectors", h.Connectors.List)
@@ -114,6 +117,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Post("/connectors/{id}/sync", h.Connectors.Sync)
 			r.Get("/connectors/{id}/documents", h.Connectors.ListDocuments)
 			r.Get("/connectors/{id}/sync-jobs", h.Connectors.ListSyncJobs)
+			r.Get("/filesystem/browse", h.Connectors.BrowseFilesystem)
 
 			// Conversations
 			r.Get("/conversations", h.Conversations.List)
@@ -141,6 +145,8 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Put("/agent-groups/{id}", h.Groups.Update)
 			r.Delete("/agent-groups/{id}", h.Groups.Delete)
 			r.Post("/agent-groups/{id}/runs", h.Groups.Run)
+			r.Get("/agent-groups/{id}/graph", h.Groups.GetGraph)
+			r.Put("/agent-groups/{id}/graph", h.Groups.SaveGraph)
 
 			// Admin (requires is_admin flag)
 			r.Group(func(r chi.Router) {

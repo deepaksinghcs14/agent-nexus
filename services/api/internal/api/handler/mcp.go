@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -11,8 +12,16 @@ import (
 	"github.com/agentNexus/agent-nexus/services/api/internal/api/middleware"
 	"github.com/agentNexus/agent-nexus/services/api/internal/config"
 	"github.com/agentNexus/agent-nexus/services/api/internal/domain"
+	"github.com/agentNexus/agent-nexus/services/api/internal/mcp"
 	"github.com/agentNexus/agent-nexus/services/api/pkg/errs"
 )
+
+// mcpToolsID returns a deterministic UUID for the mirrored tools-table entry.
+// Same (workspaceID + serverID + toolName) always produces the same UUID so that
+// agent_tools FK references survive MCP server re-syncs.
+func mcpToolsID(workspaceID, serverID, toolName string) string {
+	return uuid.NewSHA1(uuid.NameSpaceURL, []byte(workspaceID+":"+serverID+":"+toolName)).String()
+}
 
 type MCPHandler struct {
 	pool *pgxpool.Pool
@@ -82,7 +91,13 @@ func (h *MCPHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 func (h *MCPHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	mcpID := chi.URLParam(r, "id")
-	tag, err := h.pool.Exec(r.Context(), `DELETE FROM mcp_servers WHERE id=$1::uuid AND workspace_id=$2::uuid`, mcpID, middleware.WorkspaceIDFromCtx(r.Context()))
+	wsID := middleware.WorkspaceIDFromCtx(r.Context())
+	// Clean up mirrored tools entries before deleting the server.
+	h.pool.Exec(r.Context(), //nolint:errcheck
+		`DELETE FROM tools WHERE type='mcp' AND workspace_id=$1::uuid AND (config->>'server_id')=$2`,
+		wsID, mcpID,
+	)
+	tag, err := h.pool.Exec(r.Context(), `DELETE FROM mcp_servers WHERE id=$1::uuid AND workspace_id=$2::uuid`, mcpID, wsID)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to delete MCP server"))
 		return
@@ -100,14 +115,94 @@ func (h *MCPHandler) Sync(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.NotFound("MCP server not found"))
 		return
 	}
-	_, err = h.pool.Exec(r.Context(), `UPDATE mcp_servers SET status='connected',tools_synced_at=NOW(),updated_at=NOW() WHERE id=$1::uuid`, s.ID)
-	if err != nil {
-		errs.Write(w, errs.Internal("failed to sync MCP server"))
+
+	client := mcp.NewClient(s.ID, s.URL, s.Transport, s.Config)
+	tools, listErr := client.ListTools(r.Context())
+	if listErr != nil {
+		slog.Warn("mcp sync failed", "server_id", s.ID, "transport", s.Transport, "error", listErr)
+		h.pool.Exec(r.Context(), `UPDATE mcp_servers SET status='error',updated_at=NOW() WHERE id=$1::uuid`, s.ID) //nolint:errcheck
+		errs.Write(w, errs.BadRequest("failed to connect to MCP server: "+listErr.Error()))
 		return
 	}
+
+	// Replace all tools for this server atomically.
+	tx, txErr := h.pool.Begin(r.Context())
+	if txErr != nil {
+		errs.Write(w, errs.Internal("failed to begin transaction"))
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck
+
+	tx.Exec(r.Context(), `DELETE FROM mcp_tools WHERE server_id=$1::uuid`, s.ID) //nolint:errcheck
+	for _, t := range tools {
+		mcpID := uuid.NewString()
+		tx.Exec(r.Context(), //nolint:errcheck
+			`INSERT INTO mcp_tools(id,server_id,name,description,input_schema,risk_level,enabled)
+			 VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7)
+			 ON CONFLICT(server_id,name) DO UPDATE SET description=$4,input_schema=$5,risk_level=$6,updated_at=NOW()`,
+			mcpID, s.ID, t.Name, t.Description, t.InputSchema, t.RiskLevel, t.Enabled,
+		)
+		// Mirror into tools table so agent assignment (agent_tools FK) works.
+		// Use a deterministic UUID so re-syncs don't orphan existing agent_tools rows.
+		// Do NOT overwrite risk_level on conflict — preserve user edits.
+		toolsID := mcpToolsID(s.WorkspaceID, s.ID, t.Name)
+		cfg, _ := json.Marshal(map[string]string{"server_id": s.ID, "server_name": s.Name})
+		tx.Exec(r.Context(), //nolint:errcheck
+			`INSERT INTO tools(id,workspace_id,name,description,type,input_schema,output_schema,config,risk_level,requires_approval,timeout_ms,enabled)
+			 VALUES($1::uuid,$2::uuid,$3,$4,'mcp',$5,'{}',$6,$7,false,30000,true)
+			 ON CONFLICT(workspace_id,name) DO UPDATE SET
+			   description=EXCLUDED.description,
+			   input_schema=EXCLUDED.input_schema,
+			   config=EXCLUDED.config,
+			   updated_at=NOW()`,
+			toolsID, s.WorkspaceID, t.Name, t.Description, t.InputSchema, cfg, t.RiskLevel,
+		)
+	}
+	tx.Exec(r.Context(), `UPDATE mcp_servers SET status='connected',tools_synced_at=NOW(),updated_at=NOW() WHERE id=$1::uuid`, s.ID) //nolint:errcheck
+
+	if err := tx.Commit(r.Context()); err != nil {
+		errs.Write(w, errs.Internal("failed to commit sync"))
+		return
+	}
+
 	s.Status = "connected"
-	errs.WriteJSON(w, http.StatusOK, s)
+	writeAudit(r, h.pool, "mcp_server.synced", "mcp_server", s.ID)
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"server": s, "tools_discovered": len(tools)})
 }
+func (h *MCPHandler) UpdateToolRisk(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.WorkspaceIDFromCtx(r.Context())
+	serverID := chi.URLParam(r, "id")
+	toolID := chi.URLParam(r, "toolId")
+	var req struct {
+		RiskLevel string `json:"risk_level"`
+	}
+	if json.NewDecoder(r.Body).Decode(&req) != nil || req.RiskLevel == "" {
+		errs.Write(w, errs.BadRequest("risk_level is required"))
+		return
+	}
+	valid := map[string]bool{"low": true, "medium": true, "high": true, "critical": true}
+	if !valid[req.RiskLevel] {
+		errs.Write(w, errs.BadRequest("risk_level must be low, medium, high, or critical"))
+		return
+	}
+	// Update mcp_tools.
+	tag, err := h.pool.Exec(r.Context(),
+		`UPDATE mcp_tools SET risk_level=$1,updated_at=NOW()
+		 WHERE id=$2::uuid AND server_id IN (SELECT id FROM mcp_servers WHERE workspace_id=$3::uuid)`,
+		req.RiskLevel, toolID, wsID)
+	if err != nil || tag.RowsAffected() == 0 {
+		errs.Write(w, errs.NotFound("tool not found"))
+		return
+	}
+	// Mirror the change to tools table (by server_id + server tool name lookup).
+	h.pool.Exec(r.Context(), //nolint:errcheck
+		`UPDATE tools SET risk_level=$1,updated_at=NOW()
+		 WHERE type='mcp' AND workspace_id=$2::uuid AND (config->>'server_id')=$3
+		   AND name=(SELECT name FROM mcp_tools WHERE id=$4::uuid)`,
+		req.RiskLevel, wsID, serverID, toolID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *MCPHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.pool.Query(r.Context(), `SELECT mt.id::text,mt.server_id::text,mt.name,mt.description,mt.input_schema,mt.risk_level,mt.enabled FROM mcp_tools mt JOIN mcp_servers ms ON ms.id=mt.server_id WHERE mt.server_id=$1::uuid AND ms.workspace_id=$2::uuid ORDER BY mt.name`, chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()))
 	if err != nil {

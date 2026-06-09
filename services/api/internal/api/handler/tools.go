@@ -25,14 +25,15 @@ func NewToolsHandler(pool *pgxpool.Pool, cfg *config.Config) *ToolsHandler {
 
 func scanTool(rows interface{ Scan(...any) error }) (domain.Tool, error) {
 	var t domain.Tool
-	err := rows.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.Type, &t.InputSchema, &t.OutputSchema, &t.RiskLevel, &t.RequiresApproval, &t.TimeoutMs, &t.Enabled, &t.CreatedAt, &t.UpdatedAt)
+	err := rows.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.Type, &t.InputSchema, &t.OutputSchema, &t.Config, &t.RiskLevel, &t.RequiresApproval, &t.TimeoutMs, &t.Enabled, &t.CreatedAt, &t.UpdatedAt)
 	return t, err
 }
 
-const toolSelect = `SELECT id::text, COALESCE(workspace_id::text,''), name, description, type, input_schema, output_schema, risk_level, requires_approval, timeout_ms, enabled, created_at, updated_at FROM tools`
+const toolSelect = `SELECT id::text, COALESCE(workspace_id::text,''), name, description, type, input_schema, output_schema, config, risk_level, requires_approval, timeout_ms, enabled, created_at, updated_at FROM tools`
 
 func (h *ToolsHandler) List(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.pool.Query(r.Context(), toolSelect+` WHERE workspace_id IS NULL OR workspace_id=$1::uuid ORDER BY type,name`, middleware.WorkspaceIDFromCtx(r.Context()))
+	wsID := middleware.WorkspaceIDFromCtx(r.Context())
+	rows, err := h.pool.Query(r.Context(), toolSelect+` WHERE workspace_id IS NULL OR workspace_id=$1::uuid ORDER BY type,name`, wsID)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to list tools"))
 		return
@@ -72,7 +73,10 @@ func (h *ToolsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if len(t.OutputSchema) == 0 {
 		t.OutputSchema = json.RawMessage(`{}`)
 	}
-	err := h.pool.QueryRow(r.Context(), `INSERT INTO tools(id,workspace_id,name,description,type,input_schema,output_schema,risk_level,requires_approval,timeout_ms,enabled) VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING created_at,updated_at`, t.ID, t.WorkspaceID, t.Name, t.Description, t.Type, t.InputSchema, t.OutputSchema, t.RiskLevel, t.RequiresApproval, t.TimeoutMs, t.Enabled).Scan(&t.CreatedAt, &t.UpdatedAt)
+	if len(t.Config) == 0 {
+		t.Config = json.RawMessage(`{}`)
+	}
+	err := h.pool.QueryRow(r.Context(), `INSERT INTO tools(id,workspace_id,name,description,type,input_schema,output_schema,config,risk_level,requires_approval,timeout_ms,enabled) VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING created_at,updated_at`, t.ID, t.WorkspaceID, t.Name, t.Description, t.Type, t.InputSchema, t.OutputSchema, t.Config, t.RiskLevel, t.RequiresApproval, t.TimeoutMs, t.Enabled).Scan(&t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to create tool"))
 		return
@@ -96,7 +100,10 @@ func (h *ToolsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	t.ID = chi.URLParam(r, "id")
 	t.WorkspaceID = middleware.WorkspaceIDFromCtx(r.Context())
-	tag, err := h.pool.Exec(r.Context(), `UPDATE tools SET name=$3,description=$4,type=$5,input_schema=$6,output_schema=$7,risk_level=$8,requires_approval=$9,timeout_ms=$10,enabled=$11,updated_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid`, t.ID, t.WorkspaceID, t.Name, t.Description, t.Type, t.InputSchema, t.OutputSchema, t.RiskLevel, t.RequiresApproval, t.TimeoutMs, t.Enabled)
+	if len(t.Config) == 0 {
+		t.Config = json.RawMessage(`{}`)
+	}
+	tag, err := h.pool.Exec(r.Context(), `UPDATE tools SET name=$3,description=$4,type=$5,input_schema=$6,output_schema=$7,config=$8,risk_level=$9,requires_approval=$10,timeout_ms=$11,enabled=$12,updated_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid`, t.ID, t.WorkspaceID, t.Name, t.Description, t.Type, t.InputSchema, t.OutputSchema, t.Config, t.RiskLevel, t.RequiresApproval, t.TimeoutMs, t.Enabled)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to update tool"))
 		return

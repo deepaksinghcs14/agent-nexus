@@ -91,6 +91,7 @@ export interface Tool {
   type: 'native' | 'mcp' | 'http'
   input_schema: Record<string, unknown>
   output_schema: Record<string, unknown>
+  config?: Record<string, unknown>
   risk_level: 'low' | 'medium' | 'high' | 'critical'
   requires_approval: boolean
   timeout_ms: number
@@ -154,7 +155,7 @@ export type RunStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelle
 export interface Run {
   id: string
   workspace_id: string
-  agent_id: string
+  agent_id: string | null
   conversation_id: string
   user_id: string
   input: string
@@ -280,6 +281,30 @@ export interface AgentGroup {
   updated_at: string
 }
 
+// Workflow graph types (agent groups visual builder)
+export type WorkflowNodeType = 'start' | 'end' | 'agent' | 'condition' | 'parallel' | 'join' | 'loop'
+
+export interface WorkflowNode {
+  id: string
+  node_type: WorkflowNodeType
+  agent_id?: string | null
+  position_x: number
+  position_y: number
+  config: Record<string, unknown>
+}
+
+export interface WorkflowEdge {
+  id: string
+  source_node_id: string
+  target_node_id: string
+  label?: string | null
+}
+
+export interface WorkflowGraph {
+  nodes: WorkflowNode[]
+  edges: WorkflowEdge[]
+}
+
 // SSE stream event types
 export type SSEEventType =
   | 'run_started'
@@ -289,6 +314,9 @@ export type SSEEventType =
   | 'approval_required'
   | 'run_completed'
   | 'error'
+  | 'node_started'
+  | 'node_completed'
+  | 'node_routed'
 
 export interface SSEEvent {
   type: SSEEventType
@@ -301,6 +329,10 @@ export interface SSEEvent {
   usage?: { input: number; output: number }
   cost?: number
   message?: string
+  node_id?: string
+  node_name?: string
+  node_type?: string
+  result?: string
 }
 
 // Pagination

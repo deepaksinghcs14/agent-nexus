@@ -1,5 +1,5 @@
 // src/lib/api.ts — all API calls go through this wrapper
-import type { WorkspaceWithRole, Workspace, APIToken, CreatedAPIToken, InvokeRunResponse } from '@/types'
+import type { WorkspaceWithRole, Workspace, APIToken, CreatedAPIToken, InvokeRunResponse, WorkflowGraph } from '@/types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
 
@@ -125,6 +125,9 @@ export const agentsAPI = {
   delete: (id: string) => api.delete(`/agents/${id}`),
   getTools: (id: string) => api.get(`/agents/${id}/tools`),
   setTools: (id: string, body: unknown) => api.put(`/agents/${id}/tools`, body),
+  getConnectors: (id: string) => api.get(`/agents/${id}/connectors`),
+  setConnectors: (id: string, body: { connector_ids: string[]; max_chunks: number; min_score: number }) =>
+    api.put(`/agents/${id}/connectors`, body),
 }
 
 export const runsAPI = {
@@ -158,11 +161,20 @@ export const connectorsAPI = {
   delete: (id: string) => api.delete(`/connectors/${id}`),
 }
 
+export const filesystemAPI = {
+  browse: (path: string) =>
+    api.get<{ path: string; parent: string; entries: { name: string; path: string; is_dir: boolean }[] }>(
+      `/filesystem/browse?path=${encodeURIComponent(path)}`
+    ),
+}
+
 export const mcpAPI = {
   list: () => api.get('/mcp-servers'),
   create: (body: unknown) => api.post('/mcp-servers', body),
   sync: (id: string) => api.post(`/mcp-servers/${id}/sync`),
   tools: (id: string) => api.get(`/mcp-servers/${id}/tools`),
+  updateToolRisk: (serverId: string, toolId: string, riskLevel: string) =>
+    api.patch(`/mcp-servers/${serverId}/tools/${toolId}`, { risk_level: riskLevel }),
   delete: (id: string) => api.delete(`/mcp-servers/${id}`),
 }
 
@@ -216,6 +228,8 @@ export const groupsAPI = {
   update: (id: string, body: unknown) => api.put(`/agent-groups/${id}`, body),
   delete: (id: string) => api.delete(`/agent-groups/${id}`),
   run: (id: string, body?: unknown) => api.post(`/agent-groups/${id}/runs`, body),
+  getGraph: (id: string) => api.get<WorkflowGraph>(`/agent-groups/${id}/graph`),
+  saveGraph: (id: string, body: WorkflowGraph) => api.put<WorkflowGraph>(`/agent-groups/${id}/graph`, body),
 }
 
 export const apiTokensAPI = {

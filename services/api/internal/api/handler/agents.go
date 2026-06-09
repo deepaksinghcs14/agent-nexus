@@ -16,13 +16,14 @@ import (
 )
 
 type AgentsHandler struct {
-	pool   *pgxpool.Pool
-	cfg    *config.Config
-	agents *repository.AgentRepository
+	pool     *pgxpool.Pool
+	cfg      *config.Config
+	agents   *repository.AgentRepository
+	connRepo *repository.ConnectorRepository
 }
 
 func NewAgentsHandler(pool *pgxpool.Pool, cfg *config.Config) *AgentsHandler {
-	return &AgentsHandler{pool: pool, cfg: cfg, agents: repository.NewAgentRepository(pool)}
+	return &AgentsHandler{pool: pool, cfg: cfg, agents: repository.NewAgentRepository(pool), connRepo: repository.NewConnectorRepository(pool)}
 }
 
 func (h *AgentsHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -229,4 +230,53 @@ func (h *AgentsHandler) SetTools(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.ListTools(w, r)
+}
+
+func (h *AgentsHandler) ListConnectors(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.WorkspaceIDFromCtx(r.Context())
+	agentID := chi.URLParam(r, "id")
+	var exists bool
+	if err := h.pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid)`, agentID, wsID).Scan(&exists); err != nil || !exists {
+		errs.Write(w, errs.NotFound("agent not found"))
+		return
+	}
+	connectors, err := h.connRepo.ListAgentConnectors(r.Context(), agentID)
+	if err != nil {
+		errs.Write(w, errs.Internal("failed to list agent connectors"))
+		return
+	}
+	if connectors == nil {
+		connectors = []domain.Connector{}
+	}
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"data": connectors})
+}
+
+func (h *AgentsHandler) SetConnectors(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.WorkspaceIDFromCtx(r.Context())
+	agentID := chi.URLParam(r, "id")
+	var req struct {
+		ConnectorIDs []string `json:"connector_ids"`
+		MaxChunks    int      `json:"max_chunks"`
+		MinScore     float64  `json:"min_score"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errs.Write(w, errs.BadRequest("invalid request body"))
+		return
+	}
+	var exists bool
+	if err := h.pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid)`, agentID, wsID).Scan(&exists); err != nil || !exists {
+		errs.Write(w, errs.NotFound("agent not found"))
+		return
+	}
+	if req.MaxChunks <= 0 {
+		req.MaxChunks = 8
+	}
+	if req.MinScore <= 0 {
+		req.MinScore = 0.5
+	}
+	if err := h.connRepo.SetAgentConnectors(r.Context(), agentID, req.ConnectorIDs, req.MaxChunks, req.MinScore); err != nil {
+		errs.Write(w, errs.Internal("failed to update connector bindings"))
+		return
+	}
+	h.ListConnectors(w, r)
 }

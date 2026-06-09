@@ -15,6 +15,8 @@ import (
 	"github.com/agentNexus/agent-nexus/services/api/internal/api/handler"
 	"github.com/agentNexus/agent-nexus/services/api/internal/api/router"
 	"github.com/agentNexus/agent-nexus/services/api/internal/config"
+	"github.com/agentNexus/agent-nexus/services/api/internal/tools"
+	"github.com/agentNexus/agent-nexus/services/api/internal/tools/native"
 )
 
 func main() {
@@ -49,10 +51,21 @@ func main() {
 	}
 	slog.Info("database connected", "url", maskURL(cfg.DatabaseURL))
 
+	// Build tool registry and seed native tools into DB
+	reg := tools.NewRegistry()
+	reg.Register(native.NewReadFileTool(cfg.StoragePath))
+	reg.Register(native.NewWriteFileTool(cfg.StoragePath))
+	reg.Register(native.NewWebSearchTool())
+	reg.Register(native.NewHTTPRequestTool())
+	if err := reg.SeedDB(ctx, pool); err != nil {
+		slog.Warn("failed to seed native tools", "error", err)
+	} else {
+		slog.Info("native tools seeded", "count", len(reg.All()))
+	}
+	exec := tools.NewExecutor(reg)
+
 	// Wire handlers
-	// Each handler receives the pool (and later: services, etc.)
-	// This grows as we implement each domain.
-	runs := handler.NewRunsHandler(pool, cfg)
+	runs := handler.NewRunsHandler(pool, cfg, reg, exec)
 	h := &handler.Handlers{
 		Auth:          handler.NewAuthHandler(pool, cfg),
 		Providers:     handler.NewProvidersHandler(pool, cfg),
@@ -67,7 +80,7 @@ func main() {
 		Groups:        handler.NewGroupsHandler(pool, cfg),
 		Admin:         handler.NewAdminHandler(pool, cfg),
 		APITokens:     handler.NewAPITokensHandler(pool, cfg),
-		Invoke:        handler.NewInvokeHandler(pool, cfg, runs),
+		Invoke:        handler.NewInvokeHandler(pool, cfg, runs, reg, exec),
 	}
 
 	// HTTP server

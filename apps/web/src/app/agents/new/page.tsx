@@ -49,7 +49,9 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   const [maxSteps, setMaxSteps] = useState(10)
   const [maxToolCalls, setMaxToolCalls] = useState(20)
   const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({ read_file: true })
-  const [enabledConnectors, setEnabledConnectors] = useState<Record<string, boolean>>({ Confluence: true })
+  const [enabledConnectors, setEnabledConnectors] = useState<Record<string, boolean>>({})
+  const [maxChunks, setMaxChunks] = useState(8)
+  const [minScore, setMinScore] = useState(0.5)
   const [saveError, setSaveError] = useState('')
 
   const { data: existing, isLoading: isLoadingAgent } = useQuery({
@@ -61,6 +63,11 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   const { data: agentTools } = useQuery({
     queryKey: ['agent-tools', params?.id],
     queryFn: () => agentsAPI.getTools(params!.id!) as Promise<{ data: Tool[] }>,
+    enabled: isEdit,
+  })
+  const { data: agentConnectorsData } = useQuery({
+    queryKey: ['agent-connectors', params?.id],
+    queryFn: () => agentsAPI.getConnectors(params!.id!) as Promise<{ data: Connector[] }>,
     enabled: isEdit,
   })
   const { data: toolsData } = useQuery({
@@ -114,6 +121,12 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
     }
   }, [agentTools])
 
+  useEffect(() => {
+    if (agentConnectorsData?.data) {
+      setEnabledConnectors(Object.fromEntries(agentConnectorsData.data.map((c) => [c.id, true])))
+    }
+  }, [agentConnectorsData])
+
   // Auto-select first available model when models load or provider changes
   useEffect(() => {
     if (availableModels.length > 0 && !availableModels.find((m) => m.id === model)) {
@@ -136,6 +149,11 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
       const saved = isEdit ? await agentsAPI.update(params!.id!, body) : await agentsAPI.create(body)
       const id = isEdit ? params!.id! : (saved as Agent).id
       await agentsAPI.setTools(id, { tool_names: Object.entries(enabledTools).filter(([, enabled]) => enabled).map(([tool]) => tool) })
+      await agentsAPI.setConnectors(id, {
+        connector_ids: Object.entries(enabledConnectors).filter(([, enabled]) => enabled).map(([cid]) => cid),
+        max_chunks: maxChunks,
+        min_score: minScore,
+      })
       return saved
     },
     onSuccess: () => {

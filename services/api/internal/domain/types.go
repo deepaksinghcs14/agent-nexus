@@ -10,14 +10,14 @@ import (
 // ============================================================
 
 type User struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	FullName     string    `json:"full_name"`
-	AvatarURL    string    `json:"avatar_url"`
-	IsActive     bool      `json:"is_active"`
-	IsAdmin      bool      `json:"is_admin"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	FullName  string    `json:"full_name"`
+	AvatarURL string    `json:"avatar_url"`
+	IsActive  bool      `json:"is_active"`
+	IsAdmin   bool      `json:"is_admin"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type Workspace struct {
@@ -41,17 +41,17 @@ type WorkspaceWithRole struct {
 // ============================================================
 
 type ProviderCredential struct {
-	ID              string     `json:"id"`
-	WorkspaceID     string     `json:"workspace_id"`
-	Provider        string     `json:"provider"`      // anthropic | openai | gemini | ollama
-	DisplayName     string     `json:"display_name"`
-	BaseURL         string     `json:"base_url"`      // for ollama / custom
-	IsActive        bool       `json:"is_active"`
-	AuthType        string     `json:"auth_type"`     // api_key | oauth
+	ID               string     `json:"id"`
+	WorkspaceID      string     `json:"workspace_id"`
+	Provider         string     `json:"provider"` // anthropic | openai | gemini | ollama
+	DisplayName      string     `json:"display_name"`
+	BaseURL          string     `json:"base_url"` // for ollama / custom
+	IsActive         bool       `json:"is_active"`
+	AuthType         string     `json:"auth_type"` // api_key | oauth
 	OAuthTokenExpiry *time.Time `json:"oauth_token_expiry,omitempty"`
-	CreatedBy       string     `json:"created_by"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	CreatedBy        string     `json:"created_by"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 	// EncryptedKey and oauth tokens are never returned to clients
 }
 
@@ -60,25 +60,25 @@ type ProviderCredential struct {
 // ============================================================
 
 type Agent struct {
-	ID                       string    `json:"id"`
-	WorkspaceID              string    `json:"workspace_id"`
-	Name                     string    `json:"name"`
-	Description              string    `json:"description"`
-	Instructions             string    `json:"instructions"`
-	Provider                 string    `json:"provider"`
-	Model                    string    `json:"model"`
-	Temperature              float64   `json:"temperature"`
-	MaxTokens                int       `json:"max_tokens"`
-	MemoryEnabled            bool      `json:"memory_enabled"`
-	MemoryScope              string    `json:"memory_scope"`
-	ContextRetrievalEnabled  bool      `json:"context_retrieval_enabled"`
-	MaxSteps                 int       `json:"max_steps"`
-	MaxToolCalls             int       `json:"max_tool_calls"`
-	MaxDurationSecs          int       `json:"max_duration_secs"`
-	Status                   string    `json:"status"`
-	CreatedBy                string    `json:"created_by"`
-	CreatedAt                time.Time `json:"created_at"`
-	UpdatedAt                time.Time `json:"updated_at"`
+	ID                      string    `json:"id"`
+	WorkspaceID             string    `json:"workspace_id"`
+	Name                    string    `json:"name"`
+	Description             string    `json:"description"`
+	Instructions            string    `json:"instructions"`
+	Provider                string    `json:"provider"`
+	Model                   string    `json:"model"`
+	Temperature             float64   `json:"temperature"`
+	MaxTokens               int       `json:"max_tokens"`
+	MemoryEnabled           bool      `json:"memory_enabled"`
+	MemoryScope             string    `json:"memory_scope"`
+	ContextRetrievalEnabled bool      `json:"context_retrieval_enabled"`
+	MaxSteps                int       `json:"max_steps"`
+	MaxToolCalls            int       `json:"max_tool_calls"`
+	MaxDurationSecs         int       `json:"max_duration_secs"`
+	Status                  string    `json:"status"`
+	CreatedBy               string    `json:"created_by"`
+	CreatedAt               time.Time `json:"created_at"`
+	UpdatedAt               time.Time `json:"updated_at"`
 }
 
 // ============================================================
@@ -90,9 +90,10 @@ type Tool struct {
 	WorkspaceID      string          `json:"workspace_id,omitempty"`
 	Name             string          `json:"name"`
 	Description      string          `json:"description"`
-	Type             string          `json:"type"`             // native | mcp | http
+	Type             string          `json:"type"` // native | mcp | http
 	InputSchema      json.RawMessage `json:"input_schema"`
 	OutputSchema     json.RawMessage `json:"output_schema"`
+	Config           json.RawMessage `json:"config,omitempty"` // HTTP tool runtime config
 	RiskLevel        string          `json:"risk_level"`       // low | medium | high | critical
 	RequiresApproval bool            `json:"requires_approval"`
 	TimeoutMs        int             `json:"timeout_ms"`
@@ -114,17 +115,17 @@ type AgentTool struct {
 // ============================================================
 
 type MCPServer struct {
-	ID           string          `json:"id"`
-	WorkspaceID  string          `json:"workspace_id"`
-	Name         string          `json:"name"`
-	URL          string          `json:"url"`
-	Transport    string          `json:"transport"`  // http | stdio
-	Status       string          `json:"status"`
-	Config       json.RawMessage `json:"config,omitempty"`
-	ToolsSyncedAt *time.Time     `json:"tools_synced_at"`
-	CreatedBy    string          `json:"created_by"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
+	ID            string          `json:"id"`
+	WorkspaceID   string          `json:"workspace_id"`
+	Name          string          `json:"name"`
+	URL           string          `json:"url"`
+	Transport     string          `json:"transport"` // http | stdio
+	Status        string          `json:"status"`
+	Config        json.RawMessage `json:"config,omitempty"`
+	ToolsSyncedAt *time.Time      `json:"tools_synced_at"`
+	CreatedBy     string          `json:"created_by"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
 type MCPTool struct {
@@ -156,7 +157,7 @@ type Conversation struct {
 type Message struct {
 	ID             string          `json:"id"`
 	ConversationID string          `json:"conversation_id"`
-	Role           string          `json:"role"`    // user | assistant | tool
+	Role           string          `json:"role"` // user | assistant | tool
 	Content        string          `json:"content"`
 	ToolCalls      json.RawMessage `json:"tool_calls,omitempty"`
 	ToolCallID     string          `json:"tool_call_id,omitempty"`
@@ -181,20 +182,20 @@ const (
 )
 
 type Run struct {
-	ID                 string     `json:"id"`
-	WorkspaceID        string     `json:"workspace_id"`
-	AgentID            string     `json:"agent_id"`
-	ConversationID     string     `json:"conversation_id"`
-	UserID             string     `json:"user_id"`
-	Input              string     `json:"input"`
-	Output             string     `json:"output"`
-	Status             RunStatus  `json:"status"`
-	StartedAt          time.Time  `json:"started_at"`
-	CompletedAt        *time.Time `json:"completed_at"`
-	TotalInputTokens   int        `json:"total_input_tokens"`
-	TotalOutputTokens  int        `json:"total_output_tokens"`
-	CostEstimate       float64    `json:"cost_estimate"`
-	ErrorMessage       string     `json:"error_message,omitempty"`
+	ID                string     `json:"id"`
+	WorkspaceID       string     `json:"workspace_id"`
+	AgentID           string     `json:"agent_id"`
+	ConversationID    string     `json:"conversation_id"`
+	UserID            string     `json:"user_id"`
+	Input             string     `json:"input"`
+	Output            string     `json:"output"`
+	Status            RunStatus  `json:"status"`
+	StartedAt         time.Time  `json:"started_at"`
+	CompletedAt       *time.Time `json:"completed_at"`
+	TotalInputTokens  int        `json:"total_input_tokens"`
+	TotalOutputTokens int        `json:"total_output_tokens"`
+	CostEstimate      float64    `json:"cost_estimate"`
+	ErrorMessage      string     `json:"error_message,omitempty"`
 }
 
 type StepType string
