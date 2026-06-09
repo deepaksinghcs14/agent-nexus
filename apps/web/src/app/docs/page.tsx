@@ -79,7 +79,7 @@ export default function DocsOverview() {
       <p>
         The response includes a <code>run_id</code>. Poll{' '}
         <code>GET /api/v1/runs/:id</code> to check status and retrieve output.
-        Or set <code>"stream": true</code> to receive SSE events in real time.
+        Or set <code>&quot;stream&quot;: true</code> to receive SSE events in real time.
       </p>
 
       <h2>Base URL</h2>
