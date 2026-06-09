@@ -21,6 +21,19 @@ jobs:
       - name: Vet
         working-directory: services/api
         run: go vet ./...
+      - name: Test
+        working-directory: services/api
+        run: go test ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: services/api
+      - name: govulncheck
+        working-directory: services/api
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
   web:
     name: TypeScript check
@@ -38,3 +51,6 @@ jobs:
       - name: Type check
         working-directory: apps/web
         run: npx tsc --noEmit
+      - name: Lint
+        working-directory: apps/web
+        run: npm run lint --if-present
