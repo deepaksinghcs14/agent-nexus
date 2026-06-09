@@ -136,10 +136,10 @@ export default function WhatIsAnAgentGroupDoc() {
       <table>
         <thead><tr><th>Expression</th><th>Matches when output…</th></tr></thead>
         <tbody>
-          <tr><td><code>contains:approved</code></td><td>Contains the word "approved"</td></tr>
-          <tr><td><code>not_contains:error</code></td><td>Does not contain "error"</td></tr>
-          <tr><td><code>startswith:yes</code></td><td>Starts with "yes"</td></tr>
-          <tr><td><code>endswith:done</code></td><td>Ends with "done"</td></tr>
+          <tr><td><code>contains:approved</code></td><td>Contains the word &quot;approved&quot;</td></tr>
+          <tr><td><code>not_contains:error</code></td><td>Does not contain &quot;error&quot;</td></tr>
+          <tr><td><code>startswith:yes</code></td><td>Starts with &quot;yes&quot;</td></tr>
+          <tr><td><code>endswith:done</code></td><td>Ends with &quot;done&quot;</td></tr>
           <tr><td><code>*</code> or empty</td><td>Always true (wildcard / default)</td></tr>
         </tbody>
       </table>
