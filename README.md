@@ -85,95 +85,6 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 </tr>
 </table>
 
-### Admin Portal
-
-<table>
-<tr>
-<td width="50%">
-
-**Admin Overview**
-![Admin Overview](docs/screenshots/admin_01_overview.png)
-
-</td>
-<td width="50%">
-
-**User Management**
-![Admin Users](docs/screenshots/admin_02_users.png)
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-**Workspace Management**
-![Admin Workspaces](docs/screenshots/admin_03_workspaces.png)
-
-</td>
-<td width="50%">
-
-**Audit Logs**
-![Admin Audit Logs](docs/screenshots/admin_04_audit_logs.png)
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-**Policies**
-![Admin Policies](docs/screenshots/admin_05_policies.png)
-
-</td>
-<td width="50%"></td>
-</tr>
-</table>
-
-### Built-in Documentation
-
-<table>
-<tr>
-<td width="50%">
-
-**What is an Agent?**
-![Docs Agent](docs/screenshots/docs_01_what_is_an_agent.png)
-
-</td>
-<td width="50%">
-
-**Agent Configuration Reference**
-![Docs Agent Config](docs/screenshots/docs_02_agent_configuration.png)
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-**Invoke API**
-![Docs Invoke API](docs/screenshots/docs_03_invoke_api.png)
-
-</td>
-<td width="50%">
-
-**SSE Stream Events**
-![Docs SSE Events](docs/screenshots/docs_06_sse_events.png)
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-**MCP Servers Guide**
-![Docs MCP](docs/screenshots/docs_05_mcp_servers.png)
-
-</td>
-<td width="50%">
-
-**Workflow Patterns**
-![Docs Workflows](docs/screenshots/docs_07_workflows.png)
-
-</td>
-</tr>
-</table>
-
 ---
 
 ## Features
@@ -349,3 +260,96 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a deep-dive into the domain model, ru
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+## More Screenshots
+
+### Admin Portal
+
+<table>
+<tr>
+<td width="50%">
+
+**Admin Overview**
+![Admin Overview](docs/screenshots/admin_01_overview.png)
+
+</td>
+<td width="50%">
+
+**User Management**
+![Admin Users](docs/screenshots/admin_02_users.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Workspace Management**
+![Admin Workspaces](docs/screenshots/admin_03_workspaces.png)
+
+</td>
+<td width="50%">
+
+**Audit Logs**
+![Admin Audit Logs](docs/screenshots/admin_04_audit_logs.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Policies**
+![Admin Policies](docs/screenshots/admin_05_policies.png)
+
+</td>
+<td width="50%"></td>
+</tr>
+</table>
+
+### Built-in Documentation
+
+<table>
+<tr>
+<td width="50%">
+
+**What is an Agent?**
+![Docs Agent](docs/screenshots/docs_01_what_is_an_agent.png)
+
+</td>
+<td width="50%">
+
+**Agent Configuration Reference**
+![Docs Agent Config](docs/screenshots/docs_02_agent_configuration.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Invoke API**
+![Docs Invoke API](docs/screenshots/docs_03_invoke_api.png)
+
+</td>
+<td width="50%">
+
+**SSE Stream Events**
+![Docs SSE Events](docs/screenshots/docs_06_sse_events.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**MCP Servers Guide**
+![Docs MCP](docs/screenshots/docs_05_mcp_servers.png)
+
+</td>
+<td width="50%">
+
+**Workflow Patterns**
+![Docs Workflows](docs/screenshots/docs_07_workflows.png)
+
+</td>
+</tr>
+</table>
