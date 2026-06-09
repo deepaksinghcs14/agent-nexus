@@ -990,7 +990,6 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [nodes, setNodes, onNodesChange] = useNodesState<any>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null)
