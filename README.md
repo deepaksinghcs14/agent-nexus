@@ -6,7 +6,213 @@
 
 > Self-hosted, model-agnostic AI agent orchestration platform.
 
-Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach tools, connect memory, and observe every run with full trace logging — all from your own infrastructure.
+Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach tools, connect memory, and observe every run with full trace logging — all from your own infrastructure. No vendor lock-in, no data leaving your servers.
+
+---
+
+## Screenshots
+
+<table>
+<tr>
+<td width="50%">
+
+**Dashboard**
+![Dashboard](docs/screenshots/02_dashboard.png)
+
+</td>
+<td width="50%">
+
+**Agent List**
+![Agents](docs/screenshots/03_agents_list.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Agent Builder — Tools (grouped by source)**
+![Agent Builder Tools](docs/screenshots/06_agent_builder_tools.png)
+
+</td>
+<td width="50%">
+
+**Playground with Live Trace Panel**
+![Playground](docs/screenshots/08_playground.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Visual Workflow Canvas (Supervisor)**
+![Supervisor Workflow](docs/screenshots/14_canvas_supervisor_Research_and_Content_Creation_.png)
+
+</td>
+<td width="50%">
+
+**Hierarchical Multi-Agent Workflow**
+![Hierarchical Workflow](docs/screenshots/16_canvas_supervisor_Hierarchical_Code_Review.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Run Traces — Full Step Observability**
+![Runs](docs/screenshots/09_runs.png)
+
+</td>
+<td width="50%">
+
+**MCP Server Integration**
+![MCP Servers](docs/screenshots/11_mcp_servers.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Nexus AI — Meta-Agent Chat Interface**
+![Nexus AI](docs/screenshots/20_nexus_ai.png)
+
+</td>
+<td width="50%">
+
+**Tools Registry (grouped by source)**
+![Tools](docs/screenshots/10_tools.png)
+
+</td>
+</tr>
+</table>
+
+### Admin Portal
+
+<table>
+<tr>
+<td width="50%">
+
+**Admin Overview**
+![Admin Overview](docs/screenshots/admin_01_overview.png)
+
+</td>
+<td width="50%">
+
+**User Management**
+![Admin Users](docs/screenshots/admin_02_users.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Workspace Management**
+![Admin Workspaces](docs/screenshots/admin_03_workspaces.png)
+
+</td>
+<td width="50%">
+
+**Audit Logs**
+![Admin Audit Logs](docs/screenshots/admin_04_audit_logs.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Policies**
+![Admin Policies](docs/screenshots/admin_05_policies.png)
+
+</td>
+<td width="50%"></td>
+</tr>
+</table>
+
+### Built-in Documentation
+
+<table>
+<tr>
+<td width="50%">
+
+**What is an Agent?**
+![Docs Agent](docs/screenshots/docs_01_what_is_an_agent.png)
+
+</td>
+<td width="50%">
+
+**Agent Configuration Reference**
+![Docs Agent Config](docs/screenshots/docs_02_agent_configuration.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Invoke API**
+![Docs Invoke API](docs/screenshots/docs_03_invoke_api.png)
+
+</td>
+<td width="50%">
+
+**SSE Stream Events**
+![Docs SSE Events](docs/screenshots/docs_06_sse_events.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**MCP Servers Guide**
+![Docs MCP](docs/screenshots/docs_05_mcp_servers.png)
+
+</td>
+<td width="50%">
+
+**Workflow Patterns**
+![Docs Workflows](docs/screenshots/docs_07_workflows.png)
+
+</td>
+</tr>
+</table>
+
+---
+
+## Features
+
+### Core Agent Platform
+- **Model-agnostic** — Anthropic Claude, OpenAI GPT, Google Gemini, and local Ollama models. Bring your own API keys per workspace. Switch providers without changing your agent config.
+- **Agent builder** — configure instructions (system prompt), model, temperature, max tokens, memory scope, tool list, and guardrails (max steps, max tool calls, timeout) from a clean tabbed UI
+- **Playground** — send messages and watch the agent think in real time via a live SSE trace panel showing every memory retrieval, tool call, model call, latency, and token count
+
+### Multi-Agent Workflows
+- **Visual canvas editor** — drag-and-drop workflow builder powered by React Flow; add agent nodes, condition branches, parallel fans, join gates, and loop nodes
+- **Pipeline mode** — agents execute in sequence, each receiving the previous agent's output
+- **Supervisor mode** — a supervisor LLM routes tasks dynamically to specialist sub-agents; full BFS executor with conditional routing and parallel execution
+- **Workflow SSE** — live node status updates streamed to the canvas as a group run executes
+
+### Tools & MCP
+- **Native tools** — `read_file`, `write_file`, `web_search`, `http_request` with configurable risk levels
+- **MCP server support** — connect any MCP-compatible server (HTTP+SSE or stdio transport); auto-discover and sync tools; proxy all calls through the approval pipeline
+- **HTTP tools** — define arbitrary HTTP tools with JSON schemas; treat any external API as an agent tool
+- **Risk-based approval gates** — mark any tool `requires_approval`; the run pauses and waits for human approval before executing; approval can be granted from the UI or API
+
+### Memory & Context (RAG)
+- **Layered memory** — conversation, agent, and workspace scopes; each run stores a memory summary with pgvector embeddings for similarity retrieval in future runs
+- **Connector RAG** — index external files via the filesystem connector; chunks are embedded with pgvector and retrieved at query time to ground agent responses in your documents
+- **Vector search** — pgvector cosine similarity with configurable score thresholds and chunk counts per agent
+
+### Observability
+- **Full run traces** — every step is logged: memory retrieval (which memories, score), context retrieval (which chunks, source), model call (input/output tokens, latency, cost), tool calls (name, input, output, latency)
+- **Cost tracking** — per-run input/output token counts with cost estimates displayed in the runs table and usage dashboard
+- **Usage dashboard** — workspace-level token and cost aggregates over time
+
+### Multi-Workspace & Administration
+- **Multi-workspace** — isolate agents, tools, memory, and API keys per workspace; support for personal, team, organization, project, and sandbox workspace types
+- **Role-based access** — owner, admin, member, and viewer roles per workspace
+- **Admin dashboard** — manage all users, workspaces, and policies from a single admin panel
+- **Audit logs** — every create, update, and delete action is recorded with actor, resource, timestamp, and IP address
+
+### Nexus AI
+- **Meta-agent** — a built-in AI assistant that can list agents/tools/connectors, create new agents, and build workflow graphs using natural language — backed by the same agent runtime as user-created agents
 
 ---
 
@@ -113,21 +319,6 @@ NEXT_PUBLIC_APP_NAME=Agent Nexus
 | Auth | JWT access token (24h) + refresh token (httpOnly cookie, 30d) |
 | Encryption | AES-256-GCM for API keys and connector credentials |
 | Deployment | Docker Compose |
-
----
-
-## Features
-
-- **Multi-provider** — Anthropic, OpenAI, Gemini, Ollama; bring your own API keys per workspace
-- **Agent builder** — name, instructions, model, temperature, memory scope, tool list, guardrails
-- **Playground** — chat interface with live SSE trace panel
-- **Tool execution** — native tools (`native_read_file`, `native_write_file`, `native_web_search`, `native_http_request`) and MCP tools, with risk-based approval gates
-- **MCP server support** — connect any MCP server, auto-discover tools, proxy calls through the approval pipeline
-- **Memory** — conversation / agent / workspace scopes with pgvector similarity retrieval
-- **Connectors** — index external files for context retrieval (RAG)
-- **Agent groups** — pipeline and supervisor multi-agent workflows with a visual canvas editor
-- **Run traces** — every step logged: memory retrieval, context retrieval, model call, tool call, latency, tokens, cost estimate
-- **Admin dashboard** — users, workspaces, audit logs, policies
 
 ---
 
