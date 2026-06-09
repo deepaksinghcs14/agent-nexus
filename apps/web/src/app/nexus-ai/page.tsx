@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
@@ -85,26 +85,26 @@ function MessageBubble({ msg, isStreaming }: { msg: NexusMessage; isStreaming: b
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                a: ({ href, children }) => (
+                p: ({ children }: { children?: React.ReactNode }) => <p className="mb-2 last:mb-0">{children}</p>,
+                a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
                   <a href={href} target="_blank" rel="noopener noreferrer"
                     className="text-purple-600 hover:text-purple-700 underline underline-offset-2">
                     {children}
                   </a>
                 ),
-                ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-0.5">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-0.5">{children}</ol>,
-                li: ({ children }) => <li className="text-sm">{children}</li>,
-                code: ({ children, className }) => {
+                ul: ({ children }: { children?: React.ReactNode }) => <ul className="list-disc pl-4 mb-2 space-y-0.5">{children}</ul>,
+                ol: ({ children }: { children?: React.ReactNode }) => <ol className="list-decimal pl-4 mb-2 space-y-0.5">{children}</ol>,
+                li: ({ children }: { children?: React.ReactNode }) => <li className="text-sm">{children}</li>,
+                code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
                   const isBlock = className?.includes('language-')
                   return isBlock
                     ? <code className="block bg-gray-100 rounded px-3 py-2 text-xs font-mono overflow-x-auto mb-2">{children}</code>
                     : <code className="bg-gray-100 rounded px-1 py-0.5 text-xs font-mono">{children}</code>
                 },
-                strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
-                h1: ({ children }) => <h1 className="text-base font-semibold text-gray-900 mb-1 mt-2">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-sm font-semibold text-gray-900 mb-1 mt-2">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-sm font-medium text-gray-900 mb-1 mt-2">{children}</h3>,
+                strong: ({ children }: { children?: React.ReactNode }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                h1: ({ children }: { children?: React.ReactNode }) => <h1 className="text-base font-semibold text-gray-900 mb-1 mt-2">{children}</h1>,
+                h2: ({ children }: { children?: React.ReactNode }) => <h2 className="text-sm font-semibold text-gray-900 mb-1 mt-2">{children}</h2>,
+                h3: ({ children }: { children?: React.ReactNode }) => <h3 className="text-sm font-medium text-gray-900 mb-1 mt-2">{children}</h3>,
               }}
             >
               {msg.content}
