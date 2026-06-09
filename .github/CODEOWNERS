@@ -1,0 +1,24 @@
+# CODEOWNERS
+# Each line is a file pattern followed by one or more owners.
+# Owners are automatically requested for review when someone opens a PR.
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global owner — all files not matched below
+* @deepaksinghcs14
+
+# Auth and security — always needs extra review
+services/api/internal/auth/ @deepaksinghcs14
+services/api/internal/api/middleware/ @deepaksinghcs14
+services/api/pkg/encrypt/ @deepaksinghcs14
+
+# Infrastructure and secrets
+infra/ @deepaksinghcs14
+.github/ @deepaksinghcs14
+
+# Database migrations — irreversible changes
+infra/migrations/ @deepaksinghcs14
+
+# Sensitive config files
+*.env @deepaksinghcs14
+*.env.example @deepaksinghcs14
+docker-compose*.yml @deepaksinghcs14
