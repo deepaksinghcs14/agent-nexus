@@ -788,7 +788,7 @@ func (h *NexusAIHandler) toolSaveGraph(ctx context.Context, ws string, input jso
 	if err != nil {
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Delete existing graph.
 	if _, err := tx.Exec(ctx,

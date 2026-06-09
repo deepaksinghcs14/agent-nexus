@@ -208,7 +208,7 @@ func (h *AgentsHandler) SetTools(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.Internal("failed to update tools"))
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer func() { _ = tx.Rollback(r.Context()) }()
 	if _, err = tx.Exec(r.Context(), `DELETE FROM agent_tools WHERE agent_id=$1::uuid`, agentID); err != nil {
 		errs.Write(w, errs.Internal("failed to update tools"))
 		return
