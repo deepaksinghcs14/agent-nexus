@@ -183,7 +183,7 @@ func (h *InvokeHandler) Group(w http.ResponseWriter, r *http.Request) {
 func (h *InvokeHandler) ensureConversation(ctx context.Context, convID, ws, uid, agentID string) (string, error) {
 	if convID != "" {
 		var exists bool
-		h.pool.QueryRow(ctx,
+		_ = h.pool.QueryRow(ctx,
 			`SELECT EXISTS(SELECT 1 FROM conversations WHERE id=$1::uuid AND workspace_id=$2::uuid)`,
 			convID, ws).Scan(&exists)
 		if !exists {
@@ -763,7 +763,7 @@ func (h *InvokeHandler) executeGroupRun(
 				// request ctx may be cancelled if the SSE client disconnected, but
 				// we still need the output for downstream nodes.
 				var subOutput string
-				h.pool.QueryRow(context.Background(), //nolint:errcheck
+				_ = h.pool.QueryRow(context.Background(),
 					`SELECT COALESCE(output,'') FROM runs WHERE id=$1::uuid`, subRunID).Scan(&subOutput)
 
 				outputMu.Lock()
@@ -1003,19 +1003,3 @@ func evaluateExpression(expression, output string) bool {
 	return true
 }
 
-// scanMessages is a helper used in executeRun.
-func scanMessages(rows interface {
-	Next() bool
-	Scan(...any) error
-	Close()
-}) []provider.Message {
-	defer rows.Close()
-	var msgs []provider.Message
-	for rows.Next() {
-		var role, content, toolCallID, toolName string
-		if rows.Scan(&role, &content, &toolCallID, &toolName) == nil {
-			msgs = append(msgs, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
-		}
-	}
-	return msgs
-}

@@ -59,7 +59,7 @@ func (p *Pipeline) Sync(ctx context.Context, connectorID, workspaceID string, fe
 
 		// Look up existing document to reuse its ID (so chunk foreign key stays valid)
 		var existingID, existingHash string
-		p.pool.QueryRow(ctx,
+		_ = p.pool.QueryRow(ctx,
 			`SELECT id::text, content_hash FROM connector_documents WHERE connector_id=$1::uuid AND source_document_id=$2`,
 			connectorID, doc.SourceDocumentID).Scan(&existingID, &existingHash)
 

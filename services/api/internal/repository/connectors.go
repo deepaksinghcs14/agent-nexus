@@ -95,7 +95,7 @@ func (r *ConnectorRepository) SetAgentConnectors(ctx context.Context, agentID st
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	if _, err := tx.Exec(ctx, `DELETE FROM agent_connectors WHERE agent_id=$1::uuid`, agentID); err != nil {
 		return err
 	}
