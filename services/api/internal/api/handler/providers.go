@@ -17,17 +17,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/agentNexus/agent-nexus/services/api/internal/api/middleware"
-	"github.com/agentNexus/agent-nexus/services/api/internal/config"
-	"github.com/agentNexus/agent-nexus/services/api/internal/domain"
-	"github.com/agentNexus/agent-nexus/services/api/internal/provider"
-	"github.com/agentNexus/agent-nexus/services/api/internal/provider/anthropic"
-	"github.com/agentNexus/agent-nexus/services/api/internal/provider/gemini"
-	"github.com/agentNexus/agent-nexus/services/api/internal/provider/ollama"
-	"github.com/agentNexus/agent-nexus/services/api/internal/provider/openai"
-	"github.com/agentNexus/agent-nexus/services/api/internal/repository"
-	"github.com/agentNexus/agent-nexus/services/api/pkg/encrypt"
-	"github.com/agentNexus/agent-nexus/services/api/pkg/errs"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/anthropic"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/gemini"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/ollama"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/openai"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
+	"github.com/deepaksingh/agent-nexus/services/api/pkg/encrypt"
+	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
 
 type ProvidersHandler struct {

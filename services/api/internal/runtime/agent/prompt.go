@@ -1,6 +1,6 @@
 package agent
 
-import "github.com/agentNexus/agent-nexus/services/api/internal/provider"
+import "github.com/deepaksingh/agent-nexus/services/api/internal/provider"
 
 // Builder assembles the messages slice from agent config, memories, context chunks, and history.
 type Builder struct{}

@@ -3,7 +3,7 @@ package connector
 import (
 	"context"
 
-	"github.com/agentNexus/agent-nexus/services/api/internal/domain"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 )
 
 // Document is the normalised output from any connector provider.

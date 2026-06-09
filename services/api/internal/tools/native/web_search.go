@@ -8,7 +8,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/agentNexus/agent-nexus/services/api/internal/domain"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 )
 
 type WebSearchTool struct{}

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentNexus/agent-nexus/services/api/internal/config"
-	"github.com/agentNexus/agent-nexus/services/api/internal/domain"
-	"github.com/agentNexus/agent-nexus/services/api/internal/provider"
-	"github.com/agentNexus/agent-nexus/services/api/internal/repository"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

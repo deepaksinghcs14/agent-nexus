@@ -8,10 +8,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/agentNexus/agent-nexus/services/api/internal/api/middleware"
-	"github.com/agentNexus/agent-nexus/services/api/internal/config"
-	"github.com/agentNexus/agent-nexus/services/api/internal/domain"
-	"github.com/agentNexus/agent-nexus/services/api/pkg/errs"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
+	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
 
 type ToolsHandler struct {

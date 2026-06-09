@@ -36,8 +36,8 @@ services:
       CORS_ORIGINS: http://localhost:3000
       LOG_LEVEL: ${LOG_LEVEL:-info}
       STORAGE_PATH: /data/files
-      GOOGLE_OAUTH_CLIENT_ID: REDACTED
-      GOOGLE_OAUTH_CLIENT_SECRET: REDACTED
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       PUBLIC_API_URL: http://localhost:8080
     ports:
       - "8080:8080"

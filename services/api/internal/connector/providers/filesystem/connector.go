@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/agentNexus/agent-nexus/services/api/internal/connector"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/connector"
 )
 
 // Connector indexes files from a local directory.

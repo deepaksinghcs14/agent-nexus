@@ -13,16 +13,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/agentNexus/agent-nexus/services/api/internal/api/middleware"
-	"github.com/agentNexus/agent-nexus/services/api/internal/config"
-	"github.com/agentNexus/agent-nexus/services/api/internal/domain"
-	"github.com/agentNexus/agent-nexus/services/api/internal/provider"
-	"github.com/agentNexus/agent-nexus/services/api/internal/repository"
-	agentprompt "github.com/agentNexus/agent-nexus/services/api/internal/runtime/agent"
-	contextretrieval "github.com/agentNexus/agent-nexus/services/api/internal/runtime/context"
-	"github.com/agentNexus/agent-nexus/services/api/internal/runtime/memory"
-	"github.com/agentNexus/agent-nexus/services/api/internal/tools"
-	"github.com/agentNexus/agent-nexus/services/api/pkg/errs"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
+	agentprompt "github.com/deepaksingh/agent-nexus/services/api/internal/runtime/agent"
+	contextretrieval "github.com/deepaksingh/agent-nexus/services/api/internal/runtime/context"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/memory"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
+	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
 
 type InvokeHandler struct {

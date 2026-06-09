@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/agentNexus/agent-nexus/services/api/internal/domain"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 )
 
 // ─── JSON-RPC 2.0 types ───────────────────────────────────────────────────────

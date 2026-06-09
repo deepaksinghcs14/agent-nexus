@@ -1,4 +1,4 @@
-module github.com/agentNexus/agent-nexus/services/api
+module github.com/deepaksingh/agent-nexus/services/api
 
 go 1.23
 

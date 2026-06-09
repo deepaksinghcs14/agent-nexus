@@ -12,11 +12,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/agentNexus/agent-nexus/services/api/internal/api/handler"
-	"github.com/agentNexus/agent-nexus/services/api/internal/api/router"
-	"github.com/agentNexus/agent-nexus/services/api/internal/config"
-	"github.com/agentNexus/agent-nexus/services/api/internal/tools"
-	"github.com/agentNexus/agent-nexus/services/api/internal/tools/native"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/api/handler"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/api/router"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 )
 
 func main() {

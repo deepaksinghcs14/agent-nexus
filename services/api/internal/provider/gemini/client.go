@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/agentNexus/agent-nexus/services/api/internal/provider"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
 )
 
 type Client struct {

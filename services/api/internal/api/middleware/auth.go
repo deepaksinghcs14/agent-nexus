@@ -10,7 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/agentNexus/agent-nexus/services/api/pkg/errs"
+	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
 
 type contextKey string
