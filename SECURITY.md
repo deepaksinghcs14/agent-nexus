@@ -10,7 +10,7 @@
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Email **deepak.singh@bureau.id** with the subject line `[agent-nexus] Security Vulnerability`.
+Email **deepak.singh.cs14@gmail.com** with the subject line `[agent-nexus] Security Vulnerability`.
 
 Include:
 - A description of the vulnerability and its potential impact
