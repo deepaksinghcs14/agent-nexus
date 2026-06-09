@@ -163,7 +163,7 @@ func (h *AdminHandler) SetPolicies(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.Internal("failed to save policies"))
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer func() { _ = tx.Rollback(r.Context()) }()
 	for _, p := range q.Policies {
 		_, e = tx.Exec(r.Context(), `INSERT INTO policies(workspace_id,key,value)VALUES(NULL,$1,$2)ON CONFLICT(workspace_id,key)DO UPDATE SET value=$2,updated_at=NOW()`, p.Key, p.Value)
 		if e != nil {
