@@ -3,7 +3,7 @@
 // Assumptions:
 // - @xyflow/react v12 is installed
 // - workflowsAPI.getGraph / saveGraph hit /api/v1/workflows/:id/graph
-// - invokeAPI.group hits /api/v1/invoke/groups/:id with { input, stream: true }
+// - invokeAPI.workflow hits /api/v1/invoke/workflows/:id with { input, stream: true }
 // - SSE node events carry node_id, node_name, node_type, result fields (added to SSEEvent type)
 
 import React, { useCallback, useEffect, useRef, useState, DragEvent } from 'react'
@@ -1653,7 +1653,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
-      const url = new URL(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'}/api/v1/invoke/groups/${groupId}`)
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'}/api/v1/invoke/workflows/${groupId}`)
       if (token) url.searchParams.set('token', token)
 
       const res = await fetch(url.toString(), {
