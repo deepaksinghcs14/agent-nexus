@@ -3,7 +3,7 @@
 // Assumptions:
 // - @xyflow/react v12 is installed
 // - workflowsAPI.getGraph / saveGraph hit /api/v1/workflows/:id/graph
-// - invokeAPI.group hits /api/v1/invoke/groups/:id with { input, stream: true }
+// - invokeAPI.workflow hits /api/v1/invoke/workflows/:id with { input, stream: true }
 // - SSE node events carry node_id, node_name, node_type, result fields (added to SSEEvent type)
 
 import React, { useCallback, useEffect, useRef, useState, DragEvent } from 'react'
@@ -42,7 +42,9 @@ import {
   ChevronDown,
   ChevronUp,
   BookOpen,
+  Zap,
 } from 'lucide-react'
+import { TriggersPanel } from './TriggersPanel'
 import { workflowsAPI, agentsAPI, invokeAPI } from '@/lib/api'
 import type { Workflow, Agent, WorkflowGraph, WorkflowNode, WorkflowEdge, WorkflowNodeType, SSEEvent } from '@/types'
 
@@ -107,7 +109,7 @@ function toRFEdge(e: WorkflowEdge): Edge {
     source: e.source_node_id,
     target: e.target_node_id,
     sourceHandle: sourceHandle,
-    label: isDelegate ? 'delegates' : (e.label || undefined),
+    label: e.label || undefined,
     type: 'smoothstep',
     animated: true,
     zIndex: 1000,
@@ -1427,6 +1429,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null)
   const [runPanelOpen, setRunPanelOpen] = useState(false)
+  const [triggersPanelOpen, setTriggersPanelOpen] = useState(false)
   const [runInput, setRunInput] = useState('')
   const [runOutput, setRunOutput] = useState<Record<string, string>>({})
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done'>('idle')
@@ -1521,7 +1524,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         source: getId(e.from), target: getId(e.to),
         type: 'smoothstep', animated: true,
         zIndex: 1000,
-        label: isDelegate ? 'delegates' : (e.label ?? undefined),
+        label: e.label ?? undefined,
         sourceHandle: e.label === 'yes' ? 'yes' : e.label === 'no' ? 'no' : e.label === 'loop' ? 'continue' : e.label === 'exit' ? 'exit' : undefined,
         markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
         style: { stroke: color, strokeWidth: isDelegate ? 2 : 2.5, strokeDasharray: isDelegate ? '6 3' : undefined },
@@ -1576,10 +1579,11 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
     setEdges((eds) => eds.map((e) => {
       if (e.id !== edgeId) return e
       const color = edgeColor(newLabel || undefined)
+      const isDelegate = newLabel === 'delegate'
       return {
         ...e,
         label: newLabel || undefined,
-        style: { stroke: color, strokeWidth: 2 },
+        style: { stroke: color, strokeWidth: isDelegate ? 2 : 2.5, strokeDasharray: isDelegate ? '6 3' : undefined },
         markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
         labelStyle: { fontSize: 10, fill: color, fontWeight: 700 },
       }
@@ -1653,7 +1657,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
-      const url = new URL(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'}/api/v1/invoke/groups/${groupId}`)
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'}/api/v1/invoke/workflows/${groupId}`)
       if (token) url.searchParams.set('token', token)
 
       const res = await fetch(url.toString(), {
@@ -1721,10 +1725,11 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   }
 
   const hasNodes = nodes.length > 0
-  const canvasWidth = (selectedNode || selectedEdge) ? 'calc(100% - 460px)' : '100%'
+  const hasRightPanel = !!(selectedNode || selectedEdge) || triggersPanelOpen
+  const canvasWidth = hasRightPanel ? 'calc(100% - 460px)' : '100%'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'Inter, sans-serif', background: '#f8f8fb' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: 'Inter, sans-serif', background: '#f8f8fb' }}>
       {/* Spin animation */}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -1767,6 +1772,19 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
           }}
         >
           <LayoutTemplate size={13} /> Templates
+        </button>
+        <button
+          onClick={() => { setTriggersPanelOpen(v => !v); setSelectedNode(null); setSelectedEdge(null) }}
+          title="Webhook triggers for this workflow"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            background: triggersPanelOpen ? '#f1f0ff' : '#fff',
+            color: triggersPanelOpen ? '#534AB7' : '#374151',
+            border: `1px solid ${triggersPanelOpen ? '#c4b5fd' : '#e5e7eb'}`,
+          }}
+        >
+          <Zap size={13} /> Triggers
         </button>
         <button
           onClick={handleSave}
@@ -1910,7 +1928,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                 placeholder="e.g. yes, no, loop, exit"
               />
               <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {['yes', 'no', 'loop', 'exit'].map((preset) => (
+                {['yes', 'no', 'loop', 'exit', 'delegate'].map((preset) => (
                   <button
                     key={preset}
                     onClick={() => updateEdgeLabel(selectedEdge.id, preset)}
@@ -1937,6 +1955,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               <strong>yes / no</strong> — condition routing<br />
               <strong>loop</strong> — loop back edge<br />
               <strong>exit</strong> — loop exit edge<br />
+              <strong>delegate</strong> — supervisor → team agent (dashed)<br />
               <strong>(empty)</strong> — default / unconditional
             </div>
 
@@ -1951,6 +1970,14 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               <X size={12} /> Remove edge
             </button>
           </div>
+        )}
+
+        {/* Triggers panel */}
+        {triggersPanelOpen && !selectedNode && !selectedEdge && (
+          <TriggersPanel
+            workflowId={groupId}
+            onClose={() => setTriggersPanelOpen(false)}
+          />
         )}
 
         {/* Node config panel */}

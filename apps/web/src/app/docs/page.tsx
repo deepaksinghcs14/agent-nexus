@@ -57,6 +57,12 @@ export default function DocsOverview() {
           badge: 'API',
         },
         {
+          title: 'Webhook Triggers',
+          href: '/docs/webhook-triggers',
+          desc: 'Run agents and workflows automatically from inbound HTTP events.',
+          badge: 'API',
+        },
+        {
           title: 'Run States',
           href: '/docs/run-states',
           desc: 'Understand the run lifecycle and handle approval gates.',
@@ -67,6 +73,16 @@ export default function DocsOverview() {
           href: '/docs/sse-events',
           desc: 'Stream real-time events from a running agent.',
           badge: 'Reference',
+        },
+      ]} />
+
+      <h2>System Design</h2>
+      <ConceptGrid items={[
+        {
+          title: 'Architecture Diagram',
+          href: '/architecture',
+          desc: 'Animated component overview — frontend, API server, database, AI providers, MCP, and webhook flows.',
+          badge: 'Visual',
         },
       ]} />
 

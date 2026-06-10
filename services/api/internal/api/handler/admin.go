@@ -126,8 +126,10 @@ func (h *AdminHandler) AuditLogs(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHandler) Usage(w http.ResponseWriter, r *http.Request) {
 	var runs, tokens int
 	var cost float64
+	var webhookTriggers int
 	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*),COALESCE(SUM(total_input_tokens+total_output_tokens),0),COALESCE(SUM(cost_estimate),0) FROM runs`).Scan(&runs, &tokens, &cost)
-	errs.WriteJSON(w, 200, map[string]any{"runs": runs, "tokens": tokens, "cost": cost})
+	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM webhook_triggers`).Scan(&webhookTriggers)
+	errs.WriteJSON(w, 200, map[string]any{"runs": runs, "tokens": tokens, "cost": cost, "webhook_triggers": webhookTriggers})
 }
 func (h *AdminHandler) GetPolicies(w http.ResponseWriter, r *http.Request) {
 	rows, e := h.pool.Query(r.Context(), `SELECT id::text,COALESCE(workspace_id::text,''),key,value,created_at,updated_at FROM policies ORDER BY key`)

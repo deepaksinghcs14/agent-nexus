@@ -66,5 +66,14 @@ export default function WorkflowsPage() {
         </div>
       ))}
     </div>
+
+    <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
+      <p className="text-sm text-gray-600">
+        Learn how to build multi-agent workflows in the{' '}
+        <Link href="/docs/what-is-an-agent-group" className="text-[#534AB7] hover:underline">
+          documentation
+        </Link>.
+      </p>
+    </div>
   </div>
 }

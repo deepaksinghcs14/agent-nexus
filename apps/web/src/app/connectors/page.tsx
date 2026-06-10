@@ -477,6 +477,15 @@ export default function ConnectorsPage() {
           )}
         </div>
       )}
+
+      <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
+        <p className="text-sm text-gray-600">
+          Learn how to index external data sources and use them for RAG in the{' '}
+          <a href="/docs/what-is-a-connector" className="text-[#534AB7] hover:underline">
+            documentation
+          </a>.
+        </p>
+      </div>
     </div>
   )
 }

@@ -92,7 +92,7 @@ func (h *InvokeHandler) Agent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		emit := func(s string) { fmt.Fprintf(w, "data: %s\n\n", s); f.Flush() }
-		h.executeRun(r.Context(), a, ws, uid, runID, convID, req.Input, emit)
+		h.executeRun(r.Context(), a, ws, uid, runID, convID, req.Input, nil, emit)
 		return
 	}
 
@@ -103,7 +103,7 @@ func (h *InvokeHandler) Agent(w http.ResponseWriter, r *http.Request) {
 		"status":          "running",
 	})
 
-	go h.executeRun(context.Background(), a, ws, uid, runID, convID, req.Input, nil)
+	go h.executeRun(context.Background(), a, ws, uid, runID, convID, req.Input, nil, nil)
 }
 
 // Group handles POST /api/v1/invoke/workflows/:workflowId
@@ -200,7 +200,9 @@ func (h *InvokeHandler) ensureConversation(ctx context.Context, convID, ws, uid,
 
 // executeRun runs the full agent loop with tool calling. When emit is nil (background mode),
 // progress is only written to the database. When emit is non-nil, SSE events are also sent.
-func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid, runID, convID, input string, emit func(string)) {
+// delegateHandlers, if non-nil, maps tool names to functions that execute a delegate agent and
+// return its output — used by supervisor nodes to call team agents as tools.
+func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid, runID, convID, input string, delegateHandlers map[string]func(context.Context, json.RawMessage) string, emit func(string)) {
 	// dbCtx is used for all DB status writes (failRun, final UPDATE).
 	// It must NOT be the request context because the request context can be
 	// cancelled on client disconnect, which would silently leave the run in
@@ -396,6 +398,29 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		})
 
 		for _, call := range pendingCalls {
+			// Delegate tool — hand off to a team agent and return its output.
+			if handler, isDelegate := delegateHandlers[call.Name]; isDelegate {
+				delegateStart := time.Now()
+				delegateOutput := handler(ctx, call.Input)
+				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
+					map[string]any{"tool": call.Name, "input": call.Input},
+					map[string]any{"output": delegateOutput},
+					delegateStart, 0, call.Name, "")
+				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
+					call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(delegateOutput)),
+					int(time.Since(delegateStart).Milliseconds())))
+				messages = append(messages, provider.Message{
+					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: delegateOutput,
+				})
+				stepCount++
+				if stepCount > a.MaxSteps {
+					h.runs.failRun(dbCtx, runID, "max steps exceeded") //nolint:errcheck
+					sseErr("max steps exceeded")
+					return
+				}
+				continue
+			}
+
 			dbTool, toolExists := dbTools[call.Name]
 
 			if toolExists && dbTool.RequiresApproval {
@@ -734,9 +759,9 @@ func (h *InvokeHandler) executeGroupRun(
 					 VALUES($1::uuid,$2::uuid,'user',$3)`,
 					uuid.NewString(), subConvID, agentInput)
 				h.pool.Exec(ctx, //nolint:errcheck
-					`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status)
-					 VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running')`,
-					subRunID, ws, a.ID, subConvID, uid, agentInput)
+					`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id)
+					 VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8)`,
+					subRunID, ws, a.ID, subConvID, uid, agentInput, parentRunID, node.ID)
 
 				// Wrap emit so every SSE event from this node carries node_id/node_name.
 				// Route through sseEmit (which holds emitMu) — parallel branch
@@ -757,7 +782,7 @@ func (h *InvokeHandler) executeGroupRun(
 					sseEmit(line)
 				}
 
-				h.executeRun(ctx, a, ws, uid, subRunID, subConvID, agentInput, agentEmit)
+				h.executeRun(ctx, a, ws, uid, subRunID, subConvID, agentInput, nil, agentEmit)
 
 				// Read back the sub-run output using a background context — the
 				// request ctx may be cancelled if the SSE client disconnected, but
@@ -935,7 +960,151 @@ func (h *InvokeHandler) executeGroupRun(
 						}
 					}
 				}
-			}
+
+			case "supervisor":
+				if node.AgentID == "" {
+					sseEmit(fmt.Sprintf(`{"type":"error","error":"supervisor node %s has no agent_id"}`, node.ID))
+					continue
+				}
+				agentRepo := repository.NewAgentRepository(h.pool)
+				supAgent, err := agentRepo.Get(ctx, node.AgentID, ws)
+				if err != nil {
+					sseEmit(fmt.Sprintf(`{"type":"error","error":%q}`,
+						fmt.Sprintf("supervisor node %s: agent not found", node.ID)))
+					continue
+				}
+
+				// Build delegate tool defs + handlers from "delegate"-labelled edges.
+				delegateToolDefs := []provider.ToolDefinition{}
+				delegateHandlers := map[string]func(context.Context, json.RawMessage) string{}
+
+				for _, e := range adj[node.ID] {
+					if e.Label != "delegate" {
+						continue
+					}
+					dn, ok := nodeMap[e.Target]
+					if !ok || dn.AgentID == "" {
+						continue
+					}
+					da, err := agentRepo.Get(ctx, dn.AgentID, ws)
+					if err != nil {
+						continue
+					}
+					toolName := "delegate_" + sanitizeToolName(da.Name)
+					desc := da.Instructions
+					if idx := strings.Index(desc, "\n"); idx > 0 {
+						desc = desc[:idx]
+					}
+					if strings.TrimSpace(desc) == "" {
+						desc = "Delegate a task to the " + da.Name + " agent and get its response."
+					}
+					capturedDA := da
+					capturedDN := dn
+					capturedSuperNodeID := node.ID
+					capturedSuperNodeName := nodeName
+					toolNameCopy := toolName
+					delegateToolDefs = append(delegateToolDefs, provider.ToolDefinition{
+						Name:        toolNameCopy,
+						Description: desc,
+						InputSchema: json.RawMessage(`{"type":"object","properties":{"task":{"type":"string","description":"The task or question to send to ` + da.Name + `"}},"required":["task"]}`),
+					})
+					delegateHandlers[toolNameCopy] = func(callCtx context.Context, rawInput json.RawMessage) string {
+						var args struct {
+							Task string `json:"task"`
+						}
+						task := lastOutput
+						if json.Unmarshal(rawInput, &args) == nil && strings.TrimSpace(args.Task) != "" {
+							task = args.Task
+						}
+						dSubConvID := uuid.NewString()
+						dSubRunID := uuid.NewString()
+						h.pool.Exec(callCtx, //nolint:errcheck
+							`INSERT INTO conversations(id,workspace_id,agent_id,user_id,title) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5)`,
+							dSubConvID, ws, capturedDA.ID, uid, "Delegate: "+capturedDA.Name)
+						h.pool.Exec(callCtx, //nolint:errcheck
+							`INSERT INTO messages(id,conversation_id,role,content) VALUES($1::uuid,$2::uuid,'user',$3)`,
+							uuid.NewString(), dSubConvID, task)
+						h.pool.Exec(callCtx, //nolint:errcheck
+							`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8)`,
+							dSubRunID, ws, capturedDA.ID, dSubConvID, uid, task, parentRunID, capturedDN.ID)
+						delEmit := func(line string) {
+							var m map[string]any
+							if json.Unmarshal([]byte(line), &m) == nil {
+								m["node_id"] = capturedSuperNodeID
+								m["node_name"] = capturedSuperNodeName
+								if b, e2 := json.Marshal(m); e2 == nil {
+									sseEmit(string(b))
+									return
+								}
+							}
+							sseEmit(line)
+						}
+						h.executeRun(callCtx, capturedDA, ws, uid, dSubRunID, dSubConvID, task, nil, delEmit)
+						var out string
+						_ = h.pool.QueryRow(context.Background(),
+							`SELECT COALESCE(output,'') FROM runs WHERE id=$1::uuid`, dSubRunID).Scan(&out)
+						return out
+					}
+				}
+
+				// Sub-conversation + sub-run for the supervisor itself.
+				subConvID := uuid.NewString()
+				subRunID := uuid.NewString()
+				agentInput := lastOutput
+				if prevNodeName != "" {
+					agentInput = fmt.Sprintf("[Task]\n%s\n\n[Previous output from %s]\n%s",
+						originalInput, prevNodeName, lastOutput)
+				}
+				h.pool.Exec(ctx, //nolint:errcheck
+					`INSERT INTO conversations(id,workspace_id,agent_id,user_id,title) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5)`,
+					subConvID, ws, supAgent.ID, uid, "Supervisor: "+nodeName)
+				h.pool.Exec(ctx, //nolint:errcheck
+					`INSERT INTO messages(id,conversation_id,role,content) VALUES($1::uuid,$2::uuid,'user',$3)`,
+					uuid.NewString(), subConvID, agentInput)
+				h.pool.Exec(ctx, //nolint:errcheck
+					`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8)`,
+					subRunID, ws, supAgent.ID, subConvID, uid, agentInput, parentRunID, node.ID)
+
+				capturedNodeID := node.ID
+				capturedNodeName := nodeName
+				supEmit := func(line string) {
+					var m map[string]any
+					if json.Unmarshal([]byte(line), &m) == nil {
+						m["node_id"] = capturedNodeID
+						m["node_name"] = capturedNodeName
+						if b, e2 := json.Marshal(m); e2 == nil {
+							sseEmit(string(b))
+							return
+						}
+					}
+					sseEmit(line)
+				}
+
+				// executeSupervisorRun merges delegate tool defs into the agent's tool
+				// list so the LLM can call team agents by name, and intercepts those
+				// calls via delegateHandlers to execute the real agent sub-runs.
+				h.executeSupervisorRun(ctx, supAgent, ws, uid, subRunID, subConvID, agentInput, delegateToolDefs, delegateHandlers, supEmit)
+
+				var subOutput string
+				_ = h.pool.QueryRow(context.Background(),
+					`SELECT COALESCE(output,'') FROM runs WHERE id=$1::uuid`, subRunID).Scan(&subOutput)
+
+				outputMu.Lock()
+				nodeOutputs[node.ID] = subOutput
+				outputMu.Unlock()
+				lastOutput = subOutput
+				prevNodeName = nodeName
+
+				// Only non-delegate edges feed downstream nodes.
+				for _, e := range adj[node.ID] {
+					if e.Label != "delegate" {
+						if next, ok := nodeMap[e.Target]; ok {
+							queue = append(queue, next)
+						}
+					}
+				}
+
+			} // end switch
 
 			sseEmit(fmt.Sprintf(`{"type":"node_completed","node_id":%q,"node_name":%q}`,
 				node.ID, nodeName))
@@ -974,6 +1143,333 @@ func edgesTargeting(targetNodeID string, adj map[string][]wfEdge) []wfEdge {
 		}
 	}
 	return result
+}
+
+// executeSupervisorRun is like executeRun but also presents delegate tool definitions
+// to the LLM so the supervisor agent can call team agents by name.
+// delegateToolDefs are added to the agent's normal tool list before the first LLM call.
+// delegateHandlers intercept those tool calls and execute the corresponding agent.
+func (h *InvokeHandler) executeSupervisorRun(
+	ctx context.Context,
+	a *domain.Agent,
+	ws, uid, runID, convID, input string,
+	delegateToolDefs []provider.ToolDefinition,
+	delegateHandlers map[string]func(context.Context, json.RawMessage) string,
+	emit func(string),
+) {
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer dbCancel()
+
+	runCompleted := false
+	defer func() {
+		if !runCompleted {
+			h.runs.failRun(dbCtx, runID, "supervisor run terminated unexpectedly") //nolint:errcheck
+		}
+	}()
+
+	sseEmitOrNil := func(s string) {
+		if emit != nil {
+			emit(s)
+		}
+	}
+	sseErr := func(msg string) { sseEmitOrNil(fmt.Sprintf(`{"type":"error","error":%q}`, msg)) }
+
+	memories, contextChunks := []string{}, []string{}
+	if a.MemoryEnabled {
+		start := time.Now()
+		found, err := memory.NewEngine(h.pool).Retrieve(ctx, a.ID, ws, input)
+		if err == nil {
+			for _, m := range found {
+				memories = append(memories, m.Content)
+			}
+		}
+		h.runs.createStep(ctx, runID, domain.StepMemoryRetrieval, //nolint:errcheck
+			map[string]any{"query": input},
+			map[string]any{"count": len(memories)},
+			start, 0, "", errString(err))
+	}
+
+	llm, err := h.runs.providerFor(ctx, ws, a.Provider)
+	if err != nil {
+		sseErr(err.Error())
+		h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
+		return
+	}
+
+	if a.ContextRetrievalEnabled {
+		start := time.Now()
+		connIDs, err := h.runs.agentConnectorIDs(ctx, a.ID)
+		var queryEmbedding []float32
+		if err == nil {
+			queryEmbedding, _ = llm.Embed(ctx, input)
+		}
+		chunks := []contextretrieval.Chunk{}
+		if err == nil {
+			chunks, err = contextretrieval.NewRetriever(h.pool).Retrieve(ctx, ws, connIDs, queryEmbedding, 8)
+		}
+		if err == nil {
+			for _, c := range chunks {
+				contextChunks = append(contextChunks, formatChunk(c))
+			}
+		}
+		h.runs.createStep(ctx, runID, domain.StepContextRetrieval, //nolint:errcheck
+			map[string]any{"connector_ids": connIDs},
+			map[string]any{"count": len(contextChunks)},
+			start, 0, "", errString(err))
+	}
+
+	historyRows, err := h.pool.Query(ctx,
+		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'') FROM messages WHERE conversation_id=$1::uuid ORDER BY created_at`,
+		convID)
+	if err != nil {
+		sseErr("failed to load conversation history")
+		h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
+		return
+	}
+	defer historyRows.Close()
+	history := []provider.Message{}
+	for historyRows.Next() {
+		var role, content, toolCallID, toolName string
+		if historyRows.Scan(&role, &content, &toolCallID, &toolName) == nil && (role == "user" || role == "assistant" || role == "tool") {
+			history = append(history, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
+		}
+	}
+
+	prompt := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
+		SystemInstructions: a.Instructions,
+		MemorySummaries:    memories,
+		ContextChunks:      contextChunks,
+		History:            history,
+	})
+
+	// Regular agent tools + delegate tools merged into one list.
+	regularToolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
+	toolDefs := append(regularToolDefs, delegateToolDefs...)
+
+	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
+
+	messages := prompt
+	stepCount := 0
+	totalInput, totalOutput := 0, 0
+
+	for {
+		stream, err := llm.Complete(ctx, provider.CompletionRequest{
+			Model:       a.Model,
+			Messages:    messages,
+			Tools:       toolDefs,
+			Temperature: a.Temperature,
+			MaxTokens:   a.MaxTokens,
+			Stream:      true,
+		})
+		if err != nil {
+			h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
+			sseErr(err.Error())
+			return
+		}
+
+		modelStart := time.Now()
+		reply := ""
+		usage := provider.Usage{}
+		var pendingCalls []provider.ToolCall
+
+		for event := range stream {
+			switch event.Type {
+			case provider.EventDelta:
+				reply += event.Delta
+				sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, event.Delta))
+			case provider.EventToolCall:
+				if event.ToolCall != nil {
+					pendingCalls = append(pendingCalls, *event.ToolCall)
+				}
+			case provider.EventDone:
+				if event.Usage != nil {
+					usage = *event.Usage
+				}
+			case provider.EventError:
+				msg := "model call failed"
+				if event.Error != nil {
+					msg = event.Error.Error()
+				}
+				h.runs.createStep(ctx, runID, domain.StepError, //nolint:errcheck
+					map[string]any{"provider": a.Provider, "model": a.Model},
+					map[string]any{}, modelStart, 0, "", msg)
+				h.runs.failRun(dbCtx, runID, msg) //nolint:errcheck
+				sseErr(msg)
+				return
+			}
+		}
+
+		totalInput += usage.InputTokens
+		totalOutput += usage.OutputTokens
+		h.runs.createStep(ctx, runID, domain.StepModelCall, //nolint:errcheck
+			map[string]any{"provider": a.Provider, "model": a.Model, "messages": len(messages)},
+			map[string]any{"content": reply, "tool_calls": len(pendingCalls)},
+			modelStart, usage.InputTokens+usage.OutputTokens, "", "")
+
+		if len(pendingCalls) == 0 {
+			if strings.TrimSpace(reply) == "" {
+				msg := "model returned an empty response"
+				h.runs.failRun(dbCtx, runID, msg) //nolint:errcheck
+				sseErr(msg)
+				return
+			}
+			h.pool.Exec(ctx, //nolint:errcheck
+				`INSERT INTO messages(id,conversation_id,role,content,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4)`,
+				uuid.NewString(), convID, reply, usage.OutputTokens)
+			if a.MemoryEnabled {
+				mem := &domain.Memory{
+					WorkspaceID: ws, UserID: uid, AgentID: a.ID,
+					Scope:       domain.MemoryScope(a.MemoryScope),
+					Content:     "User: " + input + "\nAssistant: " + reply,
+					SourceRunID: runID,
+				}
+				if a.MemoryScope == string(domain.MemoryScopeWorkspace) {
+					mem.AgentID = ""
+				}
+				memory.NewEngine(h.pool).Store(ctx, mem) //nolint:errcheck
+			}
+			h.runs.createStep(ctx, runID, domain.StepFinalResponse, //nolint:errcheck
+				map[string]any{},
+				map[string]any{"content": reply},
+				time.Now(), usage.OutputTokens, "", "")
+			runCompleted = true
+			h.pool.Exec(dbCtx, //nolint:errcheck
+				`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4 WHERE id=$1::uuid`,
+				runID, reply, totalInput, totalOutput)
+			sseEmitOrNil(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":0}`,
+				runID, totalInput, totalOutput))
+			return
+		}
+
+		messages = append(messages, provider.Message{
+			Role:      "assistant",
+			Content:   reply,
+			ToolCalls: pendingCalls,
+		})
+
+		for _, call := range pendingCalls {
+			// Delegate tool — execute the team agent and return its output.
+			if handler, isDelegate := delegateHandlers[call.Name]; isDelegate {
+				delegateStart := time.Now()
+				delegateOutput := handler(ctx, call.Input)
+				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
+					map[string]any{"tool": call.Name, "input": call.Input},
+					map[string]any{"output": delegateOutput},
+					delegateStart, 0, call.Name, "")
+				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
+					call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(delegateOutput)),
+					int(time.Since(delegateStart).Milliseconds())))
+				messages = append(messages, provider.Message{
+					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: delegateOutput,
+				})
+				stepCount++
+				if stepCount > a.MaxSteps {
+					h.runs.failRun(dbCtx, runID, "max steps exceeded") //nolint:errcheck
+					sseErr("max steps exceeded")
+					return
+				}
+				continue
+			}
+
+			dbTool, toolExists := dbTools[call.Name]
+
+			if toolExists && dbTool.RequiresApproval {
+				arID := uuid.NewString()
+				h.pool.Exec(ctx, //nolint:errcheck
+					`INSERT INTO approval_requests(id,run_id,tool_name,tool_input,status)VALUES($1::uuid,$2::uuid,$3,$4::jsonb,'pending')`,
+					arID, runID, call.Name, call.Input)
+				h.pool.Exec(ctx, `UPDATE runs SET status='approval_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
+
+				ch := RegisterApprovalWait(runID)
+				sseEmitOrNil(fmt.Sprintf(`{"type":"approval_required","tool":%q,"input":%s,"approval_id":%q}`,
+					call.Name, string(call.Input), arID))
+
+				var decision ApprovalDecision
+				select {
+				case decision = <-ch:
+				case <-time.After(10 * time.Minute):
+					UnregisterApprovalWait(runID)
+					h.runs.failRun(dbCtx, runID, "approval timed out") //nolint:errcheck
+					sseErr("approval timed out after 10 minutes")
+					return
+				}
+				h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, runID) //nolint:errcheck
+
+				if decision.Decision == "rejected" {
+					messages = append(messages, provider.Message{Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: "Tool call rejected by user."})
+					continue
+				}
+			}
+
+			var result *tools.ExecutionResult
+			var execErr error
+			if toolExists && dbTool.Type == "http" {
+				var cfg tools.HTTPToolConfig
+				_ = json.Unmarshal(dbTool.Config, &cfg)
+				result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
+			} else {
+				result, execErr = h.executor.Execute(ctx, call.Name, call.Input)
+			}
+			var resultContent, errMsg string
+			latencyMs := 0
+			if result != nil {
+				latencyMs = result.LatencyMs
+				if result.Error != "" {
+					errMsg = result.Error
+					resultContent = fmt.Sprintf(`{"error":%q}`, result.Error)
+				} else {
+					b, _ := json.Marshal(result.Output)
+					resultContent = string(b)
+				}
+			} else if execErr != nil {
+				errMsg = execErr.Error()
+				resultContent = fmt.Sprintf(`{"error":%q}`, execErr.Error())
+			}
+
+			h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
+				map[string]any{"tool": call.Name, "input": call.Input},
+				map[string]any{"output": resultContent},
+				time.Now(), 0, call.Name, errMsg)
+
+			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
+				call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
+
+			messages = append(messages, provider.Message{
+				Role:       "tool",
+				ToolCallID: call.ID,
+				ToolName:   call.Name,
+				Content:    resultContent,
+			})
+
+			stepCount++
+			if stepCount > a.MaxSteps {
+				h.runs.failRun(dbCtx, runID, "max steps exceeded") //nolint:errcheck
+				sseErr("max steps exceeded")
+				return
+			}
+		}
+	}
+}
+
+// sanitizeToolName converts an agent name into a valid LLM tool name (lowercase, underscores).
+func sanitizeToolName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_':
+			b.WriteRune(r)
+		case r == ' ', r == '-', r == '.':
+			b.WriteRune('_')
+		}
+	}
+	s := b.String()
+	if len(s) > 50 {
+		s = s[:50]
+	}
+	if s == "" {
+		s = "agent"
+	}
+	return s
 }
 
 // evaluateExpression evaluates a simple string expression against the given

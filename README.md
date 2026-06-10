@@ -83,6 +83,20 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 
 </td>
 </tr>
+<tr>
+<td width="50%">
+
+**Webhook Triggers — Inbound HTTP Endpoints**
+![Webhook Triggers](docs/screenshots/triggers_01_list.png)
+
+</td>
+<td width="50%">
+
+**Workflow Studio — Triggers Panel**
+![Workflow Triggers Panel](docs/screenshots/triggers_06_workflow_triggers_panel.png)
+
+</td>
+</tr>
 </table>
 
 ---
@@ -124,6 +138,7 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Member management** — invite members by email directly from the workspace settings page; set roles at invite time and change them any time
 - **Role-based access control** — four roles enforced on every API endpoint: **owner** (full control, cannot be removed), **admin** (manage members, providers, settings), **member** (create and run agents), **viewer** (read-only)
 - **API token management** — generate named API tokens with optional expiry dates for CI pipelines, integrations, and programmatic agent invocations; revoke any token instantly
+- **Webhook triggers** — persistent inbound HTTP endpoints that fire an agent or workflow run from any external HTTP POST; see the [Webhook Triggers](#webhook-triggers) section for full details
 
 ### Administration
 - **Admin dashboard** — platform-wide overview of users, workspaces, run volume, and token usage across all tenants
@@ -132,8 +147,17 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Policy controls** — configure platform-wide policies (e.g. allowed providers, max token budgets)
 - **Audit logs** — every create, update, and delete action is recorded with actor, resource type, timestamp, and IP address
 
+### Webhook Triggers
+- **Inbound HTTP endpoints** — create persistent webhook URLs tied to any agent or workflow; POST from GitHub, Stripe, Slack, Zapier, or any external system to fire a run automatically
+- **HMAC-SHA256 verification** — set an optional shared secret; inbound requests must include a valid `X-Hub-Signature-256: sha256=<hex>` header — unsigned requests are rejected when a secret is configured
+- **Go template input mapping** — transform the inbound payload into the agent/workflow's input using Go `text/template`; access the full request body (`{{.RawBody}}`), individual JSON fields (`{{.Body.pull_request.title}}`), headers (`{{.Headers.X-Event-Type}}`), and query params (`{{.Query.ref}}`)
+- **Trigger management** — full CRUD UI at `/triggers`; toggle active/inactive without deleting the URL; see how many times each trigger has fired
+- **Workflow Studio integration** — open the Triggers panel directly from the visual canvas; create, toggle, and copy webhook URLs without leaving the editor
+- **Nexus AI integration** — ask Nexus AI to create a webhook trigger in natural language; it will list your workflows, create the trigger, and return the ready-to-use webhook URL
+- **Run tracing** — every webhook-fired run carries a `trigger_id`; filter runs by trigger to see the full execution history for each inbound source
+
 ### Nexus AI
-- **Meta-agent** — a built-in AI assistant that can list agents/tools/connectors, create new agents, and build workflow graphs using natural language — backed by the same agent runtime as user-created agents
+- **Meta-agent** — a built-in AI assistant that can list agents/tools/connectors, create new agents, build workflow graphs, and create webhook triggers using natural language — backed by the same agent runtime as user-created agents
 
 ### Built-in Documentation
 - **In-app docs** — platform documentation lives inside the app at `/docs`; covers agents, tools, connectors, workflows, the invoke API, SSE stream events, run states, and MCP servers — no external site needed
@@ -286,7 +310,7 @@ What's working today vs. what's coming next:
 | Nexus AI meta-agent | ✅ Done |
 | Built-in in-app documentation | ✅ Done |
 | Additional connectors (Slack, Jira, Confluence, GitHub, Google Drive) | 🔜 Planned |
-| Webhook / event triggers (run an agent on inbound HTTP event) | 🔜 Planned |
+| Webhook / event triggers (run an agent on inbound HTTP event) | ✅ Complete |
 | Agent versioning and snapshot rollback | 🔜 Planned |
 | Export / import agents and workflows (JSON) | 🔜 Planned |
 | API rate limiting per workspace | 🔜 Planned |
@@ -309,6 +333,55 @@ MIT — see [LICENSE](LICENSE).
 ---
 
 ## More Screenshots
+
+### Webhook Triggers
+
+<table>
+<tr>
+<td width="50%">
+
+**Triggers List**
+![Triggers List](docs/screenshots/triggers_01_list.png)
+
+</td>
+<td width="50%">
+
+**New Trigger Form**
+![New Trigger Form](docs/screenshots/triggers_02_new_form.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Pre-filled for a Workflow (via URL params)**
+![Prefilled Trigger](docs/screenshots/triggers_03_new_prefilled.png)
+
+</td>
+<td width="50%">
+
+**Edit Trigger**
+![Edit Trigger](docs/screenshots/triggers_04_edit.png)
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Workflow Studio — Triggers Panel**
+![Workflow Triggers Panel](docs/screenshots/triggers_06_workflow_triggers_panel.png)
+
+</td>
+<td width="50%">
+
+**Nexus AI — Webhook Trigger Template**
+![Nexus AI Webhook](docs/screenshots/triggers_07_nexus_ai_webhook.png)
+
+</td>
+</tr>
+</table>
+
+---
 
 ### Admin Portal
 

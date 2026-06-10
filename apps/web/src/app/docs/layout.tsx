@@ -28,6 +28,7 @@ const NAV = [
     items: [
       { label: 'API Tokens',         href: '/docs/api-tokens' },
       { label: 'Invoke API',         href: '/docs/invoke-api' },
+      { label: 'Webhook Triggers',   href: '/docs/webhook-triggers' },
       { label: 'Run States',         href: '/docs/run-states' },
       { label: 'SSE Events',         href: '/docs/sse-events' },
     ],
@@ -35,7 +36,8 @@ const NAV = [
   {
     group: 'Reference',
     items: [
-      { label: 'Agent Config', href: '/docs/agent-configuration' },
+      { label: 'Agent Config',       href: '/docs/agent-configuration' },
+      { label: 'Architecture',       href: '/architecture' },
     ],
   },
 ]

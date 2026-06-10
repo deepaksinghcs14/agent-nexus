@@ -48,5 +48,11 @@ export default function MemoryPage() {
       <p className="text-[12px] text-gray-700 leading-relaxed">{memory.content}</p>
       <div className="flex items-center mt-2"><span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700">relevance {memory.relevance_score.toFixed(2)}</span><button onClick={() => { if (confirm('Delete this memory?')) remove.mutate(memory.id) }} className="ml-auto p-1 text-gray-400 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button></div>
     </div>)}</div>
+    <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
+      <p className="text-sm text-gray-600">
+        Learn how memory scopes and vector retrieval work in the{' '}
+        <a href="/docs/what-is-an-agent" className="text-[#534AB7] hover:underline">documentation</a>.
+      </p>
+    </div>
   </div>
 }

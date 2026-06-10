@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,6 +46,7 @@ You have access to these tools:
 - create_agent: Create a fully configured AI agent — including tools, memory, and context retrieval.
 - create_workflow: Create a named workflow (the container for a multi-agent graph).
 - save_workflow_graph: Define the visual workflow canvas — nodes and edges — for a workflow.
+- create_trigger: Create a webhook trigger that fires an agent or workflow from an inbound HTTP POST. Returns the public webhook URL.
 
 Guidelines:
 - ALWAYS call list_agents first — reuse an existing agent if one already fits the user's requirements rather than creating a duplicate. If the user asks for "a research agent" and one already exists, use it.
@@ -169,6 +171,23 @@ var nexusToolDefs = []provider.ToolDefinition{
 				}
 			},
 			"required":["workflow_id","nodes","edges"]
+		}`),
+	},
+	{
+		Name:        "create_trigger",
+		Description: "Create a webhook trigger that invokes an agent or workflow from an external HTTP POST request. Returns the webhook URL that external systems should call.",
+		InputSchema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"name":{"type":"string","description":"Name of the trigger, e.g. 'GitHub PR Webhook'"},
+				"description":{"type":"string","description":"Optional description of what this trigger does"},
+				"target_type":{"type":"string","enum":["agent","workflow"],"description":"Whether to invoke an agent or a workflow"},
+				"target_id":{"type":"string","description":"UUID of the target agent or workflow. Get from list_agents or list_workflows."},
+				"input_template":{"type":"string","description":"Go text/template for building the run input from the request. Available: {{.RawBody}} (full body), {{.Body.field}} (JSON field), {{.Headers.X-Name}} (header), {{.Query.param}} (query param). Default: {{.RawBody}}"},
+				"secret":{"type":"string","description":"Optional HMAC-SHA256 shared secret. When set, callers must include X-Hub-Signature-256: sha256=<hex> header."},
+				"is_active":{"type":"boolean","description":"Whether the trigger is active immediately. Default true."}
+			},
+			"required":["name","target_type","target_id"]
 		}`),
 	},
 }
@@ -446,6 +465,8 @@ func (h *NexusAIHandler) executeTool(ctx context.Context, ws, uid, name string, 
 		return h.toolCreateWorkflow(ctx, ws, uid, input)
 	case "save_workflow_graph":
 		return h.toolSaveGraph(ctx, ws, input)
+	case "create_trigger":
+		return h.toolCreateTrigger(ctx, ws, uid, input)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
@@ -866,6 +887,89 @@ func (h *NexusAIHandler) toolSaveGraph(ctx context.Context, ws string, input jso
 	}, nil
 }
 
+func (h *NexusAIHandler) toolCreateTrigger(ctx context.Context, ws, uid string, input json.RawMessage) (*toolResult, error) {
+	var args struct {
+		Name          string `json:"name"`
+		Description   string `json:"description"`
+		TargetType    string `json:"target_type"`
+		TargetID      string `json:"target_id"`
+		InputTemplate string `json:"input_template"`
+		Secret        string `json:"secret"`
+		IsActive      *bool  `json:"is_active"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return nil, fmt.Errorf("invalid create_trigger input: %w", err)
+	}
+	if args.Name == "" {
+		return nil, fmt.Errorf("create_trigger requires name")
+	}
+	if args.TargetType != "agent" && args.TargetType != "workflow" {
+		return nil, fmt.Errorf("target_type must be 'agent' or 'workflow'")
+	}
+	if args.TargetID == "" {
+		return nil, fmt.Errorf("create_trigger requires target_id")
+	}
+	if args.InputTemplate == "" {
+		args.InputTemplate = "{{.RawBody}}"
+	}
+	if _, err := template.New("").Parse(args.InputTemplate); err != nil {
+		return nil, fmt.Errorf("invalid input_template: %w", err)
+	}
+	isActive := true
+	if args.IsActive != nil {
+		isActive = *args.IsActive
+	}
+
+	// Verify target exists in this workspace
+	var targetName string
+	if args.TargetType == "agent" {
+		if err := h.pool.QueryRow(ctx,
+			`SELECT name FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+			args.TargetID, ws).Scan(&targetName); err != nil {
+			return nil, fmt.Errorf("agent not found: %s", args.TargetID)
+		}
+	} else {
+		if err := h.pool.QueryRow(ctx,
+			`SELECT name FROM workflows WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+			args.TargetID, ws).Scan(&targetName); err != nil {
+			return nil, fmt.Errorf("workflow not found: %s", args.TargetID)
+		}
+	}
+
+	t := &domain.WebhookTrigger{
+		ID:            uuid.NewString(),
+		WorkspaceID:   ws,
+		Name:          args.Name,
+		Description:   args.Description,
+		TargetType:    args.TargetType,
+		TargetID:      args.TargetID,
+		InputTemplate: args.InputTemplate,
+		Secret:        args.Secret,
+		IsActive:      isActive,
+		CreatedBy:     uid,
+	}
+	repo := repository.NewWebhookTriggerRepository(h.pool)
+	if err := repo.Create(ctx, t); err != nil {
+		return nil, fmt.Errorf("failed to create trigger: %w", err)
+	}
+
+	return &toolResult{
+		Label:      fmt.Sprintf("Created trigger \"%s\" → %s \"%s\"", t.Name, args.TargetType, targetName),
+		ResultID:   t.ID,
+		ResultName: t.Name,
+		Link:       "/triggers",
+		Data: map[string]any{
+			"id":          t.ID,
+			"name":        t.Name,
+			"webhook_url": "/webhook/" + t.ID,
+			"target_type": t.TargetType,
+			"target_id":   t.TargetID,
+			"target_name": targetName,
+			"is_active":   t.IsActive,
+		},
+	}, nil
+}
+
 // toolStartLabel generates a human-readable label for the tool_started SSE event.
 func toolStartLabel(toolName string, input json.RawMessage) string {
 	var m map[string]any
@@ -883,6 +987,11 @@ func toolStartLabel(toolName string, input json.RawMessage) string {
 		return "Creating workflow..."
 	case "save_workflow_graph":
 		return "Saving workflow graph..."
+	case "create_trigger":
+		if n, ok := m["name"].(string); ok && n != "" {
+			return fmt.Sprintf("Creating trigger \"%s\"...", n)
+		}
+		return "Creating webhook trigger..."
 	case "list_available_models":
 		return "Checking available models..."
 	case "list_agents":

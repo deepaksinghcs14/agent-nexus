@@ -131,8 +131,15 @@ export const agentsAPI = {
 }
 
 export const runsAPI = {
-  list: (params?: string) => api.get(`/runs${params ? '?' + params : ''}`),
+  list: (params?: string | Record<string, string>) => {
+    if (typeof params === 'object') {
+      const qs = new URLSearchParams(params).toString()
+      return api.get(`/runs${qs ? '?' + qs : ''}`)
+    }
+    return api.get(`/runs${params ? '?' + params : ''}`)
+  },
   get: (id: string) => api.get(`/runs/${id}`),
+  listChildren: (id: string) => api.get(`/runs/${id}/children`),
   start: (conversationId: string, body: unknown) =>
     api.post(`/conversations/${conversationId}/runs`, body),
   approve: (id: string, body: unknown) => api.post(`/runs/${id}/approve`, body),
@@ -234,6 +241,14 @@ export const workflowsAPI = {
 
 // Backward-compat alias — prefer workflowsAPI in new code
 export const groupsAPI = workflowsAPI
+
+export const webhookTriggersAPI = {
+  list:   ()                         => api.get('/webhook-triggers'),
+  create: (body: unknown)            => api.post('/webhook-triggers', body),
+  get:    (id: string)               => api.get(`/webhook-triggers/${id}`),
+  update: (id: string, body: unknown) => api.put(`/webhook-triggers/${id}`, body),
+  delete: (id: string)               => api.delete(`/webhook-triggers/${id}`),
+}
 
 export const nexusAIAPI = {
   chat: (

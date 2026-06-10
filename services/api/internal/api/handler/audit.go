@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -27,5 +28,15 @@ func writeAudit(r *http.Request, pool *pgxpool.Pool, action, resourceType, resou
 		resourceType,
 		resourceID,
 		ip,
+	)
+}
+
+// writeSystemAudit is like writeAudit but for unauthenticated paths where workspace/actor
+// context is not available from middleware (e.g. the public webhook ingress endpoint).
+func writeSystemAudit(ctx context.Context, pool *pgxpool.Pool, workspaceID, actorID, actorEmail, action, resourceType, resourceID, ip string) {
+	_, _ = pool.Exec(ctx,
+		`INSERT INTO admin_audit_logs(id,workspace_id,actor_id,actor_email,action,resource_type,resource_id,ip_address)
+		 VALUES($1::uuid,NULLIF($2,'')::uuid,NULLIF($3,'')::uuid,$4,$5,$6,$7,$8)`,
+		uuid.NewString(), workspaceID, actorID, actorEmail, action, resourceType, resourceID, ip,
 	)
 }

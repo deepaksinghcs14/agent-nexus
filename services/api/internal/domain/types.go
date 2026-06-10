@@ -196,6 +196,9 @@ type Run struct {
 	TotalOutputTokens int        `json:"total_output_tokens"`
 	CostEstimate      float64    `json:"cost_estimate"`
 	ErrorMessage      string     `json:"error_message,omitempty"`
+	TriggerID         string     `json:"trigger_id,omitempty"`
+	ParentRunID       string     `json:"parent_run_id,omitempty"`
+	WorkflowNodeID    string     `json:"workflow_node_id,omitempty"`
 }
 
 type StepType string
@@ -292,6 +295,28 @@ type ConnectorDocument struct {
 	LastModifiedAt   *time.Time      `json:"last_modified_at"`
 	IndexedAt        *time.Time      `json:"indexed_at"`
 	Metadata         json.RawMessage `json:"metadata"`
+}
+
+// ============================================================
+// WEBHOOK TRIGGER
+// ============================================================
+
+type WebhookTrigger struct {
+	ID               string     `json:"id"`
+	WorkspaceID      string     `json:"workspace_id"`
+	Name             string     `json:"name"`
+	Description      string     `json:"description"`
+	TargetType       string     `json:"target_type"` // agent | workflow
+	TargetID         string     `json:"target_id"`
+	TargetName       string     `json:"target_name,omitempty"`
+	InputTemplate    string     `json:"input_template"`
+	Secret           string     `json:"secret,omitempty"`
+	IsActive         bool       `json:"is_active"`
+	CreatedBy        string     `json:"created_by"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	LastTriggeredAt  *time.Time `json:"last_triggered_at,omitempty"`
+	TriggerCount     int64      `json:"trigger_count"`
 }
 
 // ============================================================

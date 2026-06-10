@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Bot, GitBranch, Wrench, Plug, Link2,
+  Bot, GitBranch, Wrench, Plug, Link2, Zap,
   MessageSquare, History,
   Activity, GitCommitHorizontal, Brain, BarChart2,
   Key, Settings, BookOpen,
@@ -26,6 +26,7 @@ const userNav: NavGroup[] = [
       { label: 'Tools',        href: '/tools',        icon: Wrench },
       { label: 'MCP Servers',  href: '/mcp-servers',  icon: Plug },
       { label: 'Connectors',   href: '/connectors',   icon: Link2 },
+      { label: 'Triggers',     href: '/triggers',     icon: Zap },
     ],
   },
   {
