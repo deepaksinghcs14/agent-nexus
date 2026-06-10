@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { use, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { use } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 import { ChevronLeft, Check, Copy } from 'lucide-react'
 import { webhookTriggersAPI } from '@/lib/api'
 import type { WebhookTrigger } from '@/types'
 import { TriggerForm } from '../TriggerForm'
+import { TriggerRunsTab } from './TriggerRunsTab'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
 
@@ -32,11 +34,14 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-export default function EditTriggerPage({ params }: { params: Promise<{ triggerId: string }> }) {
-  const { triggerId } = use(params)
+type Tab = 'config' | 'runs'
+
+function TriggerPageInner({ triggerId }: { triggerId: string }) {
+  const searchParams = useSearchParams()
   const [trigger, setTrigger] = useState<WebhookTrigger | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [tab, setTab] = useState<Tab>((searchParams.get('tab') as Tab) ?? 'config')
 
   useEffect(() => {
     webhookTriggersAPI.get(triggerId)
@@ -70,11 +75,13 @@ export default function EditTriggerPage({ params }: { params: Promise<{ triggerI
         Webhook Triggers
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Edit Trigger</h1>
-      <p className="text-sm text-gray-500 mb-6">{trigger.name}</p>
+      <h1 className="text-2xl font-bold text-gray-900 mb-1">{trigger.name}</h1>
+      {trigger.description && (
+        <p className="text-sm text-gray-500 mb-6">{trigger.description}</p>
+      )}
 
-      {/* Webhook URL display */}
-      <div className="mb-8 p-4 rounded-lg bg-gray-50 border border-gray-200">
+      {/* Webhook URL — always visible */}
+      <div className="mb-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
         <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Webhook URL</p>
         <div className="flex items-center gap-2">
           <code className="flex-1 text-sm font-mono text-gray-700 truncate">{url}</code>
@@ -85,7 +92,34 @@ export default function EditTriggerPage({ params }: { params: Promise<{ triggerI
         </p>
       </div>
 
-      <TriggerForm trigger={trigger} />
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 border-b border-gray-200">
+        {(['config', 'runs'] as Tab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors -mb-px ${
+              tab === t
+                ? 'border-[#534AB7] text-[#534AB7]'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t === 'config' ? 'Configuration' : 'Runs'}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'config' && <TriggerForm trigger={trigger} />}
+      {tab === 'runs' && <TriggerRunsTab triggerId={triggerId} />}
     </div>
+  )
+}
+
+export default function EditTriggerPage({ params }: { params: Promise<{ triggerId: string }> }) {
+  const { triggerId } = use(params)
+  return (
+    <Suspense fallback={<div className="py-20 text-center text-sm text-gray-400">Loading…</div>}>
+      <TriggerPageInner triggerId={triggerId} />
+    </Suspense>
   )
 }

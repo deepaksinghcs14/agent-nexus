@@ -131,8 +131,15 @@ export const agentsAPI = {
 }
 
 export const runsAPI = {
-  list: (params?: string) => api.get(`/runs${params ? '?' + params : ''}`),
+  list: (params?: string | Record<string, string>) => {
+    if (typeof params === 'object') {
+      const qs = new URLSearchParams(params).toString()
+      return api.get(`/runs${qs ? '?' + qs : ''}`)
+    }
+    return api.get(`/runs${params ? '?' + params : ''}`)
+  },
   get: (id: string) => api.get(`/runs/${id}`),
+  listChildren: (id: string) => api.get(`/runs/${id}/children`),
   start: (conversationId: string, body: unknown) =>
     api.post(`/conversations/${conversationId}/runs`, body),
   approve: (id: string, body: unknown) => api.post(`/runs/${id}/approve`, body),

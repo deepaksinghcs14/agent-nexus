@@ -734,9 +734,9 @@ func (h *InvokeHandler) executeGroupRun(
 					 VALUES($1::uuid,$2::uuid,'user',$3)`,
 					uuid.NewString(), subConvID, agentInput)
 				h.pool.Exec(ctx, //nolint:errcheck
-					`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status)
-					 VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running')`,
-					subRunID, ws, a.ID, subConvID, uid, agentInput)
+					`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id)
+					 VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8)`,
+					subRunID, ws, a.ID, subConvID, uid, agentInput, parentRunID, node.ID)
 
 				// Wrap emit so every SSE event from this node carries node_id/node_name.
 				// Route through sseEmit (which holds emitMu) — parallel branch

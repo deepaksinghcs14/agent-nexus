@@ -40,11 +40,11 @@ func NewRunsHandler(p *pgxpool.Pool, c *config.Config, reg *tools.Registry, exec
 	return &RunsHandler{p, c, repository.NewConversationRepository(p), reg, exec}
 }
 
-const runSelect = `SELECT id::text,workspace_id::text,COALESCE(agent_id::text,''),conversation_id::text,user_id::text,input,output,status,started_at,completed_at,total_input_tokens,total_output_tokens,cost_estimate,error_message,COALESCE(trigger_id::text,'') FROM runs`
+const runSelect = `SELECT id::text,workspace_id::text,COALESCE(agent_id::text,''),conversation_id::text,user_id::text,input,output,status,started_at,completed_at,total_input_tokens,total_output_tokens,cost_estimate,error_message,COALESCE(trigger_id::text,''),COALESCE(parent_run_id::text,''),workflow_node_id FROM runs`
 
 func scanRun(row interface{ Scan(...any) error }) (domain.Run, error) {
 	var x domain.Run
-	e := row.Scan(&x.ID, &x.WorkspaceID, &x.AgentID, &x.ConversationID, &x.UserID, &x.Input, &x.Output, &x.Status, &x.StartedAt, &x.CompletedAt, &x.TotalInputTokens, &x.TotalOutputTokens, &x.CostEstimate, &x.ErrorMessage, &x.TriggerID)
+	e := row.Scan(&x.ID, &x.WorkspaceID, &x.AgentID, &x.ConversationID, &x.UserID, &x.Input, &x.Output, &x.Status, &x.StartedAt, &x.CompletedAt, &x.TotalInputTokens, &x.TotalOutputTokens, &x.CostEstimate, &x.ErrorMessage, &x.TriggerID, &x.ParentRunID, &x.WorkflowNodeID)
 	return x, e
 }
 
@@ -416,7 +416,7 @@ func errString(err error) string {
 
 func (h *RunsHandler) list(w http.ResponseWriter, r *http.Request, conv string) {
 	q := r.URL.Query()
-	rows, e := h.pool.Query(r.Context(), runSelect+` WHERE workspace_id=$1::uuid AND ($2='' OR conversation_id=$2::uuid) AND ($3='' OR agent_id=$3::uuid) AND ($4='' OR status=$4) ORDER BY started_at DESC`, middleware.WorkspaceIDFromCtx(r.Context()), conv, q.Get("agent_id"), q.Get("status"))
+	rows, e := h.pool.Query(r.Context(), runSelect+` WHERE workspace_id=$1::uuid AND ($2='' OR conversation_id=$2::uuid) AND ($3='' OR agent_id=$3::uuid) AND ($4='' OR status=$4) AND ($5='' OR trigger_id=$5::uuid) ORDER BY started_at DESC`, middleware.WorkspaceIDFromCtx(r.Context()), conv, q.Get("agent_id"), q.Get("status"), q.Get("trigger_id"))
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to list runs"))
 		return
@@ -437,6 +437,26 @@ func (h *RunsHandler) ListByConversation(w http.ResponseWriter, r *http.Request)
 	h.list(w, r, chi.URLParam(r, "id"))
 }
 func (h *RunsHandler) List(w http.ResponseWriter, r *http.Request) { h.list(w, r, "") }
+func (h *RunsHandler) ListChildren(w http.ResponseWriter, r *http.Request) {
+	runID := chi.URLParam(r, "id")
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	rows, e := h.pool.Query(r.Context(), runSelect+` WHERE parent_run_id=$1::uuid AND workspace_id=$2::uuid ORDER BY started_at ASC`, runID, ws)
+	if e != nil {
+		errs.Write(w, errs.Internal("failed to list child runs"))
+		return
+	}
+	defer rows.Close()
+	a := []domain.Run{}
+	for rows.Next() {
+		x, e := scanRun(rows)
+		if e != nil {
+			errs.Write(w, errs.Internal("failed to read child runs"))
+			return
+		}
+		a = append(a, x)
+	}
+	errs.WriteJSON(w, 200, map[string]any{"data": a})
+}
 func (h *RunsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	x, e := scanRun(h.pool.QueryRow(r.Context(), runSelect+` WHERE id=$1::uuid AND workspace_id=$2::uuid`, chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context())))
 	if e != nil {
@@ -455,6 +475,17 @@ func (h *RunsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	resp := map[string]any{"run": x, "steps": steps}
+	// For workflow root runs (no agent, not a sub-run), include the workflow_id so the
+	// frontend can fetch the workflow graph for the trace visualisation.
+	if x.AgentID == "" && x.ParentRunID == "" && x.ConversationID != "" {
+		var wfID string
+		_ = h.pool.QueryRow(r.Context(),
+			`SELECT COALESCE(workflow_id::text,'') FROM conversations WHERE id=$1::uuid`,
+			x.ConversationID).Scan(&wfID)
+		if wfID != "" {
+			resp["workflow_id"] = wfID
+		}
+	}
 	if domain.RunStatus(x.Status) == domain.RunStatusApprovalWait {
 		var arID, toolName, arStatus string
 		var toolInput json.RawMessage

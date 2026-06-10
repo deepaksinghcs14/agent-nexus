@@ -197,6 +197,8 @@ type Run struct {
 	CostEstimate      float64    `json:"cost_estimate"`
 	ErrorMessage      string     `json:"error_message,omitempty"`
 	TriggerID         string     `json:"trigger_id,omitempty"`
+	ParentRunID       string     `json:"parent_run_id,omitempty"`
+	WorkflowNodeID    string     `json:"workflow_node_id,omitempty"`
 }
 
 type StepType string

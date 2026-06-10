@@ -168,6 +168,8 @@ export interface Run {
   cost_estimate: number
   error_message?: string
   trigger_id?: string
+  parent_run_id?: string
+  workflow_node_id?: string
 }
 
 export type StepType =

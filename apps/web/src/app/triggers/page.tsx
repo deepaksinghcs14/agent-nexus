@@ -117,7 +117,12 @@ export default function TriggersPage() {
                       <CopyButton text={url} />
                     </div>
                     <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
-                      <span>{t.trigger_count} {t.trigger_count === 1 ? 'trigger' : 'triggers'}</span>
+                      <Link
+                        href={`/triggers/${t.id}?tab=runs`}
+                        className="hover:text-[#534AB7] transition-colors"
+                      >
+                        {t.trigger_count} {t.trigger_count === 1 ? 'invocation' : 'invocations'}
+                      </Link>
                       {t.last_triggered_at && <span>Last fired {formatDate(t.last_triggered_at)}</span>}
                       <span>Created {formatDate(t.created_at)}</span>
                     </div>
