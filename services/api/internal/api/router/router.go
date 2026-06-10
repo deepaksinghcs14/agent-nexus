@@ -69,9 +69,9 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Post("/api-tokens", h.APITokens.Create)
 			r.Delete("/api-tokens/{id}", h.APITokens.Revoke)
 
-			// Invoke (stateless agent/group execution via API token)
+			// Invoke (stateless agent/workflow execution via API token)
 			r.Post("/invoke/agents/{agentId}", h.Invoke.Agent)
-			r.Post("/invoke/groups/{groupId}", h.Invoke.Group)
+			r.Post("/invoke/workflows/{workflowId}", h.Invoke.Group)
 
 			// Providers
 			r.Get("/providers", h.Providers.List)
@@ -137,15 +137,15 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Delete("/memory/{id}", h.Memory.Delete)
 			r.Delete("/memory", h.Memory.BulkDelete)
 
-			// Agent Groups
-			r.Get("/agent-groups", h.Groups.List)
-			r.Post("/agent-groups", h.Groups.Create)
-			r.Get("/agent-groups/{id}", h.Groups.Get)
-			r.Put("/agent-groups/{id}", h.Groups.Update)
-			r.Delete("/agent-groups/{id}", h.Groups.Delete)
-			r.Post("/agent-groups/{id}/runs", h.Groups.Run)
-			r.Get("/agent-groups/{id}/graph", h.Groups.GetGraph)
-			r.Put("/agent-groups/{id}/graph", h.Groups.SaveGraph)
+			// Workflows
+			r.Get("/workflows", h.Workflows.List)
+			r.Post("/workflows", h.Workflows.Create)
+			r.Get("/workflows/{id}", h.Workflows.Get)
+			r.Put("/workflows/{id}", h.Workflows.Update)
+			r.Delete("/workflows/{id}", h.Workflows.Delete)
+			r.Post("/workflows/{id}/runs", h.Workflows.Run)
+			r.Get("/workflows/{id}/graph", h.Workflows.GetGraph)
+			r.Put("/workflows/{id}/graph", h.Workflows.SaveGraph)
 
 			// Admin (requires is_admin flag)
 			r.Group(func(r chi.Router) {

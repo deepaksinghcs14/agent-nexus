@@ -11,7 +11,7 @@ interface Resource { id: string; name: string }
 type Mode = 'agent' | 'group'
 
 async function fetchResources(token: string, mode: Mode): Promise<Resource[]> {
-  const path = mode === 'agent' ? '/agents' : '/agent-groups'
+  const path = mode === 'agent' ? '/agents' : '/workflows'
   const res = await fetch(`${API_URL}/api/v1${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
@@ -53,7 +53,7 @@ export default function AgentInvokePlayground() {
     setResponse(null)
     const path = mode === 'agent'
       ? `/invoke/agents/${selectedId}`
-      : `/invoke/groups/${selectedId}`
+      : `/invoke/workflows/${selectedId}`
     try {
       const res = await fetch(`${API_URL}/api/v1${path}`, {
         method: 'POST',
@@ -80,7 +80,7 @@ export default function AgentInvokePlayground() {
           POST
         </span>
         <code style={{ fontSize: '0.8125rem', color: '#374151', fontFamily: 'monospace' }}>
-          {mode === 'agent' ? '/api/v1/invoke/agents/{agentId}' : '/api/v1/invoke/groups/{groupId}'}
+          {mode === 'agent' ? '/api/v1/invoke/agents/{agentId}' : '/api/v1/invoke/workflows/{workflowId}'}
         </code>
       </div>
 
@@ -107,7 +107,7 @@ export default function AgentInvokePlayground() {
                     cursor: 'pointer', transition: 'all 0.15s',
                   }}
                 >
-                  {m === 'agent' ? 'Single Agent' : 'Agent Group'}
+                  {m === 'agent' ? 'Single Agent' : 'Workflow'}
                 </button>
               ))}
             </div>
@@ -115,7 +115,7 @@ export default function AgentInvokePlayground() {
             {/* Resource selector */}
             <div>
               <label style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 500, color: '#374151', marginBottom: 6 }}>
-                {mode === 'agent' ? 'Agent' : 'Agent Group'}
+                {mode === 'agent' ? 'Agent' : 'Workflow'}
               </label>
               {fetching ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.875rem', color: '#9ca3af' }}>
@@ -123,9 +123,9 @@ export default function AgentInvokePlayground() {
                 </div>
               ) : resources.length === 0 ? (
                 <div style={{ padding: '0.875rem', background: '#fafafa', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '0.875rem' }}>
-                  <span style={{ color: '#9ca3af' }}>No {mode === 'agent' ? 'agents' : 'agent groups'} found in this workspace. </span>
+                  <span style={{ color: '#9ca3af' }}>No {mode === 'agent' ? 'agents' : 'workflows'} found in this workspace. </span>
                   <a
-                    href={mode === 'agent' ? '/agents/new' : '/agent-groups/new'}
+                    href={mode === 'agent' ? '/agents/new' : '/workflows/new'}
                     style={{ color: '#534AB7', fontWeight: 500, textDecoration: 'none' }}
                   >
                     <Plus size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> Create one

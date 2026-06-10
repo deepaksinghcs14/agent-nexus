@@ -17,7 +17,7 @@ export default function DocsOverview() {
           badge: 'Concept',
         },
         {
-          title: 'What is an Agent Group?',
+          title: 'What is a Workflow?',
           href: '/docs/what-is-an-agent-group',
           desc: 'Chain multiple specialised agents together in a pipeline.',
           badge: 'Concept',
@@ -53,7 +53,7 @@ export default function DocsOverview() {
         {
           title: 'Invoke API',
           href: '/docs/invoke-api',
-          desc: 'Invoke agents and agent groups with a single HTTP request.',
+          desc: 'Invoke agents and workflows with a single HTTP request.',
           badge: 'API',
         },
         {
