@@ -109,7 +109,7 @@ function toRFEdge(e: WorkflowEdge): Edge {
     source: e.source_node_id,
     target: e.target_node_id,
     sourceHandle: sourceHandle,
-    label: isDelegate ? 'delegates' : (e.label || undefined),
+    label: e.label || undefined,
     type: 'smoothstep',
     animated: true,
     zIndex: 1000,
@@ -1524,7 +1524,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         source: getId(e.from), target: getId(e.to),
         type: 'smoothstep', animated: true,
         zIndex: 1000,
-        label: isDelegate ? 'delegates' : (e.label ?? undefined),
+        label: e.label ?? undefined,
         sourceHandle: e.label === 'yes' ? 'yes' : e.label === 'no' ? 'no' : e.label === 'loop' ? 'continue' : e.label === 'exit' ? 'exit' : undefined,
         markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
         style: { stroke: color, strokeWidth: isDelegate ? 2 : 2.5, strokeDasharray: isDelegate ? '6 3' : undefined },
@@ -1579,10 +1579,11 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
     setEdges((eds) => eds.map((e) => {
       if (e.id !== edgeId) return e
       const color = edgeColor(newLabel || undefined)
+      const isDelegate = newLabel === 'delegate'
       return {
         ...e,
         label: newLabel || undefined,
-        style: { stroke: color, strokeWidth: 2 },
+        style: { stroke: color, strokeWidth: isDelegate ? 2 : 2.5, strokeDasharray: isDelegate ? '6 3' : undefined },
         markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
         labelStyle: { fontSize: 10, fill: color, fontWeight: 700 },
       }
@@ -1927,7 +1928,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                 placeholder="e.g. yes, no, loop, exit"
               />
               <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {['yes', 'no', 'loop', 'exit'].map((preset) => (
+                {['yes', 'no', 'loop', 'exit', 'delegate'].map((preset) => (
                   <button
                     key={preset}
                     onClick={() => updateEdgeLabel(selectedEdge.id, preset)}
@@ -1954,6 +1955,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               <strong>yes / no</strong> — condition routing<br />
               <strong>loop</strong> — loop back edge<br />
               <strong>exit</strong> — loop exit edge<br />
+              <strong>delegate</strong> — supervisor → team agent (dashed)<br />
               <strong>(empty)</strong> — default / unconditional
             </div>
 

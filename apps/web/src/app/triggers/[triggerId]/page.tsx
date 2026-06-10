@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
@@ -115,11 +115,10 @@ function TriggerPageInner({ triggerId }: { triggerId: string }) {
   )
 }
 
-export default function EditTriggerPage({ params }: { params: Promise<{ triggerId: string }> }) {
-  const { triggerId } = use(params)
+export default function EditTriggerPage({ params }: { params: { triggerId: string } }) {
   return (
     <Suspense fallback={<div className="py-20 text-center text-sm text-gray-400">Loading…</div>}>
-      <TriggerPageInner triggerId={triggerId} />
+      <TriggerPageInner triggerId={params.triggerId} />
     </Suspense>
   )
 }

@@ -98,8 +98,8 @@ func main() {
 		Addr:         fmt.Sprintf(":%s", cfg.Port),
 		Handler:      router.New(cfg, h, pool),
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 120 * time.Second, // long for SSE streams
-		IdleTimeout:  60 * time.Second,
+		WriteTimeout: 0, // disabled — SSE streams can run indefinitely
+		IdleTimeout:  0, // disabled — keep SSE connections open as long as needed
 	}
 
 	// Graceful shutdown
