@@ -106,11 +106,11 @@ func (h *InvokeHandler) Agent(w http.ResponseWriter, r *http.Request) {
 	go h.executeRun(context.Background(), a, ws, uid, runID, convID, req.Input, nil)
 }
 
-// Group handles POST /api/v1/invoke/groups/:groupId
+// Group handles POST /api/v1/invoke/workflows/:workflowId
 func (h *InvokeHandler) Group(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	uid := middleware.UserIDFromCtx(r.Context())
-	groupID := chi.URLParam(r, "groupId")
+	groupID := chi.URLParam(r, "workflowId")
 
 	var req struct {
 		Input  string `json:"input"`
@@ -127,16 +127,16 @@ func (h *InvokeHandler) Group(w http.ResponseWriter, r *http.Request) {
 		`SELECT name, mode FROM workflows WHERE id=$1::uuid AND workspace_id=$2::uuid AND status='active'`,
 		groupID, ws).Scan(&gName, &gMode)
 	if err != nil {
-		errs.Write(w, errs.NotFound("agent group not found"))
+		errs.Write(w, errs.NotFound("workflow not found"))
 		return
 	}
 
-	// Create a conversation and top-level run record scoped to the group
+	// Create a conversation and top-level run record scoped to the workflow
 	runID := uuid.NewString()
 	convID := uuid.NewString()
 	if _, err := h.pool.Exec(r.Context(),
 		`INSERT INTO conversations(id,workspace_id,user_id,title) VALUES($1::uuid,$2::uuid,$3::uuid,$4)`,
-		convID, ws, uid, "Group: "+gName); err != nil {
+		convID, ws, uid, "Workflow: "+gName); err != nil {
 		errs.Write(w, errs.Internal("failed to create conversation"))
 		return
 	}

@@ -77,7 +77,7 @@ func main() {
 		Workspace:     handler.NewWorkspaceHandler(pool, cfg),
 		Runs:          runs,
 		Memory:        handler.NewMemoryHandler(pool, cfg),
-		Groups:        handler.NewGroupsHandler(pool, cfg),
+		Workflows:     handler.NewWorkflowsHandler(pool, cfg),
 		Admin:         handler.NewAdminHandler(pool, cfg),
 		APITokens:     handler.NewAPITokensHandler(pool, cfg),
 		Invoke:        handler.NewInvokeHandler(pool, cfg, runs, reg, exec),

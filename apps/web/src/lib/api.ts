@@ -221,18 +221,19 @@ export const workspacesAPI = {
   delete: (id: string) => api.delete<void>(`/workspaces/${id}`),
 }
 
-export const groupsAPI = {
-  list: () => api.get('/agent-groups'),
-  create: (body: unknown) => api.post('/agent-groups', body),
-  get: (id: string) => api.get(`/agent-groups/${id}`),
-  update: (id: string, body: unknown) => api.put(`/agent-groups/${id}`, body),
-  delete: (id: string) => api.delete(`/agent-groups/${id}`),
-  run: (id: string, body?: unknown) => api.post(`/agent-groups/${id}/runs`, body),
-  getGraph: (id: string) => api.get<WorkflowGraph>(`/agent-groups/${id}/graph`),
-  saveGraph: (id: string, body: WorkflowGraph) => api.put<WorkflowGraph>(`/agent-groups/${id}/graph`, body),
+export const workflowsAPI = {
+  list: () => api.get('/workflows'),
+  create: (body: unknown) => api.post('/workflows', body),
+  get: (id: string) => api.get(`/workflows/${id}`),
+  update: (id: string, body: unknown) => api.put(`/workflows/${id}`, body),
+  delete: (id: string) => api.delete(`/workflows/${id}`),
+  run: (id: string, body?: unknown) => api.post(`/workflows/${id}/runs`, body),
+  getGraph: (id: string) => api.get<WorkflowGraph>(`/workflows/${id}/graph`),
+  saveGraph: (id: string, body: WorkflowGraph) => api.put<WorkflowGraph>(`/workflows/${id}/graph`, body),
 }
 
-export const workflowsAPI = groupsAPI
+// Backward-compat alias — prefer workflowsAPI in new code
+export const groupsAPI = workflowsAPI
 
 export const nexusAIAPI = {
   chat: (
@@ -262,8 +263,11 @@ export const apiTokensAPI = {
 export const invokeAPI = {
   agent: (agentId: string, body: { input: string; conversation_id?: string; stream?: boolean }) =>
     api.post<InvokeRunResponse>(`/invoke/agents/${agentId}`, body),
-  group: (groupId: string, body: { input: string; stream?: boolean }) =>
-    api.post<InvokeRunResponse>(`/invoke/groups/${groupId}`, body),
+  workflow: (workflowId: string, body: { input: string; stream?: boolean }) =>
+    api.post<InvokeRunResponse>(`/invoke/workflows/${workflowId}`, body),
+  /** @deprecated use invokeAPI.workflow instead */
+  group: (workflowId: string, body: { input: string; stream?: boolean }) =>
+    api.post<InvokeRunResponse>(`/invoke/workflows/${workflowId}`, body),
 }
 
 export const adminAPI = {

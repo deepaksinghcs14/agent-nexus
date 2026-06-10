@@ -1,6 +1,6 @@
 # Agent Nexus
 
-![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
@@ -93,6 +93,7 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Model-agnostic** — Anthropic Claude, OpenAI GPT, Google Gemini, and local Ollama models. Bring your own API keys per workspace. Switch providers without changing your agent config.
 - **Agent builder** — configure instructions (system prompt), model, temperature, max tokens, memory scope, tool list, and guardrails (max steps, max tool calls, timeout) from a clean tabbed UI
 - **Playground** — send messages and watch the agent think in real time via a live SSE trace panel showing every memory retrieval, tool call, model call, latency, and token count
+- **Conversations history** — every playground session is saved; browse and replay past conversations from the Conversations page
 
 ### Multi-Agent Workflows
 - **Visual canvas editor** — drag-and-drop workflow builder powered by React Flow; add agent nodes, condition branches, parallel fans, join gates, and loop nodes
@@ -113,17 +114,29 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 
 ### Observability
 - **Full run traces** — every step is logged: memory retrieval (which memories, score), context retrieval (which chunks, source), model call (input/output tokens, latency, cost), tool calls (name, input, output, latency)
+- **Traces view** — dedicated trace explorer; filter by agent, date range, or status; drill into individual steps with a waterfall breakdown
+- **Runs view** — list all runs across all agents with status, duration, token counts, cost, and one-click approval for pending tool calls
 - **Cost tracking** — per-run input/output token counts with cost estimates displayed in the runs table and usage dashboard
 - **Usage dashboard** — workspace-level token and cost aggregates over time
 
-### Multi-Workspace & Administration
-- **Multi-workspace** — isolate agents, tools, memory, and API keys per workspace; support for personal, team, organization, project, and sandbox workspace types
-- **Role-based access** — owner, admin, member, and viewer roles per workspace
-- **Admin dashboard** — manage all users, workspaces, and policies from a single admin panel
-- **Audit logs** — every create, update, and delete action is recorded with actor, resource, timestamp, and IP address
+### Workspace Management
+- **Multi-workspace** — create and switch between isolated workspaces; each workspace has its own agents, tools, memory, providers, and API keys; support for personal, team, organization, project, and sandbox workspace types
+- **Member management** — invite members by email directly from the workspace settings page; set roles at invite time and change them any time
+- **Role-based access control** — four roles enforced on every API endpoint: **owner** (full control, cannot be removed), **admin** (manage members, providers, settings), **member** (create and run agents), **viewer** (read-only)
+- **API token management** — generate named API tokens with optional expiry dates for CI pipelines, integrations, and programmatic agent invocations; revoke any token instantly
+
+### Administration
+- **Admin dashboard** — platform-wide overview of users, workspaces, run volume, and token usage across all tenants
+- **User management** — list all users, enable/disable accounts, and promote users to platform admin
+- **Workspace management** — view and modify any workspace from the admin panel; see member counts, storage, and usage stats
+- **Policy controls** — configure platform-wide policies (e.g. allowed providers, max token budgets)
+- **Audit logs** — every create, update, and delete action is recorded with actor, resource type, timestamp, and IP address
 
 ### Nexus AI
 - **Meta-agent** — a built-in AI assistant that can list agents/tools/connectors, create new agents, and build workflow graphs using natural language — backed by the same agent runtime as user-created agents
+
+### Built-in Documentation
+- **In-app docs** — platform documentation lives inside the app at `/docs`; covers agents, tools, connectors, workflows, the invoke API, SSE stream events, run states, and MCP servers — no external site needed
 
 ---
 
@@ -147,7 +160,7 @@ cp services/api/.env.example services/api/.env
 make dev
 ```
 
-Requires Go 1.22+ and Node 20+. Starts Postgres in Docker, then runs the API and web dev server in parallel.
+Requires Go 1.26+ and Node 20+. Starts Postgres in Docker, then runs the API and web dev server in parallel.
 
 Individual targets:
 
@@ -167,7 +180,7 @@ make logs       # tail logs from all services
 |------|---------|---------|
 | Docker | 24+ | https://docs.docker.com/get-docker/ |
 | Docker Compose | v2 | bundled with Docker Desktop |
-| Go | 1.22+ | https://go.dev/dl/ |
+| Go | 1.26+ | https://go.dev/dl/ |
 | Node.js | 20+ | https://nodejs.org/ |
 
 ---
@@ -247,6 +260,38 @@ POST   /api/v1/conversations/:id/runs    ← SSE stream
 GET    /api/v1/runs/:id
 ...
 ```
+
+---
+
+## Roadmap
+
+What's working today vs. what's coming next:
+
+| Feature | Status |
+|---------|--------|
+| Multi-provider LLM support (Claude, GPT, Gemini, Ollama) | ✅ Done |
+| Agent builder + playground with live SSE traces | ✅ Done |
+| Conversations history (browse and replay past sessions) | ✅ Done |
+| Visual workflow canvas (pipeline + supervisor) | ✅ Done |
+| MCP server integration (HTTP + stdio) | ✅ Done |
+| Risk-based approval gates | ✅ Done |
+| pgvector memory (conversation, agent, workspace scopes) | ✅ Done |
+| Filesystem connector (RAG — chunk, embed, retrieve) | ✅ Done |
+| Runs + Traces views with full step observability | ✅ Done |
+| Cost tracking + usage dashboard | ✅ Done |
+| Multi-workspace with member invite + role management | ✅ Done |
+| Role-based access control (owner / admin / member / viewer) | ✅ Done |
+| API token management (named tokens with expiry) | ✅ Done |
+| Admin dashboard (users, workspaces, policies, audit logs) | ✅ Done |
+| Nexus AI meta-agent | ✅ Done |
+| Built-in in-app documentation | ✅ Done |
+| Additional connectors (Slack, Jira, Confluence, GitHub, Google Drive) | 🔜 Planned |
+| Webhook / event triggers (run an agent on inbound HTTP event) | 🔜 Planned |
+| Agent versioning and snapshot rollback | 🔜 Planned |
+| Export / import agents and workflows (JSON) | 🔜 Planned |
+| API rate limiting per workspace | 🔜 Planned |
+| Run failure notifications (email, webhook) | 🔜 Planned |
+| Test coverage (Go unit + integration, frontend component tests) | 🔜 Planned |
 
 ---
 
