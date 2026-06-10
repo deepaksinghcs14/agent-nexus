@@ -1728,7 +1728,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   const canvasWidth = hasRightPanel ? 'calc(100% - 460px)' : '100%'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'Inter, sans-serif', background: '#f8f8fb' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: 'Inter, sans-serif', background: '#f8f8fb' }}>
       {/* Spin animation */}
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
