@@ -15,6 +15,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/handler"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/router"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/migrate"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 )
@@ -51,6 +52,12 @@ func main() {
 	}
 	slog.Info("database connected", "url", maskURL(cfg.DatabaseURL))
 
+	// Apply pending database migrations before accepting traffic
+	if err := migrate.Run(ctx, pool); err != nil {
+		slog.Error("migration failed", "error", err)
+		os.Exit(1)
+	}
+
 	// Build tool registry and seed native tools into DB
 	reg := tools.NewRegistry()
 	reg.Register(native.NewReadFileTool(cfg.StoragePath))
@@ -66,21 +73,24 @@ func main() {
 
 	// Wire handlers
 	runs := handler.NewRunsHandler(pool, cfg, reg, exec)
+	invoke := handler.NewInvokeHandler(pool, cfg, runs, reg, exec)
 	h := &handler.Handlers{
-		Auth:          handler.NewAuthHandler(pool, cfg),
-		Providers:     handler.NewProvidersHandler(pool, cfg),
-		Agents:        handler.NewAgentsHandler(pool, cfg),
-		Tools:         handler.NewToolsHandler(pool, cfg),
-		MCP:           handler.NewMCPHandler(pool, cfg),
-		Connectors:    handler.NewConnectorsHandler(pool, cfg),
-		Conversations: handler.NewConversationsHandler(pool, cfg),
-		Workspace:     handler.NewWorkspaceHandler(pool, cfg),
-		Runs:          runs,
-		Memory:        handler.NewMemoryHandler(pool, cfg),
-		Workflows:     handler.NewWorkflowsHandler(pool, cfg),
-		Admin:         handler.NewAdminHandler(pool, cfg),
-		APITokens:     handler.NewAPITokensHandler(pool, cfg),
-		Invoke:        handler.NewInvokeHandler(pool, cfg, runs, reg, exec),
+		Auth:            handler.NewAuthHandler(pool, cfg),
+		Providers:       handler.NewProvidersHandler(pool, cfg),
+		Agents:          handler.NewAgentsHandler(pool, cfg),
+		Tools:           handler.NewToolsHandler(pool, cfg),
+		MCP:             handler.NewMCPHandler(pool, cfg),
+		Connectors:      handler.NewConnectorsHandler(pool, cfg),
+		Conversations:   handler.NewConversationsHandler(pool, cfg),
+		Workspace:       handler.NewWorkspaceHandler(pool, cfg),
+		Runs:            runs,
+		Memory:          handler.NewMemoryHandler(pool, cfg),
+		Workflows:       handler.NewWorkflowsHandler(pool, cfg),
+		Admin:           handler.NewAdminHandler(pool, cfg),
+		APITokens:       handler.NewAPITokensHandler(pool, cfg),
+		Invoke:          invoke,
+		WebhookTriggers: handler.NewWebhookTriggerHandler(pool, cfg),
+		WebhookIngress:  handler.NewWebhookIngressHandler(pool, invoke),
 	}
 
 	// HTTP server

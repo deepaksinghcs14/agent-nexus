@@ -14,6 +14,12 @@ Users can:
 
 ---
 
+## System Diagram
+
+![Agent Nexus Architecture](./ARCHITECTURE.svg)
+
+---
+
 ## Technology Stack
 
 | Layer | Choice |
@@ -278,6 +284,7 @@ Key tables:
 | `mcp_servers`, `mcp_tools` | MCP server registry + discovered tools |
 | `conversations`, `messages` | Chat history |
 | `runs`, `run_steps` | Execution records + trace steps |
+| `webhook_triggers` | Persistent inbound HTTP endpoints; each tied to an agent or workflow |
 | `memories` | Vector memory (pgvector embedding column) |
 | `connectors`, `connector_documents`, `connector_chunks` | Indexed external context |
 | `context_retrieval_logs` | Which chunks were used in which run |
@@ -359,6 +366,16 @@ GET    /api/v1/agent-groups/:id
 PUT    /api/v1/agent-groups/:id
 DELETE /api/v1/agent-groups/:id
 POST   /api/v1/agent-groups/:id/runs
+
+# Webhook Triggers (authenticated CRUD)
+GET    /api/v1/webhook-triggers
+POST   /api/v1/webhook-triggers
+GET    /api/v1/webhook-triggers/:id
+PUT    /api/v1/webhook-triggers/:id
+DELETE /api/v1/webhook-triggers/:id
+
+# Webhook Inbound (public — no auth)
+POST   /webhook/:webhookId               ← fires a run; verifies HMAC-SHA256 if secret is set
 
 # Admin
 GET    /api/v1/admin/users

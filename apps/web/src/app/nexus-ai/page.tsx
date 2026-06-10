@@ -7,7 +7,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   Sparkles, Send, Loader2, CheckCircle2, AlertCircle,
-  ExternalLink, ArrowRight, ChevronDown,
+  ExternalLink, ArrowRight, ChevronDown, Zap,
 } from 'lucide-react'
 import { providersAPI, nexusAIAPI } from '@/lib/api'
 import type { NexusMessage, ProviderCredential, ModelInfo } from '@/types'
@@ -17,6 +17,26 @@ const SUGGESTIONS = [
   'Build a supervisor workflow: coordinator delegates to researcher, fact-checker, and writer agents',
   'Build a support triage workflow: classify → route → respond',
   'Make a code review pipeline with a reviewer and a fixer agent',
+  'Set up a webhook trigger to run a workflow from GitHub, Zapier, or any HTTP source',
+]
+
+const TEMPLATES = [
+  {
+    icon: 'zap' as const,
+    title: 'Webhook trigger setup',
+    desc: 'Wire an external HTTP event to a workflow',
+    prompt: `I need to set up a webhook trigger for a workflow.
+
+Please:
+1. List my existing workflows so I can pick the right one
+2. Create a webhook trigger for it
+
+Details:
+- Trigger name: [e.g. "GitHub PR Webhook"]
+- Trigger source: [e.g. GitHub pull_request event, Zapier, custom HTTP]
+- Payload mapping: [e.g. use {{.Body.pull_request.title}} or just pass {{.RawBody}}]
+- HMAC secret needed: [yes / no]`,
+  },
 ]
 
 let _counter = 0
@@ -395,19 +415,40 @@ export default function NexusAIPage() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Suggestion chips — only on first greeting */}
+      {/* Template cards + suggestion chips — only on first greeting */}
       {messages.length === 1 && hasProvider && (
-        <div className="px-6 pb-3 flex flex-wrap gap-2 flex-shrink-0">
-          {SUGGESTIONS.map(s => (
-            <button
-              key={s}
-              onClick={() => setInput(s)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-600 hover:border-purple-300 hover:text-purple-700 hover:bg-purple-50 transition-colors"
-            >
-              <ArrowRight size={11} className="text-gray-400" />
-              {s.length > 60 ? s.slice(0, 60) + '…' : s}
-            </button>
-          ))}
+        <div className="px-6 pb-3 flex-shrink-0 space-y-3">
+          {/* Template cards */}
+          <div className="flex gap-2">
+            {TEMPLATES.map(t => (
+              <button
+                key={t.title}
+                onClick={() => setInput(t.prompt)}
+                className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border border-gray-200 bg-white text-left hover:border-purple-300 hover:bg-purple-50 transition-colors flex-1 min-w-0"
+              >
+                <div className="w-6 h-6 rounded-md bg-purple-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Zap size={12} className="text-purple-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold text-gray-800 truncate">{t.title}</p>
+                  <p className="text-[11px] text-gray-400 truncate">{t.desc}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+          {/* Suggestion chips */}
+          <div className="flex flex-wrap gap-2">
+            {SUGGESTIONS.map(s => (
+              <button
+                key={s}
+                onClick={() => setInput(s)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-600 hover:border-purple-300 hover:text-purple-700 hover:bg-purple-50 transition-colors"
+              >
+                <ArrowRight size={11} className="text-gray-400" />
+                {s.length > 60 ? s.slice(0, 60) + '…' : s}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

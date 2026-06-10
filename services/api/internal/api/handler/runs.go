@@ -40,11 +40,11 @@ func NewRunsHandler(p *pgxpool.Pool, c *config.Config, reg *tools.Registry, exec
 	return &RunsHandler{p, c, repository.NewConversationRepository(p), reg, exec}
 }
 
-const runSelect = `SELECT id::text,workspace_id::text,COALESCE(agent_id::text,''),conversation_id::text,user_id::text,input,output,status,started_at,completed_at,total_input_tokens,total_output_tokens,cost_estimate,error_message FROM runs`
+const runSelect = `SELECT id::text,workspace_id::text,COALESCE(agent_id::text,''),conversation_id::text,user_id::text,input,output,status,started_at,completed_at,total_input_tokens,total_output_tokens,cost_estimate,error_message,COALESCE(trigger_id::text,'') FROM runs`
 
 func scanRun(row interface{ Scan(...any) error }) (domain.Run, error) {
 	var x domain.Run
-	e := row.Scan(&x.ID, &x.WorkspaceID, &x.AgentID, &x.ConversationID, &x.UserID, &x.Input, &x.Output, &x.Status, &x.StartedAt, &x.CompletedAt, &x.TotalInputTokens, &x.TotalOutputTokens, &x.CostEstimate, &x.ErrorMessage)
+	e := row.Scan(&x.ID, &x.WorkspaceID, &x.AgentID, &x.ConversationID, &x.UserID, &x.Input, &x.Output, &x.Status, &x.StartedAt, &x.CompletedAt, &x.TotalInputTokens, &x.TotalOutputTokens, &x.CostEstimate, &x.ErrorMessage, &x.TriggerID)
 	return x, e
 }
 

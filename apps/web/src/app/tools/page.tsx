@@ -510,6 +510,15 @@ export default function ToolsPage() {
           />
         </>
       )}
+
+      <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
+        <p className="text-sm text-gray-600">
+          Learn about native tools, HTTP tools, risk levels, and approval gates in the{' '}
+          <Link href="/docs/what-is-a-tool" className="text-[#534AB7] hover:underline">
+            documentation
+          </Link>.
+        </p>
+      </div>
     </div>
   )
 }

@@ -235,6 +235,14 @@ export const workflowsAPI = {
 // Backward-compat alias — prefer workflowsAPI in new code
 export const groupsAPI = workflowsAPI
 
+export const webhookTriggersAPI = {
+  list:   ()                         => api.get('/webhook-triggers'),
+  create: (body: unknown)            => api.post('/webhook-triggers', body),
+  get:    (id: string)               => api.get(`/webhook-triggers/${id}`),
+  update: (id: string, body: unknown) => api.put(`/webhook-triggers/${id}`, body),
+  delete: (id: string)               => api.delete(`/webhook-triggers/${id}`),
+}
+
 export const nexusAIAPI = {
   chat: (
     messages: { role: 'user' | 'assistant'; content: string }[],

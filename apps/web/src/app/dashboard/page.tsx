@@ -2,17 +2,18 @@
 
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
-import { Bot, Database, Key, Plug } from 'lucide-react'
-import { agentsAPI, providersAPI, runsAPI } from '@/lib/api'
+import { Bot, Database, Key, Plug, Zap } from 'lucide-react'
+import { agentsAPI, providersAPI, runsAPI, webhookTriggersAPI } from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
 import { formatTokens } from '@/lib/utils'
-import type { Run } from '@/types'
+import type { Run, WebhookTrigger } from '@/types'
 
 const quickActions = [
   { label: 'Create Agent', href: '/agents/new', icon: Bot, color: 'bg-purple-50 text-purple-700' },
   { label: 'Connect MCP', href: '/mcp-servers', icon: Plug, color: 'bg-blue-50 text-blue-700' },
   { label: 'Add Source', href: '/connectors', icon: Database, color: 'bg-teal-50 text-teal-700' },
   { label: 'Add API Key', href: '/settings/providers', icon: Key, color: 'bg-amber-50 text-amber-700' },
+  { label: 'New Trigger', href: '/triggers/new', icon: Zap, color: 'bg-rose-50 text-rose-700' },
 ]
 
 export default function DashboardPage() {
@@ -31,18 +32,27 @@ export default function DashboardPage() {
     queryKey: ['runs'],
     queryFn: () => runsAPI.list() as Promise<{ data: Run[] }>,
   })
+  const { data: triggersData } = useQuery({
+    queryKey: ['webhook-triggers'],
+    queryFn: () => webhookTriggersAPI.list() as Promise<{ data: WebhookTrigger[] }>,
+  })
 
   const agentCount = agentsData?.data?.length ?? 0
   const providerCount = providersData?.data?.length ?? 0
   const runs = runsData?.data ?? []
   const activeRuns = runs.filter((run) => ['pending', 'running', 'approval_wait'].includes(run.status)).length
   const tokens = runs.reduce((sum, run) => sum + run.total_input_tokens + run.total_output_tokens, 0)
+  const triggers = triggersData?.data ?? []
+  const activeTriggers = triggers.filter((t) => t.is_active).length
+  const totalFired = triggers.reduce((sum, t) => sum + t.trigger_count, 0)
 
   const stats = [
     { label: 'Total Agents', value: String(agentCount), sub: 'in this workspace' },
     { label: 'Providers Connected', value: String(providerCount), sub: 'API keys configured' },
     { label: 'Active Runs', value: String(activeRuns), sub: `${runs.length} total runs` },
     { label: 'Tokens recorded', value: formatTokens(tokens), sub: 'across all runs' },
+    { label: 'Active Triggers', value: String(activeTriggers), sub: `${triggers.length} total configured` },
+    { label: 'Times Fired', value: String(totalFired), sub: 'webhook invocations' },
   ]
 
   return (
@@ -55,7 +65,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-3 gap-4 mb-8">
         {stats.map((s) => (
           <div key={s.label} className="border border-gray-100 rounded-xl p-4 bg-white">
             <div className="text-2xl font-bold text-gray-900">{s.value}</div>
@@ -68,7 +78,7 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <div className="mb-8">
         <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">Quick Actions</h2>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-5 gap-3">
           {quickActions.map((a) => (
             <Link
               key={a.label}

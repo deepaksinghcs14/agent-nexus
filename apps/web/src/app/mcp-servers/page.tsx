@@ -457,6 +457,15 @@ export default function MCPServersPage() {
           )}
         </div>
       )}
+
+      <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
+        <p className="text-sm text-gray-600">
+          Learn how to connect MCP servers and manage tool discovery in the{' '}
+          <a href="/docs/mcp-servers" className="text-[#534AB7] hover:underline">
+            documentation
+          </a>.
+        </p>
+      </div>
     </div>
   )
 }

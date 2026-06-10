@@ -167,6 +167,7 @@ export interface Run {
   total_output_tokens: number
   cost_estimate: number
   error_message?: string
+  trigger_id?: string
 }
 
 export type StepType =
@@ -306,6 +307,24 @@ export interface WorkflowEdge {
 export interface WorkflowGraph {
   nodes: WorkflowNode[]
   edges: WorkflowEdge[]
+}
+
+export interface WebhookTrigger {
+  id: string
+  workspace_id: string
+  name: string
+  description: string
+  target_type: 'agent' | 'workflow'
+  target_id: string
+  target_name?: string
+  input_template: string
+  secret?: string
+  is_active: boolean
+  created_by: string
+  created_at: string
+  updated_at: string
+  last_triggered_at?: string | null
+  trigger_count: number
 }
 
 // SSE stream event types

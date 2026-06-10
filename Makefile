@@ -1,4 +1,4 @@
-.PHONY: dev postgres api web stop logs help
+.PHONY: dev postgres api web stop logs migrate help
 
 # ─── config ──────────────────────────────────────────────────────────────────
 COMPOSE     := docker compose -f infra/docker-compose.yml
@@ -15,6 +15,7 @@ help:
 	@echo "  make web       start Next.js dev server"
 	@echo "  make stop      stop Postgres Docker container"
 	@echo "  make logs      tail Docker Compose logs"
+	@echo "  make migrate   apply pending migrations (restarts API container)"
 	@echo "  make docker    run everything in Docker (full stack)"
 	@echo ""
 
@@ -70,6 +71,12 @@ stop:
 	@echo "→ Stopping Postgres…"
 	$(COMPOSE) stop postgres
 	@echo "✓ Done"
+
+# ─── migrate ─────────────────────────────────────────────────────────────────
+migrate:
+	@echo "→ Restarting API to apply pending migrations…"
+	@$(COMPOSE) restart api
+	@echo "✓ Done — check logs with: make logs"
 
 # ─── logs ────────────────────────────────────────────────────────────────────
 logs:

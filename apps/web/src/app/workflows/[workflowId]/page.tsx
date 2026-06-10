@@ -42,7 +42,9 @@ import {
   ChevronDown,
   ChevronUp,
   BookOpen,
+  Zap,
 } from 'lucide-react'
+import { TriggersPanel } from './TriggersPanel'
 import { workflowsAPI, agentsAPI, invokeAPI } from '@/lib/api'
 import type { Workflow, Agent, WorkflowGraph, WorkflowNode, WorkflowEdge, WorkflowNodeType, SSEEvent } from '@/types'
 
@@ -1427,6 +1429,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null)
   const [runPanelOpen, setRunPanelOpen] = useState(false)
+  const [triggersPanelOpen, setTriggersPanelOpen] = useState(false)
   const [runInput, setRunInput] = useState('')
   const [runOutput, setRunOutput] = useState<Record<string, string>>({})
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done'>('idle')
@@ -1721,7 +1724,8 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   }
 
   const hasNodes = nodes.length > 0
-  const canvasWidth = (selectedNode || selectedEdge) ? 'calc(100% - 460px)' : '100%'
+  const hasRightPanel = !!(selectedNode || selectedEdge) || triggersPanelOpen
+  const canvasWidth = hasRightPanel ? 'calc(100% - 460px)' : '100%'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'Inter, sans-serif', background: '#f8f8fb' }}>
@@ -1767,6 +1771,19 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
           }}
         >
           <LayoutTemplate size={13} /> Templates
+        </button>
+        <button
+          onClick={() => { setTriggersPanelOpen(v => !v); setSelectedNode(null); setSelectedEdge(null) }}
+          title="Webhook triggers for this workflow"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            background: triggersPanelOpen ? '#f1f0ff' : '#fff',
+            color: triggersPanelOpen ? '#534AB7' : '#374151',
+            border: `1px solid ${triggersPanelOpen ? '#c4b5fd' : '#e5e7eb'}`,
+          }}
+        >
+          <Zap size={13} /> Triggers
         </button>
         <button
           onClick={handleSave}
@@ -1951,6 +1968,14 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               <X size={12} /> Remove edge
             </button>
           </div>
+        )}
+
+        {/* Triggers panel */}
+        {triggersPanelOpen && !selectedNode && !selectedEdge && (
+          <TriggersPanel
+            workflowId={groupId}
+            onClose={() => setTriggersPanelOpen(false)}
+          />
         )}
 
         {/* Node config panel */}

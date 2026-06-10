@@ -124,6 +124,7 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Member management** — invite members by email directly from the workspace settings page; set roles at invite time and change them any time
 - **Role-based access control** — four roles enforced on every API endpoint: **owner** (full control, cannot be removed), **admin** (manage members, providers, settings), **member** (create and run agents), **viewer** (read-only)
 - **API token management** — generate named API tokens with optional expiry dates for CI pipelines, integrations, and programmatic agent invocations; revoke any token instantly
+- **Webhook triggers** — create persistent inbound HTTP endpoints tied to any agent or workflow; POST from GitHub, Stripe, Slack, or any external system to fire a run automatically; optional HMAC-SHA256 secret for signature verification; Go text/template input mapping to extract fields from the request body
 
 ### Administration
 - **Admin dashboard** — platform-wide overview of users, workspaces, run volume, and token usage across all tenants
@@ -286,7 +287,7 @@ What's working today vs. what's coming next:
 | Nexus AI meta-agent | ✅ Done |
 | Built-in in-app documentation | ✅ Done |
 | Additional connectors (Slack, Jira, Confluence, GitHub, Google Drive) | 🔜 Planned |
-| Webhook / event triggers (run an agent on inbound HTTP event) | 🔜 Planned |
+| Webhook / event triggers (run an agent on inbound HTTP event) | ✅ Complete |
 | Agent versioning and snapshot rollback | 🔜 Planned |
 | Export / import agents and workflows (JSON) | 🔜 Planned |
 | API rate limiting per workspace | 🔜 Planned |

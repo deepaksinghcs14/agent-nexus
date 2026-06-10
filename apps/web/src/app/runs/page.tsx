@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Square } from 'lucide-react'
+import { Activity, Square, Zap } from 'lucide-react'
 import { agentsAPI, runsAPI } from '@/lib/api'
 import { formatCost, formatTokens, relativeTime, statusColor } from '@/lib/utils'
 import type { Agent, Run } from '@/types'
@@ -83,7 +83,7 @@ export default function RunsPage() {
           <table className="w-full text-[12px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                {['Run ID', 'Agent', 'Status', 'Tokens', 'Cost', 'Started', ''].map((h) => (
+                {['Run ID', 'Agent', 'Status', 'Source', 'Tokens', 'Cost', 'Started', ''].map((h) => (
                   <th key={h} className="text-left px-4 py-2 text-[10px] font-medium text-gray-400 uppercase">{h}</th>
                 ))}
               </tr>
@@ -95,6 +95,15 @@ export default function RunsPage() {
                   <td className="px-4 py-2.5 font-medium text-gray-900">{agentLabel(run.agent_id)}</td>
                   <td className="px-4 py-2.5">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusColor(run.status)}`}>{run.status}</span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {run.trigger_id ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 font-medium">
+                        <Zap className="w-2.5 h-2.5" /> Webhook
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-gray-400">Manual</span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-gray-500">{formatTokens(run.total_input_tokens + run.total_output_tokens)}</td>
                   <td className="px-4 py-2.5 text-gray-500">{formatCost(run.cost_estimate)}</td>
@@ -122,6 +131,15 @@ export default function RunsPage() {
           </table>
         </div>
       )}
+
+      <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
+        <p className="text-sm text-gray-600">
+          Learn about run statuses, approval gates, and polling in the{' '}
+          <Link href="/docs/run-states" className="text-[#534AB7] hover:underline">
+            documentation
+          </Link>.
+        </p>
+      </div>
     </div>
   )
 }

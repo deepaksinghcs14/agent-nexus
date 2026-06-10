@@ -34,6 +34,9 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 		w.Write([]byte(`{"status":"ok"}`)) //nolint:errcheck
 	})
 
+	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC secret)
+	r.Post("/webhook/{webhookId}", h.WebhookIngress.Receive)
+
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public auth routes
 		r.Post("/auth/register", h.Auth.Register)
@@ -136,6 +139,13 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Get("/memory", h.Memory.List)
 			r.Delete("/memory/{id}", h.Memory.Delete)
 			r.Delete("/memory", h.Memory.BulkDelete)
+
+			// Webhook triggers
+			r.Get("/webhook-triggers", h.WebhookTriggers.List)
+			r.Post("/webhook-triggers", h.WebhookTriggers.Create)
+			r.Get("/webhook-triggers/{id}", h.WebhookTriggers.Get)
+			r.Put("/webhook-triggers/{id}", h.WebhookTriggers.Update)
+			r.Delete("/webhook-triggers/{id}", h.WebhookTriggers.Delete)
 
 			// Workflows
 			r.Get("/workflows", h.Workflows.List)
