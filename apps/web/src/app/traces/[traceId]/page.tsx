@@ -7,10 +7,10 @@ import { runsAPI } from '@/lib/api'
 import { formatCost, formatTokens, statusColor } from '@/lib/utils'
 import type { Run, RunStep } from '@/types'
 
-export default function TraceDetailPage({ params }: { params: { id: string } }) {
+export default function TraceDetailPage({ params }: { params: { traceId: string } }) {
   const { data, isLoading, error } = useQuery({
-    queryKey: ['run', params.id],
-    queryFn: () => runsAPI.get(params.id) as Promise<{ run: Run; steps: RunStep[] }>,
+    queryKey: ['run', params.traceId],
+    queryFn: () => runsAPI.get(params.traceId) as Promise<{ run: Run; steps: RunStep[] }>,
   })
   const run = data?.run
   const steps = data?.steps ?? []

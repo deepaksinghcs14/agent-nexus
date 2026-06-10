@@ -2229,10 +2229,10 @@ function ConfigField({ label, children }: { label: string; children: React.React
 // ---------------------------------------------------------------------------
 // Page export — wrapped in ReactFlowProvider
 // ---------------------------------------------------------------------------
-export default function WorkflowBuilderPage({ params }: { params: { id: string } }) {
+export default function WorkflowBuilderPage({ params }: { params: { workflowId: string } }) {
   return (
     <ReactFlowProvider>
-      <WorkflowBuilderInner groupId={params.id} />
+      <WorkflowBuilderInner groupId={params.workflowId} />
     </ReactFlowProvider>
   )
 }
