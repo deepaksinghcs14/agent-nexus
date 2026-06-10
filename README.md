@@ -250,6 +250,33 @@ GET    /api/v1/runs/:id
 
 ---
 
+## Roadmap
+
+What's working today vs. what's coming next:
+
+| Feature | Status |
+|---------|--------|
+| Multi-provider LLM support (Claude, GPT, Gemini, Ollama) | ✅ Done |
+| Agent builder + playground with live SSE traces | ✅ Done |
+| Visual workflow canvas (pipeline + supervisor) | ✅ Done |
+| MCP server integration (HTTP + stdio) | ✅ Done |
+| Risk-based approval gates | ✅ Done |
+| pgvector memory (conversation, agent, workspace scopes) | ✅ Done |
+| Filesystem connector (RAG — chunk, embed, retrieve) | ✅ Done |
+| Full run observability + cost tracking | ✅ Done |
+| Multi-workspace + RBAC | ✅ Done |
+| Admin dashboard + audit logs | ✅ Done |
+| Nexus AI meta-agent | ✅ Done |
+| Additional connectors (Slack, Jira, Confluence, GitHub, Google Drive) | 🔜 Planned |
+| Webhook / event triggers (run an agent on inbound HTTP event) | 🔜 Planned |
+| Agent versioning and snapshot rollback | 🔜 Planned |
+| Export / import agents and workflows (JSON) | 🔜 Planned |
+| API rate limiting per workspace | 🔜 Planned |
+| Run failure notifications (email, webhook) | 🔜 Planned |
+| Test coverage (Go unit + integration, frontend component tests) | 🔜 Planned |
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and code standards.
