@@ -25,10 +25,10 @@ jobs:
         working-directory: services/api
         run: go test ./...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          working-directory: services/api
+        working-directory: services/api
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          golangci-lint run ./...
       - name: govulncheck
         working-directory: services/api
         run: |
