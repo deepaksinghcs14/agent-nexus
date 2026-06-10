@@ -266,7 +266,7 @@ export interface AuditLog {
   created_at: string
 }
 
-export interface AgentGroup {
+export interface Workflow {
   id: string
   workspace_id: string
   name: string
@@ -281,10 +281,11 @@ export interface AgentGroup {
   updated_at: string
 }
 
-// Workflow graph types (agent groups visual builder)
-export type WorkflowNodeType = 'start' | 'end' | 'agent' | 'supervisor' | 'condition' | 'parallel' | 'join' | 'loop'
+// Backward-compat alias — prefer Workflow in new code
+export type AgentGroup = Workflow
 
-export type Workflow = AgentGroup
+// Workflow graph types
+export type WorkflowNodeType = 'start' | 'end' | 'agent' | 'supervisor' | 'condition' | 'parallel' | 'join' | 'loop'
 
 export interface WorkflowNode {
   id: string
@@ -384,7 +385,11 @@ export interface InvokeRunResponse {
   run_id: string
   conversation_id: string
   status: 'running' | 'pending'
+  workflow_id?: string
+  workflow_name?: string
+  /** @deprecated use workflow_id */
   group_id?: string
+  /** @deprecated use workflow_name */
   group_name?: string
   mode?: string
   message?: string

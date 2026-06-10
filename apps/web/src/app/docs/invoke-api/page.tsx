@@ -8,11 +8,11 @@ export default function InvokeApiDoc() {
   return (
     <DocPage
       title="Invoke API"
-      subtitle="Run agents and agent groups with a single HTTP request. Supports both streaming (SSE) and polling modes."
+      subtitle="Run agents and workflows with a single HTTP request. Supports both streaming (SSE) and polling modes."
     >
-      <h2>Invoke an Agent or Group</h2>
+      <h2>Invoke an Agent or Workflow</h2>
       <p>
-        Select an agent or agent group below and send a message to it directly from the browser.
+        Select an agent or workflow below and send a message to it directly from the browser.
         Returns a <code>run_id</code> immediately; the agent runs asynchronously in polling mode,
         or streams SSE events in real time when streaming is enabled.
       </p>

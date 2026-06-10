@@ -13,7 +13,7 @@ type Handlers struct {
 	Workspace     *WorkspaceHandler
 	Runs          *RunsHandler
 	Memory        *MemoryHandler
-	Groups        *GroupsHandler
+	Workflows     *WorkflowsHandler
 	Admin         *AdminHandler
 	APITokens     *APITokensHandler
 	Invoke        *InvokeHandler

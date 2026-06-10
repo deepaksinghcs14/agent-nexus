@@ -12,7 +12,7 @@ const NAV = [
     items: [
       { label: 'Overview',          href: '/docs' },
       { label: 'What is an Agent',  href: '/docs/what-is-an-agent' },
-      { label: 'Agent Groups',      href: '/docs/what-is-an-agent-group' },
+      { label: 'Workflows',          href: '/docs/what-is-an-agent-group' },
     ],
   },
   {
