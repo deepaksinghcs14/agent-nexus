@@ -124,7 +124,7 @@ func (h *InvokeHandler) Group(w http.ResponseWriter, r *http.Request) {
 	// Verify group exists in this workspace
 	var gName, gMode string
 	err := h.pool.QueryRow(r.Context(),
-		`SELECT name, mode FROM agent_groups WHERE id=$1::uuid AND workspace_id=$2::uuid AND status='active'`,
+		`SELECT name, mode FROM workflows WHERE id=$1::uuid AND workspace_id=$2::uuid AND status='active'`,
 		groupID, ws).Scan(&gName, &gMode)
 	if err != nil {
 		errs.Write(w, errs.NotFound("agent group not found"))
