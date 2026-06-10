@@ -346,11 +346,7 @@ func (h *WebhookIngressHandler) dispatchRun(trig domain.WebhookTrigger, input st
 
 // verifyHMAC checks "sha256=<hex>" against HMAC-SHA256(secret, body).
 func verifyHMAC(body []byte, secret, header string) bool {
-	expected := header
-	prefix := "sha256="
-	if strings.HasPrefix(expected, prefix) {
-		expected = expected[len(prefix):]
-	}
+	expected := strings.TrimPrefix(header, "sha256=")
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
 	got := hex.EncodeToString(mac.Sum(nil))
