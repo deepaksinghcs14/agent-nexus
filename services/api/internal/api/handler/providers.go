@@ -254,18 +254,6 @@ func (h *ProvidersHandler) OAuthGoogleAuthorize(w http.ResponseWriter, r *http.R
 	errs.WriteJSON(w, http.StatusOK, map[string]string{"auth_url": authURL})
 }
 
-func (h *ProvidersHandler) apiBaseURL(r *http.Request) string {
-	proto := r.Header.Get("X-Forwarded-Proto")
-	if proto == "" {
-		if r.TLS != nil {
-			proto = "https"
-		} else {
-			proto = "http"
-		}
-	}
-	return proto + "://" + r.Host
-}
-
 // OAuthGoogleCallback receives the authorization code from Google and exchanges it for tokens.
 func (h *ProvidersHandler) OAuthGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")

@@ -131,7 +131,7 @@ func (h *MCPHandler) Sync(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.Internal("failed to begin transaction"))
 		return
 	}
-	defer tx.Rollback(r.Context()) //nolint:errcheck
+	defer func() { _ = tx.Rollback(r.Context()) }()
 
 	tx.Exec(r.Context(), `DELETE FROM mcp_tools WHERE server_id=$1::uuid`, s.ID) //nolint:errcheck
 	for _, t := range tools {

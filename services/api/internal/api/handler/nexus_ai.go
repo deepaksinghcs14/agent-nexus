@@ -137,7 +137,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 		InputSchema: json.RawMessage(`{
 			"type":"object",
 			"properties":{
-				"group_id":{"type":"string","description":"The workflow ID returned by create_workflow"},
+				"workflow_id":{"type":"string","description":"The workflow ID returned by create_workflow"},
 				"nodes":{
 					"type":"array",
 					"description":"List of workflow nodes",
@@ -168,7 +168,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 					}
 				}
 			},
-			"required":["group_id","nodes","edges"]
+			"required":["workflow_id","nodes","edges"]
 		}`),
 	},
 }
@@ -435,7 +435,7 @@ func (h *NexusAIHandler) executeTool(ctx context.Context, ws, uid, name string, 
 	case "list_agents":
 		return h.toolListAgents(ctx, ws)
 	case "list_workflows":
-		return h.toolListAgentGroups(ctx, ws)
+		return h.toolListWorkflows(ctx, ws)
 	case "list_tools":
 		return h.toolListTools(ctx, ws)
 	case "list_connectors":
@@ -443,7 +443,7 @@ func (h *NexusAIHandler) executeTool(ctx context.Context, ws, uid, name string, 
 	case "create_agent":
 		return h.toolCreateAgent(ctx, ws, uid, input)
 	case "create_workflow":
-		return h.toolCreateGroup(ctx, ws, uid, input)
+		return h.toolCreateWorkflow(ctx, ws, uid, input)
 	case "save_workflow_graph":
 		return h.toolSaveGraph(ctx, ws, input)
 	default:
@@ -549,7 +549,7 @@ func (h *NexusAIHandler) toolListAgents(ctx context.Context, ws string) (*toolRe
 	return &toolResult{Label: fmt.Sprintf("Listed %d agents", len(out)), Data: out}, nil
 }
 
-func (h *NexusAIHandler) toolListAgentGroups(ctx context.Context, ws string) (*toolResult, error) {
+func (h *NexusAIHandler) toolListWorkflows(ctx context.Context, ws string) (*toolResult, error) {
 	rows, err := h.pool.Query(ctx,
 		`SELECT id::text, name, description, mode, status FROM workflows
 		 WHERE workspace_id=$1::uuid ORDER BY created_at DESC`, ws)
@@ -718,7 +718,7 @@ func (h *NexusAIHandler) toolCreateAgent(ctx context.Context, ws, uid string, in
 	}, nil
 }
 
-func (h *NexusAIHandler) toolCreateGroup(ctx context.Context, ws, uid string, input json.RawMessage) (*toolResult, error) {
+func (h *NexusAIHandler) toolCreateWorkflow(ctx context.Context, ws, uid string, input json.RawMessage) (*toolResult, error) {
 	var args struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
@@ -754,8 +754,8 @@ func (h *NexusAIHandler) toolCreateGroup(ctx context.Context, ws, uid string, in
 
 func (h *NexusAIHandler) toolSaveGraph(ctx context.Context, ws string, input json.RawMessage) (*toolResult, error) {
 	var args struct {
-		GroupID string `json:"group_id"`
-		Nodes   []struct {
+		WorkflowID string `json:"workflow_id"`
+		Nodes      []struct {
 			ID        string         `json:"id"`
 			NodeType  string         `json:"node_type"`
 			AgentID   string         `json:"agent_id"`
@@ -772,15 +772,15 @@ func (h *NexusAIHandler) toolSaveGraph(ctx context.Context, ws string, input jso
 	if err := json.Unmarshal(input, &args); err != nil {
 		return nil, fmt.Errorf("invalid save_workflow_graph input: %w", err)
 	}
-	if args.GroupID == "" {
-		return nil, fmt.Errorf("save_workflow_graph requires group_id")
+	if args.WorkflowID == "" {
+		return nil, fmt.Errorf("save_workflow_graph requires workflow_id")
 	}
 
-	// Verify group belongs to this workspace and fetch name for auto-tagging.
-	var groupName string
+	// Verify workflow belongs to this workspace and fetch name for auto-tagging.
+	var workflowName string
 	if err := h.pool.QueryRow(ctx,
 		`SELECT name FROM workflows WHERE id=$1::uuid AND workspace_id=$2::uuid`,
-		args.GroupID, ws).Scan(&groupName); err != nil {
+		args.WorkflowID, ws).Scan(&workflowName); err != nil {
 		return nil, fmt.Errorf("workflow not found")
 	}
 
@@ -788,11 +788,11 @@ func (h *NexusAIHandler) toolSaveGraph(ctx context.Context, ws string, input jso
 	if err != nil {
 		return nil, fmt.Errorf("failed to start transaction: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Delete existing graph.
 	if _, err := tx.Exec(ctx,
-		`DELETE FROM workflow_nodes WHERE workflow_id=$1::uuid`, args.GroupID); err != nil {
+		`DELETE FROM workflow_nodes WHERE workflow_id=$1::uuid`, args.WorkflowID); err != nil {
 		return nil, fmt.Errorf("failed to clear graph: %w", err)
 	}
 
@@ -813,19 +813,19 @@ func (h *NexusAIHandler) toolSaveGraph(ctx context.Context, ws string, input jso
 			_, err = tx.Exec(ctx,
 				`INSERT INTO workflow_nodes(id,workflow_id,node_type,agent_id,position_x,position_y,config)
 				 VALUES($1::uuid,$2::uuid,$3,$4::uuid,$5,$6,$7::jsonb)`,
-				serverID, args.GroupID, n.NodeType, n.AgentID, n.PositionX, n.PositionY, string(cfgJSON))
+				serverID, args.WorkflowID, n.NodeType, n.AgentID, n.PositionX, n.PositionY, string(cfgJSON))
 			if err == nil {
 				// Auto-tag the agent with the workflow name
 				tx.Exec(ctx, //nolint:errcheck
 					`UPDATE agents SET tags = array_append(tags, $1), updated_at=NOW()
 					 WHERE id=$2::uuid AND NOT ($1 = ANY(tags))`,
-					groupName, n.AgentID)
+					workflowName, n.AgentID)
 			}
 		} else {
 			_, err = tx.Exec(ctx,
 				`INSERT INTO workflow_nodes(id,workflow_id,node_type,position_x,position_y,config)
 				 VALUES($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`,
-				serverID, args.GroupID, n.NodeType, n.PositionX, n.PositionY, string(cfgJSON))
+				serverID, args.WorkflowID, n.NodeType, n.PositionX, n.PositionY, string(cfgJSON))
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to insert node %q: %w", n.ID, err)
@@ -843,12 +843,12 @@ func (h *NexusAIHandler) toolSaveGraph(ctx context.Context, ws string, input jso
 			_, err = tx.Exec(ctx,
 				`INSERT INTO workflow_edges(id,workflow_id,source_node_id,target_node_id,label)
 				 VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5)`,
-				uuid.NewString(), args.GroupID, srcID, tgtID, e.Label)
+				uuid.NewString(), args.WorkflowID, srcID, tgtID, e.Label)
 		} else {
 			_, err = tx.Exec(ctx,
 				`INSERT INTO workflow_edges(id,workflow_id,source_node_id,target_node_id)
 				 VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid)`,
-				uuid.NewString(), args.GroupID, srcID, tgtID)
+				uuid.NewString(), args.WorkflowID, srcID, tgtID)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to insert edge: %w", err)
@@ -861,8 +861,8 @@ func (h *NexusAIHandler) toolSaveGraph(ctx context.Context, ws string, input jso
 
 	return &toolResult{
 		Label: fmt.Sprintf("Workflow graph saved (%d nodes, %d edges)", len(args.Nodes), len(args.Edges)),
-		Link:  "/workflows/" + args.GroupID,
-		Data:  map[string]any{"ok": true, "group_id": args.GroupID, "node_count": len(args.Nodes), "edge_count": len(args.Edges)},
+		Link:  "/workflows/" + args.WorkflowID,
+		Data:  map[string]any{"ok": true, "workflow_id": args.WorkflowID, "node_count": len(args.Nodes), "edge_count": len(args.Edges)},
 	}, nil
 }
 

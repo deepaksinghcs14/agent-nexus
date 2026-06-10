@@ -17,7 +17,7 @@ export default function DocsOverview() {
           badge: 'Concept',
         },
         {
-          title: 'What is an Agent Group?',
+          title: 'What is a Workflow?',
           href: '/docs/what-is-an-agent-group',
           desc: 'Chain multiple specialised agents together in a pipeline.',
           badge: 'Concept',
@@ -53,7 +53,7 @@ export default function DocsOverview() {
         {
           title: 'Invoke API',
           href: '/docs/invoke-api',
-          desc: 'Invoke agents and agent groups with a single HTTP request.',
+          desc: 'Invoke agents and workflows with a single HTTP request.',
           badge: 'API',
         },
         {
@@ -79,7 +79,7 @@ export default function DocsOverview() {
       <p>
         The response includes a <code>run_id</code>. Poll{' '}
         <code>GET /api/v1/runs/:id</code> to check status and retrieve output.
-        Or set <code>"stream": true</code> to receive SSE events in real time.
+        Or set <code>&quot;stream&quot;: true</code> to receive SSE events in real time.
       </p>
 
       <h2>Base URL</h2>

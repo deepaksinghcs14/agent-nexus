@@ -106,11 +106,11 @@ func (h *InvokeHandler) Agent(w http.ResponseWriter, r *http.Request) {
 	go h.executeRun(context.Background(), a, ws, uid, runID, convID, req.Input, nil)
 }
 
-// Group handles POST /api/v1/invoke/groups/:groupId
+// Group handles POST /api/v1/invoke/workflows/:workflowId
 func (h *InvokeHandler) Group(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	uid := middleware.UserIDFromCtx(r.Context())
-	groupID := chi.URLParam(r, "groupId")
+	groupID := chi.URLParam(r, "workflowId")
 
 	var req struct {
 		Input  string `json:"input"`
@@ -124,19 +124,19 @@ func (h *InvokeHandler) Group(w http.ResponseWriter, r *http.Request) {
 	// Verify group exists in this workspace
 	var gName, gMode string
 	err := h.pool.QueryRow(r.Context(),
-		`SELECT name, mode FROM agent_groups WHERE id=$1::uuid AND workspace_id=$2::uuid AND status='active'`,
+		`SELECT name, mode FROM workflows WHERE id=$1::uuid AND workspace_id=$2::uuid AND status='active'`,
 		groupID, ws).Scan(&gName, &gMode)
 	if err != nil {
-		errs.Write(w, errs.NotFound("agent group not found"))
+		errs.Write(w, errs.NotFound("workflow not found"))
 		return
 	}
 
-	// Create a conversation and top-level run record scoped to the group
+	// Create a conversation and top-level run record scoped to the workflow
 	runID := uuid.NewString()
 	convID := uuid.NewString()
 	if _, err := h.pool.Exec(r.Context(),
 		`INSERT INTO conversations(id,workspace_id,user_id,title) VALUES($1::uuid,$2::uuid,$3::uuid,$4)`,
-		convID, ws, uid, "Group: "+gName); err != nil {
+		convID, ws, uid, "Workflow: "+gName); err != nil {
 		errs.Write(w, errs.Internal("failed to create conversation"))
 		return
 	}
@@ -183,7 +183,7 @@ func (h *InvokeHandler) Group(w http.ResponseWriter, r *http.Request) {
 func (h *InvokeHandler) ensureConversation(ctx context.Context, convID, ws, uid, agentID string) (string, error) {
 	if convID != "" {
 		var exists bool
-		h.pool.QueryRow(ctx,
+		_ = h.pool.QueryRow(ctx,
 			`SELECT EXISTS(SELECT 1 FROM conversations WHERE id=$1::uuid AND workspace_id=$2::uuid)`,
 			convID, ws).Scan(&exists)
 		if !exists {
@@ -763,7 +763,7 @@ func (h *InvokeHandler) executeGroupRun(
 				// request ctx may be cancelled if the SSE client disconnected, but
 				// we still need the output for downstream nodes.
 				var subOutput string
-				h.pool.QueryRow(context.Background(), //nolint:errcheck
+				_ = h.pool.QueryRow(context.Background(),
 					`SELECT COALESCE(output,'') FROM runs WHERE id=$1::uuid`, subRunID).Scan(&subOutput)
 
 				outputMu.Lock()
@@ -1003,19 +1003,3 @@ func evaluateExpression(expression, output string) bool {
 	return true
 }
 
-// scanMessages is a helper used in executeRun.
-func scanMessages(rows interface {
-	Next() bool
-	Scan(...any) error
-	Close()
-}) []provider.Message {
-	defer rows.Close()
-	var msgs []provider.Message
-	for rows.Next() {
-		var role, content, toolCallID, toolName string
-		if rows.Scan(&role, &content, &toolCallID, &toolName) == nil {
-			msgs = append(msgs, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
-		}
-	}
-	return msgs
-}

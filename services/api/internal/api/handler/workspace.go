@@ -337,7 +337,7 @@ func (h *WorkspaceHandler) ensureRoles(ctx context.Context, workspaceID string) 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 	roles := []string{"owner", "admin", "member", "viewer"}
 	for _, role := range roles {
 		if _, err := tx.Exec(ctx, `INSERT INTO roles(workspace_id,name,permissions) VALUES($1::uuid,$2,'[]'::jsonb) ON CONFLICT(workspace_id,name) DO NOTHING`, workspaceID, role); err != nil {

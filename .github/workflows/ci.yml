@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version-file: services/api/go.mod
       - name: Build
         working-directory: services/api
         run: go build ./...
@@ -25,10 +25,10 @@ jobs:
         working-directory: services/api
         run: go test ./...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          working-directory: services/api
+        working-directory: services/api
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          golangci-lint run ./...
       - name: govulncheck
         working-directory: services/api
         run: |

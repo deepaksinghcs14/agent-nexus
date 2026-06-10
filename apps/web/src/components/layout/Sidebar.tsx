@@ -22,7 +22,7 @@ const userNav: NavGroup[] = [
     label: 'Build',
     items: [
       { label: 'Agents',       href: '/agents',       icon: Bot },
-      { label: 'Agent Groups', href: '/agent-groups', icon: GitBranch },
+      { label: 'Workflows',    href: '/workflows',    icon: GitBranch },
       { label: 'Tools',        href: '/tools',        icon: Wrench },
       { label: 'MCP Servers',  href: '/mcp-servers',  icon: Plug },
       { label: 'Connectors',   href: '/connectors',   icon: Link2 },

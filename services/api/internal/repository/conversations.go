@@ -20,7 +20,7 @@ func NewConversationRepository(pool *pgxpool.Pool) *ConversationRepository {
 
 func (r *ConversationRepository) List(ctx context.Context, workspaceID string) ([]domain.Conversation, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id::text, workspace_id::text, agent_id::text, user_id::text, title,
+		`SELECT id::text, workspace_id::text, COALESCE(agent_id::text,''), user_id::text, title,
 		        message_count, token_count, created_at, updated_at
 		 FROM conversations WHERE workspace_id = $1::uuid ORDER BY updated_at DESC`, workspaceID)
 	if err != nil {
@@ -54,7 +54,7 @@ func (r *ConversationRepository) Create(ctx context.Context, c *domain.Conversat
 func (r *ConversationRepository) Get(ctx context.Context, id, workspaceID string) (*domain.Conversation, error) {
 	var c domain.Conversation
 	err := r.pool.QueryRow(ctx,
-		`SELECT id::text, workspace_id::text, agent_id::text, user_id::text, title,
+		`SELECT id::text, workspace_id::text, COALESCE(agent_id::text,''), user_id::text, title,
 		        message_count, token_count, created_at, updated_at
 		 FROM conversations WHERE id=$1::uuid AND workspace_id=$2::uuid`, id, workspaceID).
 		Scan(&c.ID, &c.WorkspaceID, &c.AgentID, &c.UserID, &c.Title,

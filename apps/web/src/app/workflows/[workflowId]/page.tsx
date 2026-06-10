@@ -2,7 +2,7 @@
 
 // Assumptions:
 // - @xyflow/react v12 is installed
-// - groupsAPI.getGraph / saveGraph hit /api/v1/agent-groups/:id/graph
+// - workflowsAPI.getGraph / saveGraph hit /api/v1/workflows/:id/graph
 // - invokeAPI.group hits /api/v1/invoke/groups/:id with { input, stream: true }
 // - SSE node events carry node_id, node_name, node_type, result fields (added to SSEEvent type)
 
@@ -43,8 +43,8 @@ import {
   ChevronUp,
   BookOpen,
 } from 'lucide-react'
-import { groupsAPI, agentsAPI, invokeAPI } from '@/lib/api'
-import type { AgentGroup, Agent, WorkflowGraph, WorkflowNode, WorkflowEdge, WorkflowNodeType, SSEEvent } from '@/types'
+import { workflowsAPI, agentsAPI, invokeAPI } from '@/lib/api'
+import type { Workflow, Agent, WorkflowGraph, WorkflowNode, WorkflowEdge, WorkflowNodeType, SSEEvent } from '@/types'
 
 // ---------------------------------------------------------------------------
 // Type augmentation for node data
@@ -86,6 +86,7 @@ function edgeColor(label?: string | null) {
   if (label === 'yes') return '#22c55e'
   if (label === 'no') return '#ef4444'
   if (label === 'loop') return '#8b5cf6'
+  if (label === 'delegate') return '#d97706'
   return '#534AB7'
 }
 
@@ -100,17 +101,18 @@ function labelToSourceHandle(label?: string | null): string | undefined {
 function toRFEdge(e: WorkflowEdge): Edge {
   const color = edgeColor(e.label)
   const sourceHandle = labelToSourceHandle(e.label)
+  const isDelegate = e.label === 'delegate'
   return {
     id: e.id || `e-${e.source_node_id}-${e.target_node_id}`,
     source: e.source_node_id,
     target: e.target_node_id,
     sourceHandle: sourceHandle,
-    label: e.label || undefined,
+    label: isDelegate ? 'delegates' : (e.label || undefined),
     type: 'smoothstep',
     animated: true,
     zIndex: 1000,
     markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
-    style: { stroke: color, strokeWidth: 2.5 },
+    style: { stroke: color, strokeWidth: isDelegate ? 2 : 2.5, strokeDasharray: isDelegate ? '6 3' : undefined },
     labelStyle: { fontSize: 10, fill: color, fontWeight: 700 },
     labelBgStyle: { fill: '#fff', fillOpacity: 0.9 },
   }
@@ -286,10 +288,45 @@ function LoopNode({ data }: NodeProps) {
   )
 }
 
+function SupervisorNode({ data }: NodeProps) {
+  const nodeData = data as NodeData
+  const borderColor = nodeData.status === 'done' ? '#22c55e' : nodeData.status === 'error' ? '#ef4444' : '#d97706'
+  const glow = nodeData.status === 'running' ? '0 0 0 3px rgba(217,119,6,0.45)' : 'none'
+  return (
+    <div style={{
+      minWidth: 160, background: '#fffbeb', border: `2px solid ${borderColor}`,
+      borderRadius: 10, padding: '10px 14px', fontFamily: 'Inter, sans-serif',
+      boxShadow: glow, position: 'relative',
+    }}>
+      {nodeData.status === 'done' && (
+        <div style={{ position: 'absolute', top: -7, right: -7, background: '#22c55e', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>✓</div>
+      )}
+      {nodeData.status === 'running' && (
+        <div style={{ position: 'absolute', top: -7, right: -7, background: '#d97706', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 8, height: 8, border: '1.5px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+        </div>
+      )}
+      <Handle type="target" position={Position.Left} style={{ background: '#d97706', width: 10, height: 10, border: '2px solid #fff' }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        <span style={{ fontSize: 14, lineHeight: 1 }}>👑</span>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e' }}>{nodeData.label}</div>
+      </div>
+      {nodeData.agent_model && (
+        <div style={{ display: 'flex', gap: 4 }}>
+          <span style={{ fontSize: 10, background: '#fef3c7', color: '#d97706', borderRadius: 4, padding: '1px 6px' }}>{nodeData.agent_model}</span>
+          {nodeData.agent_provider && <span style={{ fontSize: 10, background: '#f4f4f5', color: '#71717a', borderRadius: 4, padding: '1px 6px' }}>{nodeData.agent_provider}</span>}
+        </div>
+      )}
+      <Handle type="source" position={Position.Right} style={{ background: '#d97706', width: 10, height: 10, border: '2px solid #fff' }} />
+    </div>
+  )
+}
+
 const nodeTypes = {
   start: StartNode,
   end: EndNode,
   agent: AgentNode,
+  supervisor: SupervisorNode,
   condition: ConditionNode,
   parallel: ParallelNode,
   join: JoinNode,
@@ -300,13 +337,14 @@ const nodeTypes = {
 // Palette items
 // ---------------------------------------------------------------------------
 const PALETTE_ITEMS: { type: WorkflowNodeType; label: string; icon: React.ReactNode; color: string }[] = [
-  { type: 'start',     label: 'Start',    icon: <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#22c55e' }} />, color: '#22c55e' },
-  { type: 'end',       label: 'End',      icon: <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#ef4444' }} />, color: '#ef4444' },
-  { type: 'agent',     label: 'Agent',    icon: <div style={{ width: 20, height: 14, border: '2px solid #534AB7', borderRadius: 4 }} />, color: '#534AB7' },
-  { type: 'condition', label: 'Condition',icon: <div style={{ width: 16, height: 16, border: '2px solid #f59e0b', transform: 'rotate(45deg)' }} />, color: '#f59e0b' },
-  { type: 'parallel',  label: 'Parallel', icon: <GitBranch size={16} color="#534AB7" />, color: '#534AB7' },
-  { type: 'join',      label: 'Join',     icon: <Merge size={16} color="#534AB7" />, color: '#534AB7' },
-  { type: 'loop',      label: 'Loop',     icon: <RefreshCcw size={16} color="#8b5cf6" />, color: '#8b5cf6' },
+  { type: 'start',      label: 'Start',      icon: <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#22c55e' }} />, color: '#22c55e' },
+  { type: 'end',        label: 'End',        icon: <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#ef4444' }} />, color: '#ef4444' },
+  { type: 'agent',      label: 'Agent',      icon: <div style={{ width: 20, height: 14, border: '2px solid #534AB7', borderRadius: 4 }} />, color: '#534AB7' },
+  { type: 'supervisor', label: 'Supervisor', icon: <span style={{ fontSize: 16, lineHeight: 1 }}>👑</span>, color: '#d97706' },
+  { type: 'condition',  label: 'Condition',  icon: <div style={{ width: 16, height: 16, border: '2px solid #f59e0b', transform: 'rotate(45deg)' }} />, color: '#f59e0b' },
+  { type: 'parallel',   label: 'Parallel',   icon: <GitBranch size={16} color="#534AB7" />, color: '#534AB7' },
+  { type: 'join',       label: 'Join',       icon: <Merge size={16} color="#534AB7" />, color: '#534AB7' },
+  { type: 'loop',       label: 'Loop',       icon: <RefreshCcw size={16} color="#8b5cf6" />, color: '#8b5cf6' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -696,6 +734,399 @@ End with a checklist the developer can use to verify all fixes are applied.`,
       ],
     },
   },
+  {
+    id: 'supervisor-intelligence',
+    name: 'Enterprise Intelligence Pipeline',
+    description: 'Full-spectrum research pipeline: parallel ingestion → supervisor-coordinated analysis team → quality loop → gated executive briefing',
+    category: 'Supervisor',
+    nodes: [
+      // ── Phase 1: Pre-processing ──────────────────────────────────────────
+      { key: 'start',        type: 'start',      label: 'Start',                 x: 50,   y: 300 },
+      { key: 'preprocess',   type: 'agent',      label: 'Query Preprocessor',    x: 260,  y: 300, config: { label: 'Query Preprocessor' } },
+      // ── Phase 2: Parallel research ingestion ─────────────────────────────
+      { key: 'parallel',     type: 'parallel',   label: 'Parallel',              x: 490,  y: 300 },
+      { key: 'web_intel',    type: 'agent',       label: 'Web Intelligence',      x: 710,  y: 120, config: { label: 'Web Intelligence' } },
+      { key: 'domain_exp',   type: 'agent',       label: 'Domain Expert',         x: 710,  y: 480, config: { label: 'Domain Expert' } },
+      { key: 'join1',        type: 'join',        label: 'Join',                  x: 950,  y: 300 },
+      // ── Phase 3: Supervisor + specialist team (below the main axis) ──────
+      { key: 'supervisor',   type: 'supervisor',  label: 'Intelligence Supervisor', x: 1170, y: 300 },
+      { key: 'data_analyst', type: 'agent',       label: 'Data Analyst',          x: 970,  y: 580, config: { label: 'Data Analyst' } },
+      { key: 'fact_verify',  type: 'agent',       label: 'Fact Verifier',         x: 1130, y: 580, config: { label: 'Fact Verifier' } },
+      { key: 'src_eval',     type: 'agent',       label: 'Source Evaluator',      x: 1290, y: 580, config: { label: 'Source Evaluator' } },
+      { key: 'insight_gen',  type: 'agent',       label: 'Insight Generator',     x: 1450, y: 580, config: { label: 'Insight Generator' } },
+      // ── Phase 4: Quality control loop ────────────────────────────────────
+      { key: 'loop',         type: 'loop',        label: 'Quality Loop',          x: 1430, y: 300, config: { exit_condition: 'contains:QUALITY_PASS', max_iterations: 3 } },
+      // ── Phase 5: Approval gate ────────────────────────────────────────────
+      { key: 'gate',         type: 'condition',   label: 'Executive Approval?',   x: 1680, y: 300, config: { expression: 'contains:EXECUTIVE_APPROVED' } },
+      { key: 'exec_brief',   type: 'agent',       label: 'Executive Briefing',    x: 1920, y: 120, config: { label: 'Executive Briefing' } },
+      { key: 'gap_report',   type: 'agent',       label: 'Gap Analysis Report',   x: 1920, y: 480, config: { label: 'Gap Analysis Report' } },
+      // ── Phase 6: Final merge ─────────────────────────────────────────────
+      { key: 'join2',        type: 'join',        label: 'Join',                  x: 2160, y: 300 },
+      { key: 'end',          type: 'end',         label: 'End',                   x: 2360, y: 300 },
+    ],
+    edges: [
+      // Pre-processing
+      { from: 'start',       to: 'preprocess' },
+      { from: 'preprocess',  to: 'parallel' },
+      // Parallel branches
+      { from: 'parallel',    to: 'web_intel' },
+      { from: 'parallel',    to: 'domain_exp' },
+      { from: 'web_intel',   to: 'join1' },
+      { from: 'domain_exp',  to: 'join1' },
+      // Into supervisor
+      { from: 'join1',       to: 'supervisor' },
+      // Supervisor → main flow
+      { from: 'supervisor',  to: 'loop' },
+      // Supervisor → team members (dashed delegate edges)
+      { from: 'supervisor',  to: 'data_analyst', label: 'delegate' },
+      { from: 'supervisor',  to: 'fact_verify',  label: 'delegate' },
+      { from: 'supervisor',  to: 'src_eval',     label: 'delegate' },
+      { from: 'supervisor',  to: 'insight_gen',  label: 'delegate' },
+      // Quality loop
+      { from: 'loop',        to: 'supervisor',   label: 'loop' },
+      { from: 'loop',        to: 'gate',         label: 'exit' },
+      // Approval gate branches
+      { from: 'gate',        to: 'exec_brief',   label: 'yes' },
+      { from: 'gate',        to: 'gap_report',   label: 'no' },
+      // Final merge
+      { from: 'exec_brief',  to: 'join2' },
+      { from: 'gap_report',  to: 'join2' },
+      { from: 'join2',       to: 'end' },
+    ],
+    guide: {
+      overview: `A production-grade intelligence pipeline that demonstrates every workflow node type working together.
+
+Phase 1 — Preprocessing: A Query Preprocessor structures the raw input into a precise research brief.
+
+Phase 2 — Parallel ingestion: Two specialist agents run concurrently. Web Intelligence searches the web for current data while Domain Expert applies deep domain knowledge. Their outputs are merged by a Join node.
+
+Phase 3 — Supervisor coordination: The Intelligence Supervisor orchestrates four team agents (via dashed delegate edges). It calls Data Analyst, Fact Verifier, Source Evaluator, and Insight Generator as tools — deciding when and in what order. The supervisor synthesises their outputs and marks the result QUALITY_PASS if the analysis is complete.
+
+Phase 4 — Quality loop: The Loop node checks for QUALITY_PASS in the supervisor's output. If not found, it retries the supervisor (up to 3 times). If found, it exits to the approval gate.
+
+Phase 5 — Executive gate: A Condition node checks for EXECUTIVE_APPROVED. If present, the Executive Briefing agent produces a polished summary. If not, the Gap Analysis Report agent identifies what still needs work.
+
+Phase 6 — Final join: Both gate branches merge into a Join node before the End.`,
+      agents: [
+        {
+          name: 'Query Preprocessor',
+          role: 'Transform raw user input into a structured research brief',
+          systemPrompt: `You are a research query preprocessor. Transform the user's input into a structured brief that downstream agents can act on precisely.
+
+## Research Question
+[Clear, precise formulation of the investigation]
+
+## Scope & Constraints
+- Domain: [primary field]
+- Depth required: [overview / detailed / exhaustive]
+- Key assumptions: [list any]
+
+## Sub-questions to Answer
+1. [specific sub-question]
+2. [specific sub-question]
+3. [specific sub-question]
+
+## Success Criteria
+[What a complete, high-quality answer looks like — be specific]
+
+Always output this exact structure. Be concise but precise.`,
+          model: 'claude-haiku-4-5-20251001',
+        },
+        {
+          name: 'Web Intelligence',
+          role: 'Search the web and gather current, relevant intelligence',
+          systemPrompt: `You are a web intelligence specialist. Given a research brief, gather current and relevant information.
+
+## Web Intelligence Report
+
+### Summary
+[2-3 sentence synthesis of what you found]
+
+### Key Findings
+- [finding 1] — [context/source type]
+- [finding 2] — [context/source type]
+- [finding 3] — [context/source type]
+
+### Current Trends & Developments
+[What is happening right now in this space]
+
+### Data Points & Statistics
+[Any quantitative data found]
+
+### Intelligence Gaps
+[What could not be confirmed or remains unclear]
+
+Be factual, specific, and cite source types (news article, research paper, industry report, etc.).`,
+          tools: ['web_search'],
+          model: 'claude-sonnet-4-6',
+        },
+        {
+          name: 'Domain Expert',
+          role: 'Apply deep domain expertise and contextual knowledge',
+          systemPrompt: `You are a domain knowledge expert. Apply deep expertise to provide authoritative context on the research topic.
+
+## Domain Expert Report
+
+### Domain Context
+[Background and foundational knowledge essential to this topic]
+
+### Expert Analysis
+[What practitioners and academics know about this — draw on deep knowledge]
+
+### Frameworks & Mental Models
+[Key frameworks, theories or models that apply]
+
+### Domain-Specific Nuances
+[Edge cases, pitfalls, or subtleties that a non-expert would miss]
+
+### Confidence Assessment
+[Where your domain knowledge is strong vs. where you're less certain]
+
+Be authoritative and specific. Flag any areas where the question crosses into adjacent domains.`,
+          model: 'claude-sonnet-4-6',
+        },
+        {
+          name: 'Intelligence Supervisor',
+          role: 'Orchestrate the specialist team and synthesise a verified intelligence report',
+          systemPrompt: `You are a senior intelligence supervisor coordinating a team of four specialists. Use your tools to delegate analysis tasks:
+
+- data_analyst: Extracts quantitative patterns, metrics and statistical insights from the research
+- fact_verifier: Cross-checks claims for accuracy and flags unverified assertions
+- source_evaluator: Assesses credibility and quality of the research sources
+- insight_generator: Synthesises strategic insights and actionable recommendations
+
+Orchestration strategy:
+1. Call fact_verifier and source_evaluator first (they can work on the raw ingested data)
+2. Call data_analyst with the research to extract metrics and patterns
+3. Call insight_generator last with the full verified and analysed findings
+
+After reviewing all team outputs, produce a comprehensive intelligence report:
+
+# Intelligence Report
+
+## Executive Summary
+[3-4 sentence high-level answer]
+
+## Verified Key Findings
+[List verified, high-confidence findings with evidence]
+
+## Data & Metrics
+[Quantitative insights from data_analyst]
+
+## Strategic Insights
+[Synthesised insights and implications from insight_generator]
+
+## Confidence & Caveats
+[Overall confidence level and important limitations]
+
+## Recommendations
+[3-5 concrete, prioritised recommendations]
+
+---
+If the team has produced a complete, high-quality verified analysis:
+→ End with: QUALITY_PASS | EXECUTIVE_APPROVED
+
+If there are significant gaps, low-confidence findings, or the team flagged issues:
+→ End with: QUALITY_FAIL (and note what's missing)`,
+          model: 'claude-opus-4-8',
+        },
+        {
+          name: 'Data Analyst',
+          role: 'Extract quantitative patterns, metrics and statistical insights',
+          systemPrompt: `You are a quantitative data analyst. Analyse the research findings for measurable patterns and data-driven insights.
+
+## Data Analysis Report
+
+### Key Metrics Identified
+- [metric 1]: [value/range] — [significance]
+- [metric 2]: [value/range] — [significance]
+- [metric 3]: [value/range] — [significance]
+
+### Patterns & Correlations
+[Statistical or logical patterns in the data]
+
+### Trend Analysis
+[Direction and velocity of key trends]
+
+### Anomalies & Outliers
+[Unusual data points that warrant attention]
+
+### Data Quality Assessment
+- Coverage: HIGH / MEDIUM / LOW
+- Recency: CURRENT / DATED / MIXED
+- Confidence: [1-10 with brief justification]
+
+Be precise with numbers. If data is unavailable, state that explicitly rather than estimating.`,
+          model: 'claude-haiku-4-5-20251001',
+        },
+        {
+          name: 'Fact Verifier',
+          role: 'Cross-check accuracy of claims and flag unverified assertions',
+          systemPrompt: `You are a rigorous fact-checker. Systematically verify every major claim in the research findings.
+
+## Fact Verification Report
+
+### Claim Verification
+For each key claim in the research:
+- ✓ CONFIRMED: Strong supporting evidence
+- ⚠ UNCERTAIN: Partially supported or conflicting signals
+- ✗ DISPUTED: Evidence contradicts this claim
+
+### Verification Summary
+- Confirmed claims: [count]
+- Uncertain claims: [count] — [brief description]
+- Disputed claims: [count] — [brief description]
+
+### High-Risk Assertions
+[Claims that appear confident but have weak evidence — flag these prominently]
+
+### Overall Reliability Rating
+RELIABLE / PARTIALLY_RELIABLE / UNRELIABLE — [one sentence justification]
+
+Be strict. Flag speculation presented as fact. Note where claims require caveats.`,
+          model: 'claude-haiku-4-5-20251001',
+        },
+        {
+          name: 'Source Evaluator',
+          role: 'Assess credibility, bias and quality of research sources',
+          systemPrompt: `You are a source quality evaluator. Assess the credibility and reliability of all sources referenced in the research.
+
+## Source Evaluation Report
+
+### Source Inventory
+List each distinct source type found in the research with a quality rating:
+- [Source type]: ★★★★☆ — [brief credibility note]
+- [Source type]: ★★★☆☆ — [brief credibility note]
+
+### Bias Assessment
+[Potential ideological, commercial or selection biases in the source pool]
+
+### Coverage Gaps
+[Important perspectives or source types that are missing]
+
+### Source Diversity Score
+EXCELLENT / GOOD / ADEQUATE / POOR — [one sentence justification]
+
+### Recommended Additional Sources
+[2-3 specific source types that would strengthen the analysis]
+
+Be direct. Poor sources should be clearly labelled as such.`,
+          model: 'claude-haiku-4-5-20251001',
+        },
+        {
+          name: 'Insight Generator',
+          role: 'Synthesise verified findings into strategic insights and recommendations',
+          systemPrompt: `You are a strategic intelligence analyst. Transform verified research findings into actionable insights for decision-makers.
+
+## Strategic Intelligence Synthesis
+
+### Top Insights
+1. **[Insight title]**: [What this means and why it matters — 2-3 sentences]
+2. **[Insight title]**: [What this means and why it matters]
+3. **[Insight title]**: [What this means and why it matters]
+
+### Implications
+[What these insights mean for the organisation / decision-maker]
+
+### Risk Factors
+[Key risks or threats surfaced by the analysis]
+
+### Opportunities
+[Clear opportunities identified in the findings]
+
+### Prioritised Recommendations
+1. [Action] — Impact: HIGH | Urgency: HIGH/MEDIUM/LOW
+2. [Action] — Impact: MEDIUM | Urgency: HIGH/MEDIUM/LOW
+3. [Action] — Impact: MEDIUM | Urgency: HIGH/MEDIUM/LOW
+
+### Synthesis Confidence
+EXECUTIVE_APPROVED — [brief rationale]
+OR
+NEEDS_REVISION — [specific gaps that prevent executive sign-off]`,
+          model: 'claude-sonnet-4-6',
+        },
+        {
+          name: 'Executive Briefing',
+          role: 'Produce a polished, executive-ready intelligence brief',
+          systemPrompt: `You are an executive communications specialist. Transform the intelligence report into a crisp, decision-ready executive brief.
+
+# EXECUTIVE INTELLIGENCE BRIEF
+
+**Classification**: Internal Research | **Date**: [Today]
+
+## Situation Summary
+[3 sentences maximum — what's happening and why it matters NOW]
+
+## Key Takeaways
+• [Takeaway 1 — one sentence, direct]
+• [Takeaway 2 — one sentence, direct]
+• [Takeaway 3 — one sentence, direct]
+
+## Decision Points
+[What decisions need to be made and by when]
+
+## Recommended Actions
+| Action | Owner | Timeline | Priority |
+|--------|-------|----------|----------|
+| [action] | [team] | [timeframe] | HIGH |
+| [action] | [team] | [timeframe] | MEDIUM |
+
+## Risk if No Action
+[Clear consequence of inaction — one sentence]
+
+## Confidence Level
+[HIGH / MEDIUM / LOW] — [brief justification]
+
+Keep it to one page. Executives need clarity, not comprehensiveness.`,
+          model: 'claude-sonnet-4-6',
+        },
+        {
+          name: 'Gap Analysis Report',
+          role: 'Identify and document what is missing or unresolved in the analysis',
+          systemPrompt: `You are a research quality auditor. The analysis did not reach executive approval. Identify precisely what is missing or needs correction.
+
+# GAP ANALYSIS REPORT
+
+## Why Executive Approval Was Not Granted
+[Direct statement of the primary reason]
+
+## Critical Gaps
+For each gap that must be addressed:
+- **Gap**: [description]
+  - **Impact**: [why this matters]
+  - **Resolution**: [specific action needed]
+  - **Priority**: CRITICAL / HIGH / MEDIUM
+
+## Data Deficiencies
+[Specific data points that are missing, outdated or unreliable]
+
+## Unverified Claims
+[Claims that require additional validation before executive presentation]
+
+## Recommended Next Steps
+1. [Concrete next step with owner and timeline]
+2. [Concrete next step]
+3. [Concrete next step]
+
+## Estimated Gap Closure Effort
+[LOW (< 1 day) / MEDIUM (1-3 days) / HIGH (> 3 days)]
+
+Be specific and constructive. This report is used to brief the team on what to fix.`,
+          model: 'claude-haiku-4-5-20251001',
+        },
+      ],
+      steps: [
+        'Click "Create agents & load" — this creates all 9 agents and maps them to the canvas automatically',
+        'Open the Intelligence Supervisor node (gold/amber, 👑 crown) → Node Config → verify the agent is assigned',
+        'The 4 dashed amber edges from the Supervisor to team agents are delegate edges — those agents run as tools',
+        'The Loop node is pre-configured with exit_condition "contains:QUALITY_PASS" and max 3 iterations',
+        'The Condition node checks "contains:EXECUTIVE_APPROVED" — the Insight Generator must output this for the executive branch to fire',
+        'Run the workflow with an intelligence question, e.g. "Analyse the competitive landscape for enterprise AI agent platforms in 2025"',
+        'Watch the canvas — nodes light up as they run; the Supervisor calls team agents as tools and shows delegation events',
+        'If the supervisor produces QUALITY_PASS + EXECUTIVE_APPROVED, the Executive Briefing agent fires; otherwise Gap Analysis runs',
+      ],
+    },
+  },
 ]
 
 function modelToProvider(model?: string): string {
@@ -761,6 +1192,7 @@ function TemplateGalleryModal({
     Support:     { bg: '#dbeafe', text: '#1e40af' },
     Research:    { bg: '#d1fae5', text: '#065f46' },
     Engineering: { bg: '#ede9fe', text: '#5b21b6' },
+    Supervisor:  { bg: '#fef3c7', text: '#92400e' },
   }
 
   return (
@@ -859,7 +1291,7 @@ function TemplateGalleryModal({
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>Workflow nodes</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {selected.nodes.map((n) => {
-                        const color = n.type === 'start' ? '#22c55e' : n.type === 'end' ? '#ef4444' : n.type === 'condition' ? '#f59e0b' : n.type === 'loop' ? '#8b5cf6' : '#534AB7'
+                        const color = n.type === 'start' ? '#22c55e' : n.type === 'end' ? '#ef4444' : n.type === 'condition' ? '#f59e0b' : n.type === 'loop' ? '#8b5cf6' : n.type === 'supervisor' ? '#d97706' : '#534AB7'
                         return (
                           <span key={n.key} style={{
                             fontSize: 11, padding: '3px 8px', borderRadius: 6,
@@ -990,7 +1422,6 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [nodes, setNodes, onNodesChange] = useNodesState<any>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null)
@@ -1004,8 +1435,8 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 
   // Fetch group
   const { data: groupData } = useQuery({
-    queryKey: ['agent-group', groupId],
-    queryFn: () => groupsAPI.get(groupId) as Promise<AgentGroup>,
+    queryKey: ['workflow', groupId],
+    queryFn: () => workflowsAPI.get(groupId) as Promise<Workflow>,
   })
 
   // Fetch agents list for config panel
@@ -1017,15 +1448,15 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 
   // Fetch graph — TanStack Query v5 removed onSuccess; use useEffect instead
   const { data: graphData, isLoading: graphLoading } = useQuery({
-    queryKey: ['agent-group-graph', groupId],
-    queryFn: () => groupsAPI.getGraph(groupId),
+    queryKey: ['workflow-graph', groupId],
+    queryFn: () => workflowsAPI.getGraph(groupId),
   })
 
   const [graphInitialised, setGraphInitialised] = useState(false)
   useEffect(() => {
     if (graphInitialised || !graphData || !agentsData) return
     if (graphData.nodes?.length) {
-      setNodes(graphData.nodes.map((n) => toRFNode(n, agents)))
+      setNodes(graphData.nodes.map((n: WorkflowNode) => toRFNode(n, agents)))
       setEdges(graphData.edges.map(toRFEdge))
     }
     setGraphInitialised(true)
@@ -1084,15 +1515,16 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
     }))
     setEdges(tpl.edges.map((e) => {
       const color = edgeColor(e.label)
+      const isDelegate = e.label === 'delegate'
       return {
         id: `e-${getId(e.from)}-${getId(e.to)}`,
         source: getId(e.from), target: getId(e.to),
         type: 'smoothstep', animated: true,
         zIndex: 1000,
-        label: e.label ?? undefined,
+        label: isDelegate ? 'delegates' : (e.label ?? undefined),
         sourceHandle: e.label === 'yes' ? 'yes' : e.label === 'no' ? 'no' : e.label === 'loop' ? 'continue' : e.label === 'exit' ? 'exit' : undefined,
         markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
-        style: { stroke: color, strokeWidth: 2.5 },
+        style: { stroke: color, strokeWidth: isDelegate ? 2 : 2.5, strokeDasharray: isDelegate ? '6 3' : undefined },
         labelStyle: { fontSize: 10, fill: color, fontWeight: 700 },
         labelBgStyle: { fill: '#fff', fillOpacity: 0.9 },
       }
@@ -1196,11 +1628,11 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
           label: (e.label as string) ?? null,
         })),
       }
-      await groupsAPI.saveGraph(groupId, graph)
+      await workflowsAPI.saveGraph(groupId, graph)
       // Reset so the useEffect re-syncs node IDs from DB (server assigns new UUIDs).
       // Without this, canvas nodes keep client-side IDs that don't match SSE events.
       setGraphInitialised(false)
-      queryClient.invalidateQueries({ queryKey: ['agent-group-graph', groupId] })
+      queryClient.invalidateQueries({ queryKey: ['workflow-graph', groupId] })
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 2000)
     } catch {
@@ -1270,7 +1702,10 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               setRunOutput((prev) => ({ ...prev, [evt.node_id!]: (prev[evt.node_id!] ?? '') + (evt.content ?? '') }))
             } else if (evt.type === 'delta' && evt.content) {
               setRunOutput((prev) => ({ ...prev, __main__: (prev.__main__ ?? '') + evt.content }))
-            } else if (evt.type === 'run_completed' || evt.type === 'error') {
+            } else if (evt.type === 'run_completed') {
+              setRunStatus('done')
+            } else if (evt.type === 'error') {
+              setRunError(evt.error ?? evt.message ?? 'Workflow execution error')
               setRunStatus('done')
             }
           } catch {
@@ -1303,7 +1738,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         flexShrink: 0,
       }}>
         <button
-          onClick={() => router.push('/agent-groups')}
+          onClick={() => router.push('/workflows')}
           style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#6b7280', fontSize: 13, background: 'none', border: 'none', cursor: 'pointer' }}
         >
           <ArrowLeft size={14} /> Back
@@ -1537,9 +1972,11 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 4, fontWeight: 600 }}>TYPE</div>
               <span style={{
                 fontSize: 11, padding: '2px 8px', borderRadius: 6,
-                background: '#f1f0ff', color: '#534AB7', fontWeight: 700,
+                background: selectedNode.data.node_type === 'supervisor' ? '#fef3c7' : '#f1f0ff',
+                color: selectedNode.data.node_type === 'supervisor' ? '#92400e' : '#534AB7',
+                fontWeight: 700,
               }}>
-                {selectedNode.data.node_type}
+                {selectedNode.data.node_type === 'supervisor' ? '👑 supervisor' : selectedNode.data.node_type as string}
               </span>
             </div>
 
@@ -1556,9 +1993,9 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               />
             </ConfigField>
 
-            {/* Agent node: agent picker */}
-            {selectedNode.data.node_type === 'agent' && (
-              <ConfigField label="Agent">
+            {/* Agent / Supervisor node: agent picker */}
+            {(selectedNode.data.node_type === 'agent' || selectedNode.data.node_type === 'supervisor') && (
+              <ConfigField label={selectedNode.data.node_type === 'supervisor' ? 'Supervisor Agent' : 'Agent'}>
                 <select
                   value={(selectedNode.data.agent_id as string) || ''}
                   onChange={(e) => {
@@ -1571,7 +2008,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                       agent_provider: agent?.provider,
                     })
                   }}
-                  style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 6, background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                  style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: `1px solid ${selectedNode.data.node_type === 'supervisor' ? '#fde68a' : '#e5e7eb'}`, borderRadius: 6, background: '#fff', outline: 'none', boxSizing: 'border-box' }}
                 >
                   <option value="">Select agent…</option>
                   {agents.map((a) => (
@@ -1580,8 +2017,13 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                 </select>
                 {selectedNode.data.agent_model && (
                   <div style={{ marginTop: 4, display: 'flex', gap: 4 }}>
-                    <span style={{ fontSize: 10, background: '#f1f0ff', color: '#534AB7', borderRadius: 4, padding: '1px 6px' }}>{selectedNode.data.agent_model as string}</span>
+                    <span style={{ fontSize: 10, background: selectedNode.data.node_type === 'supervisor' ? '#fef3c7' : '#f1f0ff', color: selectedNode.data.node_type === 'supervisor' ? '#d97706' : '#534AB7', borderRadius: 4, padding: '1px 6px' }}>{selectedNode.data.agent_model as string}</span>
                     <span style={{ fontSize: 10, background: '#f4f4f5', color: '#71717a', borderRadius: 4, padding: '1px 6px' }}>{selectedNode.data.agent_provider as string}</span>
+                  </div>
+                )}
+                {selectedNode.data.node_type === 'supervisor' && (
+                  <div style={{ fontSize: 10, color: '#d97706', marginTop: 6, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 8px', lineHeight: 1.5 }}>
+                    This agent runs in an agentic loop, calling team agents (connected via dashed delegate edges) as tools. Use a capable model (e.g. claude-sonnet or opus).
                   </div>
                 )}
               </ConfigField>
@@ -1640,12 +2082,21 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               </>
             )}
 
-            {/* Start / Parallel / Join: info */}
+            {/* Start / Parallel / Join / Supervisor: info */}
             {(selectedNode.data.node_type === 'start' || selectedNode.data.node_type === 'parallel' || selectedNode.data.node_type === 'join') && (
-              <div style={{ fontSize: 11, color: '#9ca3af', background: '#f9fafb', borderRadius: 8, padding: '8px 10px' }}>
-                {selectedNode.data.node_type === 'start' && 'The start node is the entry point of the workflow. It has no configuration.'}
-                {selectedNode.data.node_type === 'parallel' && 'Parallel fan-out: connects to multiple agent nodes that run concurrently.'}
-                {selectedNode.data.node_type === 'join' && 'Join merges outputs from parallel branches before passing to the next node.'}
+              <div style={{ fontSize: 11, color: '#9ca3af', background: '#f9fafb', borderRadius: 8, padding: '8px 10px', lineHeight: 1.6 }}>
+                {selectedNode.data.node_type === 'start' && 'Entry point of the workflow. Every run begins here. Draw one edge from the right handle to the first node.'}
+                {selectedNode.data.node_type === 'parallel' && 'Fan-out: connects to multiple downstream nodes that run concurrently. Use a Join node to collect their outputs when done.'}
+                {selectedNode.data.node_type === 'join' && 'Merges outputs from parallel branches into a single concatenated output before continuing.'}
+              </div>
+            )}
+
+            {selectedNode.data.node_type === 'supervisor' && !selectedNode.data.agent_id && (
+              <div style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', lineHeight: 1.6 }}>
+                <strong>How supervisor works:</strong><br />
+                1. Select a coordinator agent above.<br />
+                2. Draw <em>delegate</em> edges from this node to each team agent node.<br />
+                3. At runtime, the team agents become callable tools for the supervisor&apos;s LLM.
               </div>
             )}
 
@@ -1778,10 +2229,10 @@ function ConfigField({ label, children }: { label: string; children: React.React
 // ---------------------------------------------------------------------------
 // Page export — wrapped in ReactFlowProvider
 // ---------------------------------------------------------------------------
-export default function WorkflowBuilderPage({ params }: { params: { id: string } }) {
+export default function WorkflowBuilderPage({ params }: { params: { workflowId: string } }) {
   return (
     <ReactFlowProvider>
-      <WorkflowBuilderInner groupId={params.id} />
+      <WorkflowBuilderInner groupId={params.workflowId} />
     </ReactFlowProvider>
   )
 }

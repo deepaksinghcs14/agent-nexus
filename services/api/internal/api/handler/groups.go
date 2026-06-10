@@ -13,12 +13,14 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
 
-type GroupsHandler struct {
+type WorkflowsHandler struct {
 	pool *pgxpool.Pool
 	cfg  *config.Config
 }
 
-func NewGroupsHandler(p *pgxpool.Pool, c *config.Config) *GroupsHandler { return &GroupsHandler{p, c} }
+func NewWorkflowsHandler(p *pgxpool.Pool, c *config.Config) *WorkflowsHandler {
+	return &WorkflowsHandler{p, c}
+}
 
 type groupRequest struct {
 	Name        string   `json:"name"`
@@ -28,14 +30,14 @@ type groupRequest struct {
 	AgentIDs    []string `json:"agent_ids"`
 }
 
-func (h *GroupsHandler) group(r *http.Request, id string) (map[string]any, error) {
+func (h *WorkflowsHandler) workflow(r *http.Request, id string) (map[string]any, error) {
 	var gID, ws, name, desc, mode, status, createdBy string
 	var created, updated any
-	e := h.pool.QueryRow(r.Context(), `SELECT id::text,workspace_id::text,name,description,mode,status,created_by::text,created_at,updated_at FROM agent_groups WHERE id=$1::uuid AND workspace_id=$2::uuid`, id, middleware.WorkspaceIDFromCtx(r.Context())).Scan(&gID, &ws, &name, &desc, &mode, &status, &createdBy, &created, &updated)
+	e := h.pool.QueryRow(r.Context(), `SELECT id::text,workspace_id::text,name,description,mode,status,created_by::text,created_at,updated_at FROM workflows WHERE id=$1::uuid AND workspace_id=$2::uuid`, id, middleware.WorkspaceIDFromCtx(r.Context())).Scan(&gID, &ws, &name, &desc, &mode, &status, &createdBy, &created, &updated)
 	if e != nil {
 		return nil, e
 	}
-	rows, e := h.pool.Query(r.Context(), `SELECT agent_id::text FROM agent_group_members WHERE group_id=$1::uuid ORDER BY position`, id)
+	rows, e := h.pool.Query(r.Context(), `SELECT agent_id::text FROM workflow_members WHERE group_id=$1::uuid ORDER BY position`, id)
 	if e != nil {
 		return nil, e
 	}
@@ -48,10 +50,10 @@ func (h *GroupsHandler) group(r *http.Request, id string) (map[string]any, error
 	}
 	return map[string]any{"id": gID, "workspace_id": ws, "name": name, "description": desc, "mode": mode, "status": status, "agent_ids": ids, "created_by": createdBy, "created_at": created, "updated_at": updated}, nil
 }
-func (h *GroupsHandler) List(w http.ResponseWriter, r *http.Request) {
-	rows, e := h.pool.Query(r.Context(), `SELECT id::text FROM agent_groups WHERE workspace_id=$1::uuid ORDER BY created_at DESC`, middleware.WorkspaceIDFromCtx(r.Context()))
+func (h *WorkflowsHandler) List(w http.ResponseWriter, r *http.Request) {
+	rows, e := h.pool.Query(r.Context(), `SELECT id::text FROM workflows WHERE workspace_id=$1::uuid ORDER BY created_at DESC`, middleware.WorkspaceIDFromCtx(r.Context()))
 	if e != nil {
-		errs.Write(w, errs.Internal("failed to list groups"))
+		errs.Write(w, errs.Internal("failed to list workflows"))
 		return
 	}
 	defer rows.Close()
@@ -63,14 +65,14 @@ func (h *GroupsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	a := []map[string]any{}
 	for _, id := range ids {
-		g, e := h.group(r, id)
+		wf, e := h.workflow(r, id)
 		if e == nil {
-			a = append(a, g)
+			a = append(a, wf)
 		}
 	}
 	errs.WriteJSON(w, 200, map[string]any{"data": a})
 }
-func (h *GroupsHandler) save(w http.ResponseWriter, r *http.Request, id string, create bool) {
+func (h *WorkflowsHandler) save(w http.ResponseWriter, r *http.Request, id string, create bool) {
 	var q groupRequest
 	if json.NewDecoder(r.Body).Decode(&q) != nil || q.Name == "" {
 		errs.Write(w, errs.BadRequest("name is required"))
@@ -84,64 +86,64 @@ func (h *GroupsHandler) save(w http.ResponseWriter, r *http.Request, id string, 
 	}
 	tx, e := h.pool.Begin(r.Context())
 	if e != nil {
-		errs.Write(w, errs.Internal("failed to save group"))
+		errs.Write(w, errs.Internal("failed to save workflow"))
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer func() { _ = tx.Rollback(r.Context()) }()
 	if create {
-		_, e = tx.Exec(r.Context(), `INSERT INTO agent_groups(id,workspace_id,name,description,mode,status,created_by)VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7::uuid)`, id, middleware.WorkspaceIDFromCtx(r.Context()), q.Name, q.Description, q.Mode, q.Status, middleware.UserIDFromCtx(r.Context()))
+		_, e = tx.Exec(r.Context(), `INSERT INTO workflows(id,workspace_id,name,description,mode,status,created_by)VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7::uuid)`, id, middleware.WorkspaceIDFromCtx(r.Context()), q.Name, q.Description, q.Mode, q.Status, middleware.UserIDFromCtx(r.Context()))
 	} else {
-		_, e = tx.Exec(r.Context(), `UPDATE agent_groups SET name=$3,description=$4,mode=$5,status=$6,updated_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid`, id, middleware.WorkspaceIDFromCtx(r.Context()), q.Name, q.Description, q.Mode, q.Status)
+		_, e = tx.Exec(r.Context(), `UPDATE workflows SET name=$3,description=$4,mode=$5,status=$6,updated_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid`, id, middleware.WorkspaceIDFromCtx(r.Context()), q.Name, q.Description, q.Mode, q.Status)
 		if e == nil {
-			_, e = tx.Exec(r.Context(), `DELETE FROM agent_group_members WHERE group_id=$1::uuid`, id)
+			_, e = tx.Exec(r.Context(), `DELETE FROM workflow_members WHERE group_id=$1::uuid`, id)
 		}
 	}
 	for i, a := range q.AgentIDs {
 		if e != nil {
 			break
 		}
-		_, e = tx.Exec(r.Context(), `INSERT INTO agent_group_members(group_id,agent_id,position,role)VALUES($1::uuid,$2::uuid,$3,$4)`, id, a, i, map[bool]string{true: "supervisor", false: "member"}[q.Mode == "supervisor" && i == 0])
+		_, e = tx.Exec(r.Context(), `INSERT INTO workflow_members(group_id,agent_id,position,role)VALUES($1::uuid,$2::uuid,$3,$4)`, id, a, i, map[bool]string{true: "supervisor", false: "member"}[q.Mode == "supervisor" && i == 0])
 	}
 	if e != nil || tx.Commit(r.Context()) != nil {
-		errs.Write(w, errs.Internal("failed to save group"))
+		errs.Write(w, errs.Internal("failed to save workflow"))
 		return
 	}
-	g, _ := h.group(r, id)
-	errs.WriteJSON(w, map[bool]int{true: 201, false: 200}[create], g)
+	wf, _ := h.workflow(r, id)
+	errs.WriteJSON(w, map[bool]int{true: 201, false: 200}[create], wf)
 }
-func (h *GroupsHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (h *WorkflowsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	h.save(w, r, uuid.NewString(), true)
 }
-func (h *GroupsHandler) Get(w http.ResponseWriter, r *http.Request) {
-	g, e := h.group(r, chi.URLParam(r, "id"))
+func (h *WorkflowsHandler) Get(w http.ResponseWriter, r *http.Request) {
+	wf, e := h.workflow(r, chi.URLParam(r, "id"))
 	if e != nil {
-		errs.Write(w, errs.NotFound("group not found"))
+		errs.Write(w, errs.NotFound("workflow not found"))
 		return
 	}
-	errs.WriteJSON(w, 200, g)
+	errs.WriteJSON(w, 200, wf)
 }
-func (h *GroupsHandler) Update(w http.ResponseWriter, r *http.Request) {
+func (h *WorkflowsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	h.save(w, r, chi.URLParam(r, "id"), false)
 }
-func (h *GroupsHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	t, e := h.pool.Exec(r.Context(), `DELETE FROM agent_groups WHERE id=$1::uuid AND workspace_id=$2::uuid`, chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()))
+func (h *WorkflowsHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	t, e := h.pool.Exec(r.Context(), `DELETE FROM workflows WHERE id=$1::uuid AND workspace_id=$2::uuid`, chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()))
 	if e != nil {
-		errs.Write(w, errs.Internal("failed to delete group"))
+		errs.Write(w, errs.Internal("failed to delete workflow"))
 		return
 	}
 	if t.RowsAffected() == 0 {
-		errs.Write(w, errs.NotFound("group not found"))
+		errs.Write(w, errs.NotFound("workflow not found"))
 		return
 	}
 	w.WriteHeader(204)
 }
-func (h *GroupsHandler) Run(w http.ResponseWriter, r *http.Request) {
-	g, e := h.group(r, chi.URLParam(r, "id"))
+func (h *WorkflowsHandler) Run(w http.ResponseWriter, r *http.Request) {
+	wf, e := h.workflow(r, chi.URLParam(r, "id"))
 	if e != nil {
-		errs.Write(w, errs.NotFound("group not found"))
+		errs.Write(w, errs.NotFound("workflow not found"))
 		return
 	}
-	errs.WriteJSON(w, 202, map[string]any{"group": g, "status": "accepted", "message": "group run queued"})
+	errs.WriteJSON(w, 202, map[string]any{"workflow": wf, "status": "accepted", "message": "workflow run queued"})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -190,18 +192,18 @@ type saveGraphEdge struct {
 	Label        string `json:"label"`
 }
 
-// GetGraph handles GET /api/v1/agent-groups/{id}/graph
+// GetGraph handles GET /api/v1/workflows/{id}/graph
 // Returns all nodes and edges for the workflow.
-func (h *GroupsHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
+func (h *WorkflowsHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
 	workflowID := chi.URLParam(r, "id")
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 
 	// Verify ownership
 	var exists bool
 	if err := h.pool.QueryRow(r.Context(),
-		`SELECT EXISTS(SELECT 1 FROM agent_groups WHERE id=$1::uuid AND workspace_id=$2::uuid)`,
+		`SELECT EXISTS(SELECT 1 FROM workflows WHERE id=$1::uuid AND workspace_id=$2::uuid)`,
 		workflowID, ws).Scan(&exists); err != nil || !exists {
-		errs.Write(w, errs.NotFound("group not found"))
+		errs.Write(w, errs.NotFound("workflow not found"))
 		return
 	}
 
@@ -260,10 +262,10 @@ func (h *GroupsHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
 	errs.WriteJSON(w, 200, map[string]any{"nodes": nodes, "edges": edges})
 }
 
-// SaveGraph handles PUT /api/v1/agent-groups/{id}/graph
+// SaveGraph handles PUT /api/v1/workflows/{id}/graph
 // Replaces the entire node/edge set for the workflow in a single transaction.
 // Client-side IDs in edges are mapped to the newly generated server-side UUIDs.
-func (h *GroupsHandler) SaveGraph(w http.ResponseWriter, r *http.Request) {
+func (h *WorkflowsHandler) SaveGraph(w http.ResponseWriter, r *http.Request) {
 	workflowID := chi.URLParam(r, "id")
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 
@@ -276,9 +278,9 @@ func (h *GroupsHandler) SaveGraph(w http.ResponseWriter, r *http.Request) {
 	// Verify workspace ownership
 	var exists bool
 	if err := h.pool.QueryRow(r.Context(),
-		`SELECT EXISTS(SELECT 1 FROM agent_groups WHERE id=$1::uuid AND workspace_id=$2::uuid)`,
+		`SELECT EXISTS(SELECT 1 FROM workflows WHERE id=$1::uuid AND workspace_id=$2::uuid)`,
 		workflowID, ws).Scan(&exists); err != nil || !exists {
-		errs.Write(w, errs.NotFound("group not found"))
+		errs.Write(w, errs.NotFound("workflow not found"))
 		return
 	}
 
@@ -287,7 +289,7 @@ func (h *GroupsHandler) SaveGraph(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.Internal("failed to start transaction"))
 		return
 	}
-	defer tx.Rollback(r.Context())
+	defer func() { _ = tx.Rollback(r.Context()) }()
 
 	// Delete existing graph — cascade removes edges too
 	if _, err := tx.Exec(r.Context(),
