@@ -9,10 +9,10 @@ import type { Run, RunStep } from '@/types'
 
 type RunDetail = Run & { steps?: RunStep[] }
 
-export default function RunDetailPage({ params }: { params: { id: string } }) {
+export default function RunDetailPage({ params }: { params: { runId: string } }) {
   const queryClient = useQueryClient()
-  const { data, isLoading, error } = useQuery({ queryKey: ['run', params.id], queryFn: () => runsAPI.get(params.id) as Promise<RunDetail | { run: Run; steps: RunStep[] }> })
-  const cancel = useMutation({ mutationFn: () => runsAPI.cancel(params.id), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['run', params.id] }) })
+  const { data, isLoading, error } = useQuery({ queryKey: ['run', params.runId], queryFn: () => runsAPI.get(params.runId) as Promise<RunDetail | { run: Run; steps: RunStep[] }> })
+  const cancel = useMutation({ mutationFn: () => runsAPI.cancel(params.runId), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['run', params.runId] }) })
   const detail: RunDetail | undefined = data
     ? 'run' in data
       ? { ...data.run, steps: data.steps }
