@@ -326,8 +326,8 @@ func (h *WebhookIngressHandler) dispatchRun(trig domain.WebhookTrigger, input st
 		return "", "", e
 	}
 	if _, e := h.pool.Exec(ctx,
-		`INSERT INTO conversations(id,workspace_id,user_id,title) VALUES($1::uuid,$2::uuid,$3::uuid,$4)`,
-		convID, trig.WorkspaceID, trig.CreatedBy, "Webhook: "+gName); e != nil {
+		`INSERT INTO conversations(id,workspace_id,user_id,title,workflow_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5::uuid)`,
+		convID, trig.WorkspaceID, trig.CreatedBy, "Webhook: "+gName, trig.TargetID); e != nil {
 		return "", "", e
 	}
 	if _, e := h.pool.Exec(ctx,

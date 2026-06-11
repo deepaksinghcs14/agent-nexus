@@ -170,6 +170,13 @@ export interface Run {
   trigger_id?: string
   parent_run_id?: string
   workflow_node_id?: string
+  trace_id?: string
+}
+
+export interface PaginatedRuns {
+  data: Run[]
+  has_more: boolean
+  next_cursor: string
 }
 
 export type StepType =

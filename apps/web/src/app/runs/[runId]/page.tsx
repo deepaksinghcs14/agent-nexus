@@ -1,21 +1,94 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Ban } from 'lucide-react'
-import { runsAPI } from '@/lib/api'
+import { ArrowLeft, Ban, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
+import { agentsAPI, runsAPI } from '@/lib/api'
 import { formatCost, formatTokens, statusColor } from '@/lib/utils'
-import type { Run, RunStep } from '@/types'
-import { TraceGraph, type RunWithWorkflow } from './TraceGraph'
+import type { Agent, Run, RunStep } from '@/types'
+import { TraceGraph, type RunWithWorkflow, STEP_STYLE } from './TraceGraph'
 
 type RunDetail = Run & { steps?: RunStep[]; workflow_id?: string }
 
+const ROW_GRID = 'grid items-center gap-x-3 px-4' as const
+const GRID_COLS = 'grid-cols-[20px_1fr_80px_48px_64px_56px]' as const
+
+function SubRunRow({ subRun, agentName }: { subRun: Run; agentName?: string }) {
+  const [open, setOpen] = useState(false)
+  const { data, isFetching } = useQuery({
+    queryKey: ['run', subRun.id],
+    queryFn: () => runsAPI.get(subRun.id) as Promise<{ run: Run; steps: RunStep[] }>,
+    enabled: open,
+  })
+  const steps = data?.steps ?? []
+  const dur = subRun.completed_at
+    ? Math.round((new Date(subRun.completed_at).getTime() - new Date(subRun.started_at).getTime()) / 100) / 10
+    : null
+  const tokens = subRun.total_input_tokens + subRun.total_output_tokens
+
+  return (
+    <div className="border-b border-gray-50 last:border-b-0">
+      <button
+        className={`w-full ${ROW_GRID} ${GRID_COLS} py-2.5 text-left hover:bg-gray-50/60 transition-colors`}
+        onClick={() => setOpen(v => !v)}
+      >
+        <span className="flex items-center justify-center text-gray-300">
+          {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        </span>
+        <span className="flex items-center gap-1.5 min-w-0">
+          <Sparkles size={11} className="text-indigo-400 flex-shrink-0" />
+          <span className="text-[12px] font-medium text-gray-800 truncate">{agentName ?? 'Agent'}</span>
+        </span>
+        <span className="flex justify-center">
+          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusColor(subRun.status)}`}>{subRun.status}</span>
+        </span>
+        <span className="text-[11px] text-gray-400 text-right">{dur !== null ? `${dur}s` : '—'}</span>
+        <span className="text-[11px] text-gray-400 text-right">{tokens > 0 ? formatTokens(tokens) : '—'}</span>
+        <span className="text-[11px] text-gray-400 text-right">{subRun.cost_estimate > 0 ? formatCost(subRun.cost_estimate) : '—'}</span>
+      </button>
+      {open && (
+        <div className="mx-4 mb-2 rounded-lg border border-gray-100 bg-gray-50/50 overflow-hidden">
+          {isFetching && <p className="text-[11px] text-gray-400 text-center py-3">Loading steps…</p>}
+          {!isFetching && steps.length === 0 && <p className="text-[11px] text-gray-400 text-center py-3">No steps recorded.</p>}
+          {steps.map((step) => {
+            const st = STEP_STYLE[step.step_type] ?? STEP_STYLE.model_call
+            return (
+              <div key={step.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderBottom: '1px solid #f3f4f6' }}>
+                <span style={{ color: st.border, flexShrink: 0 }}>{st.icon}</span>
+                <span style={{ fontSize: 11, color: '#374151', flex: 1 }}>
+                  {step.tool_name ? `${st.label}: ${step.tool_name}` : st.label}
+                </span>
+                {step.latency_ms > 0 && <span style={{ fontSize: 9, color: '#9ca3af' }}>{step.latency_ms}ms</span>}
+                {step.tokens_used > 0 && <span style={{ fontSize: 9, color: '#9ca3af' }}>{step.tokens_used} tok</span>}
+                {step.error && <span style={{ fontSize: 9, color: '#ef4444', fontWeight: 600 }}>ERR</span>}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function RunDetailPage({ params }: { params: { runId: string } }) {
   const queryClient = useQueryClient()
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['run', params.runId],
     queryFn: () => runsAPI.get(params.runId) as Promise<RunDetail | { run: Run; steps: RunStep[]; workflow_id?: string }>,
   })
+
+  const { data: childrenData } = useQuery({
+    queryKey: ['run-children', params.runId],
+    queryFn: () => runsAPI.listChildren(params.runId) as Promise<{ data: Run[] }>,
+  })
+
+  const { data: agentData } = useQuery({
+    queryKey: ['agents'],
+    queryFn: () => agentsAPI.list() as Promise<{ data: Agent[] }>,
+  })
+
   const cancel = useMutation({
     mutationFn: () => runsAPI.cancel(params.runId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['run', params.runId] }),
@@ -31,6 +104,9 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
       : (data as RunDetail)
     : undefined
   const steps = detail?.steps ?? []
+  const isWorkflowRoot = !!detail && !detail.agent_id && !detail.parent_run_id
+  const children = childrenData?.data ?? []
+  const agentNames = Object.fromEntries((agentData?.data ?? []).map((a: Agent) => [a.id, a.name]))
 
   return (
     <div className="p-6 max-w-6xl">
@@ -57,8 +133,8 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
 
       {detail && (
         <>
-          {/* Metrics row */}
-          <div className="grid grid-cols-6 gap-3 mb-6">
+          {/* Metrics */}
+          <div className="grid grid-cols-6 gap-3 mb-5">
             {[
               ['Status', detail.status],
               ['Input tokens', formatTokens(detail.total_input_tokens)],
@@ -78,31 +154,64 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
             ))}
           </div>
 
-          {/* Input / Output + Trace Graph */}
-          <div className="grid grid-cols-2 gap-5">
+          {/* Input / Output */}
+          <div className="grid grid-cols-2 gap-4 mb-5">
             <div>
-              <p className="text-[12px] font-medium text-gray-700 mb-2">Input</p>
-              <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-[12px] text-gray-600 whitespace-pre-wrap">
+              <p className="text-[12px] font-medium text-gray-700 mb-1.5">Input</p>
+              <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-[12px] text-gray-600 whitespace-pre-wrap max-h-32 overflow-y-auto">
                 {detail.input || 'No input recorded.'}
               </div>
-              <p className="text-[12px] font-medium text-gray-700 mt-4 mb-2">Output</p>
-              <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-[12px] text-gray-600 whitespace-pre-wrap">
+            </div>
+            <div>
+              <p className="text-[12px] font-medium text-gray-700 mb-1.5">Output</p>
+              <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-[12px] text-gray-600 whitespace-pre-wrap max-h-32 overflow-y-auto">
                 {detail.output || detail.error_message || 'No output recorded.'}
               </div>
             </div>
-
-            <div>
-              <p className="text-[12px] font-medium text-gray-700 mb-2">
-                Trace
-                {steps.length > 0 && (
-                  <span className="ml-1.5 text-[10px] text-gray-400 font-normal">
-                    {steps.length} step{steps.length !== 1 ? 's' : ''} — click nodes to inspect
-                  </span>
-                )}
-              </p>
-              <TraceGraph run={detail} steps={steps} />
-            </div>
           </div>
+
+          {/* Trace graph — full width */}
+          <div className="mb-5">
+            <p className="text-[12px] font-medium text-gray-700 mb-2">
+              Trace
+              {!isWorkflowRoot && steps.length > 0 && (
+                <span className="ml-1.5 text-[10px] text-gray-400 font-normal">
+                  {steps.length} step{steps.length !== 1 ? 's' : ''} — click nodes to inspect
+                </span>
+              )}
+              {isWorkflowRoot && children.length > 0 && (
+                <span className="ml-1.5 text-[10px] text-gray-400 font-normal">
+                  click nodes to inspect steps
+                </span>
+              )}
+            </p>
+            <TraceGraph run={detail} steps={steps} />
+          </div>
+
+          {/* Agent runs table — workflow root only */}
+          {isWorkflowRoot && children.length > 0 && (
+            <div className="mb-5">
+              <p className="text-[12px] font-medium text-gray-700 mb-2">
+                Agent runs
+                <span className="ml-1.5 text-[10px] text-gray-400 font-normal">
+                  {children.length} agent run{children.length !== 1 ? 's' : ''} — expand to see steps
+                </span>
+              </p>
+              <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+                <div className={`${ROW_GRID} ${GRID_COLS} py-1.5 bg-gray-50 border-b border-gray-100`}>
+                  <span />
+                  <span className="text-[10px] font-medium text-gray-400 uppercase">Agent</span>
+                  <span className="text-[10px] font-medium text-gray-400 uppercase text-center">Status</span>
+                  <span className="text-[10px] font-medium text-gray-400 uppercase text-right">Dur</span>
+                  <span className="text-[10px] font-medium text-gray-400 uppercase text-right">Tokens</span>
+                  <span className="text-[10px] font-medium text-gray-400 uppercase text-right">Cost</span>
+                </div>
+                {children.map((child) => (
+                  <SubRunRow key={child.id} subRun={child} agentName={child.agent_id ? agentNames[child.agent_id] : undefined} />
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

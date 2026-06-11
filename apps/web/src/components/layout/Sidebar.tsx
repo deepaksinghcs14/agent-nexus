@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   Bot, GitBranch, Wrench, Plug, Link2, Zap, Sparkles,
   MessageSquare, History,
-  Activity, GitCommitHorizontal, Brain, BarChart2,
+  Activity, Brain, BarChart2,
   Key, Settings, BookOpen,
   LayoutDashboard, Users, Building2, Shield, ClipboardList,
   Hexagon, ShieldCheck,
@@ -40,8 +40,7 @@ const userNav: NavGroup[] = [
   {
     label: 'Observe',
     items: [
-      { label: 'Runs',   href: '/runs',   icon: Activity },
-      { label: 'Traces', href: '/traces', icon: GitCommitHorizontal },
+      { label: 'Runs & Traces', href: '/runs', icon: Activity },
       { label: 'Memory', href: '/memory', icon: Brain },
       { label: 'Usage',  href: '/usage',  icon: BarChart2 },
     ],

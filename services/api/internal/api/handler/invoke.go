@@ -135,8 +135,8 @@ func (h *InvokeHandler) Group(w http.ResponseWriter, r *http.Request) {
 	runID := uuid.NewString()
 	convID := uuid.NewString()
 	if _, err := h.pool.Exec(r.Context(),
-		`INSERT INTO conversations(id,workspace_id,user_id,title) VALUES($1::uuid,$2::uuid,$3::uuid,$4)`,
-		convID, ws, uid, "Workflow: "+gName); err != nil {
+		`INSERT INTO conversations(id,workspace_id,user_id,title,workflow_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5::uuid)`,
+		convID, ws, uid, "Workflow: "+gName, groupID); err != nil {
 		errs.Write(w, errs.Internal("failed to create conversation"))
 		return
 	}
@@ -759,9 +759,9 @@ func (h *InvokeHandler) executeGroupRun(
 					 VALUES($1::uuid,$2::uuid,'user',$3)`,
 					uuid.NewString(), subConvID, agentInput)
 				h.pool.Exec(ctx, //nolint:errcheck
-					`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id)
-					 VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8)`,
-					subRunID, ws, a.ID, subConvID, uid, agentInput, parentRunID, node.ID)
+					`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id,trace_id)
+					 VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8,$9::uuid)`,
+					subRunID, ws, a.ID, subConvID, uid, agentInput, parentRunID, node.ID, parentRunID)
 
 				// Wrap emit so every SSE event from this node carries node_id/node_name.
 				// Route through sseEmit (which holds emitMu) — parallel branch
@@ -772,6 +772,10 @@ func (h *InvokeHandler) executeGroupRun(
 				agentEmit := func(line string) {
 					var m map[string]any
 					if json.Unmarshal([]byte(line), &m) == nil {
+						// Sub-run lifecycle events must not leak to the workflow stream.
+						if t, _ := m["type"].(string); t == "run_completed" || t == "run_started" {
+							return
+						}
 						m["node_id"] = capturedNodeID
 						m["node_name"] = capturedNodeName
 						if b, err := json.Marshal(m); err == nil {
@@ -974,6 +978,10 @@ func (h *InvokeHandler) executeGroupRun(
 					continue
 				}
 
+				// Pre-declare the supervisor sub-run ID so delegate handlers can use it
+				// as their parent_run_id, establishing the correct trace hierarchy.
+				supervisorSubRunID := uuid.NewString()
+
 				// Build delegate tool defs + handlers from "delegate"-labelled edges.
 				delegateToolDefs := []provider.ToolDefinition{}
 				delegateHandlers := map[string]func(context.Context, json.RawMessage) string{}
@@ -1008,6 +1016,7 @@ func (h *InvokeHandler) executeGroupRun(
 					capturedDN := dn
 					capturedSuperNodeID := node.ID
 					capturedSuperNodeName := nodeName
+					capturedSuperSubRunID := supervisorSubRunID
 					toolNameCopy := toolName
 					delegateToolDefs = append(delegateToolDefs, provider.ToolDefinition{
 						Name:        toolNameCopy,
@@ -1031,14 +1040,18 @@ func (h *InvokeHandler) executeGroupRun(
 							`INSERT INTO messages(id,conversation_id,role,content) VALUES($1::uuid,$2::uuid,'user',$3)`,
 							uuid.NewString(), dSubConvID, task)
 						h.pool.Exec(callCtx, //nolint:errcheck
-							`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8)`,
-							dSubRunID, ws, capturedDA.ID, dSubConvID, uid, task, parentRunID, capturedDN.ID)
+							`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id,trace_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8,$9::uuid)`,
+							dSubRunID, ws, capturedDA.ID, dSubConvID, uid, task, capturedSuperSubRunID, capturedDN.ID, parentRunID)
 						// Light up the delegate node in the canvas.
 						sseEmit(fmt.Sprintf(`{"type":"node_started","node_id":%q,"node_type":"agent","node_name":%q}`,
 							capturedDN.ID, capturedDA.Name))
 						delEmit := func(line string) {
 							var m map[string]any
 							if json.Unmarshal([]byte(line), &m) == nil {
+								// Sub-run lifecycle events must not leak to the workflow stream.
+								if t, _ := m["type"].(string); t == "run_completed" || t == "run_started" {
+									return
+								}
 								m["node_id"] = capturedSuperNodeID
 								m["node_name"] = capturedSuperNodeName
 								if b, e2 := json.Marshal(m); e2 == nil {
@@ -1060,7 +1073,7 @@ func (h *InvokeHandler) executeGroupRun(
 
 				// Sub-conversation + sub-run for the supervisor itself.
 				subConvID := uuid.NewString()
-				subRunID := uuid.NewString()
+				subRunID := supervisorSubRunID
 				agentInput := lastOutput
 				if prevNodeName != "" {
 					agentInput = fmt.Sprintf("[Task]\n%s\n\n[Previous output from %s]\n%s",
@@ -1073,14 +1086,18 @@ func (h *InvokeHandler) executeGroupRun(
 					`INSERT INTO messages(id,conversation_id,role,content) VALUES($1::uuid,$2::uuid,'user',$3)`,
 					uuid.NewString(), subConvID, agentInput)
 				h.pool.Exec(ctx, //nolint:errcheck
-					`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8)`,
-					subRunID, ws, supAgent.ID, subConvID, uid, agentInput, parentRunID, node.ID)
+					`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id,trace_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8,$9::uuid)`,
+					subRunID, ws, supAgent.ID, subConvID, uid, agentInput, parentRunID, node.ID, parentRunID)
 
 				capturedNodeID := node.ID
 				capturedNodeName := nodeName
 				supEmit := func(line string) {
 					var m map[string]any
 					if json.Unmarshal([]byte(line), &m) == nil {
+						// Sub-run lifecycle events must not leak to the workflow stream.
+						if t, _ := m["type"].(string); t == "run_completed" || t == "run_started" {
+							return
+						}
 						m["node_id"] = capturedNodeID
 						m["node_name"] = capturedNodeName
 						if b, e2 := json.Marshal(m); e2 == nil {
@@ -1168,7 +1185,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	delegateHandlers map[string]func(context.Context, json.RawMessage) string,
 	emit func(string),
 ) {
-	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer dbCancel()
 
 	runCompleted := false

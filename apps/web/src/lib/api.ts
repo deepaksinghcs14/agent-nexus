@@ -138,6 +138,10 @@ export const runsAPI = {
     }
     return api.get(`/runs${params ? '?' + params : ''}`)
   },
+  listPage: (params: Record<string, string> = {}) => {
+    const qs = new URLSearchParams(params).toString()
+    return api.get(`/runs${qs ? '?' + qs : ''}`)
+  },
   get: (id: string) => api.get(`/runs/${id}`),
   listChildren: (id: string) => api.get(`/runs/${id}/children`),
   start: (conversationId: string, body: unknown) =>
