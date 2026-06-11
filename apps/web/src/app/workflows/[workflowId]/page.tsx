@@ -97,6 +97,7 @@ function labelToSourceHandle(label?: string | null): string | undefined {
   if (label === 'no') return 'no'
   if (label === 'loop') return 'continue'
   if (label === 'exit') return 'exit'
+  if (label === 'delegate') return 'delegate'
   return undefined
 }
 
@@ -319,7 +320,11 @@ function SupervisorNode({ data }: NodeProps) {
           {nodeData.agent_provider && <span style={{ fontSize: 10, background: '#f4f4f5', color: '#71717a', borderRadius: 4, padding: '1px 6px' }}>{nodeData.agent_provider}</span>}
         </div>
       )}
-      <Handle type="source" position={Position.Right} style={{ background: '#d97706', width: 10, height: 10, border: '2px solid #fff' }} />
+      {/* Forward handle — connects to next pipeline node */}
+      <Handle type="source" id="forward" position={Position.Right} style={{ background: '#d97706', width: 10, height: 10, border: '2px solid #fff' }} />
+      {/* Delegate handle — drag from here to team agent nodes; auto-labeled "delegate" */}
+      <Handle type="source" id="delegate" position={Position.Bottom} style={{ background: '#92400e', width: 10, height: 10, border: '2px solid #fff' }} />
+      <div style={{ position: 'absolute', bottom: -18, left: '50%', transform: 'translateX(-50%)', fontSize: 9, color: '#92400e', fontWeight: 700, whiteSpace: 'nowrap' }}>delegate ↓</div>
     </div>
   )
 }
@@ -802,7 +807,7 @@ Phase 1 — Preprocessing: A Query Preprocessor structures the raw input into a 
 
 Phase 2 — Parallel ingestion: Two specialist agents run concurrently. Web Intelligence searches the web for current data while Domain Expert applies deep domain knowledge. Their outputs are merged by a Join node.
 
-Phase 3 — Supervisor coordination: The Intelligence Supervisor orchestrates four team agents (via dashed delegate edges). It calls Data Analyst, Fact Verifier, Source Evaluator, and Insight Generator as tools — deciding when and in what order. The supervisor synthesises their outputs and marks the result QUALITY_PASS if the analysis is complete.
+Phase 3 — Supervisor coordination: The Intelligence Supervisor orchestrates four team agents (via dashed delegate edges). It delegates to its team agents as tools — deciding when and in what order. The supervisor synthesises their outputs and marks the result QUALITY_PASS if the analysis is complete.
 
 Phase 4 — Quality loop: The Loop node checks for QUALITY_PASS in the supervisor's output. If not found, it retries the supervisor (up to 3 times). If found, it exits to the approval gate.
 
@@ -890,17 +895,12 @@ Be authoritative and specific. Flag any areas where the question crosses into ad
         {
           name: 'Intelligence Supervisor',
           role: 'Orchestrate the specialist team and synthesise a verified intelligence report',
-          systemPrompt: `You are a senior intelligence supervisor coordinating a team of four specialists. Use your tools to delegate analysis tasks:
-
-- data_analyst: Extracts quantitative patterns, metrics and statistical insights from the research
-- fact_verifier: Cross-checks claims for accuracy and flags unverified assertions
-- source_evaluator: Assesses credibility and quality of the research sources
-- insight_generator: Synthesises strategic insights and actionable recommendations
+          systemPrompt: `You are a senior intelligence supervisor coordinating a team of specialist agents. Your available team agents and their exact tool names are injected automatically at runtime — do not reference tool names in these instructions.
 
 Orchestration strategy:
-1. Call fact_verifier and source_evaluator first (they can work on the raw ingested data)
-2. Call data_analyst with the research to extract metrics and patterns
-3. Call insight_generator last with the full verified and analysed findings
+1. Delegate to the fact-verification and source-evaluation specialists first — they can work on the raw ingested data immediately.
+2. Delegate to the quantitative data analyst with the research findings to extract metrics and patterns.
+3. Delegate to the insight-generation specialist last, providing the full verified and analysed findings.
 
 After reviewing all team outputs, produce a comprehensive intelligence report:
 
@@ -1476,8 +1476,10 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
       else if (connection.sourceHandle === 'no') label = 'no'
       else if (connection.sourceHandle === 'continue') label = 'loop'
       else if (connection.sourceHandle === 'exit') label = 'exit'
+      else if (connection.sourceHandle === 'delegate') label = 'delegate'
 
       const color = edgeColor(label)
+      const isDelegate = label === 'delegate'
       setEdges((eds) =>
         addEdge({
           ...connection,
@@ -1486,7 +1488,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
           zIndex: 1000,
           label: label ?? undefined,
           markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
-          style: { stroke: color, strokeWidth: 2.5 },
+          style: { stroke: color, strokeWidth: isDelegate ? 2 : 2.5, strokeDasharray: isDelegate ? '6 3' : undefined },
           labelStyle: { fontSize: 10, fill: color, fontWeight: 700 },
           labelBgStyle: { fill: '#fff', fillOpacity: 0.9 },
         }, eds)
@@ -1525,7 +1527,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         type: 'smoothstep', animated: true,
         zIndex: 1000,
         label: e.label ?? undefined,
-        sourceHandle: e.label === 'yes' ? 'yes' : e.label === 'no' ? 'no' : e.label === 'loop' ? 'continue' : e.label === 'exit' ? 'exit' : undefined,
+        sourceHandle: e.label === 'yes' ? 'yes' : e.label === 'no' ? 'no' : e.label === 'loop' ? 'continue' : e.label === 'exit' ? 'exit' : e.label === 'delegate' ? 'delegate' : undefined,
         markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
         style: { stroke: color, strokeWidth: isDelegate ? 2 : 2.5, strokeDasharray: isDelegate ? '6 3' : undefined },
         labelStyle: { fontSize: 10, fill: color, fontWeight: 700 },
@@ -2122,8 +2124,9 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               <div style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', lineHeight: 1.6 }}>
                 <strong>How supervisor works:</strong><br />
                 1. Select a coordinator agent above.<br />
-                2. Draw <em>delegate</em> edges from this node to each team agent node.<br />
-                3. At runtime, the team agents become callable tools for the supervisor&apos;s LLM.
+                2. Drag from the <strong>→ right handle</strong> to the next pipeline node (forward flow).<br />
+                3. Drag from the <strong>↓ bottom handle</strong> to each team agent node — edges are auto-labeled <code style={{ background: '#fde68a', padding: '1px 3px', borderRadius: 2 }}>delegate</code>.<br />
+                4. At runtime, team agents become callable tools for the supervisor&apos;s LLM.
               </div>
             )}
 
