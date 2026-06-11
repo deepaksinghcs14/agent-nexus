@@ -59,6 +59,10 @@ func (h *ConnectorsHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ConnectorsHandler) Create(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.DemoMode {
+		errs.Write(w, errs.Forbidden("connector creation is not available in demo mode"))
+		return
+	}
 	var c domain.Connector
 	if json.NewDecoder(r.Body).Decode(&c) != nil || c.Name == "" || c.Provider == "" {
 		errs.Write(w, errs.BadRequest("name and provider are required"))

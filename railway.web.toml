@@ -1,0 +1,10 @@
+# Railway config for the web (Next.js) service
+# In Railway dashboard: Service Settings → Config File Path → railway.web.toml
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.web"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

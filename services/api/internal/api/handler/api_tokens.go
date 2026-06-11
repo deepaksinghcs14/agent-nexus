@@ -70,6 +70,10 @@ func (h *APITokensHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APITokensHandler) Create(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.DemoMode {
+		errs.Write(w, errs.Forbidden("API token creation is not available in demo mode"))
+		return
+	}
 	wsID := middleware.WorkspaceIDFromCtx(r.Context())
 	uid := middleware.UserIDFromCtx(r.Context())
 

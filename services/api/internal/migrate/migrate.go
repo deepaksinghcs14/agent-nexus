@@ -154,14 +154,35 @@ func apply(ctx context.Context, pool *pgxpool.Pool, version, sql string) error {
 	return tx.Commit(ctx)
 }
 
-// splitStatements splits SQL on semicolons, dropping empty/whitespace-only chunks.
+// splitStatements splits SQL on semicolons, skipping semicolons inside -- line
+// comments so that comment text like "-- foo; bar" does not create a spurious
+// statement boundary.
 func splitStatements(sql string) []string {
-	parts := strings.Split(sql, ";")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if s := strings.TrimSpace(p); s != "" {
-			out = append(out, s)
+	var out []string
+	var stmt strings.Builder
+	for _, line := range strings.Split(sql, "\n") {
+		// Strip the -- comment portion before scanning for a semicolon.
+		codePart := line
+		if idx := strings.Index(line, "--"); idx >= 0 {
+			codePart = line[:idx]
 		}
+		if strings.Contains(codePart, ";") {
+			// Semicolon is in executable code — end the current statement here.
+			// Append everything up to (not including) the first semicolon in codePart.
+			semiIdx := strings.Index(codePart, ";")
+			stmt.WriteString(line[:semiIdx])
+			if s := strings.TrimSpace(stmt.String()); s != "" {
+				out = append(out, s)
+			}
+			stmt.Reset()
+			// Anything after the semicolon on the same line starts the next statement.
+			stmt.WriteString(line[semiIdx+1:] + "\n")
+		} else {
+			stmt.WriteString(line + "\n")
+		}
+	}
+	if s := strings.TrimSpace(stmt.String()); s != "" {
+		out = append(out, s)
 	}
 	return out
 }

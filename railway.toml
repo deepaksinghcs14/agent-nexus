@@ -1,0 +1,12 @@
+# Root-level Railway config — used by the API service (root directory = repo root)
+# The web service uses railway.web.toml (configure in Railway dashboard: Config File Path = railway.web.toml)
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.api"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+healthcheckPath = "/health"
+healthcheckTimeout = 30

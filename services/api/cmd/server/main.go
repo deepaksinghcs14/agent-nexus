@@ -58,16 +58,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build tool registry and seed native tools into DB
+	// Ensure at least one platform admin exists. If no admin is present, promote
+	// the earliest registered user — handles instances where the first user
+	// signed up before this logic was added.
+	if _, err := pool.Exec(ctx, `
+		UPDATE users SET is_admin = true
+		WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)
+		  AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = true)
+	`); err != nil {
+		slog.Warn("bootstrap admin promotion failed", "error", err)
+	}
+
+	// Build tool registry and seed native tools into DB.
+	// In demo mode, skip http_request and write_file to prevent SSRF and disk abuse.
 	reg := tools.NewRegistry()
 	reg.Register(native.NewReadFileTool(cfg.StoragePath))
-	reg.Register(native.NewWriteFileTool(cfg.StoragePath))
 	reg.Register(native.NewWebSearchTool())
-	reg.Register(native.NewHTTPRequestTool())
+	if !cfg.DemoMode {
+		reg.Register(native.NewWriteFileTool(cfg.StoragePath))
+		reg.Register(native.NewHTTPRequestTool())
+	}
 	if err := reg.SeedDB(ctx, pool); err != nil {
 		slog.Warn("failed to seed native tools", "error", err)
 	} else {
-		slog.Info("native tools seeded", "count", len(reg.All()))
+		slog.Info("native tools seeded", "count", len(reg.All()), "demo_mode", cfg.DemoMode)
 	}
 	exec := tools.NewExecutor(reg)
 
@@ -91,6 +105,7 @@ func main() {
 		Invoke:          invoke,
 		WebhookTriggers: handler.NewWebhookTriggerHandler(pool, cfg),
 		WebhookIngress:  handler.NewWebhookIngressHandler(pool, invoke),
+		Config:          handler.NewConfigHandler(cfg),
 	}
 
 	// HTTP server

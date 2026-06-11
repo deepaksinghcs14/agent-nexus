@@ -58,12 +58,16 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// Append first 8 chars of userID to guarantee workspace name uniqueness
 	wsSlug := slug + "-" + userID[:8]
 
+	// First registered user becomes platform admin.
+	var existingCount int
+	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM users`).Scan(&existingCount)
+
 	user := &domain.User{
 		ID:       userID,
 		Email:    req.Email,
 		FullName: req.FullName,
 		IsActive: true,
-		IsAdmin:  false,
+		IsAdmin:  existingCount == 0,
 	}
 	ws := &domain.Workspace{
 		ID:          wsID,

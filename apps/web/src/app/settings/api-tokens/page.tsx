@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Key, Plus, Trash2, Copy, Check, AlertCircle } from 'lucide-react'
 import { apiTokensAPI } from '@/lib/api'
+import { useDemoMode } from '@/context/demo-mode'
 import type { APIToken, CreatedAPIToken } from '@/types'
 
 function formatDate(s: string | null) {
@@ -11,6 +12,7 @@ function formatDate(s: string | null) {
 }
 
 export default function APITokensPage() {
+  const demoMode = useDemoMode()
   const [tokens, setTokens] = useState<APIToken[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
@@ -78,7 +80,9 @@ export default function APITokensPage() {
         </div>
         <button
           onClick={() => { setShowCreate(true); setNewToken(null) }}
-          className="flex items-center gap-2 px-4 py-2 rounded-md bg-[#534AB7] hover:bg-[#4a42a3] text-white text-sm font-medium transition-colors"
+          disabled={demoMode}
+          title={demoMode ? 'Not available in demo mode' : undefined}
+          className="flex items-center gap-2 px-4 py-2 rounded-md bg-[#534AB7] hover:bg-[#4a42a3] text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Plus className="w-4 h-4" />
           New token

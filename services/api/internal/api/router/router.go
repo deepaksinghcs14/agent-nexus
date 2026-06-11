@@ -34,6 +34,9 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 		w.Write([]byte(`{"status":"ok"}`)) //nolint:errcheck
 	})
 
+	// Public config — returns feature flags like demo_mode (no auth required)
+	r.Get("/api/v1/config", h.Config.Get)
+
 	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC secret)
 	r.Post("/webhook/{webhookId}", h.WebhookIngress.Receive)
 

@@ -1,5 +1,5 @@
 -- Allow conversations and runs to exist without a single owning agent.
--- Group runs span multiple agents; agent_id is meaningless in that context
+-- Group runs span multiple agents so agent_id is meaningless in that context
 -- and was causing FK failures on group invocations.
 
 ALTER TABLE conversations

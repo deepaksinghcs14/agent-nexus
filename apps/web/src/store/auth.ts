@@ -32,6 +32,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setAuth: ({ user, workspaceId, accessToken, workspace }) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('access_token', accessToken)
+      document.cookie = 'has_session=1; path=/; max-age=2592000; SameSite=Lax'
     }
     set({ user, workspaceId, accessToken, workspace: workspace ?? null, isAuthenticated: true })
   },
@@ -51,6 +52,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   clearAuth: () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('access_token')
+      document.cookie = 'has_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
     }
     set({ user: null, workspace: null, workspaceId: null, workspaces: [], accessToken: null, isAuthenticated: false })
   },
