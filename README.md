@@ -159,7 +159,7 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Run tracing** — every webhook-fired run carries a `trigger_id`; filter runs by trigger to see the full execution history for each inbound source
 
 ### Nexus AI
-- **Meta-agent** — a built-in AI assistant that can list agents/tools/connectors, create new agents, build workflow graphs, and create webhook triggers using natural language — backed by the same agent runtime as user-created agents
+- **Meta-agent** — a built-in AI assistant backed by the same agent runtime as user-created agents. Chat to it in natural language to list agents/tools/connectors, create new agents, build workflow graphs, and set up webhook triggers. Automatically detects available models for your configured providers and selects the best one — no manual model IDs required. Navigation links in responses always point to your actual deployment URL (set via `PUBLIC_APP_URL`)
 
 ### Built-in Documentation
 - **In-app docs** — platform documentation lives inside the app at `/docs`; covers agents, tools, connectors, workflows, the invoke API, SSE stream events, run states, and MCP servers — no external site needed
@@ -267,6 +267,8 @@ cp services/api/.env.example services/api/.env
 | `CORS_ORIGINS` | no | Comma-separated allowed origins |
 | `LOG_LEVEL` | no | `debug` / `info` / `warn` / `error` |
 | `STORAGE_PATH` | no | Local file storage path |
+| `PUBLIC_APP_URL` | no | Base URL of the frontend, default `http://localhost:3000`. Set to your public domain (e.g. `https://your-domain.com`) so Nexus AI generates correct navigation links |
+| `PUBLIC_API_URL` | no | Base URL of the API, default `http://localhost:8080`. Used as the redirect base for OAuth flows |
 | `GOOGLE_OAUTH_CLIENT_ID` | no | Google OAuth — leave blank to disable |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | no | Google OAuth — leave blank to disable |
 

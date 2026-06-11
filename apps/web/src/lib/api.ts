@@ -1,7 +1,7 @@
 // src/lib/api.ts — all API calls go through this wrapper
 import type { WorkspaceWithRole, Workspace, APIToken, CreatedAPIToken, InvokeRunResponse, WorkflowGraph } from '@/types'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
 class APIClient {
   private baseURL: string
