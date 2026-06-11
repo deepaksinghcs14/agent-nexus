@@ -199,6 +199,7 @@ type Run struct {
 	TriggerID         string     `json:"trigger_id,omitempty"`
 	ParentRunID       string     `json:"parent_run_id,omitempty"`
 	WorkflowNodeID    string     `json:"workflow_node_id,omitempty"`
+	TraceID           string     `json:"trace_id,omitempty"`
 }
 
 type StepType string
@@ -302,21 +303,21 @@ type ConnectorDocument struct {
 // ============================================================
 
 type WebhookTrigger struct {
-	ID               string     `json:"id"`
-	WorkspaceID      string     `json:"workspace_id"`
-	Name             string     `json:"name"`
-	Description      string     `json:"description"`
-	TargetType       string     `json:"target_type"` // agent | workflow
-	TargetID         string     `json:"target_id"`
-	TargetName       string     `json:"target_name,omitempty"`
-	InputTemplate    string     `json:"input_template"`
-	Secret           string     `json:"secret,omitempty"`
-	IsActive         bool       `json:"is_active"`
-	CreatedBy        string     `json:"created_by"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	LastTriggeredAt  *time.Time `json:"last_triggered_at,omitempty"`
-	TriggerCount     int64      `json:"trigger_count"`
+	ID              string     `json:"id"`
+	WorkspaceID     string     `json:"workspace_id"`
+	Name            string     `json:"name"`
+	Description     string     `json:"description"`
+	TargetType      string     `json:"target_type"` // agent | workflow
+	TargetID        string     `json:"target_id"`
+	TargetName      string     `json:"target_name,omitempty"`
+	InputTemplate   string     `json:"input_template"`
+	Secret          string     `json:"secret,omitempty"`
+	IsActive        bool       `json:"is_active"`
+	CreatedBy       string     `json:"created_by"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	LastTriggeredAt *time.Time `json:"last_triggered_at,omitempty"`
+	TriggerCount    int64      `json:"trigger_count"`
 }
 
 // ============================================================

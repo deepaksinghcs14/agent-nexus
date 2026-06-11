@@ -40,11 +40,11 @@ func NewRunsHandler(p *pgxpool.Pool, c *config.Config, reg *tools.Registry, exec
 	return &RunsHandler{p, c, repository.NewConversationRepository(p), reg, exec}
 }
 
-const runSelect = `SELECT id::text,workspace_id::text,COALESCE(agent_id::text,''),conversation_id::text,user_id::text,input,output,status,started_at,completed_at,total_input_tokens,total_output_tokens,cost_estimate,error_message,COALESCE(trigger_id::text,''),COALESCE(parent_run_id::text,''),workflow_node_id FROM runs`
+const runSelect = `SELECT id::text,workspace_id::text,COALESCE(agent_id::text,''),conversation_id::text,user_id::text,input,output,status,started_at,completed_at,total_input_tokens,total_output_tokens,cost_estimate,error_message,COALESCE(trigger_id::text,''),COALESCE(parent_run_id::text,''),workflow_node_id,COALESCE(trace_id::text,'') FROM runs`
 
 func scanRun(row interface{ Scan(...any) error }) (domain.Run, error) {
 	var x domain.Run
-	e := row.Scan(&x.ID, &x.WorkspaceID, &x.AgentID, &x.ConversationID, &x.UserID, &x.Input, &x.Output, &x.Status, &x.StartedAt, &x.CompletedAt, &x.TotalInputTokens, &x.TotalOutputTokens, &x.CostEstimate, &x.ErrorMessage, &x.TriggerID, &x.ParentRunID, &x.WorkflowNodeID)
+	e := row.Scan(&x.ID, &x.WorkspaceID, &x.AgentID, &x.ConversationID, &x.UserID, &x.Input, &x.Output, &x.Status, &x.StartedAt, &x.CompletedAt, &x.TotalInputTokens, &x.TotalOutputTokens, &x.CostEstimate, &x.ErrorMessage, &x.TriggerID, &x.ParentRunID, &x.WorkflowNodeID, &x.TraceID)
 	return x, e
 }
 
@@ -414,8 +414,9 @@ func errString(err error) string {
 	return err.Error()
 }
 
-func (h *RunsHandler) list(w http.ResponseWriter, r *http.Request, conv string) {
+func (h *RunsHandler) ListByConversation(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	conv := chi.URLParam(r, "id")
 	rows, e := h.pool.Query(r.Context(), runSelect+` WHERE workspace_id=$1::uuid AND ($2='' OR conversation_id=$2::uuid) AND ($3='' OR agent_id=$3::uuid) AND ($4='' OR status=$4) AND ($5='' OR trigger_id=$5::uuid) ORDER BY started_at DESC`, middleware.WorkspaceIDFromCtx(r.Context()), conv, q.Get("agent_id"), q.Get("status"), q.Get("trigger_id"))
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to list runs"))
@@ -433,14 +434,67 @@ func (h *RunsHandler) list(w http.ResponseWriter, r *http.Request, conv string) 
 	}
 	errs.WriteJSON(w, 200, map[string]any{"data": a})
 }
-func (h *RunsHandler) ListByConversation(w http.ResponseWriter, r *http.Request) {
-	h.list(w, r, chi.URLParam(r, "id"))
+
+// List returns root runs only (parent_run_id IS NULL), paginated by cursor.
+// Pass ?before=<RFC3339 timestamp> to load the next page; returns has_more + next_cursor.
+func (h *RunsHandler) List(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	before := q.Get("before")
+	rows, e := h.pool.Query(r.Context(),
+		runSelect+` WHERE workspace_id=$1::uuid AND parent_run_id IS NULL`+
+			` AND ($2='' OR agent_id=$2::uuid)`+
+			` AND ($3='' OR status=$3)`+
+			` AND ($4='' OR trigger_id=$4::uuid)`+
+			` AND ($5='' OR started_at < $5::timestamptz)`+
+			` ORDER BY started_at DESC LIMIT 11`,
+		ws, q.Get("agent_id"), q.Get("status"), q.Get("trigger_id"), before)
+	if e != nil {
+		errs.Write(w, errs.Internal("failed to list runs"))
+		return
+	}
+	defer rows.Close()
+	a := []domain.Run{}
+	for rows.Next() {
+		x, e := scanRun(rows)
+		if e != nil {
+			errs.Write(w, errs.Internal("failed to read runs"))
+			return
+		}
+		a = append(a, x)
+	}
+	hasMore := len(a) == 11
+	if hasMore {
+		a = a[:10]
+	}
+	nextCursor := ""
+	if hasMore && len(a) > 0 {
+		nextCursor = a[len(a)-1].StartedAt.Format(time.RFC3339Nano)
+	}
+	errs.WriteJSON(w, 200, map[string]any{"data": a, "has_more": hasMore, "next_cursor": nextCursor})
 }
-func (h *RunsHandler) List(w http.ResponseWriter, r *http.Request) { h.list(w, r, "") }
+
+// ListChildren returns all runs in a trace tree.
+// For root runs (trace_id IS NULL) it queries by trace_id to get all descendants.
+// For sub-runs it returns direct children.
 func (h *RunsHandler) ListChildren(w http.ResponseWriter, r *http.Request) {
 	runID := chi.URLParam(r, "id")
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
-	rows, e := h.pool.Query(r.Context(), runSelect+` WHERE parent_run_id=$1::uuid AND workspace_id=$2::uuid ORDER BY started_at ASC`, runID, ws)
+
+	var traceIDVal string
+	_ = h.pool.QueryRow(r.Context(),
+		`SELECT COALESCE(trace_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&traceIDVal)
+
+	var query string
+	var args []any
+	if traceIDVal == "" {
+		query = runSelect + ` WHERE trace_id=$1::uuid AND workspace_id=$2::uuid ORDER BY started_at ASC`
+		args = []any{runID, ws}
+	} else {
+		query = runSelect + ` WHERE parent_run_id=$1::uuid AND workspace_id=$2::uuid ORDER BY started_at ASC`
+		args = []any{runID, ws}
+	}
+	rows, e := h.pool.Query(r.Context(), query, args...)
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to list child runs"))
 		return

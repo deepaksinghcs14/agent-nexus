@@ -24,7 +24,7 @@ import type { Run, RunStep, StepType, WorkflowGraph, WorkflowNode, WorkflowEdge 
 
 // ─── Colour / icon helpers ──────────────────────────────────────────────────
 
-const STEP_STYLE: Record<StepType, { bg: string; border: string; icon: React.ReactNode; label: string }> = {
+export const STEP_STYLE: Record<StepType, { bg: string; border: string; icon: React.ReactNode; label: string }> = {
   memory_retrieval:  { bg: '#f5f3ff', border: '#a78bfa', icon: <Brain size={12} />,     label: 'Memory' },
   context_retrieval: { bg: '#eff6ff', border: '#60a5fa', icon: <Database size={12} />,  label: 'Context' },
   model_call:        { bg: '#eef2ff', border: '#6366f1', icon: <Sparkles size={12} />,  label: 'Model' },
@@ -46,36 +46,44 @@ type StepNodeData = { step: RunStep; selected: boolean }
 
 function StepNode({ data }: NodeProps & { data: StepNodeData }) {
   const { step } = data
-  const style = STEP_STYLE[step.step_type] ?? STEP_STYLE.model_call
+  const isErr = step.step_type === 'error' || !!step.error
+  const style = isErr ? STEP_STYLE.error : (STEP_STYLE[step.step_type] ?? STEP_STYLE.model_call)
+  const bg = data.selected ? style.border : isErr ? '#fef2f2' : style.bg
+  const textColor = data.selected ? '#fff' : isErr ? '#991b1b' : '#111827'
+  const metaColor = data.selected ? '#ffffff99' : '#6b7280'
+
   return (
     <>
       <Handle type="target" position={Position.Top} style={{ background: style.border, width: 7, height: 7 }} />
       <div style={{
-        background: data.selected ? style.border : style.bg,
+        background: bg,
         border: `1.5px solid ${style.border}`,
         borderRadius: 8,
         padding: '6px 10px',
         minWidth: 160,
+        maxWidth: 220,
         cursor: 'pointer',
         boxShadow: data.selected ? `0 0 0 2px ${style.border}40` : 'none',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ color: data.selected ? '#fff' : style.border }}>{style.icon}</span>
-          <span style={{ fontSize: 11, fontWeight: 600, color: data.selected ? '#fff' : '#111827', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ color: data.selected ? '#fff' : style.border, flexShrink: 0 }}>{style.icon}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: textColor, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {stepLabel(step)}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
+        <div style={{ display: 'flex', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
           {step.latency_ms > 0 && (
-            <span style={{ fontSize: 9, color: data.selected ? '#ffffff99' : '#6b7280' }}>{step.latency_ms}ms</span>
+            <span style={{ fontSize: 9, color: metaColor }}>{step.latency_ms}ms</span>
           )}
           {step.tokens_used > 0 && (
-            <span style={{ fontSize: 9, color: data.selected ? '#ffffff99' : '#6b7280' }}>{step.tokens_used} tok</span>
-          )}
-          {step.error && (
-            <span style={{ fontSize: 9, color: data.selected ? '#fca5a5' : '#ef4444' }}>error</span>
+            <span style={{ fontSize: 9, color: metaColor }}>{step.tokens_used} tok</span>
           )}
         </div>
+        {isErr && step.error && (
+          <div style={{ marginTop: 3, fontSize: 9, color: data.selected ? '#fca5a5' : '#dc2626', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {step.error.split('\n')[0]}
+          </div>
+        )}
       </div>
       <Handle type="source" position={Position.Bottom} style={{ background: style.border, width: 7, height: 7 }} />
     </>
@@ -96,13 +104,20 @@ function WorkflowTraceNode({ data }: NodeProps & { data: WorkflowTraceNodeData }
   const { wfNode, subRun, agentName, selected } = data
   const status = subRun?.status ?? 'pending'
 
-  const borderColor =
-    status === 'success' ? '#4ade80' :
-    status === 'failed'  ? '#f87171' :
-    status === 'running' ? '#60a5fa' :
-    selected             ? '#534AB7' : '#d1d5db'
+  const durationSec = subRun?.completed_at
+    ? (new Date(subRun.completed_at).getTime() - new Date(subRun.started_at).getTime()) / 1000
+    : null
+  const isSlow = durationSec !== null && durationSec > 10
+  const isError = status === 'failed'
 
-  const bg = selected ? '#f1f0ff' : '#fff'
+  const borderColor =
+    isError   ? '#f87171' :
+    isSlow    ? '#f59e0b' :
+    status === 'success' ? '#4ade80' :
+    status === 'running' ? '#60a5fa' :
+    selected  ? '#534AB7' : '#d1d5db'
+
+  const bg = isError ? '#fef2f2' : selected ? '#f1f0ff' : '#fff'
 
   const typeLabel: Record<string, string> = {
     start: 'Start', end: 'End', agent: agentName ?? 'Agent', supervisor: 'Supervisor',
@@ -120,21 +135,26 @@ function WorkflowTraceNode({ data }: NodeProps & { data: WorkflowTraceNodeData }
     loop: <ClockIcon size={11} color="#8b5cf6" />,
   }
 
+  const totalTokens = subRun ? subRun.total_input_tokens + subRun.total_output_tokens : 0
+
   return (
     <>
       <Handle type="target" position={Position.Left} style={{ background: borderColor, width: 8, height: 8 }} />
-      <div style={{
-        background: bg,
-        border: `2px solid ${borderColor}`,
-        borderRadius: 10,
-        padding: '8px 12px',
-        minWidth: 140,
-        cursor: 'pointer',
-        position: 'relative',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
-          {typeIcon[wfNode.node_type] ?? null}
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#111827', flex: 1 }}>
+      <div
+        title={subRun ? `↑ ${subRun.total_input_tokens} / ↓ ${subRun.total_output_tokens} tokens` : undefined}
+        style={{
+          background: bg,
+          border: `2px solid ${borderColor}`,
+          borderRadius: 10,
+          padding: '8px 12px',
+          minWidth: 140,
+          cursor: 'pointer',
+          position: 'relative',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: subRun ? 4 : 0 }}>
+          {isSlow && !isError ? <ClockIcon size={11} color="#f59e0b" /> : (typeIcon[wfNode.node_type] ?? null)}
+          <span style={{ fontSize: 11, fontWeight: 700, color: isError ? '#991b1b' : '#111827', flex: 1 }}>
             {typeLabel[wfNode.node_type] ?? wfNode.node_type}
           </span>
           {subRun && (
@@ -148,17 +168,23 @@ function WorkflowTraceNode({ data }: NodeProps & { data: WorkflowTraceNodeData }
           )}
         </div>
         {subRun && (
-          <div style={{ display: 'flex', gap: 6 }}>
-            {subRun.completed_at && (
-              <span style={{ fontSize: 9, color: '#6b7280' }}>
-                {Math.round((new Date(subRun.completed_at).getTime() - new Date(subRun.started_at).getTime()) / 1000 * 10) / 10}s
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {durationSec !== null && (
+              <span style={{ fontSize: 9, color: isSlow ? '#d97706' : '#6b7280', fontWeight: isSlow ? 700 : 400 }}>
+                {Math.round(durationSec * 10) / 10}s
               </span>
             )}
-            {(subRun.total_input_tokens + subRun.total_output_tokens) > 0 && (
-              <span style={{ fontSize: 9, color: '#6b7280' }}>
-                {subRun.total_input_tokens + subRun.total_output_tokens} tok
-              </span>
+            {totalTokens > 0 && (
+              <span style={{ fontSize: 9, color: '#6b7280' }}>{totalTokens} tok</span>
             )}
+            {subRun.cost_estimate > 0 && (
+              <span style={{ fontSize: 9, color: '#6b7280' }}>${subRun.cost_estimate.toFixed(4)}</span>
+            )}
+          </div>
+        )}
+        {isError && subRun?.error_message && (
+          <div style={{ marginTop: 4, fontSize: 9, color: '#dc2626', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+            {subRun.error_message.split('\n')[0]}
           </div>
         )}
       </div>
@@ -309,7 +335,7 @@ export function TraceGraph({ run, steps }: Props) {
   })
   const children = childrenData?.data ?? []
 
-  const { data: graphData } = useQuery({
+  const { data: graphData, isFetching: graphLoading } = useQuery({
     queryKey: ['workflow-graph', run.workflow_id],
     queryFn: () => workflowsAPI.getGraph(run.workflow_id!) as Promise<WorkflowGraph>,
     enabled: isWorkflowRoot && !!run.workflow_id,
@@ -361,8 +387,12 @@ export function TraceGraph({ run, steps }: Props) {
       source: e.source_node_id,
       target: e.target_node_id,
       label: e.label ?? undefined,
-      style: { stroke: '#d1d5db', strokeWidth: 1.5 },
-      labelStyle: { fontSize: 9, fill: '#6b7280' },
+      style: {
+        stroke: e.label === 'delegate' ? '#92400e' : '#d1d5db',
+        strokeWidth: 1.5,
+        strokeDasharray: e.label === 'delegate' ? '6 3' : undefined,
+      },
+      labelStyle: { fontSize: 9, fill: e.label === 'delegate' ? '#92400e' : '#6b7280' },
     }))
 
     return { wfNodes: nodes, wfEdges: edges, agentNameMap: childByNode }
@@ -388,6 +418,22 @@ export function TraceGraph({ run, steps }: Props) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, gap: 8 }}>
         <p style={{ fontSize: 12, color: '#9ca3af' }}>No steps recorded for this run.</p>
+      </div>
+    )
+  }
+
+  if (isWorkflowRoot && !run.workflow_id) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, gap: 8, border: '1px solid #e5e7eb', borderRadius: 8 }}>
+        <p style={{ fontSize: 12, color: '#9ca3af' }}>Workflow graph not available for this run.</p>
+      </div>
+    )
+  }
+
+  if (isWorkflowRoot && graphLoading && !graphData) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 200, gap: 8, border: '1px solid #e5e7eb', borderRadius: 8 }}>
+        <p style={{ fontSize: 12, color: '#9ca3af' }}>Loading workflow graph…</p>
       </div>
     )
   }
