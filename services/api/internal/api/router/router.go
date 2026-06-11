@@ -161,7 +161,10 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Get("/workflows/{id}/graph", h.Workflows.GetGraph)
 			r.Put("/workflows/{id}/graph", h.Workflows.SaveGraph)
 
-			// Admin (requires is_admin flag)
+			// Nexus AI meta-agent
+				r.Post("/nexus-ai/chat", h.NexusAI.Chat)
+
+				// Admin (requires is_admin flag)
 			r.Group(func(r chi.Router) {
 				r.Use(mw.RequireAdmin)
 

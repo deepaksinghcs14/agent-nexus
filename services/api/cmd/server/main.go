@@ -106,6 +106,7 @@ func main() {
 		WebhookTriggers: handler.NewWebhookTriggerHandler(pool, cfg),
 		WebhookIngress:  handler.NewWebhookIngressHandler(pool, invoke),
 		Config:          handler.NewConfigHandler(cfg),
+		NexusAI:         handler.NewNexusAIHandler(pool, cfg, runs),
 	}
 
 	// HTTP server

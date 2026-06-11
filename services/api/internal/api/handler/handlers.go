@@ -20,4 +20,5 @@ type Handlers struct {
 	WebhookTriggers *WebhookTriggerHandler
 	WebhookIngress  *WebhookIngressHandler
 	Config          *ConfigHandler
+	NexusAI         *NexusAIHandler
 }
