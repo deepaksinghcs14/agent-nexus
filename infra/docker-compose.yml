@@ -50,13 +50,14 @@ services:
     build:
       context: ../apps/web
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8080
     container_name: agent-nexus-web
     restart: unless-stopped
     depends_on:
       - api
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8080
-      NEXT_PUBLIC_APP_NAME: Agent Nexus
+      PORT: 3000
     ports:
       - "3000:3000"
 
