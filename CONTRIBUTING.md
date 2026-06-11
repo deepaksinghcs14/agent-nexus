@@ -8,7 +8,7 @@ Thank you for your interest in contributing. This document covers how to get the
 
 | Tool | Version |
 |------|---------|
-| Go | 1.22+ |
+| Go | 1.26+ |
 | Node.js | 20+ |
 | Docker + Docker Compose v2 | 24+ |
 
@@ -23,7 +23,9 @@ cd agent-nexus
 
 # 2. Create environment files
 cp services/api/.env.example services/api/.env
-# Edit services/api/.env — fill in JWT_SECRET and ENCRYPTION_KEY at minimum
+# Edit services/api/.env — fill in JWT_SECRET and ENCRYPTION_KEY at minimum.
+# Optional: set PUBLIC_APP_URL=http://localhost:3000 (default) so Nexus AI
+# generates correct links. Set to your public domain when deploying.
 
 # 3. Start everything (Postgres in Docker, API and web with hot-reload)
 make dev
