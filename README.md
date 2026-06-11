@@ -6,6 +6,8 @@
 
 > Self-hosted, model-agnostic AI agent orchestration platform.
 
+**[Try the live demo →](https://web-production-ae380.up.railway.app)** — Sign up and explore instantly. MCP servers, connectors, and API tokens are restricted in demo mode; self-host for full access.
+
 Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach tools, connect memory, and observe every run with full trace logging — all from your own infrastructure. No vendor lock-in, no data leaving your servers.
 
 ---
@@ -176,7 +178,27 @@ cd infra && docker compose up -d
 
 Open http://localhost:3000, register an account, and you're in.
 
-### Option B — Local dev (hot-reload)
+### Option B — Docker build (production images)
+
+Build and run the API and web images individually:
+
+```bash
+# API
+docker build -f Dockerfile.api -t agent-nexus-api .
+docker run -p 8080:8080 \
+  -e DATABASE_URL=<postgres-url> \
+  -e JWT_SECRET=<secret> \
+  -e ENCRYPTION_KEY=<32-char-key> \
+  agent-nexus-api
+
+# Web (set NEXT_PUBLIC_API_URL at build time)
+docker build -f Dockerfile.web \
+  --build-arg NEXT_PUBLIC_API_URL=http://localhost:8080 \
+  -t agent-nexus-web .
+docker run -p 3000:3000 agent-nexus-web
+```
+
+### Option C — Local dev (hot-reload)
 
 ```bash
 cp services/api/.env.example services/api/.env
