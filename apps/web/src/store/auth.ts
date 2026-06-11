@@ -32,7 +32,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setAuth: ({ user, workspaceId, accessToken, workspace }) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('access_token', accessToken)
-      document.cookie = 'has_session=1; path=/; SameSite=Lax'
+      document.cookie = 'has_session=1; path=/; max-age=2592000; SameSite=Lax'
     }
     set({ user, workspaceId, accessToken, workspace: workspace ?? null, isAuthenticated: true })
   },
