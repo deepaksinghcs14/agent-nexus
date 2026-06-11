@@ -2,7 +2,7 @@
 
 import { ExternalLink } from 'lucide-react'
 
-const GITHUB_URL = 'https://github.com/deepaksingh/agent-nexus'
+const GITHUB_URL = 'https://github.com/deepaksinghcs14/agent-nexus'
 
 export function DemoBanner() {
   return (
