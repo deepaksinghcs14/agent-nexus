@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Bot, GitBranch, Wrench, Plug, Link2, Zap,
+  Bot, GitBranch, Wrench, Plug, Link2, Zap, Sparkles,
   MessageSquare, History,
   Activity, GitCommitHorizontal, Brain, BarChart2,
   Key, Settings, BookOpen,
@@ -21,6 +21,7 @@ const userNav: NavGroup[] = [
   {
     label: 'Build',
     items: [
+      { label: 'Nexus AI',      href: '/nexus-ai',     icon: Sparkles },
       { label: 'Agents',       href: '/agents',       icon: Bot },
       { label: 'Workflows',    href: '/workflows',    icon: GitBranch },
       { label: 'Tools',        href: '/tools',        icon: Wrench },
