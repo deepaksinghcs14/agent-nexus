@@ -3,7 +3,6 @@ import Link from 'next/link'
 import { Hexagon, BookOpen } from 'lucide-react'
 import DocsTokenSelector from '@/components/docs/DocsTokenSelector'
 
-export const dynamic = 'force-dynamic'
 export const metadata: Metadata = { title: 'Docs — Agent Nexus' }
 
 const NAV = [
