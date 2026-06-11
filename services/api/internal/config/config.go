@@ -7,17 +7,18 @@ import (
 )
 
 type Config struct {
-	Port                   string
-	DatabaseURL            string
-	JWTSecret              string
-	EncryptionKey          string
-	CORSOrigins            []string
-	LogLevel               string
-	StoragePath            string
+	Port                    string
+	DatabaseURL             string
+	JWTSecret               string
+	EncryptionKey           string
+	CORSOrigins             []string
+	LogLevel                string
+	StoragePath             string
 	GoogleOAuthClientID     string
 	GoogleOAuthClientSecret string
 	PublicAPIURL            string // base URL this API is reachable at (for OAuth redirect URIs)
-	DemoMode               bool   // when true, restricts dangerous capabilities for public hosted instances
+	PublicAppURL            string // base URL of the frontend app (used in LLM-generated links)
+	DemoMode                bool   // when true, restricts dangerous capabilities for public hosted instances
 }
 
 func Load() (*Config, error) {
@@ -31,6 +32,7 @@ func Load() (*Config, error) {
 		GoogleOAuthClientID:     getEnv("GOOGLE_OAUTH_CLIENT_ID", ""),
 		GoogleOAuthClientSecret: getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
 		PublicAPIURL:            getEnv("PUBLIC_API_URL", "http://localhost:8080"),
+		PublicAppURL:            getEnv("PUBLIC_APP_URL", "http://localhost:3000"),
 		DemoMode:                getEnvBool("DEMO_MODE", false),
 	}
 

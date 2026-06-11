@@ -39,6 +39,7 @@ services:
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       PUBLIC_API_URL: http://localhost:8080
+      PUBLIC_APP_URL: http://localhost:3000
     ports:
       - "8080:8080"
     volumes:

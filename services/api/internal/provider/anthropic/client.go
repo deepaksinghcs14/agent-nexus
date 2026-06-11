@@ -44,6 +44,19 @@ func (c *Client) Complete(ctx context.Context, req provider.CompletionRequest) (
 	if req.MaxTokens <= 0 {
 		body["max_tokens"] = 4096
 	}
+	if len(req.Tools) > 0 {
+		tools := make([]map[string]any, 0, len(req.Tools))
+		for _, t := range req.Tools {
+			var schema any
+			_ = json.Unmarshal(t.InputSchema, &schema)
+			tools = append(tools, map[string]any{
+				"name":         t.Name,
+				"description":  t.Description,
+				"input_schema": schema,
+			})
+		}
+		body["tools"] = tools
+	}
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -130,19 +143,84 @@ func anthropicFallback() []provider.ModelInfo {
 
 func (c *Client) Name() string { return "anthropic" }
 
-func anthropicMessages(messages []provider.Message) (string, []map[string]string) {
-	systemParts := []string{}
-	out := []map[string]string{}
-	for _, msg := range messages {
+// anthropicMessages converts provider.Message slice into Anthropic API format.
+// Returns (system prompt, messages array).
+// Handles assistant messages with tool_calls and tool result messages using
+// Anthropic's content-array format.
+func anthropicMessages(messages []provider.Message) (string, []map[string]any) {
+	var systemParts []string
+	out := make([]map[string]any, 0, len(messages))
+
+	i := 0
+	for i < len(messages) {
+		msg := messages[i]
 		switch msg.Role {
 		case "system":
 			if msg.Content != "" {
 				systemParts = append(systemParts, msg.Content)
 			}
-		case "user", "assistant":
-			out = append(out, map[string]string{"role": msg.Role, "content": msg.Content})
+			i++
+
+		case "user":
+			out = append(out, map[string]any{"role": "user", "content": msg.Content})
+			i++
+
+		case "assistant":
+			if len(msg.ToolCalls) == 0 {
+				out = append(out, map[string]any{"role": "assistant", "content": msg.Content})
+				i++
+				continue
+			}
+			// Build a content array: optional text block + one tool_use per call.
+			content := make([]map[string]any, 0)
+			if msg.Content != "" {
+				content = append(content, map[string]any{"type": "text", "text": msg.Content})
+			}
+			for _, tc := range msg.ToolCalls {
+				var input any
+				if err := json.Unmarshal(tc.Input, &input); err != nil {
+					input = map[string]any{}
+				}
+				content = append(content, map[string]any{
+					"type":  "tool_use",
+					"id":    tc.ID,
+					"name":  tc.Name,
+					"input": input,
+				})
+			}
+			out = append(out, map[string]any{"role": "assistant", "content": content})
+			i++
+
+			// Collect the immediately following tool result messages and group
+			// them as a single user message with tool_result content blocks.
+			var toolResults []map[string]any
+			for i < len(messages) && messages[i].Role == "tool" {
+				tm := messages[i]
+				toolResults = append(toolResults, map[string]any{
+					"type":        "tool_result",
+					"tool_use_id": tm.ToolCallID,
+					"content":     tm.Content,
+				})
+				i++
+			}
+			if len(toolResults) > 0 {
+				out = append(out, map[string]any{"role": "user", "content": toolResults})
+			}
+
 		case "tool":
-			out = append(out, map[string]string{"role": "user", "content": msg.Content})
+			// Orphaned tool result (no preceding assistant turn with tool_calls).
+			out = append(out, map[string]any{
+				"role": "user",
+				"content": []map[string]any{{
+					"type":        "tool_result",
+					"tool_use_id": msg.ToolCallID,
+					"content":     msg.Content,
+				}},
+			})
+			i++
+
+		default:
+			i++
 		}
 	}
 	return strings.Join(systemParts, "\n\n"), out
@@ -151,56 +229,117 @@ func anthropicMessages(messages []provider.Message) (string, []map[string]string
 func streamAnthropic(body io.ReadCloser, events chan<- provider.CompletionEvent) {
 	defer body.Close()
 	defer close(events)
+
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 4096), 1024*1024)
+
 	usage := provider.Usage{}
+
+	// State for accumulating tool use blocks across multiple delta events.
+	var (
+		currentToolID   string
+		currentToolName string
+		toolInputBuf    strings.Builder
+	)
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
 		data := strings.TrimPrefix(line, "data: ")
+
 		var event struct {
 			Type  string `json:"type"`
-			Delta struct {
+			Index int    `json:"index"`
+			// content_block_start
+			ContentBlock struct {
 				Type string `json:"type"`
-				Text string `json:"text"`
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"content_block"`
+			// content_block_delta
+			Delta struct {
+				Type        string `json:"type"`
+				Text        string `json:"text"`
+				PartialJSON string `json:"partial_json"`
 			} `json:"delta"`
+			// message_start
 			Message struct {
 				Usage struct {
 					InputTokens int `json:"input_tokens"`
 				} `json:"usage"`
 			} `json:"message"`
+			// message_delta
 			Usage struct {
 				OutputTokens int `json:"output_tokens"`
 			} `json:"usage"`
+			// error
 			Error struct {
 				Message string `json:"message"`
 			} `json:"error"`
 		}
+
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
 			events <- provider.CompletionEvent{Type: provider.EventError, Error: err}
 			return
 		}
+
 		switch event.Type {
 		case "message_start":
 			usage.InputTokens = event.Message.Usage.InputTokens
-		case "content_block_delta":
-			if event.Delta.Text != "" {
-				events <- provider.CompletionEvent{Type: provider.EventDelta, Delta: event.Delta.Text}
+
+		case "content_block_start":
+			if event.ContentBlock.Type == "tool_use" {
+				currentToolID = event.ContentBlock.ID
+				currentToolName = event.ContentBlock.Name
+				toolInputBuf.Reset()
 			}
+
+		case "content_block_delta":
+			switch event.Delta.Type {
+			case "text_delta":
+				if event.Delta.Text != "" {
+					events <- provider.CompletionEvent{Type: provider.EventDelta, Delta: event.Delta.Text}
+				}
+			case "input_json_delta":
+				toolInputBuf.WriteString(event.Delta.PartialJSON)
+			}
+
+		case "content_block_stop":
+			if currentToolID != "" {
+				inputRaw := json.RawMessage(toolInputBuf.String())
+				if len(inputRaw) == 0 {
+					inputRaw = json.RawMessage("{}")
+				}
+				events <- provider.CompletionEvent{
+					Type: provider.EventToolCall,
+					ToolCall: &provider.ToolCall{
+						ID:    currentToolID,
+						Name:  currentToolName,
+						Input: inputRaw,
+					},
+				}
+				currentToolID = ""
+				currentToolName = ""
+				toolInputBuf.Reset()
+			}
+
 		case "message_delta":
 			if event.Usage.OutputTokens > 0 {
 				usage.OutputTokens = event.Usage.OutputTokens
 			}
-		case "error":
-			events <- provider.CompletionEvent{Type: provider.EventError, Error: errors.New(event.Error.Message)}
-			return
+
 		case "message_stop":
 			events <- provider.CompletionEvent{Type: provider.EventDone, Usage: &usage}
 			return
+
+		case "error":
+			events <- provider.CompletionEvent{Type: provider.EventError, Error: errors.New(event.Error.Message)}
+			return
 		}
 	}
+
 	if err := scanner.Err(); err != nil {
 		events <- provider.CompletionEvent{Type: provider.EventError, Error: err}
 		return

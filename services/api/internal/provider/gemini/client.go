@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
 )
@@ -73,6 +74,9 @@ func (c *Client) Complete(ctx context.Context, req provider.CompletionRequest) (
 	return events, nil
 }
 
+// callSeq generates monotonically increasing IDs for tool calls (Gemini doesn't provide them).
+var callSeq atomic.Int64
+
 func streamGemini(ctx context.Context, body io.Reader, events chan<- provider.CompletionEvent) {
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 512*1024), 512*1024)
@@ -96,7 +100,11 @@ func streamGemini(ctx context.Context, body io.Reader, events chan<- provider.Co
 			Candidates []struct {
 				Content struct {
 					Parts []struct {
-						Text string `json:"text"`
+						Text         string `json:"text"`
+						FunctionCall *struct {
+							Name string          `json:"name"`
+							Args json.RawMessage `json:"args"`
+						} `json:"functionCall"`
 					} `json:"parts"`
 				} `json:"content"`
 			} `json:"candidates"`
@@ -108,6 +116,7 @@ func streamGemini(ctx context.Context, body io.Reader, events chan<- provider.Co
 				Message string `json:"message"`
 			} `json:"error"`
 		}
+
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			continue
 		}
@@ -119,6 +128,21 @@ func streamGemini(ctx context.Context, body io.Reader, events chan<- provider.Co
 			for _, part := range chunk.Candidates[0].Content.Parts {
 				if part.Text != "" {
 					events <- provider.CompletionEvent{Type: provider.EventDelta, Delta: part.Text}
+				}
+				if part.FunctionCall != nil {
+					args := part.FunctionCall.Args
+					if len(args) == 0 {
+						args = json.RawMessage("{}")
+					}
+					seq := callSeq.Add(1)
+					events <- provider.CompletionEvent{
+						Type: provider.EventToolCall,
+						ToolCall: &provider.ToolCall{
+							ID:    fmt.Sprintf("gemini-%s-%d", part.FunctionCall.Name, seq),
+							Name:  part.FunctionCall.Name,
+							Input: args,
+						},
+					}
 				}
 			}
 		}
@@ -211,19 +235,95 @@ func geminiFallback() []provider.ModelInfo {
 
 func (c *Client) Name() string { return "gemini" }
 
+// geminiRequest converts a CompletionRequest into Gemini API body format.
+// Handles system instructions, tool definitions, and the full conversation
+// history including assistant turns with function calls and function results.
 func geminiRequest(req provider.CompletionRequest) map[string]any {
 	contents := []map[string]any{}
 	system := ""
-	for _, msg := range req.Messages {
+
+	msgs := req.Messages
+	i := 0
+	for i < len(msgs) {
+		msg := msgs[i]
 		switch msg.Role {
 		case "system":
 			system = strings.TrimSpace(system + "\n\n" + msg.Content)
-		case "assistant":
-			contents = append(contents, geminiContent("model", msg.Content))
-		case "user", "tool":
+			i++
+
+		case "user":
 			contents = append(contents, geminiContent("user", msg.Content))
+			i++
+
+		case "assistant":
+			if len(msg.ToolCalls) == 0 {
+				contents = append(contents, geminiContent("model", msg.Content))
+				i++
+				continue
+			}
+			// Build a model turn with optional text part + one functionCall part per tool call.
+			parts := []map[string]any{}
+			if msg.Content != "" {
+				parts = append(parts, map[string]any{"text": msg.Content})
+			}
+			for _, tc := range msg.ToolCalls {
+				var args any
+				if err := json.Unmarshal(tc.Input, &args); err != nil {
+					args = map[string]any{}
+				}
+				parts = append(parts, map[string]any{
+					"functionCall": map[string]any{
+						"name": tc.Name,
+						"args": args,
+					},
+				})
+			}
+			contents = append(contents, map[string]any{"role": "model", "parts": parts})
+			i++
+
+			// Collect all immediately following tool result messages and group them
+			// into a single user turn with one functionResponse part each.
+			var frParts []map[string]any
+			for i < len(msgs) && msgs[i].Role == "tool" {
+				tm := msgs[i]
+				var result any
+				if err := json.Unmarshal([]byte(tm.Content), &result); err != nil {
+					result = tm.Content
+				}
+				frParts = append(frParts, map[string]any{
+					"functionResponse": map[string]any{
+						"name":     tm.ToolName,
+						"response": map[string]any{"output": result},
+					},
+				})
+				i++
+			}
+			if len(frParts) > 0 {
+				contents = append(contents, map[string]any{"role": "user", "parts": frParts})
+			}
+
+		case "tool":
+			// Orphaned tool result (no preceding assistant turn with ToolCalls).
+			var result any
+			if err := json.Unmarshal([]byte(msg.Content), &result); err != nil {
+				result = msg.Content
+			}
+			contents = append(contents, map[string]any{
+				"role": "user",
+				"parts": []map[string]any{{
+					"functionResponse": map[string]any{
+						"name":     msg.ToolName,
+						"response": map[string]any{"output": result},
+					},
+				}},
+			})
+			i++
+
+		default:
+			i++
 		}
 	}
+
 	body := map[string]any{
 		"contents": contents,
 		"generationConfig": map[string]any{
@@ -235,6 +335,19 @@ func geminiRequest(req provider.CompletionRequest) map[string]any {
 	}
 	if system != "" {
 		body["systemInstruction"] = map[string]any{"parts": []map[string]string{{"text": system}}}
+	}
+	if len(req.Tools) > 0 {
+		functionDecls := make([]map[string]any, 0, len(req.Tools))
+		for _, t := range req.Tools {
+			var schema any
+			_ = json.Unmarshal(t.InputSchema, &schema)
+			functionDecls = append(functionDecls, map[string]any{
+				"name":        t.Name,
+				"description": t.Description,
+				"parameters":  schema,
+			})
+		}
+		body["tools"] = []map[string]any{{"function_declarations": functionDecls}}
 	}
 	return body
 }

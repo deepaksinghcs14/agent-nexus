@@ -31,7 +31,7 @@ func (c *Client) Complete(ctx context.Context, req provider.CompletionRequest) (
 	}
 	body := map[string]any{
 		"model":       req.Model,
-		"messages":    req.Messages,
+		"messages":    openAIMessages(req.Messages),
 		"temperature": req.Temperature,
 		"stream":      true,
 		"stream_options": map[string]any{
@@ -132,11 +132,71 @@ func openAIFallback() []provider.ModelInfo {
 
 func (c *Client) Name() string { return "openai" }
 
+// openAIMessages converts provider.Message slice into OpenAI API message format.
+// Handles assistant messages with tool_calls and tool result messages.
+func openAIMessages(messages []provider.Message) []map[string]any {
+	out := make([]map[string]any, 0, len(messages))
+	for _, msg := range messages {
+		switch msg.Role {
+		case "system":
+			out = append(out, map[string]any{"role": "system", "content": msg.Content})
+		case "user":
+			out = append(out, map[string]any{"role": "user", "content": msg.Content})
+		case "assistant":
+			if len(msg.ToolCalls) == 0 {
+				out = append(out, map[string]any{"role": "assistant", "content": msg.Content})
+				continue
+			}
+			// OpenAI requires tool_calls in its own format.
+			toolCalls := make([]map[string]any, 0, len(msg.ToolCalls))
+			for _, tc := range msg.ToolCalls {
+				args := string(tc.Input)
+				if args == "" {
+					args = "{}"
+				}
+				toolCalls = append(toolCalls, map[string]any{
+					"id":   tc.ID,
+					"type": "function",
+					"function": map[string]any{
+						"name":      tc.Name,
+						"arguments": args,
+					},
+				})
+			}
+			m := map[string]any{
+				"role":       "assistant",
+				"tool_calls": toolCalls,
+			}
+			if msg.Content != "" {
+				m["content"] = msg.Content
+			}
+			out = append(out, m)
+		case "tool":
+			out = append(out, map[string]any{
+				"role":         "tool",
+				"tool_call_id": msg.ToolCallID,
+				"content":      msg.Content,
+			})
+		}
+	}
+	return out
+}
+
 func streamOpenAI(body io.ReadCloser, events chan<- provider.CompletionEvent) {
 	defer body.Close()
 	defer close(events)
+
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 4096), 1024*1024)
+
+	// Accumulate tool call arguments by index (multiple tool calls can stream in parallel).
+	type pendingCall struct {
+		id   string
+		name string
+		args strings.Builder
+	}
+	pending := map[int]*pendingCall{}
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if !strings.HasPrefix(line, "data: ") {
@@ -147,31 +207,88 @@ func streamOpenAI(body io.ReadCloser, events chan<- provider.CompletionEvent) {
 			events <- provider.CompletionEvent{Type: provider.EventDone}
 			return
 		}
+
 		var chunk struct {
 			Choices []struct {
 				Delta struct {
-					Content string `json:"content"`
+					Content   string `json:"content"`
+					ToolCalls []struct {
+						Index    int    `json:"index"`
+						ID       string `json:"id"`
+						Type     string `json:"type"`
+						Function struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						} `json:"function"`
+					} `json:"tool_calls"`
 				} `json:"delta"`
+				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
 			Usage *struct {
 				PromptTokens     int `json:"prompt_tokens"`
 				CompletionTokens int `json:"completion_tokens"`
 			} `json:"usage"`
 		}
+
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			events <- provider.CompletionEvent{Type: provider.EventError, Error: err}
 			return
 		}
+
 		for _, choice := range chunk.Choices {
+			// Accumulate text delta.
 			if choice.Delta.Content != "" {
 				events <- provider.CompletionEvent{Type: provider.EventDelta, Delta: choice.Delta.Content}
 			}
+
+			// Accumulate tool call deltas.
+			for _, tc := range choice.Delta.ToolCalls {
+				p, ok := pending[tc.Index]
+				if !ok {
+					p = &pendingCall{}
+					pending[tc.Index] = p
+				}
+				if tc.ID != "" {
+					p.id = tc.ID
+				}
+				if tc.Function.Name != "" {
+					p.name = tc.Function.Name
+				}
+				p.args.WriteString(tc.Function.Arguments)
+			}
+
+			// When finish_reason == "tool_calls", emit all accumulated tool calls.
+			if choice.FinishReason == "tool_calls" {
+				for _, p := range pending {
+					argsRaw := json.RawMessage(p.args.String())
+					if len(argsRaw) == 0 {
+						argsRaw = json.RawMessage("{}")
+					}
+					events <- provider.CompletionEvent{
+						Type: provider.EventToolCall,
+						ToolCall: &provider.ToolCall{
+							ID:    p.id,
+							Name:  p.name,
+							Input: argsRaw,
+						},
+					}
+				}
+				pending = map[int]*pendingCall{}
+			}
 		}
+
 		if chunk.Usage != nil {
-			events <- provider.CompletionEvent{Type: provider.EventDone, Usage: &provider.Usage{InputTokens: chunk.Usage.PromptTokens, OutputTokens: chunk.Usage.CompletionTokens}}
+			events <- provider.CompletionEvent{
+				Type: provider.EventDone,
+				Usage: &provider.Usage{
+					InputTokens:  chunk.Usage.PromptTokens,
+					OutputTokens: chunk.Usage.CompletionTokens,
+				},
+			}
 			return
 		}
 	}
+
 	if err := scanner.Err(); err != nil {
 		events <- provider.CompletionEvent{Type: provider.EventError, Error: err}
 		return

@@ -34,9 +34,20 @@ func NewNexusAIHandler(pool *pgxpool.Pool, cfg *config.Config, runs *RunsHandler
 	return &NexusAIHandler{pool: pool, cfg: cfg, runs: runs}
 }
 
-// nexusSystemPrompt is the fixed system prompt for the Nexus AI assistant.
-const nexusSystemPrompt = `You are Nexus AI, an intelligent assistant built into the Agent Nexus platform.
-Your purpose is to help users create fully configured AI agents and multi-agent workflow graphs using natural language — fast.
+// nexusSystemPrompt builds the system prompt for the Nexus AI assistant,
+// injecting the deployment's base URL so the LLM generates correct navigation links.
+func nexusSystemPrompt(appURL string) string {
+	return `You are Nexus AI, an intelligent assistant built into the Agent Nexus platform.
+The base URL of this deployment is: ` + appURL + `
+When sharing links to resources you create, always use this base URL. For example:
+  - Agent:    ` + appURL + `/agents/<id>
+  - Workflow: ` + appURL + `/workflows/<id>
+  - Triggers: ` + appURL + `/triggers
+
+` + nexusSystemPromptBody
+}
+
+const nexusSystemPromptBody = `Your purpose is to help users create fully configured AI agents and multi-agent workflow graphs using natural language — fast.
 
 You have access to these tools:
 - list_available_models: See what LLM providers and models the workspace has configured.
@@ -49,7 +60,9 @@ You have access to these tools:
 - create_trigger: Create a webhook trigger that fires an agent or workflow from an inbound HTTP POST. Returns the public webhook URL.
 
 Guidelines:
-- ALWAYS call list_agents first — reuse an existing agent if one already fits the user's requirements rather than creating a duplicate. If the user asks for "a research agent" and one already exists, use it.
+- ALWAYS call list_available_models first — before creating any agent, you must know what providers and models are available in this workspace. Never assume a model exists; always verify.
+- Pick the best available model using this priority: prefer the newest/most capable model from each provider. Ranking by provider: Anthropic → claude-opus-4-8 > claude-sonnet-4-6 > claude-haiku-4-5; OpenAI → gpt-4o > gpt-4o-mini; Gemini → gemini-2.5-pro > gemini-2.5-flash; Ollama → use whatever is listed. Always use the model ID exactly as returned by list_available_models — never guess or invent a model ID.
+- ALWAYS call list_agents before creating an agent — reuse an existing agent if one already fits the user's requirements rather than creating a duplicate. If the user asks for "a research agent" and one already exists, use it.
 - ALWAYS call list_workflows before creating a workflow — if one exists that matches the user's intent, ask the user: "A workflow called '<name>' already exists. Do you want to update it, or create a new one?" and wait for their answer before proceeding.
 - Use distinct, descriptive names for every resource (agent or workflow) that reflect its specific purpose. Never use generic names like "Research Agent" or "Pipeline" — be specific, e.g. "Market Research Agent", "Daily News Pipeline".
 - Always call list_tools before create_agent if the user mentions web search, file reading, HTTP requests, or any tool capability.
@@ -96,7 +109,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"description":{"type":"string","description":"One-sentence description of what this agent does"},
 				"instructions":{"type":"string","description":"Full system prompt — the agent's core instructions and behaviour"},
 				"provider":{"type":"string","enum":["anthropic","openai","gemini","ollama"],"description":"LLM provider to use"},
-				"model":{"type":"string","description":"Model ID, e.g. claude-sonnet-4-6, gpt-4o, gemini-2.0-flash"},
+				"model":{"type":"string","description":"Model ID, e.g. claude-sonnet-4-6, gpt-4o, gemini-2.5-flash. Always use the exact model ID from list_available_models."},
 				"temperature":{"type":"number","description":"Sampling temperature 0-2, default 0.7"},
 				"max_tokens":{"type":"integer","description":"Max output tokens, default 4096"},
 				"max_steps":{"type":"integer","description":"Maximum agentic steps per run, default 10"},
@@ -203,7 +216,7 @@ func defaultModel(providerName string) string {
 	case "openai":
 		return "gpt-4o"
 	case "gemini":
-		return "gemini-2.0-flash"
+		return "gemini-2.5-flash"
 	default:
 		return "llama3"
 	}
@@ -315,7 +328,7 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	// ── Build messages ────────────────────────────────────────────────────────
 	messages := []provider.Message{
-		{Role: "system", Content: nexusSystemPrompt},
+		{Role: "system", Content: nexusSystemPrompt(h.cfg.PublicAppURL)},
 	}
 	for _, m := range req.Messages {
 		if m.Role == "user" || m.Role == "assistant" {
@@ -479,18 +492,18 @@ func (h *NexusAIHandler) toolListModels(ctx context.Context, ws string) (*toolRe
 		return nil, err
 	}
 	type entry struct {
-		Provider    string `json:"provider"`
-		DisplayName string `json:"display_name"`
+		Provider     string `json:"provider"`
+		DisplayName  string `json:"display_name"`
 		DefaultModel string `json:"suggested_model"`
-		Active      bool   `json:"active"`
+		Active       bool   `json:"active"`
 	}
 	var out []entry
 	for _, c := range creds {
 		out = append(out, entry{
-			Provider:    c.Provider,
-			DisplayName: c.DisplayName,
+			Provider:     c.Provider,
+			DisplayName:  c.DisplayName,
 			DefaultModel: defaultModel(c.Provider),
-			Active:      c.IsActive,
+			Active:       c.IsActive,
 		})
 	}
 	return &toolResult{Label: "Listed available providers", Data: out}, nil
