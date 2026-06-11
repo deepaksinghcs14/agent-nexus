@@ -10,7 +10,7 @@ export function DemoBanner() {
       <p className="text-[12px] text-amber-800">
         <span className="font-semibold">Demo mode</span>
         {' — '}
-        You're exploring Agent Nexus in a live demo. MCP servers, connectors, and API tokens are restricted.
+        You&apos;re exploring Agent Nexus in a live demo. MCP servers, connectors, and API tokens are restricted.
       </p>
       <a
         href={GITHUB_URL}
