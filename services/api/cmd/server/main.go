@@ -58,6 +58,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Ensure at least one platform admin exists. If no admin is present, promote
+	// the earliest registered user — handles instances where the first user
+	// signed up before this logic was added.
+	if _, err := pool.Exec(ctx, `
+		UPDATE users SET is_admin = true
+		WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)
+		  AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = true)
+	`); err != nil {
+		slog.Warn("bootstrap admin promotion failed", "error", err)
+	}
+
 	// Build tool registry and seed native tools into DB.
 	// In demo mode, skip http_request and write_file to prevent SSRF and disk abuse.
 	reg := tools.NewRegistry()
