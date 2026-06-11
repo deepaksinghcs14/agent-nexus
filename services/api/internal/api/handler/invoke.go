@@ -991,11 +991,17 @@ func (h *InvokeHandler) executeGroupRun(
 						continue
 					}
 					toolName := "delegate_" + sanitizeToolName(da.Name)
-					desc := da.Instructions
-					if idx := strings.Index(desc, "\n"); idx > 0 {
-						desc = desc[:idx]
+					// Prefer the one-sentence Description field; fall back to first line
+					// of Instructions; then fall back to a generic sentinel.
+					desc := strings.TrimSpace(da.Description)
+					if desc == "" {
+						desc = da.Instructions
+						if idx := strings.Index(desc, "\n"); idx > 0 {
+							desc = desc[:idx]
+						}
+						desc = strings.TrimSpace(desc)
 					}
-					if strings.TrimSpace(desc) == "" {
+					if desc == "" {
 						desc = "Delegate a task to the " + da.Name + " agent and get its response."
 					}
 					capturedDA := da
@@ -1027,6 +1033,9 @@ func (h *InvokeHandler) executeGroupRun(
 						h.pool.Exec(callCtx, //nolint:errcheck
 							`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8)`,
 							dSubRunID, ws, capturedDA.ID, dSubConvID, uid, task, parentRunID, capturedDN.ID)
+						// Light up the delegate node in the canvas.
+						sseEmit(fmt.Sprintf(`{"type":"node_started","node_id":%q,"node_type":"agent","node_name":%q}`,
+							capturedDN.ID, capturedDA.Name))
 						delEmit := func(line string) {
 							var m map[string]any
 							if json.Unmarshal([]byte(line), &m) == nil {
@@ -1040,6 +1049,8 @@ func (h *InvokeHandler) executeGroupRun(
 							sseEmit(line)
 						}
 						h.executeRun(callCtx, capturedDA, ws, uid, dSubRunID, dSubConvID, task, nil, delEmit)
+						sseEmit(fmt.Sprintf(`{"type":"node_completed","node_id":%q,"node_name":%q}`,
+							capturedDN.ID, capturedDA.Name))
 						var out string
 						_ = h.pool.QueryRow(context.Background(),
 							`SELECT COALESCE(output,'') FROM runs WHERE id=$1::uuid`, dSubRunID).Scan(&out)
@@ -1235,15 +1246,31 @@ func (h *InvokeHandler) executeSupervisorRun(
 		}
 	}
 
+	// Regular agent tools + delegate tools merged into one list.
+	regularToolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
+
+	// Inject the live delegate tool listing so the LLM knows exactly which team
+	// agents are available and their exact tool names — without requiring the
+	// supervisor's Instructions to hardcode them. The "(injected at runtime)"
+	// label signals to the model that these names are dynamic.
+	supervisorInstructions := a.Instructions
+	if len(delegateToolDefs) > 0 {
+		var delegateList strings.Builder
+		for _, td := range delegateToolDefs {
+			delegateList.WriteString("- **" + td.Name + "**: " + td.Description + "\n")
+		}
+		supervisorInstructions += "\n\n## Available Team Agents (injected at runtime)\n" +
+			"You MUST delegate work to your team agents using the tools below — do NOT produce a final answer without calling at least one team agent first.\n\n" +
+			delegateList.String() +
+			"\nCall each relevant team agent with a specific task string. After receiving all outputs, synthesize them into a comprehensive final response."
+	}
+
 	prompt := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
-		SystemInstructions: a.Instructions,
+		SystemInstructions: supervisorInstructions,
 		MemorySummaries:    memories,
 		ContextChunks:      contextChunks,
 		History:            history,
 	})
-
-	// Regular agent tools + delegate tools merged into one list.
-	regularToolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
 	toolDefs := append(regularToolDefs, delegateToolDefs...)
 
 	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
@@ -1498,4 +1525,3 @@ func evaluateExpression(expression, output string) bool {
 	}
 	return true
 }
-
