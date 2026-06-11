@@ -17,6 +17,7 @@ type Config struct {
 	GoogleOAuthClientID     string
 	GoogleOAuthClientSecret string
 	PublicAPIURL            string // base URL this API is reachable at (for OAuth redirect URIs)
+	DemoMode               bool   // when true, restricts dangerous capabilities for public hosted instances
 }
 
 func Load() (*Config, error) {
@@ -30,6 +31,7 @@ func Load() (*Config, error) {
 		GoogleOAuthClientID:     getEnv("GOOGLE_OAUTH_CLIENT_ID", ""),
 		GoogleOAuthClientSecret: getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
 		PublicAPIURL:            getEnv("PUBLIC_API_URL", "http://localhost:8080"),
+		DemoMode:                getEnvBool("DEMO_MODE", false),
 	}
 
 	origins := getEnv("CORS_ORIGINS", "http://localhost:3000")
@@ -64,6 +66,17 @@ func (c *Config) validate() error {
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	if v == "true" || v == "1" || v == "yes" {
+		return true
+	}
+	if v == "false" || v == "0" || v == "no" {
+		return false
 	}
 	return fallback
 }

@@ -19,4 +19,5 @@ type Handlers struct {
 	Invoke          *InvokeHandler
 	WebhookTriggers *WebhookTriggerHandler
 	WebhookIngress  *WebhookIngressHandler
+	Config          *ConfigHandler
 }

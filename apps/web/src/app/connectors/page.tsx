@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { connectorsAPI, filesystemAPI } from '@/lib/api'
 import { relativeTime, statusColor } from '@/lib/utils'
+import { useDemoMode } from '@/context/demo-mode'
 import type { Connector, ConnectorDocument, ConnectorSyncJob } from '@/types'
 
 // ─── provider definitions ─────────────────────────────────────────────────────
@@ -221,6 +222,7 @@ function CreatePanel({
 
 export default function ConnectorsPage() {
   const queryClient = useQueryClient()
+  const demoMode = useDemoMode()
   const [showCreate, setShowCreate] = useState(false)
   const [selected, setSelected] = useState('')
   const [detailTab, setDetailTab] = useState<'documents' | 'sync-history'>('documents')
@@ -276,7 +278,9 @@ export default function ConnectorsPage() {
         {connectors.length > 0 && !showCreate && (
           <button
             onClick={() => { setShowCreate(true); setActionError('') }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-[12px] rounded-lg"
+            disabled={demoMode}
+            title={demoMode ? 'Not available in demo mode' : undefined}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-[12px] rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Plus size={13} /> Connect source
           </button>
@@ -334,9 +338,11 @@ export default function ConnectorsPage() {
             </p>
             <button
               onClick={() => { setShowCreate(true); setActionError('') }}
-              className="px-4 py-2 bg-purple-600 text-white text-[12px] rounded-lg font-medium"
+              disabled={demoMode}
+              title={demoMode ? 'Not available in demo mode' : undefined}
+              className="px-4 py-2 bg-purple-600 text-white text-[12px] rounded-lg font-medium disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Connect source
+              {demoMode ? 'Not available in demo' : 'Connect source'}
             </button>
           </div>
         </div>

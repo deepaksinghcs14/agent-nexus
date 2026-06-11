@@ -295,3 +295,8 @@ export const adminAPI = {
   policies: () => api.get('/admin/policies'),
   setPolicies: (body: unknown) => api.put('/admin/policies', body),
 }
+
+export const configAPI = {
+  get: (): Promise<{ demo_mode: boolean }> =>
+    fetch(`${API_URL}/api/v1/config`).then((r) => r.json()),
+}

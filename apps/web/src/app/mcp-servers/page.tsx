@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Globe, Plug, Plus, RefreshCw, Terminal, Trash2, Wrench, X } from 'lucide-react'
 import { mcpAPI } from '@/lib/api'
 import { relativeTime, riskColor, statusColor } from '@/lib/utils'
+import { useDemoMode } from '@/context/demo-mode'
 import type { MCPServer, MCPTool } from '@/types'
 
 // ─── transport picker ─────────────────────────────────────────────────────────
@@ -207,6 +208,7 @@ function StatusDot({ status }: { status: string }) {
 
 export default function MCPServersPage() {
   const queryClient = useQueryClient()
+  const demoMode = useDemoMode()
   const [selected, setSelected] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [actionError, setActionError] = useState('')
@@ -264,7 +266,9 @@ export default function MCPServersPage() {
         {servers.length > 0 && !showAdd && (
           <button
             onClick={() => { setShowAdd(true); setActionError('') }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-[12px] rounded-lg"
+            disabled={demoMode}
+            title={demoMode ? 'Not available in demo mode' : undefined}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-[12px] rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Plus size={13} /> Add server
           </button>
@@ -322,9 +326,11 @@ export default function MCPServersPage() {
             </p>
             <button
               onClick={() => { setShowAdd(true); setActionError('') }}
-              className="px-4 py-2 bg-purple-600 text-white text-[12px] rounded-lg font-medium"
+              disabled={demoMode}
+              title={demoMode ? 'Not available in demo mode' : undefined}
+              className="px-4 py-2 bg-purple-600 text-white text-[12px] rounded-lg font-medium disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Add server
+              {demoMode ? 'Not available in demo' : 'Add server'}
             </button>
           </div>
         </div>

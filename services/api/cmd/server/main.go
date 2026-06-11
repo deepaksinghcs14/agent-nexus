@@ -58,16 +58,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build tool registry and seed native tools into DB
+	// Build tool registry and seed native tools into DB.
+	// In demo mode, skip http_request and write_file to prevent SSRF and disk abuse.
 	reg := tools.NewRegistry()
 	reg.Register(native.NewReadFileTool(cfg.StoragePath))
-	reg.Register(native.NewWriteFileTool(cfg.StoragePath))
 	reg.Register(native.NewWebSearchTool())
-	reg.Register(native.NewHTTPRequestTool())
+	if !cfg.DemoMode {
+		reg.Register(native.NewWriteFileTool(cfg.StoragePath))
+		reg.Register(native.NewHTTPRequestTool())
+	}
 	if err := reg.SeedDB(ctx, pool); err != nil {
 		slog.Warn("failed to seed native tools", "error", err)
 	} else {
-		slog.Info("native tools seeded", "count", len(reg.All()))
+		slog.Info("native tools seeded", "count", len(reg.All()), "demo_mode", cfg.DemoMode)
 	}
 	exec := tools.NewExecutor(reg)
 
@@ -91,6 +94,7 @@ func main() {
 		Invoke:          invoke,
 		WebhookTriggers: handler.NewWebhookTriggerHandler(pool, cfg),
 		WebhookIngress:  handler.NewWebhookIngressHandler(pool, invoke),
+		Config:          handler.NewConfigHandler(cfg),
 	}
 
 	// HTTP server

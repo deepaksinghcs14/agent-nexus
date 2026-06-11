@@ -58,6 +58,10 @@ func (h *MCPHandler) List(w http.ResponseWriter, r *http.Request) {
 	errs.WriteJSON(w, http.StatusOK, map[string]any{"data": list})
 }
 func (h *MCPHandler) Create(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.DemoMode {
+		errs.Write(w, errs.Forbidden("MCP server creation is not available in demo mode"))
+		return
+	}
 	var s domain.MCPServer
 	if json.NewDecoder(r.Body).Decode(&s) != nil || s.Name == "" || s.URL == "" {
 		errs.Write(w, errs.BadRequest("name and url are required"))
