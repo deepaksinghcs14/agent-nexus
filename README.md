@@ -7,6 +7,9 @@
 > Self-hosted, model-agnostic AI agent orchestration platform.
 
 **[Try the live demo →](https://web-production-ae380.up.railway.app)** — Sign up and explore instantly. MCP servers, connectors, and API tokens are restricted in demo mode; self-host for full access.
+Or use creds
+Email: demo@demo.com
+Password: Demo@123
 
 Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach tools, connect memory, and observe every run with full trace logging — all from your own infrastructure. No vendor lock-in, no data leaving your servers.
 
