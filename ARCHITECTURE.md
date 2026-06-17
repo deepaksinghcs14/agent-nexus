@@ -4,13 +4,15 @@ Agent Nexus is a developer-first AI agent control plane — not a chatbot wrappe
 
 Users can:
 - Create agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama) using their own API keys
-- Attach native tools (`native_read_file`, `native_web_search`, `native_http_request`) with risk-based approval gates
+- Attach native tools (`native_read_file`, `native_web_search`, `native_http_request`, `whatsapp_request_owner_approval`) with risk-based approval gates
 - Connect MCP servers and expose discovered tools through the same approval pipeline
 - Index external context (files, Slack, Jira, GitHub, Google Drive) via connectors
 - Enable layered memory (conversation, agent, or workspace scope with pgvector similarity retrieval)
 - Run single agents or pipeline/supervisor agent groups
 - Observe every run with full step-by-step traces — memory retrieved, context retrieved, model calls, tool calls, tokens, latency, cost estimate
 - Administer the platform via an Admin Dashboard (users, workspaces, policies, audit logs)
+- Connect agents to inbound messaging channels (WhatsApp, HTTP) via the Nexus Gateway
+- Define reusable Skills — named instruction modules injected into agent system prompts at run time
 
 ---
 
@@ -56,13 +58,20 @@ agent-nexus/
 ```
 services/api/
   cmd/server/main.go               ← wires everything, starts HTTP server
+  whatsapp-adapter/                ← Node.js adapter (whatsapp-web.js); QR pairing + message relay
   internal/
     api/
       handler/                     ← HTTP handlers, one file per domain group
+        gateway.go                 ← Gateway channels, sessions, contacts, escalations, reminders
+        skills.go                  ← Skills CRUD
       middleware/                  ← JWT auth, RBAC, logging, CORS
       router/router.go             ← registers all routes on chi.Router
     domain/                        ← pure Go types, no DB/HTTP imports
     repository/                    ← pgx/v5 queries, one file per aggregate
+      gateway.go                   ← gateway_channels, sessions, contacts, escalations, reminders
+      skills.go                    ← skills table queries
+    gateway/
+      service.go                   ← inbound message dispatch, session matching, contact lookup
     runtime/
       agent/runner.go              ← core run loop
       memory/engine.go             ← retrieve + store + summarise
@@ -75,10 +84,11 @@ services/api/
       registry.go                  ← tool lookup by name
       executor.go                  ← risk check → approval gate → execute → trace
       native/                      ← read_file, write_file, web_search, http_request
+        whatsapp.go                ← whatsapp_request_owner_approval native tool
     mcp/client.go                  ← connect, list tools, proxy calls
     connector/pipeline.go          ← fetch → chunk → embed → upsert
     auth/                          ← JWT, RBAC, bcrypt
-    config/config.go               ← env-based config
+    config/config.go               ← env-based config (WHATSAPP_ADAPTER_URL)
   pkg/
     encrypt/aes.go                 ← AES-256-GCM helpers
     paginate/cursor.go
@@ -175,6 +185,54 @@ type Memory struct {
 }
 ```
 
+### Skill
+```go
+type Skill struct {
+    ID          string
+    WorkspaceID *string   // nil = platform-managed (protected)
+    Name        string
+    Description string
+    Content     string    // injected as a block in the agent system prompt
+    Source      string    // managed | custom
+    CreatedBy   *string
+    CreatedAt   time.Time
+    UpdatedAt   time.Time
+}
+```
+
+### GatewayChannel
+```go
+type GatewayChannel struct {
+    ID          string
+    WorkspaceID string
+    AgentID     string
+    Name        string
+    ChannelType string    // whatsapp | http
+    Config      JSONB     // adapter URL, webhook secret, etc.
+    IsActive    bool
+    CreatedBy   string
+    CreatedAt   time.Time
+    UpdatedAt   time.Time
+}
+```
+
+### GatewayContact
+```go
+type GatewayContact struct {
+    ID               string
+    WorkspaceID      string
+    ChannelID        string
+    AccountID        string
+    DisplayName      string
+    PhoneNumber      string
+    Role             string    // owner | trusted | blocked
+    AgentID          *string   // optional per-contact agent override
+    AutoReplyEnabled bool
+    CreatedAt        time.Time
+    UpdatedAt        time.Time
+}
+```
+
 ---
 
 ## Provider Interface
@@ -213,18 +271,19 @@ type CompletionEvent struct {
 `runtime/agent/runner.go` — `Execute(ctx, req)`:
 
 1. Load agent config + tool list from DB
-2. Create `Run` record (`status=running`)
-3. Retrieve relevant memories — vector similarity search on the user message embedding → log `RunStep{type: memory_retrieval}`
-4. Retrieve relevant context chunks — pgvector search across `connector_chunks` filtered by agent's allowed connectors → log `RunStep{type: context_retrieval}`
-5. Build the messages slice: system prompt + memory summaries + context chunks + conversation history (token-budget trimmed) + user message
-6. Call `provider.Complete()` → stream `CompletionEvent`s → log `RunStep{type: model_call}` → emit SSE deltas to client
-7. On `tool_call` event:
+2. Load agent's attached Skills from DB; append each skill's `content` as a labelled block in the system prompt
+3. Create `Run` record (`status=running`)
+4. Retrieve relevant memories — vector similarity search on the user message embedding → log `RunStep{type: memory_retrieval}`
+5. Retrieve relevant context chunks — pgvector search across `connector_chunks` filtered by agent's allowed connectors → log `RunStep{type: context_retrieval}`
+6. Build the messages slice: system prompt (with injected skills) + memory summaries + context chunks + conversation history (token-budget trimmed) + user message
+7. Call `provider.Complete()` → stream `CompletionEvent`s → log `RunStep{type: model_call}` → emit SSE deltas to client
+8. On `tool_call` event:
    - Look up tool in registry (native or MCP)
    - If `requires_approval`: update run to `approval_wait`, emit `approval_required` SSE, block until decision arrives
-   - Execute tool with timeout → log `RunStep{type: tool_call}` → append result message → loop back to step 6
-8. Emit `run_completed` SSE
-9. Update `Run` record (`status=success`, token counts, cost estimate)
-10. Async: summarise run, store new `Memory` records with embeddings
+   - Execute tool with timeout → log `RunStep{type: tool_call}` → append result message → loop back to step 7
+9. Emit `run_completed` SSE
+10. Update `Run` record (`status=success`, token counts, cost estimate)
+11. Async: summarise run, store new `Memory` records with embeddings
 
 ---
 
@@ -234,6 +293,42 @@ type CompletionEvent struct {
 - Calls `tools/list` on connect, stores results in `mcp_tools` table (prefixed `mcp_`)
 - All MCP tool calls during agent runs go through `tools/executor.go` — same risk-check and approval-gate path as native tools; never called directly
 - Server credentials stored AES-256-GCM encrypted in `mcp_servers.config`
+
+---
+
+## Nexus Gateway
+
+`internal/gateway/service.go` — `Dispatch(ctx, channelID, senderID, body)`:
+
+1. Load channel + account from DB; verify channel is active
+2. Look up contact by `whatsapp_jid` (or sender ID for HTTP channels)
+3. If contact role is `blocked` → drop message silently
+4. Check `auto_reply_enabled` for the contact; if false → skip agent invocation
+5. Match or create a `channel_session` for the (channel, sender) pair
+6. Look up the session's `conversation_id`; create one if this is a new session
+7. Determine effective agent: contact-level override → channel default agent
+8. Invoke the agent run via `executeRun` (same path as playground runs)
+9. Send the agent's output back to the sender via the WhatsApp adapter (`WHATSAPP_ADAPTER_URL/send`)
+10. Log the inbound event to `gateway_events`
+
+### WhatsApp Adapter (`whatsapp-adapter/`)
+- Node.js service using `whatsapp-web.js`; exposes a REST API consumed by the Go API
+- `GET  /status/:channelId` — connection status
+- `POST /login/start/:channelId` — initialise pairing; returns QR code data
+- `GET  /login/qr/:channelId` — QR image for scanning
+- `POST /logout/:channelId` — disconnect session
+- `POST /send` — send a text message to a JID
+- On inbound message: POSTs to `GATEWAY_API_URL/gateway/whatsapp/{channelId}`
+- Auth data persisted at `WHATSAPP_AUTH_ROOT` (mounted as a Docker volume)
+
+### Escalation / Approval Flow
+1. During a run, agent calls `whatsapp_request_owner_approval(reason, details)`
+2. Native tool creates a `gateway_escalation` record with a random approval code
+3. Notifies all `owner`-role contacts for the channel via WhatsApp message
+4. Run blocks waiting for resolution (polls escalation status)
+5. Owner replies in WhatsApp with `approve CODE` or `reject CODE`
+6. Adapter receives reply → Gateway handler matches code → updates escalation status → run unblocks
+7. Owners can also send `disable approvals` / `enable approvals` to toggle `auto_reply_enabled`
 
 ---
 
@@ -281,6 +376,7 @@ Key tables:
 | `provider_credentials` | Encrypted API keys, one per provider per workspace |
 | `agents` | Agent configuration |
 | `tools`, `agent_tools` | Tool registry + per-agent assignments |
+| `skills`, `agent_skills` | Reusable instruction modules; per-agent attachments |
 | `mcp_servers`, `mcp_tools` | MCP server registry + discovered tools |
 | `conversations`, `messages` | Chat history |
 | `runs`, `run_steps` | Execution records + trace steps |
@@ -288,6 +384,13 @@ Key tables:
 | `memories` | Vector memory (pgvector embedding column) |
 | `connectors`, `connector_documents`, `connector_chunks` | Indexed external context |
 | `context_retrieval_logs` | Which chunks were used in which run |
+| `gateway_channels` | Messaging channel config (WhatsApp or HTTP); linked to an agent |
+| `gateway_channel_accounts` | Per-channel adapter connection state (status, self_id, last_error) |
+| `channel_sessions` | Active conversations per (channel, sender); maps to a `conversation_id` |
+| `gateway_contacts` | Known senders with roles (`owner`, `trusted`, `blocked`) and per-contact agent overrides |
+| `gateway_escalations` | Approval requests created by `whatsapp_request_owner_approval` |
+| `gateway_reminders` | Scheduled outbound messages to contacts |
+| `gateway_events` | Inbound message log per channel |
 | `admin_audit_logs`, `policies` | Governance |
 
 ---
@@ -377,6 +480,42 @@ DELETE /api/v1/webhook-triggers/:id
 # Webhook Inbound (public — no auth)
 POST   /webhook/:webhookId               ← fires a run; verifies HMAC-SHA256 if secret is set
 
+# Gateway (authenticated)
+GET    /api/v1/gateway/channels
+POST   /api/v1/gateway/channels
+GET    /api/v1/gateway/channels/:id
+PUT    /api/v1/gateway/channels/:id
+DELETE /api/v1/gateway/channels/:id
+GET    /api/v1/gateway/channels/:id/adapter/status
+POST   /api/v1/gateway/channels/:id/adapter/login/start
+GET    /api/v1/gateway/channels/:id/adapter/login/qr
+POST   /api/v1/gateway/channels/:id/adapter/logout
+GET    /api/v1/gateway/sessions
+DELETE /api/v1/gateway/sessions/:id
+GET    /api/v1/gateway/events
+GET    /api/v1/gateway/pairings
+POST   /api/v1/gateway/pairings/:id/approve
+POST   /api/v1/gateway/pairings/:id/reject
+GET    /api/v1/gateway/outbox
+GET    /api/v1/gateway/reminders
+GET    /api/v1/gateway/escalations
+POST   /api/v1/gateway/escalations/:id/approve
+POST   /api/v1/gateway/escalations/:id/reject
+GET    /api/v1/gateway/contacts
+POST   /api/v1/gateway/contacts
+PUT    /api/v1/gateway/contacts/:id
+DELETE /api/v1/gateway/contacts/:id
+
+# Gateway Inbound (public — called by WhatsApp adapter)
+POST   /gateway/whatsapp/:channelId      ← inbound WhatsApp messages from adapter
+POST   /gateway/http/:channelId          ← inbound HTTP channel messages
+
+# Skills (authenticated)
+GET    /api/v1/skills
+POST   /api/v1/skills
+PUT    /api/v1/skills/:id
+DELETE /api/v1/skills/:id
+
 # Admin
 GET    /api/v1/admin/users
 GET    /api/v1/admin/users/:id
@@ -411,6 +550,12 @@ PUT    /api/v1/admin/policies
 /agent-groups             group list
 /agent-groups/new         create group
 /agent-groups/[id]        workflow canvas editor
+/gateway                  gateway overview (channels, sessions, escalations)
+/gateway/channels         channel list
+/gateway/channels/new     create channel
+/gateway/channels/[id]    channel detail (status, QR, contacts, sessions, escalations)
+/skills                   skills list (managed + custom)
+/skills/new               create skill
 /settings/providers       API key management
 /settings/workspace       workspace settings + members
 /admin/overview

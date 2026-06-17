@@ -58,6 +58,10 @@
     <stop offset="0%" stop-color="#4C0519"/>
     <stop offset="100%" stop-color="#9F1239"/>
   </linearGradient>
+  <linearGradient id="hdr-wa" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#064E3B"/>
+    <stop offset="100%" stop-color="#059669"/>
+  </linearGradient>
   <linearGradient id="title-grad" x1="0%" y1="0%" x2="100%" y2="0%">
     <stop offset="0%" stop-color="#A78BFA"/>
     <stop offset="50%" stop-color="#E879F9"/>
@@ -128,12 +132,10 @@
 <text x="700" y="66" text-anchor="middle" font-size="11" fill="#475569" letter-spacing="4">ARCHITECTURE OVERVIEW · SELF-HOSTED AI AGENT ORCHESTRATION PLATFORM</text>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
-<!-- FRONTEND BOX                                                  -->
+<!-- FRONTEND BOX  (height extended to 576 for 2 new Build items)  -->
 <!-- ══════════════════════════════════════════════════════════════ -->
-<!-- Outer glow border -->
-<rect x="14" y="76" width="344" height="528" rx="14" fill="none" stroke="#7C3AED" stroke-width="2.5" filter="url(#gp)" class="pb"/>
-<!-- Body -->
-<rect x="14" y="76" width="344" height="528" rx="14" fill="#0B0E24" stroke="#4C1D95" stroke-width="1.2"/>
+<rect x="14" y="76" width="344" height="576" rx="14" fill="none" stroke="#7C3AED" stroke-width="2.5" filter="url(#gp)" class="pb"/>
+<rect x="14" y="76" width="344" height="576" rx="14" fill="#0B0E24" stroke="#4C1D95" stroke-width="1.2"/>
 <!-- Header -->
 <rect x="14" y="76" width="344" height="46" rx="14" fill="url(#hdr-p)"/>
 <rect x="14" y="106" width="344" height="16" fill="url(#hdr-p)"/>
@@ -141,9 +143,8 @@
 <text x="186" y="103" text-anchor="middle" font-size="12" font-weight="800" fill="white" letter-spacing="2" filter="url(#text-glow)">NEXT.JS 14 FRONTEND</text>
 <text x="186" y="118" text-anchor="middle" font-size="8.5" fill="#C4B5FD" letter-spacing="2">APP ROUTER · REACT QUERY · ZUSTAND</text>
 
-<!-- BUILD section -->
-<rect x="26" y="130" width="150" height="254" rx="8" fill="#0D1035" stroke="#4C1D95" stroke-width="1"/>
-<rect x="26" y="130" width="150" height="20" rx="8" fill="none"/>
+<!-- BUILD section (height extended to 302 for 2 new items) -->
+<rect x="26" y="130" width="150" height="302" rx="8" fill="#0D1035" stroke="#4C1D95" stroke-width="1"/>
 <text x="101" y="146" text-anchor="middle" font-size="8" font-weight="700" fill="#A78BFA" letter-spacing="3">BUILD</text>
 <!-- Build items -->
 <rect x="34" y="154" width="134" height="20" rx="5" fill="#13174A" stroke="#312E81" stroke-width=".8"/>
@@ -164,6 +165,11 @@
 <text x="101" y="336" text-anchor="middle" font-size="9" fill="#C7D2FE">Provider Settings</text>
 <rect x="34" y="346" width="134" height="20" rx="5" fill="#13174A" stroke="#312E81" stroke-width=".8"/>
 <text x="101" y="360" text-anchor="middle" font-size="9" fill="#C7D2FE">Nexus AI (meta-agent)</text>
+<!-- New items -->
+<rect x="34" y="370" width="134" height="20" rx="5" fill="#041A2A" stroke="#0E7490" stroke-width=".8"/>
+<text x="101" y="384" text-anchor="middle" font-size="9" fill="#67E8F9">Gateway Channels</text>
+<rect x="34" y="394" width="134" height="20" rx="5" fill="#130D0A" stroke="#78350F" stroke-width=".8"/>
+<text x="101" y="408" text-anchor="middle" font-size="9" fill="#FDE68A">Skills</text>
 
 <!-- OBSERVE section -->
 <rect x="186" y="130" width="158" height="98" rx="8" fill="#0D1A14" stroke="#065F46" stroke-width="1"/>
@@ -185,34 +191,29 @@
 <rect x="194" y="310" width="142" height="20" rx="5" fill="#1F0A10" stroke="#7F1D1D" stroke-width=".8"/>
 <text x="265" y="324" text-anchor="middle" font-size="9" fill="#FDA4AF">Policies · Usage · Overview</text>
 
-<!-- SSE + Auth badge -->
-<rect x="26" y="396" width="318" height="26" rx="8" fill="#13174A" stroke="#4C1D95" stroke-width=".8"/>
-<circle cx="44" cy="409" r="4" fill="#34D399" filter="url(#gg)"/>
-<text x="186" y="413" text-anchor="middle" font-size="9" fill="#A78BFA">SSE streams · JWT Bearer · React Query v5</text>
+<!-- Badges (shifted down 48px from original) -->
+<rect x="26" y="444" width="318" height="26" rx="8" fill="#13174A" stroke="#4C1D95" stroke-width=".8"/>
+<circle cx="44" cy="457" r="4" fill="#34D399" filter="url(#gg)"/>
+<text x="186" y="461" text-anchor="middle" font-size="9" fill="#A78BFA">SSE streams · JWT Bearer · React Query v5</text>
 
-<!-- Workflow canvas badge -->
-<rect x="26" y="428" width="318" height="26" rx="8" fill="#13174A" stroke="#4C1D95" stroke-width=".8"/>
-<text x="186" y="445" text-anchor="middle" font-size="9" fill="#818CF8">@xyflow/react v12 · BFS executor · conditional/parallel/loop</text>
+<rect x="26" y="476" width="318" height="26" rx="8" fill="#13174A" stroke="#4C1D95" stroke-width=".8"/>
+<text x="186" y="493" text-anchor="middle" font-size="9" fill="#818CF8">@xyflow/react v12 · BFS executor · conditional/parallel/loop</text>
 
-<!-- Dashboard badge -->
-<rect x="26" y="460" width="318" height="26" rx="8" fill="#13174A" stroke="#4C1D95" stroke-width=".8"/>
-<text x="186" y="477" text-anchor="middle" font-size="9" fill="#818CF8">Dashboard · 6 stat cards · webhook trigger metrics</text>
+<rect x="26" y="508" width="318" height="26" rx="8" fill="#13174A" stroke="#4C1D95" stroke-width=".8"/>
+<text x="186" y="525" text-anchor="middle" font-size="9" fill="#818CF8">Dashboard · Gateway · Skills · webhook trigger metrics</text>
 
-<!-- Auth flows badge -->
-<rect x="26" y="492" width="318" height="26" rx="8" fill="#13174A" stroke="#4C1D95" stroke-width=".8"/>
-<text x="186" y="509" text-anchor="middle" font-size="9" fill="#818CF8">OAuth providers · live model discovery · API tokens</text>
+<rect x="26" y="540" width="318" height="26" rx="8" fill="#13174A" stroke="#4C1D95" stroke-width=".8"/>
+<text x="186" y="557" text-anchor="middle" font-size="9" fill="#818CF8">OAuth providers · live model discovery · API tokens</text>
 
 <!-- Status dots -->
-<circle cx="34" cy="409" r="3.5" fill="#34D399" filter="url(#gg)" class="blink"/>
-<circle cx="34" cy="444" r="3.5" fill="#A78BFA" filter="url(#gp)" class="blink"/>
+<circle cx="34" cy="457" r="3.5" fill="#34D399" filter="url(#gg)" class="blink"/>
+<circle cx="34" cy="492" r="3.5" fill="#A78BFA" filter="url(#gp)" class="blink"/>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
-<!-- API SERVER BOX                                                -->
+<!-- API SERVER BOX  (height extended to 688 for row 4 handlers)   -->
 <!-- ══════════════════════════════════════════════════════════════ -->
-<!-- Outer glow (pulsing, strongest effect) -->
-<rect x="406" y="76" width="542" height="648" rx="16" fill="none" stroke="#7C3AED" stroke-width="4" filter="url(#gp2)" class="pb"/>
-<!-- Body -->
-<rect x="406" y="76" width="542" height="648" rx="16" fill="#09091E" stroke="#4C1D95" stroke-width="1.5"/>
+<rect x="406" y="76" width="542" height="688" rx="16" fill="none" stroke="#7C3AED" stroke-width="4" filter="url(#gp2)" class="pb"/>
+<rect x="406" y="76" width="542" height="688" rx="16" fill="#09091E" stroke="#4C1D95" stroke-width="1.5"/>
 <!-- Header -->
 <rect x="406" y="76" width="542" height="48" rx="16" fill="url(#hdr-p2)"/>
 <rect x="406" y="110" width="542" height="14" fill="url(#hdr-p2)"/>
@@ -288,65 +289,73 @@
 <text x="825" y="288" text-anchor="middle" font-size="8.5" font-weight="600" fill="#818CF8">Conversations · Messages · Approval</text>
 <text x="825" y="301" text-anchor="middle" font-size="7.5" fill="#64748B">API Tokens · Providers · Admin Policies</text>
 
-<!-- ══ INVOKE ENGINE ══ -->
-<rect x="418" y="317" width="518" height="84" rx="10" fill="#0D1035" stroke="#4C1D95" stroke-width="1.5"/>
-<text x="677" y="334" text-anchor="middle" font-size="9" font-weight="700" fill="#A78BFA" letter-spacing="3" filter="url(#text-glow)">INVOKE ENGINE</text>
-<text x="677" y="348" text-anchor="middle" font-size="8.5" fill="#64748B">executeRun / executeGroupRun · async goroutines</text>
-<rect x="426" y="354" width="116" height="20" rx="5" fill="#13174A" stroke="#312E81" stroke-width=".8"/>
-<text x="484" y="368" text-anchor="middle" font-size="8.5" fill="#C7D2FE">Memory retrieval</text>
-<rect x="550" y="354" width="116" height="20" rx="5" fill="#13174A" stroke="#312E81" stroke-width=".8"/>
-<text x="608" y="368" text-anchor="middle" font-size="8.5" fill="#C7D2FE">Context (RAG)</text>
-<rect x="674" y="354" width="116" height="20" rx="5" fill="#13174A" stroke="#312E81" stroke-width=".8"/>
-<text x="732" y="368" text-anchor="middle" font-size="8.5" fill="#C7D2FE">Tool execution</text>
-<rect x="798" y="354" width="130" height="20" rx="5" fill="#13174A" stroke="#312E81" stroke-width=".8"/>
-<text x="863" y="368" text-anchor="middle" font-size="8.5" fill="#C7D2FE">BFS workflow · SSE stream</text>
-<!-- Pulsing activity dot -->
-<circle cx="432" cy="329" r="4" fill="#A78BFA" filter="url(#gp)" class="blink"/>
+<!-- Handler chips row 4 — Gateway + Skills (NEW) -->
+<rect x="418" y="313" width="240" height="34" rx="7" fill="#041A2A" stroke="#0E7490" stroke-width="1"/>
+<text x="538" y="328" text-anchor="middle" font-size="8.5" font-weight="600" fill="#22D3EE">Gateway</text>
+<text x="538" y="341" text-anchor="middle" font-size="7.5" fill="#64748B">channels · contacts · escalations · WA inbound</text>
 
-<!-- ══ AI ADAPTER ══ -->
-<rect x="418" y="411" width="254" height="68" rx="10" fill="#130D0A" stroke="#92400E" stroke-width="1.5"/>
-<text x="545" y="428" text-anchor="middle" font-size="9" font-weight="700" fill="#FCD34D" letter-spacing="3">AI ADAPTER LAYER</text>
-<text x="545" y="442" text-anchor="middle" font-size="8.5" fill="#64748B">Unified streaming interface</text>
-<rect x="426" y="449" width="112" height="20" rx="5" fill="#1A1008" stroke="#92400E" stroke-width=".8"/>
-<text x="482" y="463" text-anchor="middle" font-size="8.5" fill="#FDE68A">Anthropic · Claude</text>
-<rect x="546" y="449" width="118" height="20" rx="5" fill="#1A1008" stroke="#92400E" stroke-width=".8"/>
-<text x="605" y="463" text-anchor="middle" font-size="8.5" fill="#FDE68A">OpenAI · Gemini · Ollama</text>
+<rect x="666" y="313" width="254" height="34" rx="7" fill="#130D0A" stroke="#78350F" stroke-width="1"/>
+<text x="793" y="328" text-anchor="middle" font-size="8.5" font-weight="600" fill="#FCD34D">Skills</text>
+<text x="793" y="341" text-anchor="middle" font-size="7.5" fill="#64748B">CRUD · inject into system prompt at run time</text>
 
-<!-- ══ REPOSITORY ══ -->
-<rect x="682" y="411" width="254" height="68" rx="10" fill="#061A2A" stroke="#0E7490" stroke-width="1.5"/>
-<text x="809" y="428" text-anchor="middle" font-size="9" font-weight="700" fill="#22D3EE" letter-spacing="3">REPOSITORY LAYER</text>
-<text x="809" y="442" text-anchor="middle" font-size="8.5" fill="#64748B">pgx/v5 typed queries</text>
-<rect x="690" y="449" width="114" height="20" rx="5" fill="#06182A" stroke="#0E7490" stroke-width=".8"/>
-<text x="747" y="463" text-anchor="middle" font-size="8.5" fill="#67E8F9">agents · runs · tools</text>
-<rect x="812" y="449" width="116" height="20" rx="5" fill="#06182A" stroke="#0E7490" stroke-width=".8"/>
-<text x="870" y="463" text-anchor="middle" font-size="8.5" fill="#67E8F9">memory · connectors</text>
+<!-- ══ INVOKE ENGINE (shifted down 40px) ══ -->
+<rect x="418" y="357" width="518" height="84" rx="10" fill="#0D1035" stroke="#4C1D95" stroke-width="1.5"/>
+<text x="677" y="374" text-anchor="middle" font-size="9" font-weight="700" fill="#A78BFA" letter-spacing="3" filter="url(#text-glow)">INVOKE ENGINE</text>
+<text x="677" y="388" text-anchor="middle" font-size="8.5" fill="#64748B">executeRun / executeGroupRun · async goroutines · skills injected into prompt</text>
+<rect x="426" y="394" width="116" height="20" rx="5" fill="#13174A" stroke="#312E81" stroke-width=".8"/>
+<text x="484" y="408" text-anchor="middle" font-size="8.5" fill="#C7D2FE">Memory retrieval</text>
+<rect x="550" y="394" width="116" height="20" rx="5" fill="#13174A" stroke="#312E81" stroke-width=".8"/>
+<text x="608" y="408" text-anchor="middle" font-size="8.5" fill="#C7D2FE">Context (RAG)</text>
+<rect x="674" y="394" width="116" height="20" rx="5" fill="#13174A" stroke="#312E81" stroke-width=".8"/>
+<text x="732" y="408" text-anchor="middle" font-size="8.5" fill="#C7D2FE">Tool execution</text>
+<rect x="798" y="394" width="130" height="20" rx="5" fill="#13174A" stroke="#312E81" stroke-width=".8"/>
+<text x="863" y="408" text-anchor="middle" font-size="8.5" fill="#C7D2FE">BFS workflow · SSE stream</text>
+<circle cx="432" cy="369" r="4" fill="#A78BFA" filter="url(#gp)" class="blink"/>
 
-<!-- ══ MIGRATION RUNNER ══ -->
-<rect x="418" y="489" width="254" height="52" rx="10" fill="#052E16" stroke="#047857" stroke-width="1.5"/>
-<text x="545" y="506" text-anchor="middle" font-size="9" font-weight="700" fill="#34D399" letter-spacing="3">MIGRATION RUNNER</text>
-<text x="545" y="521" text-anchor="middle" font-size="8.5" fill="#64748B">//go:embed SQL · 14 migrations · baseline detect</text>
-<circle cx="432" cy="505" r="3.5" fill="#34D399" filter="url(#gg)" class="blink"/>
+<!-- ══ AI ADAPTER (shifted down 40px) ══ -->
+<rect x="418" y="451" width="254" height="68" rx="10" fill="#130D0A" stroke="#92400E" stroke-width="1.5"/>
+<text x="545" y="468" text-anchor="middle" font-size="9" font-weight="700" fill="#FCD34D" letter-spacing="3">AI ADAPTER LAYER</text>
+<text x="545" y="482" text-anchor="middle" font-size="8.5" fill="#64748B">Unified streaming interface</text>
+<rect x="426" y="489" width="112" height="20" rx="5" fill="#1A1008" stroke="#92400E" stroke-width=".8"/>
+<text x="482" y="503" text-anchor="middle" font-size="8.5" fill="#FDE68A">Anthropic · Claude</text>
+<rect x="546" y="489" width="118" height="20" rx="5" fill="#1A1008" stroke="#92400E" stroke-width=".8"/>
+<text x="605" y="503" text-anchor="middle" font-size="8.5" fill="#FDE68A">OpenAI · Gemini · Ollama</text>
 
-<!-- ══ TOOL REGISTRY ══ -->
-<rect x="682" y="489" width="254" height="52" rx="10" fill="#0D1035" stroke="#4C1D95" stroke-width="1.5"/>
-<text x="809" y="506" text-anchor="middle" font-size="9" font-weight="700" fill="#A78BFA" letter-spacing="3">TOOL REGISTRY</text>
-<text x="809" y="521" text-anchor="middle" font-size="8.5" fill="#64748B">risk levels · approval gates · MCP mirroring</text>
+<!-- ══ REPOSITORY (shifted down 40px) ══ -->
+<rect x="682" y="451" width="254" height="68" rx="10" fill="#061A2A" stroke="#0E7490" stroke-width="1.5"/>
+<text x="809" y="468" text-anchor="middle" font-size="9" font-weight="700" fill="#22D3EE" letter-spacing="3">REPOSITORY LAYER</text>
+<text x="809" y="482" text-anchor="middle" font-size="8.5" fill="#64748B">pgx/v5 typed queries</text>
+<rect x="690" y="489" width="114" height="20" rx="5" fill="#06182A" stroke="#0E7490" stroke-width=".8"/>
+<text x="747" y="503" text-anchor="middle" font-size="8.5" fill="#67E8F9">agents · runs · gateway</text>
+<rect x="812" y="489" width="116" height="20" rx="5" fill="#06182A" stroke="#0E7490" stroke-width=".8"/>
+<text x="870" y="503" text-anchor="middle" font-size="8.5" fill="#67E8F9">memory · connectors · skills</text>
 
-<!-- ══ PUBLIC ROUTES ══ -->
-<rect x="418" y="551" width="518" height="28" rx="8" fill="#1A0813" stroke="#7F1D1D" stroke-width=".8"/>
-<text x="677" y="569" text-anchor="middle" font-size="8.5" fill="#FB7185">Public routes (no auth): GET /health  ·  POST /webhook/{id}  ·  POST /auth/login</text>
+<!-- ══ MIGRATION RUNNER (shifted down 40px, updated count) ══ -->
+<rect x="418" y="529" width="254" height="52" rx="10" fill="#052E16" stroke="#047857" stroke-width="1.5"/>
+<text x="545" y="546" text-anchor="middle" font-size="9" font-weight="700" fill="#34D399" letter-spacing="3">MIGRATION RUNNER</text>
+<text x="545" y="561" text-anchor="middle" font-size="8.5" fill="#64748B">//go:embed SQL · 20 migrations · baseline detect</text>
+<circle cx="432" cy="545" r="3.5" fill="#34D399" filter="url(#gg)" class="blink"/>
 
-<!-- ══ AUDIT TRAIL ══ -->
-<rect x="418" y="587" width="518" height="28" rx="8" fill="#130D0A" stroke="#78350F" stroke-width=".8"/>
-<text x="677" y="605" text-anchor="middle" font-size="8.5" fill="#FCD34D">Audit trail: webhook_trigger.created / updated / deleted / fired  ·  admin_audit_logs</text>
+<!-- ══ TOOL REGISTRY (shifted down 40px) ══ -->
+<rect x="682" y="529" width="254" height="52" rx="10" fill="#0D1035" stroke="#4C1D95" stroke-width="1.5"/>
+<text x="809" y="546" text-anchor="middle" font-size="9" font-weight="700" fill="#A78BFA" letter-spacing="3">TOOL REGISTRY</text>
+<text x="809" y="561" text-anchor="middle" font-size="8.5" fill="#64748B">risk levels · approval gates · MCP · whatsapp tool</text>
 
-<!-- ══ ENCRYPT ══ -->
-<rect x="418" y="623" width="254" height="28" rx="8" fill="#061A2A" stroke="#0E7490" stroke-width=".8"/>
-<text x="545" y="641" text-anchor="middle" font-size="8.5" fill="#67E8F9">AES-256-GCM · API keys at rest</text>
+<!-- ══ PUBLIC ROUTES (shifted down 40px) ══ -->
+<rect x="418" y="591" width="518" height="28" rx="8" fill="#1A0813" stroke="#7F1D1D" stroke-width=".8"/>
+<text x="677" y="609" text-anchor="middle" font-size="8.5" fill="#FB7185">Public: GET /health  ·  POST /webhook/{id}  ·  POST /gateway/whatsapp/{id}  ·  POST /auth/login</text>
 
-<!-- ══ TOKEN / COST ══ -->
-<rect x="682" y="623" width="254" height="28" rx="8" fill="#0D1035" stroke="#312E81" stroke-width=".8"/>
-<text x="809" y="641" text-anchor="middle" font-size="8.5" fill="#818CF8">Token counting · cost estimate · pgvector 1536-dim</text>
+<!-- ══ AUDIT TRAIL (shifted down 40px) ══ -->
+<rect x="418" y="627" width="518" height="28" rx="8" fill="#130D0A" stroke="#78350F" stroke-width=".8"/>
+<text x="677" y="645" text-anchor="middle" font-size="8.5" fill="#FCD34D">Audit trail: webhook / gateway / skills events  ·  admin_audit_logs</text>
+
+<!-- ══ ENCRYPT (shifted down 40px) ══ -->
+<rect x="418" y="663" width="254" height="28" rx="8" fill="#061A2A" stroke="#0E7490" stroke-width=".8"/>
+<text x="545" y="681" text-anchor="middle" font-size="8.5" fill="#67E8F9">AES-256-GCM · API keys at rest</text>
+
+<!-- ══ TOKEN / COST (shifted down 40px) ══ -->
+<rect x="682" y="663" width="254" height="28" rx="8" fill="#0D1035" stroke="#312E81" stroke-width=".8"/>
+<text x="809" y="681" text-anchor="middle" font-size="8.5" fill="#818CF8">Token counting · cost estimate · pgvector 1536-dim</text>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- POSTGRESQL                                                    -->
@@ -366,13 +375,13 @@
 <rect x="1010" y="266" width="176" height="18" rx="5" fill="#061A2A" stroke="#0E7490" stroke-width=".7"/>
 <text x="1098" y="279" text-anchor="middle" font-size="8" fill="#67E8F9">runs · run_steps · conversations</text>
 <rect x="1194" y="266" width="184" height="18" rx="5" fill="#061A2A" stroke="#0E7490" stroke-width=".7"/>
-<text x="1286" y="279" text-anchor="middle" font-size="8" fill="#67E8F9">tools · mcp_servers · mcp_tools</text>
+<text x="1286" y="279" text-anchor="middle" font-size="8" fill="#67E8F9">tools · mcp_servers · skills</text>
 <rect x="1010" y="288" width="176" height="18" rx="5" fill="#061A2A" stroke="#0E7490" stroke-width=".7"/>
 <text x="1098" y="301" text-anchor="middle" font-size="8" fill="#67E8F9">memories (vector 1536-dim)</text>
 <rect x="1194" y="288" width="184" height="18" rx="5" fill="#061A2A" stroke="#0E7490" stroke-width=".7"/>
-<text x="1286" y="301" text-anchor="middle" font-size="8" fill="#67E8F9">webhook_triggers · schema_migrations</text>
+<text x="1286" y="301" text-anchor="middle" font-size="8" fill="#67E8F9">gateway_channels · gateway_contacts</text>
 <rect x="1010" y="310" width="368" height="28" rx="5" fill="#04293A" stroke="#0E7490" stroke-width=".7"/>
-<text x="1194" y="328" text-anchor="middle" font-size="8.5" fill="#22D3EE">connector_chunks · admin_audit_logs · policies · api_tokens</text>
+<text x="1194" y="328" text-anchor="middle" font-size="8.5" fill="#22D3EE">connector_chunks · gateway_escalations · gateway_reminders · admin_audit_logs · api_tokens</text>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- AI PROVIDERS                                                  -->
@@ -416,79 +425,92 @@
 <text x="1194" y="628" text-anchor="middle" font-size="8.5" fill="#34D399">Docker host rewrite · deterministic UUID · risk levels · approval gate</text>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
-<!-- WEBHOOK SOURCES                                               -->
+<!-- WHATSAPP ADAPTER  (NEW)                                       -->
 <!-- ══════════════════════════════════════════════════════════════ -->
-<rect x="14" y="626" width="344" height="140" rx="14" fill="none" stroke="#E11D48" stroke-width="2.5" filter="url(#gr)" class="pb" opacity=".6"/>
-<rect x="14" y="626" width="344" height="140" rx="14" fill="#130009" stroke="#7F1D1D" stroke-width="1.2"/>
-<rect x="14" y="626" width="344" height="42" rx="14" fill="url(#hdr-r)"/>
-<rect x="14" y="654" width="344" height="14" fill="url(#hdr-r)"/>
-<circle cx="34" cy="647" r="4" fill="#FB7185" filter="url(#gr)"/>
-<text x="186" y="651" text-anchor="middle" font-size="12" font-weight="800" fill="white" letter-spacing="1" filter="url(#text-glow)">WEBHOOK / EVENT SOURCES</text>
-<text x="186" y="665" text-anchor="middle" font-size="8.5" fill="#FDA4AF" letter-spacing="1.5">INBOUND HTTP → ASYNC AGENT RUNS</text>
+<rect x="1002" y="664" width="384" height="100" rx="14" fill="none" stroke="#10B981" stroke-width="2.5" filter="url(#gg)" class="pb" opacity=".6"/>
+<rect x="1002" y="664" width="384" height="100" rx="14" fill="#021A0D" stroke="#065F46" stroke-width="1.2"/>
+<rect x="1002" y="664" width="384" height="38" rx="14" fill="url(#hdr-wa)"/>
+<rect x="1002" y="698" width="384" height="4" fill="url(#hdr-wa)"/>
+<circle cx="1022" cy="683" r="4" fill="#6EE7B7" filter="url(#gg)" class="blink"/>
+<text x="1194" y="688" text-anchor="middle" font-size="12" font-weight="800" fill="white" letter-spacing="1" filter="url(#text-glow)">WHATSAPP ADAPTER</text>
+<text x="1194" y="700" text-anchor="middle" font-size="8.5" fill="#6EE7B7" letter-spacing="1.5">whatsapp-adapter/ · Node.js · whatsapp-web.js · WHATSAPP_ADAPTER_URL</text>
+<rect x="1010" y="710" width="108" height="22" rx="6" fill="#052E16" stroke="#065F46" stroke-width=".8"/>
+<text x="1064" y="725" text-anchor="middle" font-size="8.5" fill="#34D399">QR Pairing</text>
+<rect x="1126" y="710" width="118" height="22" rx="6" fill="#052E16" stroke="#065F46" stroke-width=".8"/>
+<text x="1185" y="725" text-anchor="middle" font-size="8.5" fill="#34D399">Session Mgmt</text>
+<rect x="1252" y="710" width="142" height="22" rx="6" fill="#052E16" stroke="#065F46" stroke-width=".8"/>
+<text x="1323" y="725" text-anchor="middle" font-size="8.5" fill="#34D399">Message Relay</text>
+<rect x="1010" y="738" width="368" height="18" rx="5" fill="#041A10" stroke="#065F46" stroke-width=".7"/>
+<text x="1194" y="751" text-anchor="middle" font-size="8.5" fill="#6EE7B7">bidirectional: API → send replies · inbound → POST /gateway/whatsapp/{id}</text>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- WEBHOOK / EVENT SOURCES  (shifted down 48px)                  -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<rect x="14" y="674" width="344" height="140" rx="14" fill="none" stroke="#E11D48" stroke-width="2.5" filter="url(#gr)" class="pb" opacity=".6"/>
+<rect x="14" y="674" width="344" height="140" rx="14" fill="#130009" stroke="#7F1D1D" stroke-width="1.2"/>
+<rect x="14" y="674" width="344" height="42" rx="14" fill="url(#hdr-r)"/>
+<rect x="14" y="702" width="344" height="14" fill="url(#hdr-r)"/>
+<circle cx="34" cy="695" r="4" fill="#FB7185" filter="url(#gr)"/>
+<text x="186" y="699" text-anchor="middle" font-size="12" font-weight="800" fill="white" letter-spacing="1" filter="url(#text-glow)">WEBHOOK / EVENT SOURCES</text>
+<text x="186" y="713" text-anchor="middle" font-size="8.5" fill="#FDA4AF" letter-spacing="1.5">INBOUND HTTP → ASYNC AGENT RUNS</text>
 <!-- Source pills -->
-<rect x="26" y="678" width="74" height="24" rx="7" fill="#1F0A12" stroke="#9F1239" stroke-width=".8"/>
-<text x="63" y="694" text-anchor="middle" font-size="9" font-weight="700" fill="#FB7185">GitHub</text>
-<rect x="108" y="678" width="74" height="24" rx="7" fill="#1F0A12" stroke="#9F1239" stroke-width=".8"/>
-<text x="145" y="694" text-anchor="middle" font-size="9" font-weight="700" fill="#FB7185">Zapier</text>
-<rect x="190" y="678" width="74" height="24" rx="7" fill="#1F0A12" stroke="#9F1239" stroke-width=".8"/>
-<text x="227" y="694" text-anchor="middle" font-size="9" font-weight="700" fill="#FB7185">IFTTT</text>
-<rect x="272" y="678" width="78" height="24" rx="7" fill="#1F0A12" stroke="#9F1239" stroke-width=".8"/>
-<text x="311" y="694" text-anchor="middle" font-size="9" font-weight="700" fill="#FB7185">Any HTTP</text>
-<rect x="26" y="710" width="328" height="20" rx="5" fill="#1F0A12" stroke="#7F1D1D" stroke-width=".7"/>
-<text x="190" y="724" text-anchor="middle" font-size="8.5" fill="#FDA4AF">POST /webhook/{id}  ·  HMAC-SHA256  ·  Go template mapping</text>
-<rect x="26" y="736" width="328" height="20" rx="5" fill="#1F0A12" stroke="#7F1D1D" stroke-width=".7"/>
-<text x="190" y="750" text-anchor="middle" font-size="8.5" fill="#FDA4AF">trigger_id on runs  ·  fire-and-forget dispatch  ·  audit logged</text>
+<rect x="26" y="726" width="74" height="24" rx="7" fill="#1F0A12" stroke="#9F1239" stroke-width=".8"/>
+<text x="63" y="742" text-anchor="middle" font-size="9" font-weight="700" fill="#FB7185">GitHub</text>
+<rect x="108" y="726" width="74" height="24" rx="7" fill="#1F0A12" stroke="#9F1239" stroke-width=".8"/>
+<text x="145" y="742" text-anchor="middle" font-size="9" font-weight="700" fill="#FB7185">Zapier</text>
+<rect x="190" y="726" width="74" height="24" rx="7" fill="#1F0A12" stroke="#9F1239" stroke-width=".8"/>
+<text x="227" y="742" text-anchor="middle" font-size="9" font-weight="700" fill="#FB7185">IFTTT</text>
+<rect x="272" y="726" width="78" height="24" rx="7" fill="#1F0A12" stroke="#9F1239" stroke-width=".8"/>
+<text x="311" y="742" text-anchor="middle" font-size="9" font-weight="700" fill="#FB7185">Any HTTP</text>
+<rect x="26" y="758" width="328" height="20" rx="5" fill="#1F0A12" stroke="#7F1D1D" stroke-width=".7"/>
+<text x="190" y="772" text-anchor="middle" font-size="8.5" fill="#FDA4AF">POST /webhook/{id}  ·  HMAC-SHA256  ·  Go template mapping</text>
+<rect x="26" y="784" width="328" height="20" rx="5" fill="#1F0A12" stroke="#7F1D1D" stroke-width=".7"/>
+<text x="190" y="798" text-anchor="middle" font-size="8.5" fill="#FDA4AF">trigger_id on runs  ·  fire-and-forget dispatch  ·  audit logged</text>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
-<!-- DOCKER INFRA (bottom center)                                  -->
+<!-- DOCKER INFRA (shifted down 40px)                              -->
 <!-- ══════════════════════════════════════════════════════════════ -->
-<rect x="406" y="748" width="542" height="58" rx="12" fill="#0A0A1E" stroke="#312E81" stroke-width="1.5" filter="url(#gp)" opacity=".7"/>
-<circle cx="424" cy="777" r="4" fill="#34D399" filter="url(#gg)" class="blink"/>
-<circle cx="436" cy="777" r="4" fill="#FCD34D" filter="url(#ga)" class="blink"/>
-<circle cx="448" cy="777" r="4" fill="#22D3EE" filter="url(#gc)" class="blink"/>
-<text x="677" y="770" text-anchor="middle" font-size="11" font-weight="700" fill="#A78BFA" letter-spacing="2">DOCKER COMPOSE INFRASTRUCTURE</text>
-<text x="677" y="786" text-anchor="middle" font-size="9" fill="#6D7EE0">agent-nexus-api :8080  ·  agent-nexus-web :3000  ·  agent-nexus-postgres :5432</text>
-<text x="677" y="800" text-anchor="middle" font-size="8.5" fill="#4B5563">Auto-migration on startup  ·  Go 1.26+  ·  Node 22+  ·  pnpm workspaces  ·  Build 22</text>
+<rect x="406" y="788" width="542" height="58" rx="12" fill="#0A0A1E" stroke="#312E81" stroke-width="1.5" filter="url(#gp)" opacity=".7"/>
+<circle cx="424" cy="817" r="4" fill="#34D399" filter="url(#gg)" class="blink"/>
+<circle cx="436" cy="817" r="4" fill="#FCD34D" filter="url(#ga)" class="blink"/>
+<circle cx="448" cy="817" r="4" fill="#22D3EE" filter="url(#gc)" class="blink"/>
+<text x="677" y="810" text-anchor="middle" font-size="11" font-weight="700" fill="#A78BFA" letter-spacing="2">DOCKER COMPOSE INFRASTRUCTURE</text>
+<text x="677" y="826" text-anchor="middle" font-size="9" fill="#6D7EE0">agent-nexus-api :8080  ·  agent-nexus-web :3000  ·  agent-nexus-postgres :5432</text>
+<text x="677" y="840" text-anchor="middle" font-size="8.5" fill="#4B5563">Gateway + Skills · 20 migrations · Go 1.26+  ·  Node 22+  ·  pnpm workspaces</text>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
-<!-- LEGEND (bottom right)                                         -->
+<!-- LEGEND (shifted to y=780)                                     -->
 <!-- ══════════════════════════════════════════════════════════════ -->
-<rect x="1002" y="664" width="384" height="102" rx="12" fill="#09091E" stroke="#312E81" stroke-width="1"/>
-<text x="1194" y="682" text-anchor="middle" font-size="9" font-weight="700" fill="#64748B" letter-spacing="3">LEGEND</text>
-<line x1="1014" y1="694" x2="1058" y2="694" stroke="#A78BFA" stroke-width="2" stroke-dasharray="7 4" marker-end="url(#ap)"/>
-<text x="1066" y="698" font-size="9" fill="#94A3B8">REST / SSE  (authenticated)</text>
-<line x1="1014" y1="714" x2="1058" y2="714" stroke="#22D3EE" stroke-width="2" marker-end="url(#ac)"/>
-<text x="1066" y="718" font-size="9" fill="#94A3B8">pgx/v5 database queries</text>
-<line x1="1014" y1="734" x2="1058" y2="734" stroke="#FCD34D" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#aa)"/>
-<text x="1066" y="738" font-size="9" fill="#94A3B8">AI API calls  (streaming)</text>
-<line x1="1014" y1="754" x2="1058" y2="754" stroke="#34D399" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ag)"/>
-<text x="1066" y="758" font-size="9" fill="#94A3B8">MCP protocol</text>
-<line x1="1200" y1="694" x2="1244" y2="694" stroke="#FB7185" stroke-width="2" stroke-dasharray="7 4" marker-end="url(#ar)"/>
-<text x="1252" y="698" font-size="9" fill="#94A3B8">Inbound webhook</text>
-<circle cx="1220" cy="714" r="4" fill="#A78BFA" filter="url(#gp)"/>
-<text x="1252" y="718" font-size="9" fill="#94A3B8">Connection node</text>
-<circle cx="1220" cy="734" r="3.5" fill="#34D399" class="blink" filter="url(#gg)"/>
-<text x="1252" y="738" font-size="9" fill="#94A3B8">Live status indicator</text>
+<rect x="1002" y="780" width="384" height="102" rx="12" fill="#09091E" stroke="#312E81" stroke-width="1"/>
+<text x="1194" y="798" text-anchor="middle" font-size="9" font-weight="700" fill="#64748B" letter-spacing="3">LEGEND</text>
+<line x1="1014" y1="810" x2="1058" y2="810" stroke="#A78BFA" stroke-width="2" stroke-dasharray="7 4" marker-end="url(#ap)"/>
+<text x="1066" y="814" font-size="9" fill="#94A3B8">REST / SSE  (authenticated)</text>
+<line x1="1014" y1="830" x2="1058" y2="830" stroke="#22D3EE" stroke-width="2" marker-end="url(#ac)"/>
+<text x="1066" y="834" font-size="9" fill="#94A3B8">pgx/v5 database queries</text>
+<line x1="1014" y1="850" x2="1058" y2="850" stroke="#FCD34D" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#aa)"/>
+<text x="1066" y="854" font-size="9" fill="#94A3B8">AI API calls  (streaming)</text>
+<line x1="1014" y1="870" x2="1058" y2="870" stroke="#34D399" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ag)"/>
+<text x="1066" y="874" font-size="9" fill="#94A3B8">MCP / WA Adapter protocol</text>
+<line x1="1200" y1="810" x2="1244" y2="810" stroke="#FB7185" stroke-width="2" stroke-dasharray="7 4" marker-end="url(#ar)"/>
+<text x="1252" y="814" font-size="9" fill="#94A3B8">Inbound webhook</text>
+<circle cx="1220" cy="830" r="4" fill="#A78BFA" filter="url(#gp)"/>
+<text x="1252" y="834" font-size="9" fill="#94A3B8">Connection node</text>
+<circle cx="1220" cy="850" r="3.5" fill="#34D399" class="blink" filter="url(#gg)"/>
+<text x="1252" y="854" font-size="9" fill="#94A3B8">Live status indicator</text>
 
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- ══ ANIMATED CONNECTION LINES ══                               -->
 <!-- ══════════════════════════════════════════════════════════════ -->
 
 <!-- ── 1. Frontend ↔ API  (purple, bidirectional) ── -->
-<!-- Shadow/glow path behind -->
 <line x1="358" y1="350" x2="406" y2="350" stroke="#A78BFA" stroke-width="6" opacity=".15" filter="url(#gp)"/>
-<!-- Animated dash path -->
 <line x1="358" y1="350" x2="406" y2="350" stroke="#A78BFA" stroke-width="2" class="fp" marker-end="url(#ap)"/>
-<!-- Return arrow (API → FE) slightly offset -->
 <line x1="406" y1="358" x2="358" y2="358" stroke="#7C3AED" stroke-width="1.5" class="fp" marker-end="url(#ap)" opacity=".5"/>
-<!-- Endpoint circles -->
 <circle cx="358" cy="354" r="4" fill="#A78BFA" filter="url(#gp)" class="pd"/>
 <circle cx="406" cy="354" r="4" fill="#A78BFA" filter="url(#gp)"/>
-<!-- Label -->
 <rect x="361" y="336" width="40" height="14" rx="4" fill="#13174A"/>
 <text x="381" y="347" text-anchor="middle" font-size="8" fill="#A78BFA">REST/SSE</text>
 
-<!-- Moving particles on FE→API -->
 <circle r="3.5" fill="#E879F9" opacity=".9" filter="url(#gp)">
   <animateMotion dur="1.4s" repeatCount="indefinite" path="M358,350 L406,350"/>
 </circle>
@@ -527,38 +549,52 @@
 </circle>
 
 <!-- ── 4. API → MCP Servers (green) ── -->
-<line x1="948" y1="595" x2="1002" y2="595" stroke="#34D399" stroke-width="6" opacity=".15" filter="url(#gg)"/>
-<line x1="948" y1="595" x2="1002" y2="595" stroke="#34D399" stroke-width="2" class="fg" marker-end="url(#ag)"/>
-<circle cx="948" cy="595" r="4" fill="#34D399" filter="url(#gg)" class="pd"/>
-<circle cx="1002" cy="595" r="4" fill="#34D399" filter="url(#gg)"/>
-<rect x="950" y="580" width="42" height="14" rx="4" fill="#052E16"/>
-<text x="971" y="591" text-anchor="middle" font-size="8" fill="#34D399">MCP</text>
+<line x1="948" y1="589" x2="1002" y2="589" stroke="#34D399" stroke-width="6" opacity=".15" filter="url(#gg)"/>
+<line x1="948" y1="589" x2="1002" y2="589" stroke="#34D399" stroke-width="2" class="fg" marker-end="url(#ag)"/>
+<circle cx="948" cy="589" r="4" fill="#34D399" filter="url(#gg)" class="pd"/>
+<circle cx="1002" cy="589" r="4" fill="#34D399" filter="url(#gg)"/>
+<rect x="950" y="574" width="42" height="14" rx="4" fill="#052E16"/>
+<text x="971" y="585" text-anchor="middle" font-size="8" fill="#34D399">MCP</text>
 
 <circle r="3.5" fill="#6EE7B7" opacity=".9" filter="url(#gg)">
-  <animateMotion dur="2s" repeatCount="indefinite" path="M948,595 L1002,595"/>
+  <animateMotion dur="2s" repeatCount="indefinite" path="M948,589 L1002,589"/>
 </circle>
 <circle r="2.5" fill="#34D399" opacity=".6">
-  <animateMotion dur="2s" begin="1s" repeatCount="indefinite" path="M948,595 L1002,595"/>
+  <animateMotion dur="2s" begin="1s" repeatCount="indefinite" path="M948,589 L1002,589"/>
 </circle>
 
-<!-- ── 5. Webhook Sources → API (rose, curved) ── -->
-<!-- Glow -->
-<path d="M358,698 C382,698 406,675 406,655" fill="none" stroke="#FB7185" stroke-width="6" opacity=".12" filter="url(#gr)"/>
-<!-- Animated -->
-<path d="M358,698 C382,698 406,675 406,655" fill="none" stroke="#FB7185" stroke-width="2" class="fr" marker-end="url(#ar)"/>
-<circle cx="358" cy="698" r="4" fill="#FB7185" filter="url(#gr)" class="pd"/>
-<circle cx="406" cy="655" r="4" fill="#FB7185" filter="url(#gr)"/>
-<rect x="348" y="672" width="58" height="14" rx="4" fill="#130009"/>
-<text x="377" y="683" text-anchor="middle" font-size="8" fill="#FB7185">HTTP POST</text>
+<!-- ── 5. API → WhatsApp Adapter (green, bidirectional) ── -->
+<line x1="948" y1="714" x2="1002" y2="714" stroke="#34D399" stroke-width="6" opacity=".15" filter="url(#gg)"/>
+<line x1="948" y1="710" x2="1002" y2="710" stroke="#34D399" stroke-width="2" class="fg" marker-end="url(#ag)"/>
+<line x1="1002" y1="718" x2="948" y2="718" stroke="#6EE7B7" stroke-width="1.5" class="fg" opacity=".5"/>
+<circle cx="948" cy="714" r="4" fill="#34D399" filter="url(#gg)" class="pd"/>
+<circle cx="1002" cy="714" r="4" fill="#34D399" filter="url(#gg)"/>
+<rect x="952" y="699" width="44" height="14" rx="4" fill="#041A10"/>
+<text x="974" y="710" text-anchor="middle" font-size="8" fill="#34D399">WA API</text>
+
+<circle r="3.5" fill="#6EE7B7" opacity=".9" filter="url(#gg)">
+  <animateMotion dur="1.8s" repeatCount="indefinite" path="M948,710 L1002,710"/>
+</circle>
+<circle r="2.5" fill="#34D399" opacity=".6">
+  <animateMotion dur="1.8s" begin="0.9s" repeatCount="indefinite" path="M948,710 L1002,710"/>
+</circle>
+
+<!-- ── 6. Webhook Sources → API (rose, curved, shifted down 48px) ── -->
+<path d="M358,746 C382,746 406,720 406,700" fill="none" stroke="#FB7185" stroke-width="6" opacity=".12" filter="url(#gr)"/>
+<path d="M358,746 C382,746 406,720 406,700" fill="none" stroke="#FB7185" stroke-width="2" class="fr" marker-end="url(#ar)"/>
+<circle cx="358" cy="746" r="4" fill="#FB7185" filter="url(#gr)" class="pd"/>
+<circle cx="406" cy="700" r="4" fill="#FB7185" filter="url(#gr)"/>
+<rect x="348" y="720" width="58" height="14" rx="4" fill="#130009"/>
+<text x="377" y="731" text-anchor="middle" font-size="8" fill="#FB7185">HTTP POST</text>
 
 <circle r="3.5" fill="#FDA4AF" opacity=".9" filter="url(#gr)">
-  <animateMotion dur="1.3s" repeatCount="indefinite" path="M358,698 C382,698 406,675 406,655"/>
+  <animateMotion dur="1.3s" repeatCount="indefinite" path="M358,746 C382,746 406,720 406,700"/>
 </circle>
 <circle r="2.5" fill="#FB7185" opacity=".6">
-  <animateMotion dur="1.3s" begin="0.65s" repeatCount="indefinite" path="M358,698 C382,698 406,675 406,655"/>
+  <animateMotion dur="1.3s" begin="0.65s" repeatCount="indefinite" path="M358,746 C382,746 406,720 406,700"/>
 </circle>
 
 <!-- ══ Version badge ══ -->
 <rect x="1270" y="14" width="118" height="26" rx="10" fill="#0D1035" stroke="#4C1D95" stroke-width="1" filter="url(#gp)" opacity=".8"/>
-<text x="1329" y="31" text-anchor="middle" font-size="10" font-weight="700" fill="#A78BFA">Build 22 · v0.1.0</text>
+<text x="1329" y="31" text-anchor="middle" font-size="10" font-weight="700" fill="#A78BFA">Build 22+ · v0.2.0</text>
 </svg>
