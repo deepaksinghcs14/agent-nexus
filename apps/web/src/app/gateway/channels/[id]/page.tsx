@@ -32,6 +32,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const [escalations, setEscalations] = useState<GatewayEscalation[]>([])
   const [adapter, setAdapter] = useState<Record<string, unknown> | null>(null)
   const [qr, setQR] = useState<Record<string, unknown> | null>(null)
+  const [loginLoading, setLoginLoading] = useState(false)
   const [error, setError] = useState('')
   const [contactName, setContactName] = useState('')
   const [contactPhone, setContactPhone] = useState('')
@@ -53,16 +54,51 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
 
   useEffect(() => { load() }, [load])
 
-  const refreshAdapter = () => {
-    gatewayAPI.adapterStatus(params.id).then((r) => setAdapter(r as Record<string, unknown>)).catch((e: Error) => setError(e.message))
-  }
+  const refreshAdapter = useCallback(async () => {
+    const r = await gatewayAPI.adapterStatus(params.id).catch(() => null)
+    if (r) setAdapter(r as Record<string, unknown>)
+    return r as Record<string, unknown> | null
+  }, [params.id])
 
   const startLogin = async () => {
     setError('')
-    await gatewayAPI.startLogin(params.id).catch((e: Error) => setError(e.message))
-    const r = await gatewayAPI.getQR(params.id).catch((e: Error) => { setError(e.message); return null })
-    if (r) setQR(r as Record<string, unknown>)
+    setLoginLoading(true)
+    setQR(null)
+    try {
+      await gatewayAPI.startLogin(params.id)
+      // Poll for QR or connected status
+      for (let i = 0; i < 20; i++) {
+        await new Promise((res) => setTimeout(res, 800))
+        const status = await refreshAdapter()
+        if (status?.status === 'qr' && status?.qr_data_url) {
+          setQR(status)
+          break
+        }
+        if (status?.status === 'connected') break
+      }
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoginLoading(false)
+    }
   }
+
+  // Auto-poll while in qr or connecting state
+  useEffect(() => {
+    if (!adapter) return
+    const s = adapter.status as string
+    if (s !== 'qr' && s !== 'connecting') return
+    const interval = setInterval(async () => {
+      const r = await refreshAdapter()
+      if (r?.status === 'connected' || r?.status === 'disconnected') {
+        setQR(null)
+        clearInterval(interval)
+      } else if (r?.status === 'qr') {
+        setQR(r)
+      }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [adapter?.status, refreshAdapter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateSelfChat = async (enabled: boolean) => {
     await updateChannelConfig({ self_chat_enabled: enabled }, true)
@@ -180,29 +216,41 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
       )}
 
       {tab === 'QR Login' && (
-        <div className="space-y-4">
+        <div className="space-y-4 max-w-2xl">
+          <AdapterStatusCard adapter={adapter} />
+          <div className="flex gap-2">
+            <button
+              onClick={startLogin}
+              disabled={loginLoading}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#534AB7] text-sm text-white hover:bg-[#4a42a3] disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loginLoading ? <Spinner /> : <QrCode className="w-4 h-4" />}
+              {loginLoading ? 'Connecting…' : 'Start login'}
+            </button>
+            <button
+              onClick={refreshAdapter}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <RefreshCw className="w-4 h-4" /> Refresh status
+            </button>
+            <button
+              onClick={async () => { await gatewayAPI.logout(params.id).catch(() => {}); setQR(null); await refreshAdapter() }}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <LogOut className="w-4 h-4" /> Logout
+            </button>
+          </div>
+          <QRPanel value={qr} loading={loginLoading && !qr} />
           <div className="rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-800">Self-chat replies</p>
-              <p className="text-xs text-gray-500 mt-1">Enable this when the linked WhatsApp account should message the agent from its own number.</p>
+              <p className="text-xs text-gray-500 mt-1">When enabled, messages sent from the linked number to itself will be processed by the agent.</p>
             </div>
             <label className="inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={!!channel.config?.self_chat_enabled}
-                onChange={(e) => updateSelfChat(e.target.checked)}
-                className="sr-only peer"
-              />
+              <input type="checkbox" checked={!!channel.config?.self_chat_enabled} onChange={(e) => updateSelfChat(e.target.checked)} className="sr-only peer" />
               <span className="relative w-10 h-5 rounded-full bg-gray-200 peer-checked:bg-[#534AB7] after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
             </label>
           </div>
-          <div className="flex gap-2">
-            <button onClick={refreshAdapter} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"><RefreshCw className="w-4 h-4" /> Status</button>
-            <button onClick={startLogin} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#534AB7] text-sm text-white hover:bg-[#4a42a3]"><QrCode className="w-4 h-4" /> Start login</button>
-            <button onClick={() => gatewayAPI.logout(params.id).catch(() => {})} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"><LogOut className="w-4 h-4" /> Logout</button>
-          </div>
-          <JsonPanel title="Adapter status" value={adapter ?? { adapter_url: channel.config?.adapter_url, status: 'not loaded' }} />
-          <QRPanel value={qr} />
         </div>
       )}
 
@@ -324,27 +372,95 @@ function ToggleCard({ title, description, checked, onChange }: { title: string; 
   )
 }
 
-function JsonPanel({ title, value }: { title: string; value: unknown }) {
-  return <div className="rounded-lg border border-gray-200 bg-white p-4"><p className="text-[12px] font-medium text-gray-700 mb-2">{title}</p><pre className="text-xs bg-gray-50 rounded p-3 overflow-auto text-gray-600">{JSON.stringify(value, null, 2)}</pre></div>
+function Spinner() {
+  return (
+    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+    </svg>
+  )
 }
 
-function QRPanel({ value }: { value: Record<string, unknown> | null }) {
+function AdapterStatusCard({ adapter }: { adapter: Record<string, unknown> | null }) {
+  if (!adapter) {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-white p-4 flex items-center gap-3">
+        <div className="w-2.5 h-2.5 rounded-full bg-gray-300 shrink-0" />
+        <div>
+          <p className="text-sm font-medium text-gray-700">Adapter status</p>
+          <p className="text-xs text-gray-400 mt-0.5">Click &quot;Refresh status&quot; to load.</p>
+        </div>
+      </div>
+    )
+  }
+  const status = adapter.status as string
+  const selfId = adapter.self_id as string | undefined
+  const lastError = adapter.last_error as string | undefined
+  const lidMapSize = adapter.lid_map_size as number | undefined
+
+  const dot: Record<string, string> = {
+    connected: 'bg-emerald-400',
+    qr: 'bg-amber-400 animate-pulse',
+    connecting: 'bg-amber-400 animate-pulse',
+    disconnected: 'bg-red-400',
+  }
+  const label: Record<string, string> = {
+    connected: 'Connected',
+    qr: 'Waiting for QR scan',
+    connecting: 'Connecting…',
+    disconnected: 'Disconnected',
+  }
+  const phone = selfId ? selfId.split('@')[0].split(':')[0] : null
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+      <div className="flex items-center gap-3">
+        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot[status] ?? 'bg-gray-300'}`} />
+        <p className="text-sm font-medium text-gray-800">{label[status] ?? status}</p>
+      </div>
+      {phone && (
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span className="font-medium text-gray-700">Linked number:</span>
+          <code className="bg-gray-50 px-2 py-0.5 rounded text-gray-600">+{phone}</code>
+        </div>
+      )}
+      {lastError && (
+        <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded px-2 py-1">{lastError}</p>
+      )}
+      {typeof lidMapSize === 'number' && lidMapSize > 0 && (
+        <p className="text-xs text-gray-400">{lidMapSize} contact LID{lidMapSize !== 1 ? 's' : ''} resolved</p>
+      )}
+    </div>
+  )
+}
+
+function QRPanel({ value, loading }: { value: Record<string, unknown> | null; loading?: boolean }) {
   const dataURL = typeof value?.qr_data_url === 'string' ? value.qr_data_url : ''
-  const status = typeof value?.status === 'string' ? value.status : 'not requested'
+  if (!dataURL && !loading) return null
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <p className="text-[12px] font-medium text-gray-700 mb-3">WhatsApp QR</p>
-      {dataURL ? (
-        <div className="flex items-start gap-5">
-          <Image src={dataURL} alt="WhatsApp login QR code" width={256} height={256} unoptimized className="border border-gray-100 rounded-lg" />
-          <div className="text-sm text-gray-600">
-            <p className="font-medium text-gray-800 mb-1">Scan this QR in WhatsApp</p>
-            <p className="text-xs text-gray-500">Open WhatsApp, go to linked devices, and scan this code. The status will switch to connected after login.</p>
-          </div>
+      <p className="text-[12px] font-medium text-gray-700 mb-3">Scan in WhatsApp</p>
+      {loading && !dataURL ? (
+        <div className="flex items-center gap-3 text-sm text-gray-500 py-4">
+          <svg className="w-5 h-5 animate-spin text-purple-500" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+          Generating QR code…
         </div>
       ) : (
-        <div className="text-sm text-gray-500 bg-gray-50 border border-gray-100 rounded-lg p-4">
-          QR not available. Current status: {status}
+        <div className="flex items-start gap-5">
+          <Image src={dataURL} alt="WhatsApp QR code" width={220} height={220} unoptimized className="border border-gray-100 rounded-lg" />
+          <div className="text-sm text-gray-600 pt-1">
+            <p className="font-medium text-gray-800 mb-2">Link this channel to WhatsApp</p>
+            <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
+              <li>Open WhatsApp on your phone</li>
+              <li>Tap <strong>Linked Devices</strong></li>
+              <li>Tap <strong>Link a device</strong></li>
+              <li>Scan this QR code</li>
+            </ol>
+            <p className="text-xs text-gray-400 mt-3">Status updates automatically after scanning.</p>
+          </div>
         </div>
       )}
     </div>
