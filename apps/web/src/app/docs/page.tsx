@@ -40,6 +40,22 @@ export default function DocsOverview() {
           desc: 'Connect any MCP-compatible server to expose additional tools to agents.',
           badge: 'Concept',
         },
+        {
+          title: 'Skills',
+          href: '/docs/skills',
+          desc: 'Reusable instruction blocks injected into agent system prompts — share expertise across agents.',
+          badge: 'Concept',
+        },
+      ]} />
+
+      <h2>Messaging Channels</h2>
+      <ConceptGrid items={[
+        {
+          title: 'Nexus Gateway',
+          href: '/docs/gateway',
+          desc: 'Connect agents to WhatsApp and HTTP channels so they can receive and reply to real-world messages.',
+          badge: 'Gateway',
+        },
       ]} />
 
       <h2>API Integration</h2>
