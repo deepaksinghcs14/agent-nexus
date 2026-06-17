@@ -565,6 +565,12 @@ func (h *GatewayHandler) handleInbound(ctx context.Context, c domain.GatewayChan
 	if response, handled := h.handleOwnerCommand(ctx, c, cfg, msg, contact); handled {
 		return false, response
 	}
+	// Drop messages sent by the WhatsApp account itself (from_me events) unless self-chat
+	// is explicitly enabled. Without this guard the agent's own replies arrive as inbound
+	// events, match the owner contact, and trigger another run — creating a reply loop.
+	if msg.FromMe && !cfg.SelfChatEnabled {
+		return false, ""
+	}
 	if !cfg.AssistantEnabled {
 		_ = h.logEvent(ctx, c, "", "", "assistant_disabled", "", map[string]any{"sender_id": msg.SenderID, "contact_alias": contactAlias(contact)})
 		return false, ""
