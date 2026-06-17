@@ -16,6 +16,19 @@ type NativeTool interface {
 	Execute(input map[string]any) (any, error)
 }
 
+type ExecutionContext struct {
+	WorkspaceID      string
+	UserID           string
+	RunID            string
+	ConversationID   string
+	ChannelSessionID string
+}
+
+type ContextAwareTool interface {
+	Definition() domain.Tool
+	ExecuteWithContext(ctx context.Context, execCtx ExecutionContext, input map[string]any) (any, error)
+}
+
 type Registry struct {
 	mu    sync.RWMutex
 	tools map[string]NativeTool

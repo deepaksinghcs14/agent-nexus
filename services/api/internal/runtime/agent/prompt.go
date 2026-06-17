@@ -9,6 +9,14 @@ func NewBuilder() *Builder { return &Builder{} }
 
 func (b *Builder) Build(req BuildRequest) []provider.Message {
 	system := req.SystemInstructions
+	if len(req.Skills) > 0 {
+		system += "\n\nAdditional instructions:\n"
+		for _, s := range req.Skills {
+			if s != "" {
+				system += "\n" + s + "\n"
+			}
+		}
+	}
 	if len(req.MemorySummaries) > 0 {
 		system += "\n\nRelevant memory:\n"
 		for _, m := range req.MemorySummaries {
@@ -39,6 +47,7 @@ func (b *Builder) Build(req BuildRequest) []provider.Message {
 
 type BuildRequest struct {
 	SystemInstructions string
+	Skills             []string
 	MemorySummaries    []string
 	ContextChunks      []string
 	History            []provider.Message

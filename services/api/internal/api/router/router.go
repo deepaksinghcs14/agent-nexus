@@ -39,6 +39,8 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 
 	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC secret)
 	r.Post("/webhook/{webhookId}", h.WebhookIngress.Receive)
+	r.Post("/gateway/whatsapp/{channelId}", h.Gateway.WhatsAppReceive)
+	r.Post("/gateway/http/{channelId}", h.Gateway.HTTPReceive)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public auth routes
@@ -151,6 +153,43 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Put("/webhook-triggers/{id}", h.WebhookTriggers.Update)
 			r.Delete("/webhook-triggers/{id}", h.WebhookTriggers.Delete)
 
+			// Gateway channels
+			r.Route("/gateway", func(r chi.Router) {
+				r.Get("/channels", h.Gateway.ListChannels)
+				r.Post("/channels", h.Gateway.CreateChannel)
+				r.Get("/channels/{id}", h.Gateway.GetChannel)
+				r.Put("/channels/{id}", h.Gateway.UpdateChannel)
+				r.Delete("/channels/{id}", h.Gateway.DeleteChannel)
+				r.Get("/channels/{id}/adapter/status", h.Gateway.AdapterStatus)
+				r.Post("/channels/{id}/adapter/login/start", h.Gateway.AdapterLoginStart)
+				r.Get("/channels/{id}/adapter/login/qr", h.Gateway.AdapterQR)
+				r.Post("/channels/{id}/adapter/logout", h.Gateway.AdapterLogout)
+				r.Get("/sessions", h.Gateway.ListSessions)
+				r.Delete("/sessions/{id}", h.Gateway.DeleteSession)
+				r.Get("/events", h.Gateway.ListEvents)
+				r.Get("/pairings", h.Gateway.ListPairings)
+				r.Post("/pairings/{id}/approve", h.Gateway.ApprovePairing)
+				r.Post("/pairings/{id}/reject", h.Gateway.RejectPairing)
+				r.Get("/outbox", h.Gateway.ListOutbox)
+				r.Get("/reminders", h.Gateway.ListReminders)
+				r.Get("/escalations", h.Gateway.ListEscalations)
+				r.Post("/escalations/{id}/approve", h.Gateway.ApproveEscalation)
+				r.Post("/escalations/{id}/reject", h.Gateway.RejectEscalation)
+				r.Get("/contacts", h.Gateway.ListContacts)
+				r.Post("/contacts", h.Gateway.CreateContact)
+				r.Put("/contacts/{id}", h.Gateway.UpdateContact)
+				r.Delete("/contacts/{id}", h.Gateway.DeleteContact)
+			})
+
+			// Skills
+			r.Get("/skills", h.Skills.List)
+			r.Post("/skills", h.Skills.Create)
+			r.Get("/skills/{id}", h.Skills.Get)
+			r.Put("/skills/{id}", h.Skills.Update)
+			r.Delete("/skills/{id}", h.Skills.Delete)
+			r.Get("/agents/{id}/skills", h.Skills.ListForAgent)
+			r.Put("/agents/{id}/skills", h.Skills.SetForAgent)
+
 			// Workflows
 			r.Get("/workflows", h.Workflows.List)
 			r.Post("/workflows", h.Workflows.Create)
@@ -162,9 +201,9 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Put("/workflows/{id}/graph", h.Workflows.SaveGraph)
 
 			// Nexus AI meta-agent
-				r.Post("/nexus-ai/chat", h.NexusAI.Chat)
+			r.Post("/nexus-ai/chat", h.NexusAI.Chat)
 
-				// Admin (requires is_admin flag)
+			// Admin (requires is_admin flag)
 			r.Group(func(r chi.Router) {
 				r.Use(mw.RequireAdmin)
 

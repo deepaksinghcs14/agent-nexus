@@ -171,6 +171,174 @@ export interface Run {
   parent_run_id?: string
   workflow_node_id?: string
   trace_id?: string
+  channel_session_id?: string
+}
+
+export interface GatewayChannelConfig {
+  account_id: string
+  adapter_url?: string
+  dm_policy?: 'pairing' | 'allowlist' | 'open' | 'disabled'
+  allow_from?: string[]
+  session_scope?: string
+  group_policy?: 'allowlist' | 'open' | 'disabled'
+  group_allow_from?: string[]
+  groups?: string[]
+  history_limit?: number
+  self_chat_enabled?: boolean
+  assistant_enabled?: boolean
+  bot_mode_enabled?: boolean
+  chat_approvals_enabled?: boolean
+}
+
+export interface GatewayChannel {
+  id: string
+  workspace_id: string
+  agent_id: string
+  agent_name?: string
+  name: string
+  description: string
+  channel_type: 'whatsapp' | 'http'
+  config: GatewayChannelConfig
+  is_active: boolean
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ChannelSession {
+  id: string
+  workspace_id: string
+  channel_id: string
+  account_id: string
+  agent_id: string
+  conversation_id: string
+  session_key: string
+  peer_kind: 'direct' | 'group' | 'channel'
+  peer_id: string
+  external_sender_id: string
+  activation_mode: string
+  last_route: Record<string, unknown>
+  last_active_at: string
+  created_at: string
+}
+
+export interface GatewayEvent {
+  id: string
+  workspace_id: string
+  channel_id: string
+  session_id?: string
+  run_id?: string
+  event_type: string
+  provider_message_id?: string
+  payload: Record<string, unknown>
+  created_at: string
+}
+
+export interface GatewayPairingRequest {
+  id: string
+  workspace_id: string
+  channel_id: string
+  account_id: string
+  peer_kind: string
+  peer_id: string
+  sender_id: string
+  code: string
+  status: 'pending' | 'approved' | 'rejected' | 'expired'
+  expires_at: string
+  created_at: string
+}
+
+export interface GatewayOutboundMessage {
+  id: string
+  workspace_id: string
+  channel_id: string
+  session_id?: string
+  run_id?: string
+  account_id: string
+  peer_kind: string
+  peer_id: string
+  body: string
+  status: 'pending' | 'sent' | 'failed'
+  attempts: number
+  last_error: string
+  created_at: string
+  sent_at?: string
+}
+
+export interface GatewayContact {
+  id: string
+  workspace_id: string
+  channel_id: string
+  account_id: string
+  display_name: string
+  alias: string
+  phone_number: string
+  whatsapp_jid: string
+  role: 'owner' | 'trusted' | 'blocked'
+  agent_id?: string
+  auto_reply_enabled: boolean
+  last_matched_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface GatewayReminder {
+  id: string
+  workspace_id: string
+  channel_id?: string
+  session_id?: string
+  contact_id?: string
+  account_id: string
+  title: string
+  message: string
+  due_at?: string
+  status: 'pending' | 'completed' | 'cancelled'
+  payload: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface GatewayEscalation {
+  id: string
+  workspace_id: string
+  channel_id?: string
+  session_id?: string
+  run_id?: string
+  account_id: string
+  action_type: string
+  recipient: string
+  message: string
+  reason: string
+  status: 'pending' | 'approved' | 'rejected' | 'resolved'
+  approval_code: string
+  resolved_by_sender_id?: string
+  resolved_at?: string
+  payload: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface Skill {
+  id: string
+  workspace_id?: string
+  name: string
+  description: string
+  content: string
+  source: 'manual' | 'managed'
+  enabled: boolean
+  created_by?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AgentSkill {
+  id: string
+  agent_id: string
+  skill_id: string
+  enabled: boolean
+  order_index: number
+  created_at: string
+  skill?: Skill
 }
 
 export interface PaginatedRuns {

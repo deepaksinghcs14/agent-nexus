@@ -74,6 +74,9 @@ func main() {
 	reg := tools.NewRegistry()
 	reg.Register(native.NewReadFileTool(cfg.StoragePath))
 	reg.Register(native.NewWebSearchTool())
+	for _, t := range native.NewWhatsAppTools(pool, cfg) {
+		reg.Register(t)
+	}
 	if !cfg.DemoMode {
 		reg.Register(native.NewWriteFileTool(cfg.StoragePath))
 		reg.Register(native.NewHTTPRequestTool())
@@ -82,6 +85,9 @@ func main() {
 		slog.Warn("failed to seed native tools", "error", err)
 	} else {
 		slog.Info("native tools seeded", "count", len(reg.All()), "demo_mode", cfg.DemoMode)
+	}
+	if err := attachExistingWhatsAppCapabilities(ctx, pool); err != nil {
+		slog.Warn("failed to attach whatsapp capabilities", "error", err)
 	}
 	exec := tools.NewExecutor(reg)
 
@@ -105,6 +111,8 @@ func main() {
 		Invoke:          invoke,
 		WebhookTriggers: handler.NewWebhookTriggerHandler(pool, cfg),
 		WebhookIngress:  handler.NewWebhookIngressHandler(pool, invoke),
+		Gateway:         handler.NewGatewayHandler(pool, cfg, invoke),
+		Skills:          handler.NewSkillsHandler(pool, cfg),
 		Config:          handler.NewConfigHandler(cfg),
 		NexusAI:         handler.NewNexusAIHandler(pool, cfg, runs),
 	}
@@ -140,6 +148,24 @@ func main() {
 		slog.Error("server shutdown error", "error", err)
 	}
 	slog.Info("server stopped")
+}
+
+func attachExistingWhatsAppCapabilities(ctx context.Context, pool *pgxpool.Pool) error {
+	rows, err := pool.Query(ctx, `SELECT DISTINCT agent_id::text FROM gateway_channels WHERE channel_type='whatsapp'`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var agentID string
+		if err := rows.Scan(&agentID); err != nil {
+			return err
+		}
+		if err := handler.AttachWhatsAppCapabilities(ctx, pool, agentID); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
 }
 
 // maskURL hides the password in a DB URL for logging.

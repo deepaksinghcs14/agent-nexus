@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Save, X, Check } from 'lucide-react'
-import { agentsAPI, connectorsAPI, providersAPI, toolsAPI } from '@/lib/api'
-import type { Agent, Connector, ModelInfo, ProviderCredential, Tool } from '@/types'
+import { agentsAPI, connectorsAPI, providersAPI, skillsAPI, toolsAPI } from '@/lib/api'
+import type { Agent, AgentSkill, Connector, ModelInfo, ProviderCredential, Skill, Tool } from '@/types'
 
-const TABS = ['Basics', 'Model', 'Instructions', 'Tools', 'Context', 'Memory', 'Guardrails'] as const
+const TABS = ['Basics', 'Model', 'Instructions', 'Skills', 'Tools', 'Context', 'Memory', 'Guardrails'] as const
 type Tab = typeof TABS[number]
 
 const PROVIDERS = ['anthropic', 'openai', 'gemini', 'ollama']
@@ -49,6 +49,8 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   const [maxSteps, setMaxSteps] = useState(10)
   const [maxToolCalls, setMaxToolCalls] = useState(20)
   const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({ read_file: true })
+  const [enabledSkills, setEnabledSkills] = useState<Record<string, boolean>>({})
+  const [skillOrder, setSkillOrder] = useState<Record<string, number>>({})
   const [enabledConnectors, setEnabledConnectors] = useState<Record<string, boolean>>({})
   const [maxChunks, setMaxChunks] = useState(8)
   const [minScore, setMinScore] = useState(0.5)
@@ -70,6 +72,11 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
     queryFn: () => agentsAPI.getConnectors(params!.id!) as Promise<{ data: Connector[] }>,
     enabled: isEdit,
   })
+  const { data: agentSkillsData } = useQuery({
+    queryKey: ['agent-skills', params?.id],
+    queryFn: () => skillsAPI.listForAgent(params!.id!) as Promise<{ data: AgentSkill[] }>,
+    enabled: isEdit,
+  })
   const { data: toolsData } = useQuery({
     queryKey: ['tools'],
     queryFn: () => toolsAPI.list() as Promise<{ data: Tool[] }>,
@@ -77,6 +84,10 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   const { data: connectorsData } = useQuery({
     queryKey: ['connectors'],
     queryFn: () => connectorsAPI.list() as Promise<{ data: Connector[] }>,
+  })
+  const { data: skillsData } = useQuery({
+    queryKey: ['skills'],
+    queryFn: () => skillsAPI.list() as Promise<{ data: Skill[] }>,
   })
 
   const { data: providersData } = useQuery({
@@ -96,6 +107,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   const availableModels: ModelInfo[] = modelsData?.data ?? []
 
   const availableTools = toolsData?.data ?? []
+  const availableSkills = skillsData?.data ?? []
   const availableConnectors = connectorsData?.data ?? []
 
   useEffect(() => {
@@ -127,6 +139,13 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
     }
   }, [agentConnectorsData])
 
+  useEffect(() => {
+    if (agentSkillsData?.data) {
+      setEnabledSkills(Object.fromEntries(agentSkillsData.data.map((s) => [s.skill_id, s.enabled])))
+      setSkillOrder(Object.fromEntries(agentSkillsData.data.map((s) => [s.skill_id, s.order_index])))
+    }
+  }, [agentSkillsData])
+
   // Auto-select first available model when models load or provider changes
   useEffect(() => {
     if (availableModels.length > 0 && !availableModels.find((m) => m.id === model)) {
@@ -153,6 +172,11 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
         connector_ids: Object.entries(enabledConnectors).filter(([, enabled]) => enabled).map(([cid]) => cid),
         max_chunks: maxChunks,
         min_score: minScore,
+      })
+      await agentsAPI.setSkills(id, {
+        skills: Object.entries(enabledSkills)
+          .filter(([, enabled]) => enabled)
+          .map(([skill_id], i) => ({ skill_id, enabled: true, order_index: skillOrder[skill_id] ?? i })),
       })
       return saved
     },
@@ -277,6 +301,38 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
               placeholder="You are a ..."
               className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-purple-400 font-mono resize-y" />
           </Field>
+        </div>
+      )}
+
+      {/* ── SKILLS ── */}
+      {tab === 'Skills' && (
+        <div>
+          <p className="text-[12px] text-gray-500 mb-3">Attach reusable prompt instructions. They are injected after the agent system prompt.</p>
+          <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+            {availableSkills.map((skill, i) => (
+              <div key={skill.id} className={`flex items-center justify-between gap-4 px-4 py-3 ${i < availableSkills.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-[13px] font-medium text-gray-900">{skill.name}</p>
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${skill.source === 'managed' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>{skill.source}</span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 truncate">{skill.description}</p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <input
+                    type="number"
+                    value={skillOrder[skill.id] ?? i}
+                    onChange={(e) => setSkillOrder((prev) => ({ ...prev, [skill.id]: Number(e.target.value) }))}
+                    className="w-16 text-[12px] px-2 py-1 border border-gray-200 rounded"
+                    title="Order"
+                  />
+                  <Toggle on={!!enabledSkills[skill.id]}
+                    onToggle={() => setEnabledSkills(prev => ({ ...prev, [skill.id]: !prev[skill.id] }))} />
+                </div>
+              </div>
+            ))}
+            {availableSkills.length === 0 && <div className="p-8 text-center text-[12px] text-gray-400">No skills available.</div>}
+          </div>
         </div>
       )}
 

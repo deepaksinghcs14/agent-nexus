@@ -200,6 +200,7 @@ type Run struct {
 	ParentRunID       string     `json:"parent_run_id,omitempty"`
 	WorkflowNodeID    string     `json:"workflow_node_id,omitempty"`
 	TraceID           string     `json:"trace_id,omitempty"`
+	ChannelSessionID  string     `json:"channel_session_id,omitempty"`
 }
 
 type StepType string
@@ -226,6 +227,200 @@ type RunStep struct {
 	ToolName   string          `json:"tool_name,omitempty"`
 	Error      string          `json:"error,omitempty"`
 	CreatedAt  time.Time       `json:"created_at"`
+}
+
+// ============================================================
+// GATEWAY
+// ============================================================
+
+type GatewayChannel struct {
+	ID          string          `json:"id"`
+	WorkspaceID string          `json:"workspace_id"`
+	AgentID     string          `json:"agent_id"`
+	AgentName   string          `json:"agent_name,omitempty"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	ChannelType string          `json:"channel_type"`
+	Config      json.RawMessage `json:"config"`
+	IsActive    bool            `json:"is_active"`
+	CreatedBy   string          `json:"created_by"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+}
+
+type GatewayChannelConfig struct {
+	AccountID            string   `json:"account_id"`
+	AdapterURL           string   `json:"adapter_url,omitempty"`
+	DMPolicy             string   `json:"dm_policy,omitempty"`
+	AllowFrom            []string `json:"allow_from,omitempty"`
+	SessionScope         string   `json:"session_scope,omitempty"`
+	GroupPolicy          string   `json:"group_policy,omitempty"`
+	GroupAllowFrom       []string `json:"group_allow_from,omitempty"`
+	Groups               []string `json:"groups,omitempty"`
+	HistoryLimit         int      `json:"history_limit,omitempty"`
+	SelfChatEnabled      bool     `json:"self_chat_enabled,omitempty"`
+	AssistantEnabled     bool     `json:"assistant_enabled,omitempty"`
+	BotModeEnabled       bool     `json:"bot_mode_enabled,omitempty"`
+	ChatApprovalsEnabled bool     `json:"chat_approvals_enabled,omitempty"`
+}
+
+type GatewayChannelAccount struct {
+	ID          string     `json:"id"`
+	WorkspaceID string     `json:"workspace_id"`
+	ChannelID   string     `json:"channel_id"`
+	AccountID   string     `json:"account_id"`
+	Status      string     `json:"status"`
+	SelfID      string     `json:"self_id"`
+	LastError   string     `json:"last_error"`
+	LastSeenAt  *time.Time `json:"last_seen_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type ChannelSession struct {
+	ID               string          `json:"id"`
+	WorkspaceID      string          `json:"workspace_id"`
+	ChannelID        string          `json:"channel_id"`
+	AccountID        string          `json:"account_id"`
+	AgentID          string          `json:"agent_id"`
+	ConversationID   string          `json:"conversation_id"`
+	SessionKey       string          `json:"session_key"`
+	PeerKind         string          `json:"peer_kind"`
+	PeerID           string          `json:"peer_id"`
+	ExternalSenderID string          `json:"external_sender_id"`
+	ActivationMode   string          `json:"activation_mode"`
+	LastRoute        json.RawMessage `json:"last_route"`
+	LastActiveAt     time.Time       `json:"last_active_at"`
+	CreatedAt        time.Time       `json:"created_at"`
+}
+
+type GatewayEvent struct {
+	ID                string          `json:"id"`
+	WorkspaceID       string          `json:"workspace_id"`
+	ChannelID         string          `json:"channel_id"`
+	SessionID         string          `json:"session_id,omitempty"`
+	RunID             string          `json:"run_id,omitempty"`
+	EventType         string          `json:"event_type"`
+	ProviderMessageID string          `json:"provider_message_id,omitempty"`
+	Payload           json.RawMessage `json:"payload"`
+	CreatedAt         time.Time       `json:"created_at"`
+}
+
+type GatewayPairingRequest struct {
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspace_id"`
+	ChannelID   string    `json:"channel_id"`
+	AccountID   string    `json:"account_id"`
+	PeerKind    string    `json:"peer_kind"`
+	PeerID      string    `json:"peer_id"`
+	SenderID    string    `json:"sender_id"`
+	Code        string    `json:"code"`
+	Status      string    `json:"status"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type GatewayOutboundMessage struct {
+	ID          string     `json:"id"`
+	WorkspaceID string     `json:"workspace_id"`
+	ChannelID   string     `json:"channel_id"`
+	SessionID   string     `json:"session_id,omitempty"`
+	RunID       string     `json:"run_id,omitempty"`
+	AccountID   string     `json:"account_id"`
+	PeerKind    string     `json:"peer_kind"`
+	PeerID      string     `json:"peer_id"`
+	Body        string     `json:"body"`
+	Status      string     `json:"status"`
+	Attempts    int        `json:"attempts"`
+	LastError   string     `json:"last_error"`
+	CreatedAt   time.Time  `json:"created_at"`
+	SentAt      *time.Time `json:"sent_at,omitempty"`
+}
+
+type GatewayContact struct {
+	ID               string     `json:"id"`
+	WorkspaceID      string     `json:"workspace_id"`
+	ChannelID        string     `json:"channel_id"`
+	AccountID        string     `json:"account_id"`
+	DisplayName      string     `json:"display_name"`
+	Alias            string     `json:"alias"`
+	PhoneNumber      string     `json:"phone_number"`
+	WhatsAppJID      string     `json:"whatsapp_jid"`
+	Role             string     `json:"role"`
+	AgentID          string     `json:"agent_id,omitempty"`
+	AutoReplyEnabled bool       `json:"auto_reply_enabled"`
+	LastMatchedAt    *time.Time `json:"last_matched_at,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
+type GatewayReminder struct {
+	ID          string          `json:"id"`
+	WorkspaceID string          `json:"workspace_id"`
+	ChannelID   string          `json:"channel_id,omitempty"`
+	SessionID   string          `json:"session_id,omitempty"`
+	ContactID   string          `json:"contact_id,omitempty"`
+	AccountID   string          `json:"account_id"`
+	Title       string          `json:"title"`
+	Message     string          `json:"message"`
+	DueAt       *time.Time      `json:"due_at,omitempty"`
+	Status      string          `json:"status"`
+	Payload     json.RawMessage `json:"payload"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+}
+
+type GatewayEscalation struct {
+	ID                 string          `json:"id"`
+	WorkspaceID        string          `json:"workspace_id"`
+	ChannelID          string          `json:"channel_id,omitempty"`
+	SessionID          string          `json:"session_id,omitempty"`
+	RunID              string          `json:"run_id,omitempty"`
+	AccountID          string          `json:"account_id"`
+	ActionType         string          `json:"action_type"`
+	Recipient          string          `json:"recipient"`
+	Message            string          `json:"message"`
+	Reason             string          `json:"reason"`
+	Status             string          `json:"status"`
+	ApprovalCode       string          `json:"approval_code"`
+	ResolvedBySenderID string          `json:"resolved_by_sender_id,omitempty"`
+	ResolvedAt         *time.Time      `json:"resolved_at,omitempty"`
+	Payload            json.RawMessage `json:"payload"`
+	CreatedAt          time.Time       `json:"created_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
+}
+
+// ============================================================
+// SKILLS
+// ============================================================
+
+type Skill struct {
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspace_id,omitempty"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Content     string    `json:"content"`
+	Source      string    `json:"source"`
+	Enabled     bool      `json:"enabled"`
+	CreatedBy   string    `json:"created_by,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type AgentSkill struct {
+	ID         string    `json:"id"`
+	AgentID    string    `json:"agent_id"`
+	SkillID    string    `json:"skill_id"`
+	Enabled    bool      `json:"enabled"`
+	OrderIndex int       `json:"order_index"`
+	CreatedAt  time.Time `json:"created_at"`
+	Skill      *Skill    `json:"skill,omitempty"`
+}
+
+type AgentSkillAssignment struct {
+	SkillID    string `json:"skill_id"`
+	Enabled    bool   `json:"enabled"`
+	OrderIndex int    `json:"order_index"`
 }
 
 // ============================================================

@@ -286,14 +286,23 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		}
 	}
 
+	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	prompt := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: a.Instructions,
+		Skills:             skills,
 		MemorySummaries:    memories,
 		ContextChunks:      contextChunks,
 		History:            history,
 	})
 
 	toolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
+	execCtx := tools.ExecutionContext{
+		WorkspaceID:    ws,
+		UserID:         uid,
+		RunID:          runID,
+		ConversationID: convID,
+	}
+	_ = h.pool.QueryRow(ctx, `SELECT COALESCE(channel_session_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&execCtx.ChannelSessionID)
 
 	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
 
@@ -458,7 +467,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
 			} else {
-				result, execErr = h.executor.Execute(ctx, call.Name, call.Input)
+				result, execErr = h.executor.ExecuteWithContext(ctx, execCtx, call.Name, call.Input)
 			}
 			var resultContent, errMsg string
 			latencyMs := 0
@@ -1282,13 +1291,22 @@ func (h *InvokeHandler) executeSupervisorRun(
 			"\nCall each relevant team agent with a specific task string. After receiving all outputs, synthesize them into a comprehensive final response."
 	}
 
+	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	prompt := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: supervisorInstructions,
+		Skills:             skills,
 		MemorySummaries:    memories,
 		ContextChunks:      contextChunks,
 		History:            history,
 	})
 	toolDefs := append(regularToolDefs, delegateToolDefs...)
+	execCtx := tools.ExecutionContext{
+		WorkspaceID:    ws,
+		UserID:         uid,
+		RunID:          runID,
+		ConversationID: convID,
+	}
+	_ = h.pool.QueryRow(ctx, `SELECT COALESCE(channel_session_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&execCtx.ChannelSessionID)
 
 	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
 
@@ -1452,7 +1470,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
 			} else {
-				result, execErr = h.executor.Execute(ctx, call.Name, call.Input)
+				result, execErr = h.executor.ExecuteWithContext(ctx, execCtx, call.Name, call.Input)
 			}
 			var resultContent, errMsg string
 			latencyMs := 0

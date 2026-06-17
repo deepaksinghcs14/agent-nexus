@@ -128,6 +128,8 @@ export const agentsAPI = {
   getConnectors: (id: string) => api.get(`/agents/${id}/connectors`),
   setConnectors: (id: string, body: { connector_ids: string[]; max_chunks: number; min_score: number }) =>
     api.put(`/agents/${id}/connectors`, body),
+  getSkills: (id: string) => api.get(`/agents/${id}/skills`),
+  setSkills: (id: string, body: unknown) => api.put(`/agents/${id}/skills`, body),
 }
 
 export const runsAPI = {
@@ -252,6 +254,43 @@ export const webhookTriggersAPI = {
   get:    (id: string)               => api.get(`/webhook-triggers/${id}`),
   update: (id: string, body: unknown) => api.put(`/webhook-triggers/${id}`, body),
   delete: (id: string)               => api.delete(`/webhook-triggers/${id}`),
+}
+
+export const gatewayAPI = {
+  listChannels: () => api.get('/gateway/channels'),
+  createChannel: (body: unknown) => api.post('/gateway/channels', body),
+  getChannel: (id: string) => api.get(`/gateway/channels/${id}`),
+  updateChannel: (id: string, body: unknown) => api.put(`/gateway/channels/${id}`, body),
+  deleteChannel: (id: string) => api.delete(`/gateway/channels/${id}`),
+  adapterStatus: (id: string) => api.get(`/gateway/channels/${id}/adapter/status`),
+  startLogin: (id: string) => api.post(`/gateway/channels/${id}/adapter/login/start`),
+  getQR: (id: string) => api.get(`/gateway/channels/${id}/adapter/login/qr`),
+  logout: (id: string) => api.post(`/gateway/channels/${id}/adapter/logout`),
+  listSessions: (params?: string) => api.get(`/gateway/sessions${params ? '?' + params : ''}`),
+  deleteSession: (id: string) => api.delete(`/gateway/sessions/${id}`),
+  listEvents: (params?: string) => api.get(`/gateway/events${params ? '?' + params : ''}`),
+  listPairings: (params?: string) => api.get(`/gateway/pairings${params ? '?' + params : ''}`),
+  approvePairing: (id: string) => api.post(`/gateway/pairings/${id}/approve`),
+  rejectPairing: (id: string) => api.post(`/gateway/pairings/${id}/reject`),
+  listOutbox: (params?: string) => api.get(`/gateway/outbox${params ? '?' + params : ''}`),
+  listReminders: (params?: string) => api.get(`/gateway/reminders${params ? '?' + params : ''}`),
+  listEscalations: (params?: string) => api.get(`/gateway/escalations${params ? '?' + params : ''}`),
+  approveEscalation: (id: string) => api.post(`/gateway/escalations/${id}/approve`),
+  rejectEscalation: (id: string) => api.post(`/gateway/escalations/${id}/reject`),
+  listContacts: (params?: string) => api.get(`/gateway/contacts${params ? '?' + params : ''}`),
+  createContact: (body: unknown) => api.post('/gateway/contacts', body),
+  updateContact: (id: string, body: unknown) => api.put(`/gateway/contacts/${id}`, body),
+  deleteContact: (id: string) => api.delete(`/gateway/contacts/${id}`),
+}
+
+export const skillsAPI = {
+  list: () => api.get('/skills'),
+  create: (body: unknown) => api.post('/skills', body),
+  get: (id: string) => api.get(`/skills/${id}`),
+  update: (id: string, body: unknown) => api.put(`/skills/${id}`, body),
+  delete: (id: string) => api.delete(`/skills/${id}`),
+  listForAgent: (agentId: string) => api.get(`/agents/${agentId}/skills`),
+  setForAgent: (agentId: string, body: unknown) => api.put(`/agents/${agentId}/skills`, body),
 }
 
 export const nexusAIAPI = {

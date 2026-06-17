@@ -139,8 +139,10 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			history = append(history, provider.Message{Role: msg.Role, Content: msg.Content, ToolCallID: msg.ToolCallID, ToolName: msg.ToolName})
 		}
 	}
+	skills, _ := loadAgentSkills(r.Context(), h.pool, a.ID)
 	prompt := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: a.Instructions,
+		Skills:             skills,
 		MemorySummaries:    memories,
 		ContextChunks:      contextChunks,
 		History:            history,
@@ -148,6 +150,12 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 
 	// Load tool definitions for this agent
 	toolDefs, dbTools, _ := loadAgentToolDefs(r.Context(), h.pool, a.ID)
+	execCtx := tools.ExecutionContext{
+		WorkspaceID:    ws,
+		UserID:         uid,
+		RunID:          id,
+		ConversationID: c.ID,
+	}
 
 	emit(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, id))
 
@@ -281,7 +289,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(r.Context(), cfg, call.Input, dbTool.TimeoutMs)
 			} else {
-				result, execErr = h.executor.Execute(r.Context(), call.Name, call.Input)
+				result, execErr = h.executor.ExecuteWithContext(r.Context(), execCtx, call.Name, call.Input)
 			}
 			var resultContent, errMsg string
 			latencyMs := 0

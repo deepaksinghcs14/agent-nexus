@@ -161,6 +161,19 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Nexus AI integration** — ask Nexus AI to create a webhook trigger in natural language; it will list your workflows, create the trigger, and return the ready-to-use webhook URL
 - **Run tracing** — every webhook-fired run carries a `trigger_id`; filter runs by trigger to see the full execution history for each inbound source
 
+### Nexus Gateway
+- **Multi-channel messaging** — connect agents to inbound message channels; currently supports WhatsApp (via a self-hosted adapter) and generic HTTP channels
+- **WhatsApp integration** — pair a WhatsApp account to a channel via QR code; inbound messages are routed to the linked agent and replies are sent back automatically; full session lifecycle management (connect, logout, status)
+- **Contact management** — define contacts per channel with roles (`owner`, `trusted`, `blocked`) and optional per-contact agent overrides; trusted contacts get auto-replies, owners get escalation notifications
+- **Escalation & approval** — agents can call `whatsapp_request_owner_approval` to pause risky actions and wait for an owner to respond in-chat with an approval code; fully audited via the escalations log
+- **Reminders** — schedule timed messages to be sent back to a contact via a channel
+- **Gateway UI** — manage channels, view active sessions, review escalations and reminders, manage contacts — all from `/gateway`
+
+### Skills
+- **Reusable instruction modules** — define named skill blocks (markdown or plain text) that can be attached to any agent's system prompt; centrally managed at `/skills`
+- **Managed vs. custom** — built-in platform skills (e.g. WhatsApp Owner Escalation) are marked as managed and protected; workspace members can create their own custom skills
+- **Agent attachment** — skills are injected into the agent's prompt at run time; attach, detach, or reorder skills per agent from the Agent Builder
+
 ### Nexus AI
 - **Meta-agent** — a built-in AI assistant backed by the same agent runtime as user-created agents. Chat to it in natural language to list agents/tools/connectors, create new agents, build workflow graphs, and set up webhook triggers. Automatically detects available models for your configured providers and selects the best one — no manual model IDs required. Navigation links in responses always point to your actual deployment URL (set via `PUBLIC_APP_URL`)
 
@@ -274,6 +287,7 @@ cp services/api/.env.example services/api/.env
 | `PUBLIC_API_URL` | no | Base URL of the API, default `http://localhost:8080`. Used as the redirect base for OAuth flows |
 | `GOOGLE_OAUTH_CLIENT_ID` | no | Google OAuth — leave blank to disable |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | no | Google OAuth — leave blank to disable |
+| `WHATSAPP_ADAPTER_URL` | no | Base URL of the WhatsApp Web adapter service, default `http://127.0.0.1:18901`. Required only when using Gateway WhatsApp channels |
 
 ### `apps/web/.env.local` (local dev)
 
@@ -336,8 +350,10 @@ What's working today vs. what's coming next:
 | Admin dashboard (users, workspaces, policies, audit logs) | ✅ Done |
 | Nexus AI meta-agent | ✅ Done |
 | Built-in in-app documentation | ✅ Done |
+| Nexus Gateway (WhatsApp + HTTP channel messaging) | ✅ Done |
+| Skills (reusable agent instruction modules) | ✅ Done |
 | Additional connectors (Slack, Jira, Confluence, GitHub, Google Drive) | 🔜 Planned |
-| Webhook / event triggers (run an agent on inbound HTTP event) | ✅ Complete |
+| Webhook / event triggers (run an agent on inbound HTTP event) | ✅ Done |
 | Agent versioning and snapshot rollback | 🔜 Planned |
 | Export / import agents and workflows (JSON) | 🔜 Planned |
 | API rate limiting per workspace | 🔜 Planned |
