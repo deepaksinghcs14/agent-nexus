@@ -474,6 +474,9 @@ func (h *GatewayHandler) SyncAllAdapters(ctx context.Context) {
 		} else {
 			slog.Info("adapter startup sync: channel reconnected", "channel", c.ID, "account", cfg.AccountID, "contact_phones", len(phones))
 		}
+		// Push config via /config so selfChatEnabled is applied even when the socket was
+		// already connected and startAccount returned early without updating state.
+		h.syncAdapterConfig(ctx, c)
 	}
 }
 

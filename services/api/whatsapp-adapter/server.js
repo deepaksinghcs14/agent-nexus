@@ -74,17 +74,19 @@ async function resolvePhonesLIDs(state) {
 async function startAccount(accountId, opts = {}) {
   const state = accountState(accountId)
   if (opts.callback_url) state.callbackUrl = opts.callback_url
-  state.selfChatEnabled = !!opts.self_chat_enabled
   if (Array.isArray(opts.contact_phones) && opts.contact_phones.length > 0) {
     state.pendingPhones = opts.contact_phones
   }
   if (state.socket) {
-    // Already connected — resolve LIDs immediately if phones were just provided
+    // Socket already exists. selfChatEnabled is managed via POST /accounts/{id}/config —
+    // don't overwrite it here so concurrent reconnect timers can't undo a /config update.
     if (state.status === 'connected' && state.pendingPhones.length > 0) {
       resolvePhonesLIDs(state).catch(() => {})
     }
     return state
   }
+  // New connection — apply initial config from opts.
+  state.selfChatEnabled = !!opts.self_chat_enabled
 
   await fs.mkdir(path.join(AUTH_ROOT, accountId), { recursive: true })
   const { state: authState, saveCreds } = await useMultiFileAuthState(path.join(AUTH_ROOT, accountId))
@@ -134,6 +136,21 @@ async function startAccount(accountId, opts = {}) {
       state.selfId = socket.user?.id || ''
       state.selfLid = socket.user?.lid || ''
       state.lastError = ''
+      // Newer WhatsApp clients use opaque LID JIDs; Baileys may not expose socket.user.lid.
+      // Resolve selfLid via onWhatsApp so the from_me self-chat filter can match correctly.
+      if (!state.selfLid && state.selfId) {
+        const ownPhone = state.selfId.split('@')[0].split(':')[0]
+        if (ownPhone) {
+          socket.onWhatsApp(`+${ownPhone}`).then((results) => {
+            if (results?.[0]?.lid) {
+              state.selfLid = results[0].lid
+              logger.info({ accountId, selfLid: state.selfLid }, 'selfLid resolved via onWhatsApp')
+            }
+          }).catch((err) => {
+            logger.warn({ err, accountId }, 'selfLid onWhatsApp resolution failed')
+          })
+        }
+      }
       if (state.pendingPhones.length > 0) {
         resolvePhonesLIDs(state).catch(() => {})
       }
@@ -199,11 +216,13 @@ async function forwardMessage(accountId, state, msg) {
   const text = messageText(msg.message)
   if (!text) return
 
-  // Resolve @lid JIDs to phone-based JIDs using the contacts map populated from contacts.upsert.
-  // Without resolution, MatchContact in Go can't match contacts stored with @s.whatsapp.net JIDs.
+  // Resolve @lid JIDs to phone-based JIDs so Go can match contacts and deliver replies.
+  // Check if the LID is the bot itself (self-chat), then check the contact LID→phone map.
   const resolveJid = (jid) => {
     if (!jid.endsWith('@lid')) return jid
-    const lidBare = jid.split('@')[0]
+    const lidBare = jid.split('@')[0].split(':')[0]
+    const ownLidBare = (state.selfLid || '').split('@')[0].split(':')[0]
+    if (ownLidBare && lidBare === ownLidBare) return state.selfId || jid
     const phoneBare = state.lidToPhone?.get(lidBare)
     return phoneBare ? `${phoneBare}@s.whatsapp.net` : jid
   }
