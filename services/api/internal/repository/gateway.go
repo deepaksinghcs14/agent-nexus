@@ -42,6 +42,23 @@ func scanGatewayChannel(row interface{ Scan(...any) error }) (domain.GatewayChan
 	return c, err
 }
 
+func (r *GatewayRepository) ListAllActiveWhatsAppChannels(ctx context.Context) ([]domain.GatewayChannel, error) {
+	rows, err := r.pool.Query(ctx, gatewayChannelSelect+` WHERE gc.channel_type='whatsapp' AND gc.is_active=true ORDER BY gc.created_at ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []domain.GatewayChannel{}
+	for rows.Next() {
+		c, err := scanGatewayChannel(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 func (r *GatewayRepository) ListChannels(ctx context.Context, workspaceID string) ([]domain.GatewayChannel, error) {
 	rows, err := r.pool.Query(ctx, gatewayChannelSelect+` WHERE gc.workspace_id=$1::uuid ORDER BY gc.created_at DESC`, workspaceID)
 	if err != nil {
@@ -401,6 +418,27 @@ func (r *GatewayRepository) SearchContacts(ctx context.Context, workspaceID, cha
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+func (r *GatewayRepository) ListContactPhones(ctx context.Context, channelID, accountID string) ([]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT phone_number FROM gateway_contacts WHERE channel_id=$1::uuid AND account_id=$2 AND phone_number<>'' AND role<>'owner'`,
+		channelID, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var phones []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		if p != "" {
+			phones = append(phones, p)
+		}
+	}
+	return phones, rows.Err()
 }
 
 func (r *GatewayRepository) CreateReminder(ctx context.Context, m *domain.GatewayReminder) error {

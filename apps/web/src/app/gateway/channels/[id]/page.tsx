@@ -253,15 +253,31 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
           </div>
           <div className="rounded-lg border border-gray-200 overflow-hidden bg-white">
             {contacts.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">No contacts yet</div> : contacts.map((c) => (
-              <div key={c.id} className="px-4 py-3 border-b border-gray-100 last:border-b-0 flex items-center justify-between">
-                <div>
+              <div key={c.id} className="px-4 py-3 border-b border-gray-100 last:border-b-0 flex items-center justify-between gap-4">
+                <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-gray-800">{c.display_name}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${c.role === 'owner' ? 'bg-purple-50 text-purple-700' : c.role === 'blocked' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{c.role}</span>
+                    {!c.auto_reply_enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">auto-reply off</span>}
                   </div>
                   <div className="text-xs text-gray-400">{c.phone_number || c.whatsapp_jid} · {c.alias || 'no alias'} · last matched {c.last_matched_at ? new Date(c.last_matched_at).toLocaleString() : 'never'}</div>
                 </div>
-                <button onClick={() => deleteContact(c.id)} className="px-3 py-1 text-xs rounded bg-gray-50 text-gray-500 hover:bg-red-50 hover:text-red-600">Delete</button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer" title={c.auto_reply_enabled ? 'Auto-reply on — click to disable' : 'Auto-reply off — click to enable'}>
+                    <span className="text-[11px] text-gray-400">{c.auto_reply_enabled ? 'on' : 'off'}</span>
+                    <input
+                      type="checkbox"
+                      checked={!!c.auto_reply_enabled}
+                      onChange={async (e) => {
+                        await gatewayAPI.updateContact(c.id, { ...c, auto_reply_enabled: e.target.checked }).catch(() => {})
+                        load()
+                      }}
+                      className="sr-only peer"
+                    />
+                    <span className="relative w-8 h-4 rounded-full bg-gray-200 peer-checked:bg-[#534AB7] after:absolute after:top-0.5 after:left-0.5 after:h-3 after:w-3 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
+                  </label>
+                  <button onClick={() => deleteContact(c.id)} className="px-3 py-1 text-xs rounded bg-gray-50 text-gray-500 hover:bg-red-50 hover:text-red-600">Delete</button>
+                </div>
               </div>
             ))}
           </div>

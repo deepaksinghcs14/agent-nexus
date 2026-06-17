@@ -37,20 +37,54 @@ function accountState(accountId) {
       qr: '',
       qrDataURL: '',
       selfId: '',
+      selfLid: '',
       lastError: '',
       callbackUrl: '',
       selfChatEnabled: false,
-      sentMessageIds: new Set()
+      sentMessageIds: new Set(),
+      lidToPhone: new Map(),
+      pendingPhones: []
     })
   }
   return accounts.get(accountId)
+}
+
+async function resolvePhonesLIDs(state) {
+  if (!state.socket || !state.pendingPhones.length) return
+  const phones = [...state.pendingPhones]
+  state.pendingPhones = []
+  try {
+    const results = await state.socket.onWhatsApp(...phones)
+    for (const r of results || []) {
+      if (r.jid && r.lid) {
+        const phoneBare = r.jid.split('@')[0].split(':')[0]
+        const lidBare = r.lid.split('@')[0].split(':')[0]
+        if (phoneBare && lidBare) {
+          state.lidToPhone.set(lidBare, phoneBare)
+          logger.info({ accountId: state.accountId, lid: r.lid, phone: r.jid }, 'LID resolved via onWhatsApp')
+        }
+      }
+    }
+    logger.info({ accountId: state.accountId, mapSize: state.lidToPhone.size }, 'LID map updated')
+  } catch (err) {
+    logger.warn({ err, accountId: state.accountId }, 'LID resolution via onWhatsApp failed')
+  }
 }
 
 async function startAccount(accountId, opts = {}) {
   const state = accountState(accountId)
   if (opts.callback_url) state.callbackUrl = opts.callback_url
   state.selfChatEnabled = !!opts.self_chat_enabled
-  if (state.socket) return state
+  if (Array.isArray(opts.contact_phones) && opts.contact_phones.length > 0) {
+    state.pendingPhones = opts.contact_phones
+  }
+  if (state.socket) {
+    // Already connected — resolve LIDs immediately if phones were just provided
+    if (state.status === 'connected' && state.pendingPhones.length > 0) {
+      resolvePhonesLIDs(state).catch(() => {})
+    }
+    return state
+  }
 
   await fs.mkdir(path.join(AUTH_ROOT, accountId), { recursive: true })
   const { state: authState, saveCreds } = await useMultiFileAuthState(path.join(AUTH_ROOT, accountId))
@@ -68,6 +102,25 @@ async function startAccount(accountId, opts = {}) {
 
   socket.ev.on('creds.update', saveCreds)
 
+  // Build LID→phone map so we can resolve @lid JIDs to real phone numbers for contact matching.
+  // WhatsApp migrated to LID-based JIDs; contact.id has the phone JID, contact.lid has the LID.
+  const updateLidMap = (contacts) => {
+    for (const contact of contacts) {
+      const cid = contact.id || ''
+      const clid = contact.lid || ''
+      if (cid && clid && !cid.endsWith('@lid')) {
+        const phoneBare = cid.split('@')[0].split(':')[0]
+        const lidBare = clid.split('@')[0].split(':')[0]
+        if (phoneBare && lidBare) {
+          state.lidToPhone.set(lidBare, phoneBare)
+          logger.info({ accountId, lid: clid, phone: cid }, 'LID mapped')
+        }
+      }
+    }
+  }
+  socket.ev.on('contacts.upsert', updateLidMap)
+  socket.ev.on('contacts.update', updateLidMap)
+
   socket.ev.on('connection.update', async ({ connection, qr, lastDisconnect }) => {
     if (qr) {
       state.qr = qr
@@ -79,7 +132,11 @@ async function startAccount(accountId, opts = {}) {
       state.qr = ''
       state.qrDataURL = ''
       state.selfId = socket.user?.id || ''
+      state.selfLid = socket.user?.lid || ''
       state.lastError = ''
+      if (state.pendingPhones.length > 0) {
+        resolvePhonesLIDs(state).catch(() => {})
+      }
     }
     if (connection === 'close') {
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode
@@ -113,6 +170,20 @@ async function startAccount(accountId, opts = {}) {
           logger.info({ accountId, key: msg.key }, 'ignored from_me whatsapp message because self-chat is disabled')
           continue
         }
+        // Even with selfChatEnabled=true, only forward messages sent to the account's own
+        // JID (genuine self-chat). Messages the owner sends to other people arrive as
+        // from_me=true but the peer is a different JID — forwarding those would make the
+        // agent reply into every chat on the owner's behalf.
+        // WhatsApp uses @lid JIDs in newer clients; compare both phone JID and LID.
+        const remoteJid = msg.key.remoteJid || ''
+        const ownBare = (state.selfId || '').split('@')[0].split(':')[0]
+        const ownLidBare = (state.selfLid || '').split('@')[0].split(':')[0]
+        const remoteBare = remoteJid.split('@')[0].split(':')[0]
+        const isSelf = (ownBare && remoteBare === ownBare) || (ownLidBare && remoteBare === ownLidBare)
+        if (!isSelf) {
+          logger.info({ accountId, remoteJid }, 'ignored from_me message to non-self peer')
+          continue
+        }
       }
       await forwardMessage(accountId, state, msg)
     }
@@ -127,17 +198,30 @@ async function forwardMessage(accountId, state, msg) {
   const participant = msg.key.participant || remoteJid
   const text = messageText(msg.message)
   if (!text) return
+
+  // Resolve @lid JIDs to phone-based JIDs using the contacts map populated from contacts.upsert.
+  // Without resolution, MatchContact in Go can't match contacts stored with @s.whatsapp.net JIDs.
+  const resolveJid = (jid) => {
+    if (!jid.endsWith('@lid')) return jid
+    const lidBare = jid.split('@')[0]
+    const phoneBare = state.lidToPhone?.get(lidBare)
+    return phoneBare ? `${phoneBare}@s.whatsapp.net` : jid
+  }
+
+  const resolvedParticipant = resolveJid(participant)
+  const resolvedRemoteJid = resolveJid(remoteJid)
+
   const payload = {
     type: 'message.received',
     account_id: accountId,
     message_id: msg.key.id || '',
     peer: {
       kind: remoteJid.endsWith('@g.us') ? 'group' : 'direct',
-      id: remoteJid
+      id: resolvedRemoteJid
     },
     sender: {
-      id: participant,
-      phone_number: jidPhone(participant),
+      id: resolvedParticipant,
+      phone_number: jidPhone(resolvedParticipant),
       display_name: msg.pushName || ''
     },
     body: text,
@@ -207,10 +291,12 @@ async function route(req, res) {
       account_id: accountId,
       status: state.status,
       self_id: state.selfId,
+      self_lid: state.selfLid,
       last_error: state.lastError,
       has_qr: !!state.qr,
       callback_url: state.callbackUrl,
-      self_chat_enabled: state.selfChatEnabled
+      self_chat_enabled: state.selfChatEnabled,
+      lid_map_size: state.lidToPhone?.size || 0
     })
   }
 

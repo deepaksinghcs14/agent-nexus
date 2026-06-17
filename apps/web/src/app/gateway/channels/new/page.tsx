@@ -14,7 +14,8 @@ export default function NewGatewayChannelPage() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [agentId, setAgentId] = useState('')
-  const [accountId, setAccountId] = useState('default')
+  const [accountId, setAccountId] = useState('')
+  const [accountIdTouched, setAccountIdTouched] = useState(false)
   const [adapterURL, setAdapterURL] = useState('http://127.0.0.1:18901')
   const [dmPolicy, setDMPolicy] = useState('pairing')
   const [groupPolicy, setGroupPolicy] = useState('disabled')
@@ -35,13 +36,17 @@ export default function NewGatewayChannelPage() {
     }).catch(() => {})
   }, [])
 
+  // Auto-derive account ID from channel name unless the user has manually set it.
+  const derivedAccountId = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'channel'
+  const effectiveAccountId = accountIdTouched ? accountId : derivedAccountId
+
   const save = async () => {
     if (!name.trim() || !agentId) {
       setError('Name and agent are required')
       return
     }
     const config = {
-      account_id: accountId || 'default',
+      account_id: effectiveAccountId || derivedAccountId,
       adapter_url: channelType === 'whatsapp' ? adapterURL : undefined,
       dm_policy: dmPolicy,
       session_scope: 'per-channel-peer',
@@ -98,7 +103,14 @@ export default function NewGatewayChannelPage() {
         {channelType === 'whatsapp' && (
           <>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Account ID"><input value={accountId} onChange={(e) => setAccountId(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg" /></Field>
+              <Field label="Account ID" hint="Unique per WhatsApp number — different channels sharing the same number use the same ID">
+                <input
+                  value={accountIdTouched ? accountId : derivedAccountId}
+                  onChange={(e) => { setAccountIdTouched(true); setAccountId(e.target.value) }}
+                  placeholder={derivedAccountId}
+                  className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg"
+                />
+              </Field>
               <Field label="Internal adapter URL"><input value={adapterURL} onChange={(e) => setAdapterURL(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg" /></Field>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -123,6 +135,12 @@ export default function NewGatewayChannelPage() {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block"><span className="block text-[12px] font-medium text-gray-700 mb-1.5">{label}</span>{children}</label>
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-[12px] font-medium text-gray-700 mb-1.5">{label}</span>
+      {children}
+      {hint && <span className="block text-[11px] text-gray-400 mt-1">{hint}</span>}
+    </label>
+  )
 }

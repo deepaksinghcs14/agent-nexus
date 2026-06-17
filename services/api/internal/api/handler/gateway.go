@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -318,6 +319,9 @@ func (h *GatewayHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.Internal("failed to create gateway contact"))
 		return
 	}
+	if body.PhoneNumber != "" && channel.ChannelType == "whatsapp" {
+		go h.syncChannelLIDs(body.ChannelID, cfg)
+	}
 	writeAudit(r, h.pool, "gateway_contact.created", "gateway_contact", body.ID)
 	errs.WriteJSON(w, http.StatusCreated, body)
 }
@@ -361,6 +365,12 @@ func (h *GatewayHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.Internal("failed to update gateway contact"))
 		return
 	}
+	if c.PhoneNumber != "" {
+		if ch, err := h.repo.GetChannelInWorkspace(r.Context(), c.ChannelID, ws); err == nil && ch.ChannelType == "whatsapp" {
+			chCfg := h.parseGatewayConfig(ch.Config, ch.ChannelType)
+			go h.syncChannelLIDs(c.ChannelID, chCfg)
+		}
+	}
 	writeAudit(r, h.pool, "gateway_contact.updated", "gateway_contact", id)
 	errs.WriteJSON(w, http.StatusOK, c)
 }
@@ -399,10 +409,12 @@ func (h *GatewayHandler) AdapterLoginStart(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+	phones, _ := h.repo.ListContactPhones(r.Context(), c.ID, cfg.AccountID)
 	body, err := adapterPost(r.Context(), cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/login/start", map[string]any{
 		"channel_id":        c.ID,
 		"callback_url":      strings.TrimRight(h.cfg.PublicAPIURL, "/") + "/gateway/whatsapp/" + c.ID,
 		"self_chat_enabled": cfg.SelfChatEnabled,
+		"contact_phones":    phones,
 	})
 	if err != nil {
 		errs.Write(w, errs.BadRequest("adapter login failed: "+err.Error()))
@@ -413,6 +425,19 @@ func (h *GatewayHandler) AdapterLoginStart(w http.ResponseWriter, r *http.Reques
 	w.Write(body) //nolint:errcheck
 }
 
+// syncChannelLIDs re-pushes contact phones to the adapter so it can resolve LID→phone
+// mappings via onWhatsApp(). Called after contact create/update because new contacts
+// may have LID JIDs that aren't in the adapter's cache yet.
+func (h *GatewayHandler) syncChannelLIDs(channelID string, cfg domain.GatewayChannelConfig) {
+	phones, err := h.repo.ListContactPhones(context.Background(), channelID, cfg.AccountID)
+	if err != nil || len(phones) == 0 {
+		return
+	}
+	_, _ = adapterPost(context.Background(), cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/login/start", map[string]any{
+		"contact_phones": phones,
+	})
+}
+
 func (h *GatewayHandler) syncAdapterConfig(ctx context.Context, c domain.GatewayChannel) {
 	cfg := h.parseGatewayConfig(c.Config, c.ChannelType)
 	_, _ = adapterPost(ctx, cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/config", map[string]any{
@@ -420,6 +445,36 @@ func (h *GatewayHandler) syncAdapterConfig(ctx context.Context, c domain.Gateway
 		"callback_url":      strings.TrimRight(h.cfg.PublicAPIURL, "/") + "/gateway/whatsapp/" + c.ID,
 		"self_chat_enabled": cfg.SelfChatEnabled,
 	})
+}
+
+// SyncAllAdapters calls login/start on the WhatsApp adapter for every active WhatsApp
+// channel so the adapter reconnects using saved session credentials and receives the
+// callbackUrl. Called once at API startup because the adapter loses all in-memory state
+// (socket, callbackUrl, selfId) on every container restart.
+func (h *GatewayHandler) SyncAllAdapters(ctx context.Context) {
+	channels, err := h.repo.ListAllActiveWhatsAppChannels(ctx)
+	if err != nil {
+		slog.Error("adapter startup sync: list channels failed", "error", err)
+		return
+	}
+	for _, c := range channels {
+		cfg := h.parseGatewayConfig(c.Config, c.ChannelType)
+		// Fetch contact phone numbers so the adapter can resolve LID JIDs via onWhatsApp().
+		// WhatsApp migrated to opaque LID-based JIDs; the adapter needs phone numbers to
+		// call onWhatsApp() and build the LID→phone map for contact matching.
+		phones, _ := h.repo.ListContactPhones(ctx, c.ID, cfg.AccountID)
+		_, err := adapterPost(ctx, cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/login/start", map[string]any{
+			"channel_id":        c.ID,
+			"callback_url":      strings.TrimRight(h.cfg.PublicAPIURL, "/") + "/gateway/whatsapp/" + c.ID,
+			"self_chat_enabled": cfg.SelfChatEnabled,
+			"contact_phones":    phones,
+		})
+		if err != nil {
+			slog.Warn("adapter startup sync: login/start failed", "channel", c.ID, "error", err)
+		} else {
+			slog.Info("adapter startup sync: channel reconnected", "channel", c.ID, "account", cfg.AccountID, "contact_phones", len(phones))
+		}
+	}
 }
 
 func (h *GatewayHandler) AdapterQR(w http.ResponseWriter, r *http.Request) {

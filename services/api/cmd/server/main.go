@@ -138,6 +138,13 @@ func main() {
 		}
 	}()
 
+	// Re-push callbackUrl to the WhatsApp adapter for every active channel.
+	// The adapter runs in the same container but loses in-memory state on restart.
+	go func() {
+		time.Sleep(3 * time.Second) // wait for adapter subprocess to be ready
+		h.Gateway.SyncAllAdapters(context.Background())
+	}()
+
 	<-quit
 	slog.Info("shutting down server...")
 
