@@ -35,11 +35,15 @@ type RunsHandler struct {
 	conversations *repository.ConversationRepository
 	registry      *tools.Registry
 	executor      *tools.Executor
+	invokeH       *InvokeHandler // set post-construction via SetInvokeHandler to avoid circular init
 }
 
 func NewRunsHandler(p *pgxpool.Pool, c *config.Config, reg *tools.Registry, exec *tools.Executor) *RunsHandler {
-	return &RunsHandler{p, c, repository.NewConversationRepository(p), reg, exec}
+	return &RunsHandler{pool: p, cfg: c, conversations: repository.NewConversationRepository(p), registry: reg, executor: exec}
 }
+
+// SetInvokeHandler wires the InvokeHandler so that native_call_agent works in conversation runs.
+func (h *RunsHandler) SetInvokeHandler(ih *InvokeHandler) { h.invokeH = ih }
 
 const runSelect = `SELECT id::text,workspace_id::text,COALESCE(agent_id::text,''),conversation_id::text,user_id::text,input,output,status,started_at,completed_at,total_input_tokens,total_output_tokens,cost_estimate,error_message,COALESCE(trigger_id::text,''),COALESCE(parent_run_id::text,''),workflow_node_id,COALESCE(trace_id::text,'') FROM runs`
 
@@ -154,12 +158,26 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	// Load tool definitions for this agent
 	toolDefs, dbTools, _ := loadAgentToolDefs(r.Context(), h.pool, a.ID)
 	toolDefs, dbTools = ensureMemoryToolDef(toolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+
+	var callAgentFn func(ctx context.Context, agentID, task string) (string, error)
+	if h.invokeH != nil {
+		capturedWs, capturedUID, capturedRunID := ws, uid, id
+		callAgentFn = func(ctx context.Context, agentID, task string) (string, error) {
+			return h.invokeH.runAgentInline(ctx, capturedWs, capturedUID, agentID, task, capturedRunID, capturedRunID, 1)
+		}
+	}
+
 	execCtx := tools.ExecutionContext{
 		WorkspaceID:    ws,
 		AgentID:        a.ID,
+		AgentProvider:  a.Provider,
+		AgentModel:     a.Model,
 		UserID:         uid,
 		RunID:          id,
 		ConversationID: c.ID,
+		InvokeDepth:    0,
+		RootRunID:      id,
+		CallAgent:      callAgentFn,
 	}
 
 	emit(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, id))
