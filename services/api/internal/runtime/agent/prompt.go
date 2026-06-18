@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	maxMemoryChars      = 300
+	maxMemoryChars       = 300
 	maxContextChunkChars = 500
 )
 

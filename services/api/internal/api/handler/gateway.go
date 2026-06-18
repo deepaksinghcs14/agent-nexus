@@ -919,7 +919,7 @@ func (h *GatewayHandler) dispatchGatewayRun(ctx context.Context, c domain.Gatewa
 	if err != nil {
 		return "", "", "", err
 	}
-	go h.invoke.executeRun(context.Background(), a, c.WorkspaceID, c.CreatedBy, runID, convID, msg.Body, nil, nil)
+	go h.invoke.executeRun(context.Background(), a, c.WorkspaceID, c.CreatedBy, runID, convID, msg.Body, nil, nil, invokeOpts{})
 	return runID, sessionID, convID, nil
 }
 

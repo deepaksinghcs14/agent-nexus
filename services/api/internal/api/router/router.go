@@ -37,6 +37,9 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 	// Public config — returns feature flags like demo_mode (no auth required)
 	r.Get("/api/v1/config", h.Config.Get)
 
+	// Internal process log ingestion, protected by LOG_STREAM_INGEST_TOKEN.
+	r.Post("/internal/service-logs/ingest", h.Admin.IngestServiceLog)
+
 	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC secret)
 	r.Post("/webhook/{webhookId}", h.WebhookIngress.Receive)
 	r.Post("/gateway/whatsapp/{channelId}", h.Gateway.WhatsAppReceive)
@@ -224,6 +227,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 				r.Get("/admin/workspaces", h.Admin.ListWorkspaces)
 				r.Patch("/admin/workspaces/{id}", h.Admin.UpdateWorkspace)
 				r.Get("/admin/audit-logs", h.Admin.AuditLogs)
+				r.Get("/admin/service-logs/stream", h.Admin.ServiceLogStream)
 				r.Get("/admin/usage", h.Admin.Usage)
 				r.Get("/admin/policies", h.Admin.GetPolicies)
 				r.Put("/admin/policies", h.Admin.SetPolicies)

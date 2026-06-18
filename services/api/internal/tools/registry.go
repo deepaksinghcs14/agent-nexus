@@ -23,13 +23,19 @@ type ExecutionContext struct {
 	RunID            string
 	ConversationID   string
 	ChannelSessionID string
+	// InvokeDepth is the current agent-call nesting depth (0 = root run).
+	InvokeDepth int
+	// RootRunID is the trace root run ID for cost/trace attribution.
+	RootRunID string
 	// CompressText, if non-nil, condenses text via a lightweight LLM call.
-	// Used by native_save_memory to compress verbose content before storing.
 	CompressText func(ctx context.Context, text string) (string, error)
 	// RequestTool, if non-nil, marks a tool as active for the current run (lazy loading).
 	RequestTool func(name string)
 	// ToolSummaries maps tool name → one-line description for the current agent.
 	ToolSummaries map[string]string
+	// CallAgent, if non-nil, invokes another workspace agent as a sub-run and returns its output.
+	// Nil when InvokeDepth >= maxInvokeDepth.
+	CallAgent func(ctx context.Context, agentID, task string) (string, error)
 }
 
 type ContextAwareTool interface {

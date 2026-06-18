@@ -31,10 +31,17 @@ type Claims struct {
 }
 
 // Authenticate validates either a JWT or an API token (anx_... prefix) from the Authorization header.
+// Native EventSource cannot set headers, so GET streams may pass the same token
+// as a query parameter.
 func Authenticate(jwtSecret string, pool *pgxpool.Pool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" && r.Method == http.MethodGet {
+				if token := r.URL.Query().Get("token"); token != "" {
+					authHeader = "Bearer " + token
+				}
+			}
 			if authHeader == "" {
 				errs.Write(w, errs.Unauthorized("missing authorization header"))
 				return

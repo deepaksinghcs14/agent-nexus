@@ -62,6 +62,23 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
         </tbody>
       </table>
 
+      <h2>Required tools</h2>
+      <p>
+        A skill can declare a list of <strong>required tool names</strong>. When you enable such a skill
+        on an agent, those tools are automatically attached to the agent — no need to find and check
+        them individually in the Tools tab.
+      </p>
+      <p>
+        In the Agent Builder, tools added this way are shown with an <em>enabled by skill</em> label
+        and cannot be manually unchecked while the skill is active. Disabling the skill removes them
+        (unless another enabled skill also requires the same tool).
+      </p>
+
+      <Callout type="info">
+        The built-in <strong>Agent Self-Management</strong> skill uses this mechanism — enabling it
+        auto-attaches all 10 self-management tools and injects the capabilities guide into the system prompt.
+      </Callout>
+
       <h2>Attaching skills to an agent</h2>
       <ol>
         <li>Open the agent in the <a href="/agents">Agent Builder</a>.</li>
@@ -88,11 +105,23 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
       </p>
       <table>
         <thead>
-          <tr><th>Skill</th><th>Purpose</th></tr>
+          <tr><th>Skill</th><th>Auto-attaches tools</th><th>Purpose</th></tr>
         </thead>
         <tbody>
           <tr>
+            <td><strong>Agent Self-Management</strong></td>
+            <td>10 native tools</td>
+            <td>
+              Enables the agent to call other agents, create ephemeral agents/skills/HTTP tools at
+              runtime, and clean up after itself. Parallel sub-agent execution is supported — issue
+              multiple <code>native_call_agent</code> calls in one response to run them concurrently.
+              See the <a href="/docs/agent-configuration">Agent Configuration</a> page for the full
+              tool reference.
+            </td>
+          </tr>
+          <tr>
             <td><strong>WhatsApp Owner Escalation</strong></td>
+            <td><code>whatsapp_request_owner_approval</code></td>
             <td>
               Instructs the agent to call <code>whatsapp_request_owner_approval</code> before taking
               risky or ambiguous actions in a WhatsApp gateway context. Recommended for all agents
@@ -101,6 +130,7 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
           </tr>
           <tr>
             <td><strong>WhatsApp Formatter</strong></td>
+            <td>—</td>
             <td>
               Formats responses for WhatsApp — avoids markdown headers, uses *bold* for emphasis,
               and keeps replies under 1600 characters. Attach to any agent that sends WhatsApp messages.
@@ -108,6 +138,7 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
           </tr>
           <tr>
             <td><strong>Human Persona</strong></td>
+            <td>—</td>
             <td>
               Makes the agent reply like a real person texting — casual, short, no AI filler phrases
               (&ldquo;Certainly!&rdquo;, &ldquo;Of course!&rdquo;), no unnecessary bullet points. Ideal for WhatsApp and
@@ -116,6 +147,7 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
           </tr>
           <tr>
             <td><strong>Language Mirror</strong></td>
+            <td>—</td>
             <td>
               Detects the language of the user&apos;s message and always replies in the same language.
               Useful for multilingual audiences.
@@ -123,6 +155,7 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
           </tr>
           <tr>
             <td><strong>Concise Responder</strong></td>
+            <td>—</td>
             <td>
               Keeps responses under 300 words unless the user explicitly asks for more detail. Reduces
               token usage and improves readability for everyday queries.
@@ -130,6 +163,7 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
           </tr>
           <tr>
             <td><strong>Safety Guardrail</strong></td>
+            <td>—</td>
             <td>
               Prevents the agent from revealing its system instructions, API keys, or internal
               configuration, even if asked directly.
@@ -137,6 +171,7 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
           </tr>
           <tr>
             <td><strong>Professional Tone</strong></td>
+            <td>—</td>
             <td>
               Maintains a professional, direct, and respectful tone. Avoids slang and excessive
               informality. Complements <em>Human Persona</em> when you want warmth without being too casual.

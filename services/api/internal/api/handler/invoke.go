@@ -93,7 +93,7 @@ func (h *InvokeHandler) Agent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		emit := func(s string) { fmt.Fprintf(w, "data: %s\n\n", s); f.Flush() }
-		h.executeRun(r.Context(), a, ws, uid, runID, convID, req.Input, nil, emit)
+		h.executeRun(r.Context(), a, ws, uid, runID, convID, req.Input, nil, emit, invokeOpts{})
 		return
 	}
 
@@ -104,7 +104,7 @@ func (h *InvokeHandler) Agent(w http.ResponseWriter, r *http.Request) {
 		"status":          "running",
 	})
 
-	go h.executeRun(context.Background(), a, ws, uid, runID, convID, req.Input, nil, nil)
+	go h.executeRun(context.Background(), a, ws, uid, runID, convID, req.Input, nil, nil, invokeOpts{})
 }
 
 // Group handles POST /api/v1/invoke/workflows/:workflowId
@@ -199,11 +199,89 @@ func (h *InvokeHandler) ensureConversation(ctx context.Context, convID, ws, uid,
 	return id, err
 }
 
+const maxInvokeDepth = 3
+
+// invokeOpts carries optional parameters for executeRun that are set when an agent
+// is called as a sub-task by another agent (via native_call_agent).
+type invokeOpts struct {
+	invokeDepth int    // nesting depth; 0 = root run
+	rootTraceID string // trace_id of the root run; empty means this IS the root
+}
+
+// runAgentInline executes an agent synchronously as a sub-call from native_call_agent.
+// It creates a new conversation and run, executes the agent, and returns the output string.
+func (h *InvokeHandler) runAgentInline(ctx context.Context, ws, uid, agentID, task, parentRunID, rootTraceID string, depth int) (string, error) {
+	agents := repository.NewAgentRepository(h.pool)
+	a, err := agents.Get(ctx, agentID, ws)
+	if err != nil {
+		return "", fmt.Errorf("agent %s not found", agentID)
+	}
+	if a.Status != "active" {
+		return "", fmt.Errorf("agent %s is not active", a.Name)
+	}
+
+	convID := uuid.NewString()
+	if _, err := h.pool.Exec(ctx,
+		`INSERT INTO conversations(id,workspace_id,agent_id,user_id,title) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,'Sub-agent call')`,
+		convID, ws, agentID, uid); err != nil {
+		return "", fmt.Errorf("create conversation: %w", err)
+	}
+	if _, err := h.pool.Exec(ctx,
+		`INSERT INTO messages(id,conversation_id,role,content) VALUES($1::uuid,$2::uuid,'user',$3)`,
+		uuid.NewString(), convID, task); err != nil {
+		return "", err
+	}
+
+	traceID := rootTraceID
+	if traceID == "" {
+		traceID = parentRunID
+	}
+	runID := uuid.NewString()
+	if _, err := h.pool.Exec(ctx,
+		`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,trace_id)
+		 VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8::uuid)`,
+		runID, ws, agentID, convID, uid, task, parentRunID, traceID); err != nil {
+		return "", fmt.Errorf("create run: %w", err)
+	}
+
+	// Execute synchronously; emit=nil means no SSE output from sub-runs.
+	h.executeRun(ctx, a, ws, uid, runID, convID, task, nil, nil, invokeOpts{
+		invokeDepth: depth,
+		rootTraceID: traceID,
+	})
+
+	var output, status, errMsg string
+	_ = h.pool.QueryRow(context.Background(),
+		`SELECT COALESCE(output,''), status, COALESCE(error_message,'') FROM runs WHERE id=$1::uuid`,
+		runID).Scan(&output, &status, &errMsg)
+
+	if status != "success" {
+		if errMsg == "" {
+			errMsg = "run did not complete successfully (status: " + status + ")"
+		}
+		return "", fmt.Errorf("sub-agent run failed: %s", errMsg)
+	}
+	return output, nil
+}
+
+// cleanupEphemeralResources deletes agents, skills, and tools created with ephemeral=true
+// during the given run. Called after the root run completes.
+func (h *InvokeHandler) cleanupEphemeralResources(ctx context.Context, runID string) {
+	h.pool.Exec(ctx, //nolint:errcheck
+		`DELETE FROM agent_skills WHERE agent_id IN (SELECT id FROM agents WHERE source_run_id=$1::uuid AND ephemeral=true)`, runID)
+	h.pool.Exec(ctx, //nolint:errcheck
+		`DELETE FROM agents WHERE source_run_id=$1::uuid AND ephemeral=true`, runID)
+	h.pool.Exec(ctx, //nolint:errcheck
+		`DELETE FROM skills WHERE source_run_id=$1::uuid AND ephemeral=true`, runID)
+	h.pool.Exec(ctx, //nolint:errcheck
+		`DELETE FROM tools WHERE source_run_id=$1::uuid AND ephemeral=true`, runID)
+}
+
 // executeRun runs the full agent loop with tool calling. When emit is nil (background mode),
 // progress is only written to the database. When emit is non-nil, SSE events are also sent.
 // delegateHandlers, if non-nil, maps tool names to functions that execute a delegate agent and
 // return its output — used by supervisor nodes to call team agents as tools.
-func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid, runID, convID, input string, delegateHandlers map[string]func(context.Context, json.RawMessage) string, emit func(string)) {
+func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid, runID, convID, input string, delegateHandlers map[string]func(context.Context, json.RawMessage) string, emit func(string), opts invokeOpts) {
 	// dbCtx is used for all DB status writes (failRun, final UPDATE).
 	// It must NOT be the request context because the request context can be
 	// cancelled on client disconnect, which would silently leave the run in
@@ -297,6 +375,15 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		history[i], history[j] = history[j], history[i]
 	}
 
+	allToolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
+	allToolDefs, dbTools = ensureMemoryToolDef(allToolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+
+	// Build tool summary map for lazy loading and native meta-tools.
+	toolSummaries := make(map[string]string, len(allToolDefs))
+	for _, td := range allToolDefs {
+		toolSummaries[td.Name] = td.Description
+	}
+
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: a.Instructions,
@@ -308,25 +395,36 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		MemorySaveMode:     a.MemorySaveMode,
 	})
 
-	allToolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
-	allToolDefs, dbTools = ensureMemoryToolDef(allToolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
-
-	// Build tool summary map for lazy loading and native meta-tools.
-	toolSummaries := make(map[string]string, len(allToolDefs))
-	for _, td := range allToolDefs {
-		toolSummaries[td.Name] = td.Description
-	}
-
 	// requestedTools grows when native_request_tool is called (lazy loading mode).
 	requestedTools := map[string]bool{}
 
+	// Determine trace root and depth for sub-agent calls.
+	rootTraceID := opts.rootTraceID
+	if rootTraceID == "" {
+		rootTraceID = runID
+	}
+
+	// CallAgent closure — nil when at max depth.
+	var callAgentFn func(ctx context.Context, agentID, task string) (string, error)
+	if opts.invokeDepth < maxInvokeDepth {
+		capturedDepth := opts.invokeDepth
+		capturedRoot := rootTraceID
+		capturedRunID := runID
+		callAgentFn = func(ctx context.Context, agentID, task string) (string, error) {
+			return h.runAgentInline(ctx, ws, uid, agentID, task, capturedRunID, capturedRoot, capturedDepth+1)
+		}
+	}
+
 	execCtx := tools.ExecutionContext{
-		WorkspaceID:   ws,
-		AgentID:       a.ID,
-		UserID:        uid,
-		RunID:         runID,
+		WorkspaceID:    ws,
+		AgentID:        a.ID,
+		UserID:         uid,
+		RunID:          runID,
 		ConversationID: convID,
-		ToolSummaries: toolSummaries,
+		ToolSummaries:  toolSummaries,
+		InvokeDepth:    opts.invokeDepth,
+		RootRunID:      rootTraceID,
+		CallAgent:      callAgentFn,
 		CompressText: func(ctx context.Context, text string) (string, error) {
 			ch, cerr := llm.Complete(ctx, provider.CompletionRequest{
 				Model: a.Model,
@@ -469,6 +567,11 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 						start, 0, "memory_extractor", errString(err))
 				}()
 			}
+			// Ephemeral cleanup: delete agents/skills/tools created by this run that are marked ephemeral.
+			// Only do this at the root run (depth 0) to avoid double-cleanup.
+			if opts.invokeDepth == 0 {
+				go h.cleanupEphemeralResources(context.Background(), runID)
+			}
 			return
 		}
 
@@ -477,6 +580,47 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			Content:   reply,
 			ToolCalls: pendingCalls,
 		})
+
+		// Pre-compute: if there are multiple native_call_agent calls in this batch,
+		// run them all concurrently in goroutines. Results are keyed by tool call ID.
+		parallelAgentResults := map[string]string{}
+		{
+			var agentCallsInBatch []provider.ToolCall
+			for _, call := range pendingCalls {
+				if call.Name == "native_call_agent" {
+					agentCallsInBatch = append(agentCallsInBatch, call)
+				}
+			}
+			if len(agentCallsInBatch) > 1 {
+				type agentCallOut struct {
+					id      string
+					content string
+				}
+				resultsCh := make(chan agentCallOut, len(agentCallsInBatch))
+				for _, call := range agentCallsInBatch {
+					capturedCall := call
+					go func() {
+						result, execErr := h.executor.ExecuteWithContext(ctx, execCtx, capturedCall.Name, capturedCall.Input)
+						var content string
+						if execErr != nil {
+							content = fmt.Sprintf(`{"error":%q}`, execErr.Error())
+						} else if result != nil {
+							if result.Error != "" {
+								content = fmt.Sprintf(`{"error":%q}`, result.Error)
+							} else {
+								b, _ := json.Marshal(result.Output)
+								content = string(b)
+							}
+						}
+						resultsCh <- agentCallOut{id: capturedCall.ID, content: content}
+					}()
+				}
+				for range agentCallsInBatch {
+					out := <-resultsCh
+					parallelAgentResults[out.id] = out.content
+				}
+			}
+		}
 
 		for _, call := range pendingCalls {
 			if call.Name == "native_save_memory" {
@@ -535,29 +679,34 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				}
 			}
 
-			var result *tools.ExecutionResult
-			var execErr error
-			if toolExists && dbTool.Type == "http" {
-				var cfg tools.HTTPToolConfig
-				_ = json.Unmarshal(dbTool.Config, &cfg)
-				result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
-			} else {
-				result, execErr = h.executor.ExecuteWithContext(ctx, execCtx, call.Name, call.Input)
-			}
 			var resultContent, errMsg string
 			latencyMs := 0
-			if result != nil {
-				latencyMs = result.LatencyMs
-				if result.Error != "" {
-					errMsg = result.Error
-					resultContent = fmt.Sprintf(`{"error":%q}`, result.Error)
+			if precomputed, ok := parallelAgentResults[call.ID]; ok {
+				// Already executed concurrently in the parallel batch above; content is ready.
+				resultContent = precomputed
+			} else {
+				var result *tools.ExecutionResult
+				var execErr error
+				if toolExists && dbTool.Type == "http" {
+					var cfg tools.HTTPToolConfig
+					_ = json.Unmarshal(dbTool.Config, &cfg)
+					result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
 				} else {
-					b, _ := json.Marshal(result.Output)
-					resultContent = string(b)
+					result, execErr = h.executor.ExecuteWithContext(ctx, execCtx, call.Name, call.Input)
 				}
-			} else if execErr != nil {
-				errMsg = execErr.Error()
-				resultContent = fmt.Sprintf(`{"error":%q}`, execErr.Error())
+				if result != nil {
+					latencyMs = result.LatencyMs
+					if result.Error != "" {
+						errMsg = result.Error
+						resultContent = fmt.Sprintf(`{"error":%q}`, result.Error)
+					} else {
+						b, _ := json.Marshal(result.Output)
+						resultContent = string(b)
+					}
+				} else if execErr != nil {
+					errMsg = execErr.Error()
+					resultContent = fmt.Sprintf(`{"error":%q}`, execErr.Error())
+				}
 			}
 
 			h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
@@ -870,7 +1019,7 @@ func (h *InvokeHandler) executeGroupRun(
 					sseEmit(line)
 				}
 
-				h.executeRun(ctx, a, ws, uid, subRunID, subConvID, agentInput, nil, agentEmit)
+				h.executeRun(ctx, a, ws, uid, subRunID, subConvID, agentInput, nil, agentEmit, invokeOpts{})
 
 				// Read back the sub-run output using a background context — the
 				// request ctx may be cancelled if the SSE client disconnected, but
@@ -1145,7 +1294,7 @@ func (h *InvokeHandler) executeGroupRun(
 							}
 							sseEmit(line)
 						}
-						h.executeRun(callCtx, capturedDA, ws, uid, dSubRunID, dSubConvID, task, nil, delEmit)
+						h.executeRun(callCtx, capturedDA, ws, uid, dSubRunID, dSubConvID, task, nil, delEmit, invokeOpts{})
 						sseEmit(fmt.Sprintf(`{"type":"node_completed","node_id":%q,"node_name":%q}`,
 							capturedDN.ID, capturedDA.Name))
 						var out string

@@ -182,6 +182,14 @@ export interface Run {
   channel_session_id?: string
 }
 
+export interface ServiceLogEntry {
+  ts: string
+  source: 'api' | 'whatsapp-adapter' | string
+  level: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | string
+  message: string
+  attrs?: Record<string, unknown>
+}
+
 export interface GatewayChannelConfig {
   account_id: string
   adapter_url?: string

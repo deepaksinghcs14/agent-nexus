@@ -2,21 +2,28 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/logstream"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"net/http"
+	"strings"
+	"time"
 )
 
 type AdminHandler struct {
-	pool *pgxpool.Pool
-	cfg  *config.Config
+	pool   *pgxpool.Pool
+	cfg    *config.Config
+	logHub *logstream.Hub
 }
 
-func NewAdminHandler(p *pgxpool.Pool, c *config.Config) *AdminHandler { return &AdminHandler{p, c} }
+func NewAdminHandler(p *pgxpool.Pool, c *config.Config, logHub *logstream.Hub) *AdminHandler {
+	return &AdminHandler{pool: p, cfg: c, logHub: logHub}
+}
 func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	a, e := repository.NewUserRepository(h.pool).List(r.Context())
 	if e != nil {
@@ -123,6 +130,87 @@ func (h *AdminHandler) AuditLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	errs.WriteJSON(w, 200, map[string]any{"data": a})
 }
+
+func (h *AdminHandler) ServiceLogStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		errs.Write(w, errs.Internal("streaming is not supported"))
+		return
+	}
+	if h.logHub == nil {
+		errs.Write(w, errs.Internal("log stream is not configured"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	ch := h.logHub.Subscribe()
+	defer h.logHub.Unsubscribe(ch)
+
+	fmt.Fprint(w, ": connected\n\n")
+	flusher.Flush()
+
+	ticker := time.NewTicker(20 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			fmt.Fprint(w, ": ping\n\n")
+			flusher.Flush()
+		case entry, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(entry)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
+}
+
+func (h *AdminHandler) IngestServiceLog(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.LogStreamIngestToken == "" {
+		errs.Write(w, errs.Forbidden("log ingest is not configured"))
+		return
+	}
+	token := r.Header.Get("X-Log-Stream-Token")
+	if token == "" {
+		token = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	}
+	if token != h.cfg.LogStreamIngestToken {
+		errs.Write(w, errs.Forbidden("invalid log ingest token"))
+		return
+	}
+	if h.logHub == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	var entry logstream.Entry
+	if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
+		errs.Write(w, errs.BadRequest("invalid log entry"))
+		return
+	}
+	if entry.Source == "" {
+		entry.Source = "process"
+	}
+	entry.Level = strings.ToLower(entry.Level)
+	if entry.Level == "" {
+		entry.Level = "info"
+	}
+	h.logHub.Publish(entry)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *AdminHandler) Usage(w http.ResponseWriter, r *http.Request) {
 	var runs, tokens int
 	var cost float64

@@ -188,6 +188,15 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Reusable instruction modules** — define named skill blocks (markdown or plain text) that can be attached to any agent's system prompt; centrally managed at `/skills`
 - **Managed vs. custom** — built-in platform skills (e.g. WhatsApp Owner Escalation) are marked as managed and protected; workspace members can create their own custom skills
 - **Agent attachment** — skills are injected into the agent's prompt at run time; attach, detach, or reorder skills per agent from the Agent Builder
+- **Required tools** — skills can declare `required_tool_names`; enabling the skill automatically attaches those tools to the agent; the Agent Builder shows them as locked with an "enabled by skill" label
+
+### Agent Self-Management
+- **Dynamic sub-agent delegation** — agents can call other agents as sub-tasks at runtime using `native_call_agent`; issue multiple calls in one response to run sub-agents in parallel (wall-clock = slowest, not sum)
+- **Runtime agent creation** — create ephemeral specialist agents on the fly with `native_create_agent`; set `ephemeral=true` and they are deleted automatically when the root run completes
+- **Runtime skill and tool creation** — inject new instruction content mid-run with `native_create_skill` (`attach_to_self=true` injects it into the calling agent's own context); register external APIs as callable HTTP tools with `native_create_http_tool`
+- **Ownership enforcement** — agents can only delete resources they created in the current run; workspace-scoped throughout
+- **Depth guard** — sub-agent chains are capped at 3 levels deep; `native_call_agent` returns a graceful error at the limit
+- **One-click activation** — enable the built-in **Agent Self-Management** skill to auto-attach all 10 tools and inject the full capabilities guide into the system prompt
 
 ### Nexus AI
 - **Meta-agent** — a built-in AI assistant backed by the same agent runtime as user-created agents. Chat to it in natural language to manage the entire platform: list and create agents, build multi-agent workflow graphs, set up webhook triggers, create gateway channels, manage skills, and more. 13 tools total. Automatically detects available models for your configured providers and selects the best one — no manual model IDs required. Navigation links in responses always point to your actual deployment URL (set via `PUBLIC_APP_URL`)
@@ -366,7 +375,8 @@ What's working today vs. what's coming next:
 | Nexus AI meta-agent | ✅ Done |
 | Built-in in-app documentation | ✅ Done |
 | Nexus Gateway (WhatsApp + HTTP channel messaging) | ✅ Done |
-| Skills (reusable agent instruction modules) | ✅ Done |
+| Skills (reusable agent instruction modules with required tool auto-attach) | ✅ Done |
+| Agent Self-Management (call, create, destroy agents/skills/tools at runtime) | ✅ Done |
 | Webhook / event triggers (run an agent on inbound HTTP event) | ✅ Done |
 | Gateway: Telegram channel | 🔜 Planned |
 | Gateway: SMS channel (Twilio / Vonage) | 🔜 Planned |

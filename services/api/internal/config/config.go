@@ -19,6 +19,7 @@ type Config struct {
 	PublicAPIURL            string // base URL this API is reachable at (for OAuth redirect URIs)
 	PublicAppURL            string // base URL of the frontend app (used in LLM-generated links)
 	WhatsAppAdapterURL      string // internal URL for the WhatsApp Web adapter service
+	LogStreamIngestToken    string // shared secret for local process log forwarding
 	DemoMode                bool   // when true, restricts dangerous capabilities for public hosted instances
 }
 
@@ -35,6 +36,7 @@ func Load() (*Config, error) {
 		PublicAPIURL:            getEnv("PUBLIC_API_URL", "http://localhost:8080"),
 		PublicAppURL:            getEnv("PUBLIC_APP_URL", "http://localhost:3000"),
 		WhatsAppAdapterURL:      getEnv("WHATSAPP_ADAPTER_URL", "http://127.0.0.1:18901"),
+		LogStreamIngestToken:    getEnv("LOG_STREAM_INGEST_TOKEN", ""),
 		DemoMode:                getEnvBool("DEMO_MODE", false),
 	}
 

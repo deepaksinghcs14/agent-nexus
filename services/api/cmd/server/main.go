@@ -16,19 +16,20 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/router"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/migrate"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/logstream"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 )
 
 func main() {
+	logHub := logstream.NewHub()
+
 	// Structured logger
 	logLevel := slog.LevelInfo
 	if os.Getenv("LOG_LEVEL") == "debug" {
 		logLevel = slog.LevelDebug
 	}
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel,
-	})))
+	slog.SetDefault(slog.New(logstream.NewHandler(logHub, logLevel, logstream.SourceAPI)))
 
 	// Load config
 	cfg, err := config.Load()
@@ -77,6 +78,17 @@ func main() {
 	reg.Register(native.NewSaveMemoryTool(pool))
 	reg.Register(native.NewListToolsTool())
 	reg.Register(native.NewRequestToolTool())
+	// Agent self-management tools
+	reg.Register(native.NewListAgentsTool(pool))
+	reg.Register(native.NewCallAgentTool(pool))
+	reg.Register(native.NewCreateAgentTool(pool))
+	reg.Register(native.NewDeleteAgentTool(pool))
+	reg.Register(native.NewListSkillsTool(pool))
+	reg.Register(native.NewCreateSkillTool(pool))
+	reg.Register(native.NewDeleteSkillTool(pool))
+	reg.Register(native.NewListHttpToolsTool(pool))
+	reg.Register(native.NewCreateHttpToolTool(pool))
+	reg.Register(native.NewDeleteToolTool(pool))
 	for _, t := range native.NewWhatsAppTools(pool, cfg) {
 		reg.Register(t)
 	}
@@ -109,7 +121,7 @@ func main() {
 		Runs:            runs,
 		Memory:          handler.NewMemoryHandler(pool, cfg),
 		Workflows:       handler.NewWorkflowsHandler(pool, cfg),
-		Admin:           handler.NewAdminHandler(pool, cfg),
+		Admin:           handler.NewAdminHandler(pool, cfg, logHub),
 		APITokens:       handler.NewAPITokensHandler(pool, cfg),
 		Invoke:          invoke,
 		WebhookTriggers: handler.NewWebhookTriggerHandler(pool, cfg),

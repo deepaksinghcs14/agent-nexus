@@ -79,6 +79,35 @@ PUT /api/v1/agents/:id`}</code></pre>
         You can also create and configure agents through the UI at{' '}
         <a href="/agents/new">Agents → New Agent</a>. The builder form maps directly to these fields.
       </Callout>
+
+      <h2>Agent Self-Management tools</h2>
+      <p>
+        Enable the <strong>Agent Self-Management</strong> skill to give an agent the ability to
+        orchestrate other agents, create resources at runtime, and clean up after itself — without
+        a pre-configured workflow canvas.
+      </p>
+      <table>
+        <thead>
+          <tr><th>Tool</th><th>What it does</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>native_list_agents</code></td><td>List agents available in the workspace.</td></tr>
+          <tr><td><code>native_call_agent</code></td><td>Delegate a task to another agent and return its output. Issue multiple calls in one response to run sub-agents in parallel.</td></tr>
+          <tr><td><code>native_create_agent</code></td><td>Create a new agent at runtime. Set <code>ephemeral=true</code> to auto-delete it when the root run ends.</td></tr>
+          <tr><td><code>native_delete_agent</code></td><td>Delete an agent created by the current run.</td></tr>
+          <tr><td><code>native_list_skills</code></td><td>List skills available in the workspace.</td></tr>
+          <tr><td><code>native_create_skill</code></td><td>Create a skill at runtime. Use <code>attach_to_self=true</code> to inject its content into the calling agent&apos;s own context immediately.</td></tr>
+          <tr><td><code>native_delete_skill</code></td><td>Delete a skill created by the current run.</td></tr>
+          <tr><td><code>native_list_http_tools</code></td><td>List HTTP tools in the workspace.</td></tr>
+          <tr><td><code>native_create_http_tool</code></td><td>Register an external API endpoint as a callable tool. Auto-attached to the calling agent so it is available on the next turn.</td></tr>
+          <tr><td><code>native_delete_tool</code></td><td>Delete an HTTP tool created by the current run.</td></tr>
+        </tbody>
+      </table>
+      <p>
+        Sub-agent chains are capped at <strong>3 levels deep</strong>. Resources created with
+        <code>ephemeral=true</code> are deleted automatically after the root run completes.
+        Agents can only delete resources they created in the current run.
+      </p>
     </DocPage>
   )
 }
