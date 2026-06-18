@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -8,8 +9,9 @@ import {
   Activity, Brain, BarChart2, Timer,
   Key, Settings, BookOpen,
   LayoutDashboard, Users, Building2, Shield, ClipboardList,
-  Hexagon, ShieldCheck,
+  Hexagon, ShieldCheck, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
+import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
@@ -22,14 +24,14 @@ const userNav: NavGroup[] = [
     label: 'Build',
     items: [
       { label: 'Nexus AI',      href: '/nexus-ai',     icon: Sparkles },
-      { label: 'Agents',       href: '/agents',       icon: Bot },
-      { label: 'Workflows',    href: '/workflows',    icon: GitBranch },
-      { label: 'Tools',        href: '/tools',        icon: Wrench },
-      { label: 'MCP Servers',  href: '/mcp-servers',  icon: Plug },
-      { label: 'Connectors',   href: '/connectors',   icon: Link2 },
-      { label: 'Triggers',     href: '/triggers',     icon: Zap },
-      { label: 'Gateway',      href: '/gateway',      icon: Radio },
-      { label: 'Skills',       href: '/skills',       icon: BookMarked },
+      { label: 'Agents',        href: '/agents',        icon: Bot },
+      { label: 'Workflows',     href: '/workflows',     icon: GitBranch },
+      { label: 'Tools',         href: '/tools',         icon: Wrench },
+      { label: 'MCP Servers',   href: '/mcp-servers',   icon: Plug },
+      { label: 'Connectors',    href: '/connectors',    icon: Link2 },
+      { label: 'Triggers',      href: '/triggers',      icon: Zap },
+      { label: 'Gateway',       href: '/gateway',       icon: Radio },
+      { label: 'Skills',        href: '/skills',        icon: BookMarked },
     ],
   },
   {
@@ -42,18 +44,18 @@ const userNav: NavGroup[] = [
   {
     label: 'Observe',
     items: [
-      { label: 'Runs & Traces', href: '/runs', icon: Activity },
-      { label: 'Memory', href: '/memory', icon: Brain },
-      { label: 'Usage',   href: '/usage',         icon: BarChart2 },
-      { label: 'Latency', href: '/observability', icon: Timer },
+      { label: 'Runs & Traces', href: '/runs',          icon: Activity },
+      { label: 'Memory',        href: '/memory',        icon: Brain },
+      { label: 'Usage',         href: '/usage',         icon: BarChart2 },
+      { label: 'Latency',       href: '/observability', icon: Timer },
     ],
   },
   {
     label: 'Settings',
     items: [
-      { label: 'Providers',   href: '/settings/providers',   icon: Key },
-      { label: 'API Tokens',  href: '/settings/api-tokens',  icon: Key },
-      { label: 'Workspace',   href: '/settings/workspace',   icon: Settings },
+      { label: 'Providers',  href: '/settings/providers',  icon: Key },
+      { label: 'API Tokens', href: '/settings/api-tokens', icon: Key },
+      { label: 'Workspace',  href: '/settings/workspace',  icon: Settings },
     ],
   },
   {
@@ -77,28 +79,54 @@ const adminNav: NavGroup[] = [
   },
 ]
 
-function NavGroup({ group, pathname }: { group: NavGroup; pathname: string }) {
+function NavTip({ label, collapsed, children }: { label: string; collapsed: boolean; children: React.ReactNode }) {
+  if (!collapsed) return <>{children}</>
+  return (
+    <TooltipPrimitive.Root>
+      <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
+      <TooltipPrimitive.Portal>
+        <TooltipPrimitive.Content
+          side="right"
+          sideOffset={6}
+          className="z-50 bg-gray-900 text-white text-[11px] px-2 py-1 rounded shadow-lg select-none"
+        >
+          {label}
+          <TooltipPrimitive.Arrow className="fill-gray-900" />
+        </TooltipPrimitive.Content>
+      </TooltipPrimitive.Portal>
+    </TooltipPrimitive.Root>
+  )
+}
+
+function NavGroupSection({ group, pathname, collapsed }: { group: NavGroup; pathname: string; collapsed: boolean }) {
   return (
     <div className="mb-1">
-      <p className="px-4 pt-3 pb-1 text-[10px] font-medium text-white/30 uppercase tracking-wider">
-        {group.label}
-      </p>
+      {collapsed
+        ? <div className="pt-3 border-t border-white/[0.04] mt-1 first:border-0 first:mt-0" />
+        : (
+          <p className="px-4 pt-3 pb-1 text-[10px] font-medium text-white/30 uppercase tracking-wider">
+            {group.label}
+          </p>
+        )
+      }
       {group.items.map((item) => {
         const active = pathname === item.href || pathname.startsWith(item.href + '/')
         return (
-          <Link
-            key={item.href + item.label}
-            href={item.href}
-            className={cn(
-              'flex items-center gap-2 px-4 py-1.5 text-[13px] transition-colors',
-              active
-                ? 'text-accent-muted bg-white/[0.06] font-medium'
-                : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'
-            )}
-          >
-            <item.icon className="w-3.5 h-3.5 flex-shrink-0" />
-            {item.label}
-          </Link>
+          <NavTip key={item.href + item.label} label={item.label} collapsed={collapsed}>
+            <Link
+              href={item.href}
+              className={cn(
+                'flex items-center gap-2 py-1.5 text-[13px] transition-colors',
+                collapsed ? 'justify-center mx-1.5 rounded-md px-0 py-2' : 'px-4',
+                active
+                  ? 'text-accent-muted bg-white/[0.06] font-medium'
+                  : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'
+              )}
+            >
+              <item.icon className="w-3.5 h-3.5 flex-shrink-0" />
+              {!collapsed && item.label}
+            </Link>
+          </NavTip>
         )
       })}
     </div>
@@ -111,65 +139,118 @@ export function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
   const userIsAdmin = user?.is_admin ?? false
   const groups = isAdmin ? adminNav : userNav
 
+  const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    setCollapsed(localStorage.getItem('sidebar-collapsed') === 'true')
+  }, [])
+
+  const toggle = () => {
+    setCollapsed((v) => {
+      localStorage.setItem('sidebar-collapsed', String(!v))
+      return !v
+    })
+  }
+
   return (
-    <aside className="w-48 min-w-[192px] flex flex-col h-full bg-sidebar border-r border-white/[0.06]">
-      {/* Logo */}
-      <Link
-        href="/dashboard"
-        className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.06] transition-colors hover:bg-white/[0.04]"
-        aria-label="Open dashboard"
-      >
-        <div className="w-6 h-6 bg-accent rounded-md flex items-center justify-center">
-          <Hexagon className="w-3.5 h-3.5 text-white" />
-        </div>
-        <span className="text-sm font-medium text-white">Agent Nexus</span>
-        {isAdmin && (
-          <span className="ml-auto text-[9px] bg-accent/30 text-accent-muted px-1.5 py-0.5 rounded font-medium">
-            ADMIN
-          </span>
+    <TooltipPrimitive.Provider delayDuration={400}>
+      <aside
+        className={cn(
+          'flex flex-col h-full bg-sidebar border-r border-white/[0.06] transition-all duration-200 flex-shrink-0 overflow-hidden',
+          collapsed ? 'w-12' : 'w-48'
         )}
-      </Link>
+      >
+        {/* Logo */}
+        <Link
+          href="/dashboard"
+          className={cn(
+            'flex items-center gap-2 border-b border-white/[0.06] transition-colors hover:bg-white/[0.04] flex-shrink-0',
+            collapsed ? 'justify-center py-3 px-0' : 'px-4 py-3'
+          )}
+          aria-label="Open dashboard"
+        >
+          <div className="w-6 h-6 bg-accent rounded-md flex items-center justify-center flex-shrink-0">
+            <Hexagon className="w-3.5 h-3.5 text-white" />
+          </div>
+          {!collapsed && (
+            <>
+              <span className="text-sm font-medium text-white truncate">Agent Nexus</span>
+              {isAdmin && (
+                <span className="ml-auto text-[9px] bg-accent/30 text-accent-muted px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+                  ADMIN
+                </span>
+              )}
+            </>
+          )}
+        </Link>
 
-      {/* Workspace switcher */}
-      {!isAdmin && <WorkspaceSwitcher />}
+        {/* Workspace switcher */}
+        {!isAdmin && <WorkspaceSwitcher collapsed={collapsed} />}
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-2">
-        {groups.map((group) => (
-          <NavGroup key={group.label} group={group} pathname={pathname} />
-        ))}
-      </nav>
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto py-2">
+          {groups.map((group) => (
+            <NavGroupSection key={group.label} group={group} pathname={pathname} collapsed={collapsed} />
+          ))}
+        </nav>
 
-      {/* Admin link at the bottom — only for admin users in the regular (non-admin) sidebar */}
-      {!isAdmin && userIsAdmin && (
-        <div className="border-t border-white/[0.06] p-2">
-          <Link
-            href="/admin/overview"
-            className={cn(
-              'flex items-center gap-2 px-3 py-2 rounded-md text-[12px] transition-colors w-full',
-              pathname.startsWith('/admin')
-                ? 'text-amber-300 bg-white/[0.06] font-medium'
-                : 'text-white/40 hover:text-amber-300 hover:bg-white/[0.04]'
-            )}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
-            Admin dashboard
-          </Link>
+        {/* Admin link — only for admin users in the regular sidebar */}
+        {!isAdmin && userIsAdmin && (
+          <div className="border-t border-white/[0.06] p-1.5">
+            <NavTip label="Admin dashboard" collapsed={collapsed}>
+              <Link
+                href="/admin/overview"
+                className={cn(
+                  'flex items-center gap-2 px-3 py-2 rounded-md text-[12px] transition-colors w-full',
+                  collapsed && 'justify-center px-0',
+                  pathname.startsWith('/admin')
+                    ? 'text-amber-300 bg-white/[0.06] font-medium'
+                    : 'text-white/40 hover:text-amber-300 hover:bg-white/[0.04]'
+                )}
+              >
+                <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
+                {!collapsed && 'Admin dashboard'}
+              </Link>
+            </NavTip>
+          </div>
+        )}
+
+        {/* Back to app link when in admin sidebar */}
+        {isAdmin && (
+          <div className="border-t border-white/[0.06] p-1.5">
+            <NavTip label="Back to app" collapsed={collapsed}>
+              <Link
+                href="/dashboard"
+                className={cn(
+                  'flex items-center gap-2 px-3 py-2 rounded-md text-[12px] text-white/40 hover:text-white/70 hover:bg-white/[0.04] transition-colors w-full',
+                  collapsed && 'justify-center px-0'
+                )}
+              >
+                <Hexagon className="w-3.5 h-3.5 flex-shrink-0" />
+                {!collapsed && 'Back to app'}
+              </Link>
+            </NavTip>
+          </div>
+        )}
+
+        {/* Collapse toggle */}
+        <div className={cn('border-t border-white/[0.06] p-1.5')}>
+          <NavTip label="Expand sidebar" collapsed={collapsed}>
+            <button
+              onClick={toggle}
+              className={cn(
+                'flex items-center gap-2 px-3 py-2 rounded-md text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-colors w-full',
+                collapsed && 'justify-center px-0'
+              )}
+            >
+              {collapsed
+                ? <PanelLeftOpen className="w-3.5 h-3.5 flex-shrink-0" />
+                : <><PanelLeftClose className="w-3.5 h-3.5 flex-shrink-0" /><span>Collapse</span></>
+              }
+            </button>
+          </NavTip>
         </div>
-      )}
-
-      {/* Back to app link when in admin sidebar */}
-      {isAdmin && (
-        <div className="border-t border-white/[0.06] p-2">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-2 px-3 py-2 rounded-md text-[12px] text-white/40 hover:text-white/70 hover:bg-white/[0.04] transition-colors w-full"
-          >
-            <Hexagon className="w-3.5 h-3.5 flex-shrink-0" />
-            Back to app
-          </Link>
-        </div>
-      )}
-    </aside>
+      </aside>
+    </TooltipPrimitive.Provider>
   )
 }

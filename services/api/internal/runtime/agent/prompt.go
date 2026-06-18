@@ -7,45 +7,71 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
 )
 
+const (
+	maxMemoryChars      = 300
+	maxContextChunkChars = 500
+)
+
 // Builder assembles the messages slice from agent config, memories, context chunks, and history.
 type Builder struct{}
 
 func NewBuilder() *Builder { return &Builder{} }
 
-func (b *Builder) Build(req BuildRequest) []provider.Message {
-	now := time.Now().UTC()
-	system := fmt.Sprintf("Current date and time (UTC): %s\n\n", now.Format("2006-01-02 15:04 Monday")) + req.SystemInstructions
+// Build returns the full messages slice and the stable system portion.
+// The stable portion (agent instructions + skills + memory policy) never changes between
+// turns and is suitable for Anthropic prompt caching via cache_control.
+func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
+	// Stable: derived purely from agent config — identical across all turns of a conversation.
+	stable := req.SystemInstructions
 	if len(req.Skills) > 0 {
-		system += "\n\nAdditional instructions:\n"
+		stable += "\n\nAdditional instructions:\n"
 		for _, s := range req.Skills {
 			if s != "" {
-				system += "\n" + s + "\n"
-			}
-		}
-	}
-	if len(req.MemorySummaries) > 0 {
-		system += "\n\nRelevant memory:\n"
-		for _, m := range req.MemorySummaries {
-			if m != "" {
-				system += "- " + m + "\n"
-			}
-		}
-	}
-	if len(req.ContextChunks) > 0 {
-		system += "\n\nRelevant context:\n"
-		for _, c := range req.ContextChunks {
-			if c != "" {
-				system += "- " + c + "\n"
+				stable += "\n" + s + "\n"
 			}
 		}
 	}
 	if req.MemoryEnabled {
-		system += "\n\nMemory policy:\n"
+		stable += "\n\nMemory policy:\n"
 		if req.MemorySaveMode != "extractor" {
-			system += "- Use native_save_memory only for stable long-term preferences, durable facts, goals, or reusable decisions.\n"
+			stable += "- Use native_save_memory only for stable long-term preferences, durable facts, goals, or reusable decisions.\n"
 		}
-		system += "- Do not save transient chat, secrets, credentials, private irrelevant details, or one-off requests.\n"
-		system += "- Keep saved memories compact and self-contained.\n"
+		stable += "- Do not save transient chat, secrets, credentials, private irrelevant details, or one-off requests.\n"
+		stable += "- Keep saved memories compact and self-contained.\n"
+	}
+
+	// Dynamic: timestamp + retrieved content — changes each turn.
+	now := time.Now().UTC()
+	dynamic := fmt.Sprintf("Current date and time (UTC): %s", now.Format("2006-01-02 15:04 Monday"))
+	if len(req.MemorySummaries) > 0 {
+		dynamic += "\n\nRelevant memory:\n"
+		for _, m := range req.MemorySummaries {
+			if m != "" {
+				if len(m) > maxMemoryChars {
+					m = m[:maxMemoryChars] + "…"
+				}
+				dynamic += "- " + m + "\n"
+			}
+		}
+	}
+	if len(req.ContextChunks) > 0 {
+		dynamic += "\n\nRelevant context:\n"
+		for _, c := range req.ContextChunks {
+			if c != "" {
+				if len(c) > maxContextChunkChars {
+					c = c[:maxContextChunkChars] + "…"
+				}
+				dynamic += "- " + c + "\n"
+			}
+		}
+	}
+
+	system := stable
+	if dynamic != "" {
+		if system != "" {
+			system += "\n\n"
+		}
+		system += dynamic
 	}
 
 	messages := []provider.Message{}
@@ -56,7 +82,7 @@ func (b *Builder) Build(req BuildRequest) []provider.Message {
 	if req.UserMessage != "" {
 		messages = append(messages, provider.Message{Role: "user", Content: req.UserMessage})
 	}
-	return messages
+	return messages, stable
 }
 
 type BuildRequest struct {

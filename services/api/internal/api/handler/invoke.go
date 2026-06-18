@@ -270,11 +270,15 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			start, 0, "", errString(err))
 	}
 
+	histLimit := a.MaxHistoryMessages
+	if histLimit <= 0 {
+		histLimit = 20
+	}
 	historyRows, err := h.pool.Query(ctx,
 		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'')
 		 FROM messages WHERE conversation_id=$1::uuid
-		 ORDER BY created_at DESC LIMIT 40`,
-		convID)
+		 ORDER BY created_at DESC LIMIT $2`,
+		convID, histLimit)
 	if err != nil {
 		sseErr("failed to load conversation history")
 		h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
@@ -294,7 +298,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	}
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
-	prompt := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
+	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: a.Instructions,
 		Skills:             skills,
 		MemorySummaries:    memories,
@@ -304,33 +308,87 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		MemorySaveMode:     a.MemorySaveMode,
 	})
 
-	toolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
-	toolDefs, dbTools = ensureMemoryToolDef(toolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+	allToolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
+	allToolDefs, dbTools = ensureMemoryToolDef(allToolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+
+	// Build tool summary map for lazy loading and native meta-tools.
+	toolSummaries := make(map[string]string, len(allToolDefs))
+	for _, td := range allToolDefs {
+		toolSummaries[td.Name] = td.Description
+	}
+
+	// requestedTools grows when native_request_tool is called (lazy loading mode).
+	requestedTools := map[string]bool{}
+
 	execCtx := tools.ExecutionContext{
-		WorkspaceID:    ws,
-		AgentID:        a.ID,
-		UserID:         uid,
-		RunID:          runID,
+		WorkspaceID:   ws,
+		AgentID:       a.ID,
+		UserID:        uid,
+		RunID:         runID,
 		ConversationID: convID,
+		ToolSummaries: toolSummaries,
+		CompressText: func(ctx context.Context, text string) (string, error) {
+			ch, cerr := llm.Complete(ctx, provider.CompletionRequest{
+				Model: a.Model,
+				Messages: []provider.Message{
+					{Role: "system", Content: "You are a memory compressor. Return ONLY the compressed memory — no preamble, no explanation."},
+					{Role: "user", Content: "Compress this to ≤100 words, preserving all key facts:\n" + text},
+				},
+				Temperature: 0,
+				MaxTokens:   200,
+				Stream:      true,
+			})
+			if cerr != nil {
+				return "", cerr
+			}
+			var result strings.Builder
+			for event := range ch {
+				if event.Type == provider.EventDelta {
+					result.WriteString(event.Delta)
+				}
+				if event.Type == provider.EventError {
+					return "", event.Error
+				}
+			}
+			return strings.TrimSpace(result.String()), nil
+		},
+		RequestTool: func(name string) {
+			requestedTools[name] = true
+		},
 	}
 	_ = h.pool.QueryRow(ctx, `SELECT COALESCE(channel_session_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&execCtx.ChannelSessionID)
 
 	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
 
 	// ── Tool calling loop ──────────────────────────────────────────────────────
-	messages := prompt
+	messages := initialMessages
 	stepCount := 0
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
 
 	for {
+		// Build the tool list for this iteration.
+		var toolDefs []provider.ToolDefinition
+		if a.LazyToolLoading {
+			// Start with just the meta-tools; add any tools the agent has requested.
+			toolDefs = lazyMetaToolDefs(h.registry)
+			for _, td := range allToolDefs {
+				if requestedTools[td.Name] {
+					toolDefs = append(toolDefs, td)
+				}
+			}
+		} else {
+			toolDefs = allToolDefs
+		}
+
 		stream, err := llm.Complete(ctx, provider.CompletionRequest{
-			Model:       a.Model,
-			Messages:    messages,
-			Tools:       toolDefs,
-			Temperature: a.Temperature,
-			MaxTokens:   a.MaxTokens,
-			Stream:      true,
+			Model:               a.Model,
+			Messages:            messages,
+			Tools:               toolDefs,
+			Temperature:         a.Temperature,
+			MaxTokens:           a.MaxTokens,
+			Stream:              true,
+			StableSystemContent: stableSystem,
 		})
 		if err != nil {
 			h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
@@ -1281,11 +1339,15 @@ func (h *InvokeHandler) executeSupervisorRun(
 			start, 0, "", errString(err))
 	}
 
+	supHistLimit := a.MaxHistoryMessages
+	if supHistLimit <= 0 {
+		supHistLimit = 20
+	}
 	historyRows, err := h.pool.Query(ctx,
 		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'')
 		 FROM messages WHERE conversation_id=$1::uuid
-		 ORDER BY created_at DESC LIMIT 40`,
-		convID)
+		 ORDER BY created_at DESC LIMIT $2`,
+		convID, supHistLimit)
 	if err != nil {
 		sseErr("failed to load conversation history")
 		h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
@@ -1324,7 +1386,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	}
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
-	prompt := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
+	supMessages, supStableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: supervisorInstructions,
 		Skills:             skills,
 		MemorySummaries:    memories,
@@ -1341,24 +1403,50 @@ func (h *InvokeHandler) executeSupervisorRun(
 		UserID:         uid,
 		RunID:          runID,
 		ConversationID: convID,
+		CompressText: func(ctx context.Context, text string) (string, error) {
+			ch, cerr := llm.Complete(ctx, provider.CompletionRequest{
+				Model: a.Model,
+				Messages: []provider.Message{
+					{Role: "system", Content: "You are a memory compressor. Return ONLY the compressed memory — no preamble, no explanation."},
+					{Role: "user", Content: "Compress this to ≤100 words, preserving all key facts:\n" + text},
+				},
+				Temperature: 0,
+				MaxTokens:   200,
+				Stream:      true,
+			})
+			if cerr != nil {
+				return "", cerr
+			}
+			var result strings.Builder
+			for event := range ch {
+				if event.Type == provider.EventDelta {
+					result.WriteString(event.Delta)
+				}
+				if event.Type == provider.EventError {
+					return "", event.Error
+				}
+			}
+			return strings.TrimSpace(result.String()), nil
+		},
 	}
 	_ = h.pool.QueryRow(ctx, `SELECT COALESCE(channel_session_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&execCtx.ChannelSessionID)
 
 	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
 
-	messages := prompt
+	messages := supMessages
 	stepCount := 0
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
 
 	for {
 		stream, err := llm.Complete(ctx, provider.CompletionRequest{
-			Model:       a.Model,
-			Messages:    messages,
-			Tools:       toolDefs,
-			Temperature: a.Temperature,
-			MaxTokens:   a.MaxTokens,
-			Stream:      true,
+			Model:               a.Model,
+			Messages:            messages,
+			Tools:               toolDefs,
+			Temperature:         a.Temperature,
+			MaxTokens:           a.MaxTokens,
+			Stream:              true,
+			StableSystemContent: supStableSystem,
 		})
 		if err != nil {
 			h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck

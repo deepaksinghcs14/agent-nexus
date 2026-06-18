@@ -141,7 +141,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	skills, _ := loadAgentSkills(r.Context(), h.pool, a.ID)
-	prompt := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
+	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: a.Instructions,
 		Skills:             skills,
 		MemorySummaries:    memories,
@@ -165,19 +165,20 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	emit(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, id))
 
 	// ── Tool calling loop ──────────────────────────────────────────────────────
-	messages := prompt
+	messages := initialMessages
 	stepCount := 0
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
 
 	for {
 		stream, e := llm.Complete(r.Context(), provider.CompletionRequest{
-			Model:       a.Model,
-			Messages:    messages,
-			Tools:       toolDefs,
-			Temperature: a.Temperature,
-			MaxTokens:   a.MaxTokens,
-			Stream:      true,
+			Model:               a.Model,
+			Messages:            messages,
+			Tools:               toolDefs,
+			Temperature:         a.Temperature,
+			MaxTokens:           a.MaxTokens,
+			Stream:              true,
+			StableSystemContent: stableSystem,
 		})
 		if e != nil {
 			_ = h.failRun(r.Context(), id, e.Error())
