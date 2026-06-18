@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/jackc/pgx/v5"
@@ -483,6 +484,49 @@ func (r *GatewayRepository) ListReminders(ctx context.Context, workspaceID, chan
 	return out, rows.Err()
 }
 
+type DueReminder struct {
+	domain.GatewayReminder
+	PeerKind string
+	PeerID   string
+}
+
+func (r *GatewayRepository) FetchDueReminders(ctx context.Context) ([]DueReminder, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT
+		  r.id::text, r.workspace_id::text, COALESCE(r.channel_id::text,''),
+		  COALESCE(r.session_id::text,''), COALESCE(r.contact_id::text,''),
+		  r.account_id, r.title, r.message, r.due_at, r.status, r.payload, r.created_at, r.updated_at,
+		  COALESCE(s.peer_kind,'direct'),
+		  COALESCE(s.peer_id, cont.whatsapp_jid, '')
+		FROM gateway_reminders r
+		LEFT JOIN channel_sessions s ON s.id = r.session_id
+		LEFT JOIN gateway_contacts cont ON cont.id = r.contact_id
+		WHERE r.status = 'pending'
+		  AND r.due_at IS NOT NULL
+		  AND r.due_at <= NOW()
+		  AND r.channel_id IS NOT NULL
+		ORDER BY r.due_at ASC
+		LIMIT 50
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DueReminder
+	for rows.Next() {
+		var d DueReminder
+		if err := rows.Scan(
+			&d.ID, &d.WorkspaceID, &d.ChannelID, &d.SessionID, &d.ContactID,
+			&d.AccountID, &d.Title, &d.Message, &d.DueAt, &d.Status, &d.Payload, &d.CreatedAt, &d.UpdatedAt,
+			&d.PeerKind, &d.PeerID,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 func (r *GatewayRepository) UpdateReminderStatus(ctx context.Context, id, workspaceID, status string) (domain.GatewayReminder, error) {
 	var m domain.GatewayReminder
 	err := r.pool.QueryRow(ctx, `
@@ -613,4 +657,111 @@ func defaultStatus(v, fallback string) string {
 
 func (r *GatewayRepository) Tx(ctx context.Context) (pgx.Tx, error) {
 	return r.pool.Begin(ctx)
+}
+
+// ─── Scheduled Messages ────────────────────────────────────────────────────
+
+func (r *GatewayRepository) CreateScheduledMessage(ctx context.Context, m *domain.ScheduledMessage) error {
+	rule := m.RecurrenceRule
+	if len(rule) == 0 {
+		rule = nil
+	}
+	return r.pool.QueryRow(ctx, `
+		INSERT INTO gateway_scheduled_messages
+		  (workspace_id,channel_id,contact_id,account_id,peer_kind,peer_id,message,send_at,status,recurrence_rule,occurrence_count,created_by)
+		VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		RETURNING id::text, created_at, updated_at`,
+		m.WorkspaceID, m.ChannelID, nullableString(m.ContactID),
+		m.AccountID, m.PeerKind, m.PeerID, m.Message, m.SendAt,
+		defaultStatus(m.Status, "pending"), rule, m.OccurrenceCount, m.CreatedBy,
+	).Scan(&m.ID, &m.CreatedAt, &m.UpdatedAt)
+}
+
+func (r *GatewayRepository) ListScheduledMessages(ctx context.Context, workspaceID, channelID, status string, limit int) ([]domain.ScheduledMessage, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''),
+		       account_id, peer_kind, peer_id, message, send_at, status,
+		       recurrence_rule, occurrence_count, last_error, created_by, created_at, updated_at
+		FROM gateway_scheduled_messages
+		WHERE workspace_id=$1::uuid
+		  AND (NULLIF($2,'') IS NULL OR channel_id=NULLIF($2,'')::uuid)
+		  AND ($3='' OR status=$3)
+		ORDER BY send_at ASC
+		LIMIT $4`, workspaceID, channelID, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.ScheduledMessage
+	for rows.Next() {
+		var m domain.ScheduledMessage
+		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID,
+			&m.AccountID, &m.PeerKind, &m.PeerID, &m.Message, &m.SendAt, &m.Status,
+			&m.RecurrenceRule, &m.OccurrenceCount, &m.LastError, &m.CreatedBy, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (r *GatewayRepository) GetScheduledMessage(ctx context.Context, id, workspaceID string) (domain.ScheduledMessage, error) {
+	var m domain.ScheduledMessage
+	err := r.pool.QueryRow(ctx, `
+		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''),
+		       account_id, peer_kind, peer_id, message, send_at, status,
+		       recurrence_rule, occurrence_count, last_error, created_by, created_at, updated_at
+		FROM gateway_scheduled_messages
+		WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+		id, workspaceID,
+	).Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID,
+		&m.AccountID, &m.PeerKind, &m.PeerID, &m.Message, &m.SendAt, &m.Status,
+		&m.RecurrenceRule, &m.OccurrenceCount, &m.LastError, &m.CreatedBy, &m.CreatedAt, &m.UpdatedAt)
+	return m, err
+}
+
+func (r *GatewayRepository) UpdateScheduledMessageStatus(ctx context.Context, id, workspaceID, status, lastError string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE gateway_scheduled_messages SET status=$1, last_error=$2, updated_at=NOW()
+		WHERE id=$3::uuid AND workspace_id=$4::uuid`,
+		status, lastError, id, workspaceID)
+	return err
+}
+
+func (r *GatewayRepository) RescheduleMessage(ctx context.Context, id, workspaceID string, nextSendAt time.Time, occurrenceCount int) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE gateway_scheduled_messages SET send_at=$1, occurrence_count=$2, updated_at=NOW()
+		WHERE id=$3::uuid AND workspace_id=$4::uuid`,
+		nextSendAt, occurrenceCount, id, workspaceID)
+	return err
+}
+
+func (r *GatewayRepository) FetchDueScheduledMessages(ctx context.Context) ([]domain.ScheduledMessage, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''),
+		       account_id, peer_kind, peer_id, message, send_at, status,
+		       recurrence_rule, occurrence_count, last_error, created_by, created_at, updated_at
+		FROM gateway_scheduled_messages
+		WHERE status = 'pending'
+		  AND send_at <= NOW()
+		ORDER BY send_at ASC
+		LIMIT 50`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.ScheduledMessage
+	for rows.Next() {
+		var m domain.ScheduledMessage
+		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID,
+			&m.AccountID, &m.PeerKind, &m.PeerID, &m.Message, &m.SendAt, &m.Status,
+			&m.RecurrenceRule, &m.OccurrenceCount, &m.LastError, &m.CreatedBy, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
 }

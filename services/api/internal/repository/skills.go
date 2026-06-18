@@ -15,12 +15,12 @@ func NewSkillRepository(pool *pgxpool.Pool) *SkillRepository { return &SkillRepo
 
 const skillSelect = `
 SELECT id::text, COALESCE(workspace_id::text,''), name, description, content, source, enabled,
-       COALESCE(created_by::text,''), created_at, updated_at
+       COALESCE(required_tool_names, '{}'), COALESCE(created_by::text,''), created_at, updated_at
 FROM skills`
 
 func scanSkill(row interface{ Scan(...any) error }) (domain.Skill, error) {
 	var s domain.Skill
-	err := row.Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Description, &s.Content, &s.Source, &s.Enabled, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt)
+	err := row.Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Description, &s.Content, &s.Source, &s.Enabled, &s.RequiredToolNames, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt)
 	return s, err
 }
 
@@ -74,7 +74,7 @@ func (r *SkillRepository) ListForAgent(ctx context.Context, agentID string) ([]d
 	rows, err := r.pool.Query(ctx, `
 		SELECT ask.id::text, ask.agent_id::text, ask.skill_id::text, ask.enabled, ask.order_index, ask.created_at,
 		       s.id::text, COALESCE(s.workspace_id::text,''), s.name, s.description, s.content, s.source,
-		       s.enabled, COALESCE(s.created_by::text,''), s.created_at, s.updated_at
+		       s.enabled, COALESCE(s.required_tool_names, '{}'), COALESCE(s.created_by::text,''), s.created_at, s.updated_at
 		FROM agent_skills ask
 		JOIN skills s ON s.id=ask.skill_id
 		WHERE ask.agent_id=$1::uuid
@@ -88,7 +88,7 @@ func (r *SkillRepository) ListForAgent(ctx context.Context, agentID string) ([]d
 		var a domain.AgentSkill
 		var s domain.Skill
 		if err := rows.Scan(&a.ID, &a.AgentID, &a.SkillID, &a.Enabled, &a.OrderIndex, &a.CreatedAt,
-			&s.ID, &s.WorkspaceID, &s.Name, &s.Description, &s.Content, &s.Source, &s.Enabled, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			&s.ID, &s.WorkspaceID, &s.Name, &s.Description, &s.Content, &s.Source, &s.Enabled, &s.RequiredToolNames, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, err
 		}
 		a.Skill = &s
@@ -107,16 +107,39 @@ func (r *SkillRepository) SetForAgent(ctx context.Context, agentID string, assig
 		return err
 	}
 	batch := &pgx.Batch{}
+	var enabledSkillIDs []string
 	for _, a := range assignments {
 		if a.SkillID == "" {
 			continue
 		}
 		batch.Queue(`INSERT INTO agent_skills(agent_id,skill_id,enabled,order_index) VALUES($1::uuid,$2::uuid,$3,$4)`,
 			agentID, a.SkillID, a.Enabled, a.OrderIndex)
+		if a.Enabled {
+			enabledSkillIDs = append(enabledSkillIDs, a.SkillID)
+		}
 	}
 	br := tx.SendBatch(ctx, batch)
 	if err := br.Close(); err != nil {
 		return err
+	}
+	// Auto-attach required tools for all enabled skills (ON CONFLICT DO NOTHING preserves existing state).
+	if len(enabledSkillIDs) > 0 {
+		toolRows, err := tx.Query(ctx,
+			`SELECT unnest(required_tool_names) FROM skills WHERE id = ANY($1::uuid[]) AND required_tool_names <> '{}'`,
+			enabledSkillIDs)
+		if err == nil {
+			defer toolRows.Close()
+			for toolRows.Next() {
+				var toolName string
+				if toolRows.Scan(&toolName) == nil && toolName != "" {
+					_, _ = tx.Exec(ctx,
+						`INSERT INTO agent_tools(agent_id, tool_id, enabled)
+						 SELECT $1::uuid, id, true FROM tools WHERE name=$2
+						 ON CONFLICT DO NOTHING`,
+						agentID, toolName)
+				}
+			}
+		}
 	}
 	return tx.Commit(ctx)
 }

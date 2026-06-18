@@ -74,6 +74,7 @@ func main() {
 	reg := tools.NewRegistry()
 	reg.Register(native.NewReadFileTool(cfg.StoragePath))
 	reg.Register(native.NewWebSearchTool())
+	reg.Register(native.NewSaveMemoryTool(pool))
 	for _, t := range native.NewWhatsAppTools(pool, cfg) {
 		reg.Register(t)
 	}
@@ -115,6 +116,7 @@ func main() {
 		Skills:          handler.NewSkillsHandler(pool, cfg),
 		Config:          handler.NewConfigHandler(cfg),
 		NexusAI:         handler.NewNexusAIHandler(pool, cfg, runs),
+		Observability:   handler.NewObservabilityHandler(pool),
 	}
 
 	// HTTP server
@@ -144,6 +146,15 @@ func main() {
 		time.Sleep(3 * time.Second) // wait for adapter subprocess to be ready
 		h.Gateway.SyncAllAdapters(context.Background())
 	}()
+
+	// Fire pending WhatsApp reminders as they come due.
+	go h.Gateway.StartReminderDispatcher(context.Background())
+
+	// Auto-reconnect stale WhatsApp connections (e.g. after fetchProps timeout).
+	go h.Gateway.StartConnectionWatchdog(context.Background())
+
+	// Deliver scheduled outbound messages as they come due.
+	go h.Gateway.StartScheduledMessageDispatcher(context.Background())
 
 	<-quit
 	slog.Info("shutting down server...")

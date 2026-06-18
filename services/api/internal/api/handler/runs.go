@@ -18,6 +18,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	agentprompt "github.com/deepaksingh/agent-nexus/services/api/internal/runtime/agent"
 	contextretrieval "github.com/deepaksingh/agent-nexus/services/api/internal/runtime/context"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/cost"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/memory"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/encrypt"
@@ -100,7 +101,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	memories, contextChunks := []string{}, []string{}
 	if a.MemoryEnabled {
 		start := time.Now()
-		found, err := memory.NewEngine(h.pool).Retrieve(r.Context(), a.ID, ws, q.Input)
+		found, err := memory.NewEngine(h.pool).Retrieve(r.Context(), a.ID, ws, c.ID, memoryEmbedding(r.Context(), llm, q.Input), a.MaxMemories, a.MinRelevanceScore)
 		if err == nil {
 			for _, m := range found {
 				memories = append(memories, m.Content)
@@ -146,12 +147,16 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		MemorySummaries:    memories,
 		ContextChunks:      contextChunks,
 		History:            history,
+		MemoryEnabled:      a.MemoryEnabled,
+		MemorySaveMode:     a.MemorySaveMode,
 	})
 
 	// Load tool definitions for this agent
 	toolDefs, dbTools, _ := loadAgentToolDefs(r.Context(), h.pool, a.ID)
+	toolDefs, dbTools = ensureMemoryToolDef(toolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
 	execCtx := tools.ExecutionContext{
 		WorkspaceID:    ws,
+		AgentID:        a.ID,
 		UserID:         uid,
 		RunID:          id,
 		ConversationID: c.ID,
@@ -163,6 +168,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	messages := prompt
 	stepCount := 0
 	totalInput, totalOutput := 0, 0
+	memorySaveCalled := false
 
 	for {
 		stream, e := llm.Complete(r.Context(), provider.CompletionRequest{
@@ -229,16 +235,15 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				sseErr("failed to save assistant message")
 				return
 			}
-			if a.MemoryEnabled {
-				mem := &domain.Memory{WorkspaceID: ws, UserID: uid, AgentID: a.ID, Scope: domain.MemoryScope(a.MemoryScope), Content: "User: " + q.Input + "\nAssistant: " + reply, SourceRunID: id}
-				if a.MemoryScope == string(domain.MemoryScopeWorkspace) {
-					mem.AgentID = ""
-				}
-				_ = memory.NewEngine(h.pool).Store(r.Context(), mem)
+			if shouldRunMemoryExtractor(a, memorySaveCalled) {
+				start := time.Now()
+				count, err := runMemoryExtractor(r.Context(), h.pool, llm, a, ws, uid, c.ID, id, q.Input, reply)
+				_ = h.createStep(r.Context(), id, domain.StepToolCall, map[string]any{"tool": "memory_extractor"}, map[string]any{"saved": count}, start, 0, "memory_extractor", errString(err))
 			}
 			_ = h.createStep(r.Context(), id, domain.StepFinalResponse, map[string]any{}, map[string]any{"content": reply}, time.Now(), usage.OutputTokens, "", "")
-			_, _ = h.pool.Exec(r.Context(), `UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4 WHERE id=$1::uuid`, id, reply, totalInput, totalOutput)
-			emit(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":0}`, id, totalInput, totalOutput))
+			costUSD := cost.Estimate(a.Provider, a.Model, totalInput, totalOutput)
+			_, _ = h.pool.Exec(r.Context(), `UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`, id, reply, totalInput, totalOutput, costUSD)
+			emit(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`, id, totalInput, totalOutput, costUSD))
 			return
 		}
 
@@ -250,6 +255,9 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		})
 
 		for _, call := range pendingCalls {
+			if call.Name == "native_save_memory" {
+				memorySaveCalled = true
+			}
 			dbTool, toolExists := dbTools[call.Name]
 
 			// Approval gate for high-risk tools
@@ -441,6 +449,54 @@ func (h *RunsHandler) ListByConversation(w http.ResponseWriter, r *http.Request)
 		a = append(a, x)
 	}
 	errs.WriteJSON(w, 200, map[string]any{"data": a})
+}
+
+// Stats returns per-agent token/cost/run aggregations for the workspace (root runs only).
+func (h *RunsHandler) Stats(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	type agentStat struct {
+		AgentID   string  `json:"agent_id"`
+		AgentName string  `json:"agent_name"`
+		Tokens    int64   `json:"tokens"`
+		Cost      float64 `json:"cost"`
+		Runs      int64   `json:"runs"`
+	}
+	rows, e := h.pool.Query(r.Context(), `
+		SELECT COALESCE(r.agent_id::text,'') AS agent_id,
+		       COALESCE(a.name,'Group runs') AS agent_name,
+		       SUM(r.total_input_tokens+r.total_output_tokens) AS tokens,
+		       SUM(r.cost_estimate) AS cost,
+		       COUNT(*) AS runs
+		FROM runs r
+		LEFT JOIN agents a ON a.id=r.agent_id
+		WHERE r.workspace_id=$1::uuid AND r.parent_run_id IS NULL
+		GROUP BY r.agent_id, a.name
+		ORDER BY tokens DESC`, ws)
+	if e != nil {
+		errs.Write(w, errs.Internal("failed to aggregate usage"))
+		return
+	}
+	defer rows.Close()
+	byAgent := []agentStat{}
+	var totalTokens int64
+	var totalCost float64
+	var totalRuns int64
+	for rows.Next() {
+		var s agentStat
+		if rows.Scan(&s.AgentID, &s.AgentName, &s.Tokens, &s.Cost, &s.Runs) != nil {
+			continue
+		}
+		byAgent = append(byAgent, s)
+		totalTokens += s.Tokens
+		totalCost += s.Cost
+		totalRuns += s.Runs
+	}
+	errs.WriteJSON(w, 200, map[string]any{
+		"total_tokens": totalTokens,
+		"total_cost":   totalCost,
+		"total_runs":   totalRuns,
+		"by_agent":     byAgent,
+	})
 }
 
 // List returns root runs only (parent_run_id IS NULL), paginated by cursor.

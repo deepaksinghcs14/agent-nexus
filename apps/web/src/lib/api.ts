@@ -133,6 +133,7 @@ export const agentsAPI = {
 }
 
 export const runsAPI = {
+  stats: () => api.get('/runs/stats'),
   list: (params?: string | Record<string, string>) => {
     if (typeof params === 'object') {
       const qs = new URLSearchParams(params).toString()
@@ -154,6 +155,8 @@ export const runsAPI = {
 
 export const memoryAPI = {
   list: (params?: string) => api.get(`/memory${params ? '?' + params : ''}`),
+  approve: (id: string) => api.patch(`/memory/${id}/approve`),
+  reject: (id: string) => api.patch(`/memory/${id}/reject`),
   delete: (id: string) => api.delete(`/memory/${id}`),
   bulkDelete: (params?: string) => api.delete(`/memory${params ? '?' + params : ''}`),
 }
@@ -214,6 +217,7 @@ export const conversationsAPI = {
   create: (body: { agent_id: string; title?: string }) => api.post('/conversations', body),
   get: (id: string) => api.get(`/conversations/${id}`),
   delete: (id: string) => api.delete(`/conversations/${id}`),
+  deleteAll: () => api.delete('/conversations'),
 }
 
 export const workspaceAPI = {
@@ -281,6 +285,9 @@ export const gatewayAPI = {
   createContact: (body: unknown) => api.post('/gateway/contacts', body),
   updateContact: (id: string, body: unknown) => api.put(`/gateway/contacts/${id}`, body),
   deleteContact: (id: string) => api.delete(`/gateway/contacts/${id}`),
+  listScheduledMessages: (params?: string) => api.get(`/gateway/scheduled-messages${params ? '?' + params : ''}`),
+  createScheduledMessage: (body: unknown) => api.post('/gateway/scheduled-messages', body),
+  deleteScheduledMessage: (id: string) => api.delete(`/gateway/scheduled-messages/${id}`),
 }
 
 export const skillsAPI = {
@@ -342,4 +349,8 @@ export const adminAPI = {
 export const configAPI = {
   get: (): Promise<{ demo_mode: boolean }> =>
     fetch(`${API_URL}/api/v1/config`).then((r) => r.json()),
+}
+
+export const observabilityAPI = {
+  latency: (days = 7) => api.get(`/observability/latency?days=${days}`),
 }

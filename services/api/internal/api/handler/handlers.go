@@ -23,4 +23,5 @@ type Handlers struct {
 	Skills          *SkillsHandler
 	Config          *ConfigHandler
 	NexusAI         *NexusAIHandler
+	Observability   *ObservabilityHandler
 }

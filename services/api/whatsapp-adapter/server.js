@@ -42,8 +42,11 @@ function accountState(accountId) {
       callbackUrl: '',
       selfChatEnabled: false,
       sentMessageIds: new Set(),
+      messageStore: new Map(),  // id → proto message, for retry requests
       lidToPhone: new Map(),
-      pendingPhones: []
+      pendingPhones: [],
+      connectedAt: 0,           // epoch ms when last connection.open fired
+      lastMessageAt: 0          // epoch ms of last forwarded inbound message
     })
   }
   return accounts.get(accountId)
@@ -98,7 +101,14 @@ async function startAccount(accountId, opts = {}) {
     version,
     auth: authState,
     printQRInTerminal: false,
-    logger: logger.child({ accountId })
+    logger: logger.child({ accountId }),
+    // Required so Baileys can respond to WhatsApp retry requests.
+    // Without this, failed decryptions show "Waiting for this message" permanently.
+    getMessage: async (key) => {
+      const stored = state.messageStore.get(key.id)
+      if (stored) return stored
+      return { conversation: '' }
+    }
   })
   state.socket = socket
 
@@ -136,6 +146,7 @@ async function startAccount(accountId, opts = {}) {
       state.selfId = socket.user?.id || ''
       state.selfLid = socket.user?.lid || ''
       state.lastError = ''
+      state.connectedAt = Date.now()
       // Newer WhatsApp clients use opaque LID JIDs; Baileys may not expose socket.user.lid.
       // Resolve selfLid via onWhatsApp so the from_me self-chat filter can match correctly.
       if (!state.selfLid && state.selfId) {
@@ -176,6 +187,13 @@ async function startAccount(accountId, opts = {}) {
     if (type !== 'notify') return
     for (const msg of messages || []) {
       if (!msg.message) continue
+      // Cache every message so getMessage() can serve retry requests.
+      if (msg.key.id) {
+        state.messageStore.set(msg.key.id, msg.message)
+        if (state.messageStore.size > 500) {
+          state.messageStore.delete(state.messageStore.keys().next().value)
+        }
+      }
       if (msg.key.fromMe) {
         const sentID = msg.key.id || ''
         if (sentID && state.sentMessageIds.has(sentID)) {
@@ -257,6 +275,7 @@ async function forwardMessage(accountId, state, msg) {
       sender: payload.sender
     }, 'forwarding whatsapp message')
     await postJSON(state.callbackUrl, payload)
+    state.lastMessageAt = Date.now()
   } catch (err) {
     state.lastError = err.message
     logger.error({ err, accountId }, 'failed to forward whatsapp message')
@@ -313,10 +332,26 @@ async function route(req, res) {
       self_lid: state.selfLid,
       last_error: state.lastError,
       has_qr: !!state.qr,
+      qr_data_url: state.qrDataURL || '',
       callback_url: state.callbackUrl,
       self_chat_enabled: state.selfChatEnabled,
-      lid_map_size: state.lidToPhone?.size || 0
+      lid_map_size: state.lidToPhone?.size || 0,
+      connected_at: state.connectedAt || 0,
+      last_message_at: state.lastMessageAt || 0
     })
+  }
+
+  // Force-close the current socket and reconnect without losing credentials.
+  if (req.method === 'POST' && parts[2] === 'reconnect') {
+    const callbackUrl = state.callbackUrl
+    const selfChatEnabled = state.selfChatEnabled
+    if (state.socket) {
+      try { state.socket.end(undefined) } catch (_) {}
+      state.socket = null
+      state.status = 'disconnected'
+    }
+    await startAccount(accountId, { callback_url: callbackUrl, self_chat_enabled: selfChatEnabled })
+    return json(res, 200, { account_id: accountId, status: state.status })
   }
 
   if (req.method === 'POST' && parts[2] === 'login' && parts[3] === 'start') {
@@ -351,11 +386,19 @@ async function route(req, res) {
   }
 
   if (req.method === 'POST' && parts[2] === 'logout') {
-    if (state.socket) await state.socket.logout()
+    if (state.socket) {
+      try { await state.socket.logout() } catch (_) {}
+    }
     state.socket = null
     state.status = 'disconnected'
     state.qr = ''
     state.qrDataURL = ''
+    state.selfId = ''
+    state.selfLid = ''
+    state.lastError = ''
+    // Delete stored credentials so the next /login/start gets a fresh QR code.
+    const authDir = path.join(AUTH_ROOT, accountId)
+    await fs.rm(authDir, { recursive: true, force: true })
     return json(res, 200, { account_id: accountId, status: state.status })
   }
 
@@ -367,7 +410,15 @@ async function route(req, res) {
     }
     const sent = await active.socket.sendMessage(peerToJid(body.peer), { text: body.text || '' })
     const messageId = sent?.key?.id || ''
-    if (messageId) active.sentMessageIds.add(messageId)
+    if (messageId) {
+      active.sentMessageIds.add(messageId)
+      if (sent.message) {
+        active.messageStore.set(messageId, sent.message)
+        if (active.messageStore.size > 500) {
+          active.messageStore.delete(active.messageStore.keys().next().value)
+        }
+      }
+    }
     return json(res, 200, { status: 'sent', message_id: messageId })
   }
 

@@ -50,6 +50,12 @@ func (h *AgentsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		MaxTokens               int     `json:"max_tokens"`
 		MemoryEnabled           bool    `json:"memory_enabled"`
 		MemoryScope             string  `json:"memory_scope"`
+		MemorySaveMode          string  `json:"memory_save_mode"`
+		MemoryReviewPolicy      string  `json:"memory_review_policy"`
+		MaxMemories             int     `json:"max_memories"`
+		MinRelevanceScore       float64 `json:"min_relevance_score"`
+		MemoryMinImportance     float64 `json:"memory_min_importance"`
+		MemoryDedupeThreshold   float64 `json:"memory_dedupe_threshold"`
 		ContextRetrievalEnabled bool    `json:"context_retrieval_enabled"`
 		MaxSteps                int     `json:"max_steps"`
 		MaxToolCalls            int     `json:"max_tool_calls"`
@@ -70,6 +76,12 @@ func (h *AgentsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.MemoryScope == "" {
 		req.MemoryScope = "conversation"
 	}
+	if req.MemorySaveMode == "" {
+		req.MemorySaveMode = "hybrid"
+	}
+	if req.MemoryReviewPolicy == "" {
+		req.MemoryReviewPolicy = "uncertain"
+	}
 	if req.MaxSteps == 0 {
 		req.MaxSteps = 10
 	}
@@ -78,6 +90,18 @@ func (h *AgentsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.MaxDurationSecs == 0 {
 		req.MaxDurationSecs = 300
+	}
+	if req.MaxMemories == 0 {
+		req.MaxMemories = 5
+	}
+	if req.MinRelevanceScore == 0 {
+		req.MinRelevanceScore = 0.70
+	}
+	if req.MemoryMinImportance == 0 {
+		req.MemoryMinImportance = 0.70
+	}
+	if req.MemoryDedupeThreshold == 0 {
+		req.MemoryDedupeThreshold = 0.88
 	}
 
 	a := &domain.Agent{
@@ -92,6 +116,12 @@ func (h *AgentsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		MaxTokens:               req.MaxTokens,
 		MemoryEnabled:           req.MemoryEnabled,
 		MemoryScope:             req.MemoryScope,
+		MemorySaveMode:          req.MemorySaveMode,
+		MemoryReviewPolicy:      req.MemoryReviewPolicy,
+		MaxMemories:             req.MaxMemories,
+		MinRelevanceScore:       req.MinRelevanceScore,
+		MemoryMinImportance:     req.MemoryMinImportance,
+		MemoryDedupeThreshold:   req.MemoryDedupeThreshold,
 		ContextRetrievalEnabled: req.ContextRetrievalEnabled,
 		MaxSteps:                req.MaxSteps,
 		MaxToolCalls:            req.MaxToolCalls,

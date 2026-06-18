@@ -73,6 +73,12 @@ export interface Agent {
   max_tokens: number
   memory_enabled: boolean
   memory_scope: 'conversation' | 'agent' | 'workspace'
+  memory_save_mode: 'tool' | 'extractor' | 'hybrid'
+  memory_review_policy: 'none' | 'uncertain' | 'all'
+  max_memories: number
+  min_relevance_score: number
+  memory_min_importance: number
+  memory_dedupe_threshold: number
   context_retrieval_enabled: boolean
   max_steps: number
   max_tool_calls: number
@@ -298,6 +304,29 @@ export interface GatewayReminder {
   updated_at: string
 }
 
+export interface ScheduledMessage {
+  id: string
+  workspace_id: string
+  channel_id: string
+  contact_id?: string
+  account_id: string
+  peer_kind: string
+  peer_id: string
+  message: string
+  send_at: string
+  status: 'pending' | 'sent' | 'failed' | 'cancelled'
+  recurrence_rule?: {
+    frequency: 'daily' | 'weekly' | 'monthly' | 'weekdays'
+    interval?: number
+    end_at?: string
+    max_occurrences?: number
+  }
+  occurrence_count: number
+  last_error?: string
+  created_at: string
+  updated_at: string
+}
+
 export interface GatewayEscalation {
   id: string
   workspace_id: string
@@ -326,6 +355,7 @@ export interface Skill {
   content: string
   source: 'manual' | 'managed'
   enabled: boolean
+  required_tool_names?: string[]
   created_by?: string
   created_at: string
   updated_at: string
@@ -375,10 +405,15 @@ export interface Memory {
   workspace_id: string
   agent_id?: string
   user_id?: string
+  conversation_id?: string
   scope: 'conversation' | 'agent' | 'workspace'
   content: string
   relevance_score: number
+  importance_score: number
+  status: 'active' | 'pending' | 'rejected'
+  save_source: 'tool' | 'extractor'
   source_run_id?: string
+  metadata?: { reason?: string; [key: string]: unknown }
   created_at: string
   updated_at: string
 }
@@ -574,6 +609,43 @@ export interface NexusMessage {
     link?: string
     error?: string
   }
+}
+
+// Observability
+export interface LatencyByAgent {
+  id: string
+  name: string
+  provider: string
+  model: string
+  run_count: number
+  success_count: number
+  p50_secs: number
+  p95_secs: number
+  avg_input_tokens: number
+  avg_output_tokens: number
+}
+
+export interface LatencyByModel {
+  provider: string
+  model: string
+  run_count: number
+  p50_secs: number
+  p95_secs: number
+  tokens_per_sec: number
+}
+
+export interface LatencyTrendDay {
+  day: string
+  run_count: number
+  p50_secs: number
+  p95_secs: number
+}
+
+export interface LatencyData {
+  by_agent: LatencyByAgent[]
+  by_model: LatencyByModel[]
+  trend: LatencyTrendDay[]
+  days: number
 }
 
 // Invoke API

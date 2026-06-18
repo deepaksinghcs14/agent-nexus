@@ -129,6 +129,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			// Conversations
 			r.Get("/conversations", h.Conversations.List)
 			r.Post("/conversations", h.Conversations.Create)
+			r.Delete("/conversations", h.Conversations.DeleteAll)
 			r.Get("/conversations/{id}", h.Conversations.Get)
 			r.Delete("/conversations/{id}", h.Conversations.Delete)
 			r.Post("/conversations/{id}/runs", h.Runs.Start) // SSE stream
@@ -136,6 +137,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 
 			// Runs
 			r.Get("/runs", h.Runs.List)
+			r.Get("/runs/stats", h.Runs.Stats)
 			r.Get("/runs/{id}", h.Runs.Get)
 			r.Get("/runs/{id}/children", h.Runs.ListChildren)
 			r.Post("/runs/{id}/approve", h.Runs.Approve)
@@ -143,6 +145,8 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 
 			// Memory
 			r.Get("/memory", h.Memory.List)
+			r.Patch("/memory/{id}/approve", h.Memory.Approve)
+			r.Patch("/memory/{id}/reject", h.Memory.Reject)
 			r.Delete("/memory/{id}", h.Memory.Delete)
 			r.Delete("/memory", h.Memory.BulkDelete)
 
@@ -172,6 +176,10 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 				r.Post("/pairings/{id}/reject", h.Gateway.RejectPairing)
 				r.Get("/outbox", h.Gateway.ListOutbox)
 				r.Get("/reminders", h.Gateway.ListReminders)
+				r.Get("/scheduled-messages", h.Gateway.ListScheduledMessages)
+				r.Post("/scheduled-messages", h.Gateway.CreateScheduledMessage)
+				r.Get("/scheduled-messages/{id}", h.Gateway.GetScheduledMessage)
+				r.Delete("/scheduled-messages/{id}", h.Gateway.DeleteScheduledMessage)
 				r.Get("/escalations", h.Gateway.ListEscalations)
 				r.Post("/escalations/{id}/approve", h.Gateway.ApproveEscalation)
 				r.Post("/escalations/{id}/reject", h.Gateway.RejectEscalation)
@@ -199,6 +207,9 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Post("/workflows/{id}/runs", h.Workflows.Run)
 			r.Get("/workflows/{id}/graph", h.Workflows.GetGraph)
 			r.Put("/workflows/{id}/graph", h.Workflows.SaveGraph)
+
+			// Observability
+			r.Get("/observability/latency", h.Observability.Latency)
 
 			// Nexus AI meta-agent
 			r.Post("/nexus-ai/chat", h.NexusAI.Chat)

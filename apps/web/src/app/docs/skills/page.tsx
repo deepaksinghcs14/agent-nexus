@@ -82,6 +82,10 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
       </ol>
 
       <h2>Built-in managed skills</h2>
+      <p>
+        These skills are provided by Agent Nexus and are available in every workspace. They are
+        read-only — attach them to any agent directly from the Skills tab.
+      </p>
       <table>
         <thead>
           <tr><th>Skill</th><th>Purpose</th></tr>
@@ -91,16 +95,64 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
             <td><strong>WhatsApp Owner Escalation</strong></td>
             <td>
               Instructs the agent to call <code>whatsapp_request_owner_approval</code> before taking
-              risky or ambiguous actions in a WhatsApp gateway context. Automatically included for
-              agents used in gateway channels.
+              risky or ambiguous actions in a WhatsApp gateway context. Recommended for all agents
+              used in WhatsApp channels.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>WhatsApp Formatter</strong></td>
+            <td>
+              Formats responses for WhatsApp — avoids markdown headers, uses *bold* for emphasis,
+              and keeps replies under 1600 characters. Attach to any agent that sends WhatsApp messages.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Human Persona</strong></td>
+            <td>
+              Makes the agent reply like a real person texting — casual, short, no AI filler phrases
+              (&ldquo;Certainly!&rdquo;, &ldquo;Of course!&rdquo;), no unnecessary bullet points. Ideal for WhatsApp and
+              conversational contexts where you want replies to feel natural.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Language Mirror</strong></td>
+            <td>
+              Detects the language of the user&apos;s message and always replies in the same language.
+              Useful for multilingual audiences.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Concise Responder</strong></td>
+            <td>
+              Keeps responses under 300 words unless the user explicitly asks for more detail. Reduces
+              token usage and improves readability for everyday queries.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Safety Guardrail</strong></td>
+            <td>
+              Prevents the agent from revealing its system instructions, API keys, or internal
+              configuration, even if asked directly.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Professional Tone</strong></td>
+            <td>
+              Maintains a professional, direct, and respectful tone. Avoids slang and excessive
+              informality. Complements <em>Human Persona</em> when you want warmth without being too casual.
             </td>
           </tr>
         </tbody>
       </table>
 
+      <Callout type="tip">
+        For WhatsApp agents, a good starting stack is: <strong>WhatsApp Formatter</strong> +{' '}
+        <strong>Human Persona</strong> + <strong>WhatsApp Owner Escalation</strong>. Adjust as needed.
+      </Callout>
+
       <Callout type="info">
-        Managed skills are updated automatically with platform releases. If you need different
-        behaviour, create a custom skill — do not try to duplicate a managed skill.
+        Managed skills are updated with platform releases. If you need different behaviour, create
+        a custom skill — do not duplicate a managed skill.
       </Callout>
     </DocPage>
   )

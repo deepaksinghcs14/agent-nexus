@@ -154,33 +154,97 @@ func apply(ctx context.Context, pool *pgxpool.Pool, version, sql string) error {
 	return tx.Commit(ctx)
 }
 
-// splitStatements splits SQL on semicolons, skipping semicolons inside -- line
-// comments so that comment text like "-- foo; bar" does not create a spurious
-// statement boundary.
+// splitStatements splits SQL on top-level semicolons, correctly handling
+// single-quoted string literals (including '' escape sequences), dollar-quoted
+// strings ($$...$$), and -- line comments.
 func splitStatements(sql string) []string {
 	var out []string
 	var stmt strings.Builder
-	for _, line := range strings.Split(sql, "\n") {
-		// Strip the -- comment portion before scanning for a semicolon.
-		codePart := line
-		if idx := strings.Index(line, "--"); idx >= 0 {
-			codePart = line[:idx]
+	inSingle := false
+	inDouble := false
+	dollarTag := ""
+
+	for i := 0; i < len(sql); i++ {
+		ch := sql[i]
+
+		// Inside a dollar-quoted string: scan until the closing tag.
+		if dollarTag != "" {
+			stmt.WriteByte(ch)
+			if ch == '$' && strings.HasPrefix(sql[i:], dollarTag) {
+				stmt.WriteString(sql[i+1 : i+len(dollarTag)])
+				i += len(dollarTag) - 1
+				dollarTag = ""
+			}
+			continue
 		}
-		if strings.Contains(codePart, ";") {
-			// Semicolon is in executable code — end the current statement here.
-			// Append everything up to (not including) the first semicolon in codePart.
-			semiIdx := strings.Index(codePart, ";")
-			stmt.WriteString(line[:semiIdx])
+
+		// Inside a single-quoted string.
+		if inSingle {
+			stmt.WriteByte(ch)
+			if ch == '\'' {
+				if i+1 < len(sql) && sql[i+1] == '\'' {
+					stmt.WriteByte(sql[i+1])
+					i++ // skip the second quote of ''
+				} else {
+					inSingle = false
+				}
+			}
+			continue
+		}
+
+		// Inside a double-quoted identifier.
+		if inDouble {
+			stmt.WriteByte(ch)
+			if ch == '"' {
+				inDouble = false
+			}
+			continue
+		}
+
+		// Line comment: skip to end of line.
+		if ch == '-' && i+1 < len(sql) && sql[i+1] == '-' {
+			for i < len(sql) && sql[i] != '\n' {
+				i++
+			}
+			stmt.WriteByte('\n')
+			continue
+		}
+
+		// Start of a dollar-quoted string: find the closing $.
+		if ch == '$' {
+			end := strings.Index(sql[i+1:], "$")
+			if end >= 0 {
+				tag := sql[i : i+end+2] // e.g. "$$" or "$body$"
+				stmt.WriteString(tag)
+				i += len(tag) - 1
+				dollarTag = tag
+				continue
+			}
+		}
+
+		if ch == '\'' {
+			inSingle = true
+			stmt.WriteByte(ch)
+			continue
+		}
+
+		if ch == '"' {
+			inDouble = true
+			stmt.WriteByte(ch)
+			continue
+		}
+
+		if ch == ';' {
 			if s := strings.TrimSpace(stmt.String()); s != "" {
 				out = append(out, s)
 			}
 			stmt.Reset()
-			// Anything after the semicolon on the same line starts the next statement.
-			stmt.WriteString(line[semiIdx+1:] + "\n")
-		} else {
-			stmt.WriteString(line + "\n")
+			continue
 		}
+
+		stmt.WriteByte(ch)
 	}
+
 	if s := strings.TrimSpace(stmt.String()); s != "" {
 		out = append(out, s)
 	}

@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Check, ChevronRight, Copy, LogOut, QrCode, RefreshCw } from 'lucide-react'
-import { gatewayAPI } from '@/lib/api'
-import type { ChannelSession, GatewayChannel, GatewayContact, GatewayEscalation, GatewayEvent, GatewayOutboundMessage, GatewayPairingRequest, GatewayReminder } from '@/types'
+import { agentsAPI, gatewayAPI } from '@/lib/api'
+import type { ChannelSession, GatewayChannel, GatewayContact, GatewayEscalation, GatewayEvent, GatewayOutboundMessage, GatewayPairingRequest, GatewayReminder, ScheduledMessage } from '@/types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
-const TABS = ['Overview', 'QR Login', 'Contacts', 'Sessions', 'Pairing', 'Reminders', 'Escalations', 'Events', 'Outbox'] as const
-type Tab = typeof TABS[number]
+const WA_TABS = ['Overview', 'QR Login', 'Contacts', 'Sessions', 'Pairing', 'Reminders', 'Scheduled', 'Escalations', 'Events', 'Outbox'] as const
+const HTTP_TABS = ['Overview', 'Sessions', 'Events', 'Outbox', 'Reminders', 'Scheduled'] as const
+type Tab = typeof WA_TABS[number]
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
@@ -29,6 +30,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const [outbox, setOutbox] = useState<GatewayOutboundMessage[]>([])
   const [contacts, setContacts] = useState<GatewayContact[]>([])
   const [reminders, setReminders] = useState<GatewayReminder[]>([])
+  const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>([])
   const [escalations, setEscalations] = useState<GatewayEscalation[]>([])
   const [adapter, setAdapter] = useState<Record<string, unknown> | null>(null)
   const [qr, setQR] = useState<Record<string, unknown> | null>(null)
@@ -37,19 +39,39 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const [contactName, setContactName] = useState('')
   const [contactPhone, setContactPhone] = useState('')
   const [contactRole, setContactRole] = useState<'owner' | 'trusted' | 'blocked'>('trusted')
+  const [contactAgentId, setContactAgentId] = useState('')
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([])
+  const [schedContact, setSchedContact] = useState('')
+  const [schedMsg, setSchedMsg] = useState('')
+  const [schedSendAt, setSchedSendAt] = useState('')
+  const [schedFreq, setSchedFreq] = useState('')
+  const [schedInterval, setSchedInterval] = useState(1)
+  const [schedEndAt, setSchedEndAt] = useState('')
+  const [schedMaxOcc, setSchedMaxOcc] = useState('')
+  const [testInput, setTestInput] = useState('')
+  const [testSessionId, setTestSessionId] = useState('')
+  const [testResponse, setTestResponse] = useState<string | null>(null)
+  const [testLoading, setTestLoading] = useState(false)
 
   const ingressURL = useMemo(() => channel ? `${API_URL}/gateway/${channel.channel_type}/${channel.id}` : '', [channel])
 
   const load = useCallback(() => {
-    gatewayAPI.getChannel(params.id).then((c) => setChannel(c as GatewayChannel)).catch((e: Error) => setError(e.message))
     const q = `channel_id=${params.id}`
+    gatewayAPI.getChannel(params.id).then((c) => {
+      const ch = c as GatewayChannel
+      setChannel(ch)
+      if (ch.channel_type === 'whatsapp') {
+        gatewayAPI.listPairings(q).then((r) => setPairings(((r as { data?: GatewayPairingRequest[] }).data) ?? [])).catch(() => {})
+        gatewayAPI.listContacts(q).then((r) => setContacts(((r as { data?: GatewayContact[] }).data) ?? [])).catch(() => {})
+      }
+    }).catch((e: Error) => setError(e.message))
     gatewayAPI.listSessions(q).then((r) => setSessions(((r as { data?: ChannelSession[] }).data) ?? [])).catch(() => {})
     gatewayAPI.listEvents(q).then((r) => setEvents(((r as { data?: GatewayEvent[] }).data) ?? [])).catch(() => {})
-    gatewayAPI.listPairings(q).then((r) => setPairings(((r as { data?: GatewayPairingRequest[] }).data) ?? [])).catch(() => {})
     gatewayAPI.listOutbox(q).then((r) => setOutbox(((r as { data?: GatewayOutboundMessage[] }).data) ?? [])).catch(() => {})
-    gatewayAPI.listContacts(q).then((r) => setContacts(((r as { data?: GatewayContact[] }).data) ?? [])).catch(() => {})
     gatewayAPI.listReminders(q).then((r) => setReminders(((r as { data?: GatewayReminder[] }).data) ?? [])).catch(() => {})
+    gatewayAPI.listScheduledMessages(q).then((r) => setScheduledMessages(((r as { data?: ScheduledMessage[] }).data) ?? [])).catch(() => {})
     gatewayAPI.listEscalations(q).then((r) => setEscalations(((r as { data?: GatewayEscalation[] }).data) ?? [])).catch(() => {})
+    agentsAPI.list().then((r) => setAgents(((r as { data?: { id: string; name: string }[] }).data) ?? [])).catch(() => {})
   }, [params.id])
 
   useEffect(() => { load() }, [load])
@@ -149,10 +171,12 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
       phone_number: contactPhone,
       role: contactRole,
       auto_reply_enabled: true,
+      ...(contactAgentId ? { agent_id: contactAgentId } : {}),
     }).catch((e: Error) => setError(e.message))
     setContactName('')
     setContactPhone('')
     setContactRole('trusted')
+    setContactAgentId('')
     load()
   }
 
@@ -162,7 +186,62 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
     load()
   }
 
+  const scheduleMessage = async () => {
+    if (!schedMsg.trim() || !schedSendAt) { setError('Message and send time are required'); return }
+    const body: Record<string, unknown> = {
+      channel_id: params.id,
+      message: schedMsg,
+      send_at: new Date(schedSendAt).toISOString(),
+      ...(schedContact ? { contact_id: schedContact } : {}),
+    }
+    if (schedFreq) {
+      const rule: Record<string, unknown> = { frequency: schedFreq }
+      if (schedInterval > 1) rule.interval = schedInterval
+      if (schedEndAt) rule.end_at = new Date(schedEndAt).toISOString()
+      if (schedMaxOcc) rule.max_occurrences = parseInt(schedMaxOcc)
+      body.recurrence_rule = rule
+    }
+    await gatewayAPI.createScheduledMessage(body).catch((e: Error) => { setError(e.message); return null })
+    setSchedMsg('')
+    setSchedContact('')
+    setSchedSendAt('')
+    setSchedFreq('')
+    setSchedInterval(1)
+    setSchedEndAt('')
+    setSchedMaxOcc('')
+    load()
+  }
+
+  const cancelScheduledMessage = async (id: string) => {
+    await gatewayAPI.deleteScheduledMessage(id).catch(() => {})
+    load()
+  }
+
+  const sendTestMessage = async () => {
+    if (!testInput.trim() || !channel) return
+    setTestLoading(true)
+    setTestResponse(null)
+    try {
+      const body: Record<string, string> = { input: testInput }
+      if (testSessionId.trim()) body.session_id = testSessionId.trim()
+      const res = await fetch(`${API_URL}/gateway/http/${channel.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      setTestResponse(JSON.stringify(data, null, 2))
+    } catch (e) {
+      setTestResponse((e as Error).message)
+    } finally {
+      setTestLoading(false)
+    }
+  }
+
   if (!channel) return <div className="p-6 text-sm text-gray-400">{error || 'Loading…'}</div>
+
+  const isHTTP = channel.channel_type === 'http'
+  const tabs = isHTTP ? HTTP_TABS : WA_TABS
 
   return (
     <div className="p-6">
@@ -182,12 +261,12 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
       </div>
       {error && <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
       <div className="flex border-b border-gray-100 mb-5 bg-gray-50 rounded-t-lg overflow-hidden">
-        {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 text-[12px] whitespace-nowrap ${tab === t ? 'bg-white text-purple-600 font-medium border-b-2 border-purple-500' : 'text-gray-500 hover:text-gray-700'}`}>{t}</button>
+        {tabs.map((t) => (
+          <button key={t} onClick={() => setTab(t as Tab)} className={`px-4 py-2 text-[12px] whitespace-nowrap ${tab === t ? 'bg-white text-purple-600 font-medium border-b-2 border-purple-500' : 'text-gray-500 hover:text-gray-700'}`}>{t}</button>
         ))}
       </div>
 
-      {tab === 'Overview' && (
+      {tab === 'Overview' && !isHTTP && (
         <div className="grid grid-cols-2 gap-4">
           <Info label="Type" value={channel.channel_type} />
           <Info label="Status" value={channel.is_active ? 'active' : 'disabled'} />
@@ -195,7 +274,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
           <Info label="Account" value={channel.config?.account_id || 'default'} />
           <ToggleCard
             title="Assistant replies"
-            description="Controls whether inbound WhatsApp messages can run the agent. The webhook still stays online for chat commands."
+            description="Controls whether inbound messages can run the agent. The webhook still stays online for chat commands."
             checked={channel.config?.assistant_enabled !== false}
             onChange={(checked) => updateChannelConfig({ assistant_enabled: checked })}
           />
@@ -211,6 +290,86 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
               <code className="text-xs text-gray-500 font-mono bg-gray-50 px-2 py-1 rounded truncate">{ingressURL}</code>
               <CopyButton text={ingressURL} />
             </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'Overview' && isHTTP && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-4">
+            <Info label="Type" value="HTTP" />
+            <Info label="Status" value={channel.is_active ? 'active' : 'disabled'} />
+            <Info label="Agent" value={channel.agent_name || channel.agent_id} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <ToggleCard
+              title="Assistant replies"
+              description="Controls whether inbound POST requests trigger an agent run."
+              checked={channel.config?.assistant_enabled !== false}
+              onChange={(checked) => updateChannelConfig({ assistant_enabled: checked })}
+            />
+            <ToggleCard
+              title="Bot mode"
+              description="Silently approves unknown session IDs. Keep off to require explicit session allowlisting."
+              checked={!!channel.config?.bot_mode_enabled}
+              onChange={(checked) => updateChannelConfig({ bot_mode_enabled: checked })}
+            />
+          </div>
+          <div className="rounded-lg border border-gray-200 p-4 bg-white">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-100">POST</span>
+              <p className="text-[12px] font-medium text-gray-700">Inbound Webhook URL</p>
+            </div>
+            <div className="flex items-center gap-1">
+              <code className="text-xs text-gray-500 font-mono bg-gray-50 px-2 py-1 rounded truncate flex-1">{ingressURL}</code>
+              <CopyButton text={ingressURL} />
+            </div>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+            <p className="text-[12px] font-medium text-gray-700">Request format</p>
+            <pre className="text-xs bg-gray-50 rounded p-3 overflow-x-auto text-gray-600"><code>{`POST /gateway/http/${channel.id}
+Content-Type: application/json
+
+{
+  "input": "your message here",
+  "session_id": "optional-session-id"
+}`}</code></pre>
+            <p className="text-[11px] text-gray-500"><code className="bg-gray-100 px-1 rounded">session_id</code> is optional — the same value groups requests into one conversation thread. Omit it to start a fresh conversation on every call.</p>
+            <p className="text-[12px] font-medium text-gray-700 pt-1">Response — 202 Accepted</p>
+            <pre className="text-xs bg-gray-50 rounded p-3 overflow-x-auto text-gray-600"><code>{`{
+  "run_id": "...",
+  "session_id": "...",
+  "conversation_id": "...",
+  "status": "running"
+}`}</code></pre>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+            <p className="text-[12px] font-medium text-gray-700">Send a test message</p>
+            <div className="flex gap-2">
+              <input
+                value={testInput}
+                onChange={(e) => setTestInput(e.target.value)}
+                placeholder="Message to send…"
+                className="flex-1 text-[13px] px-3 py-2 border border-gray-200 rounded-lg"
+                onKeyDown={(e) => { if (e.key === 'Enter') sendTestMessage() }}
+              />
+              <input
+                value={testSessionId}
+                onChange={(e) => setTestSessionId(e.target.value)}
+                placeholder="session_id (optional)"
+                className="w-44 text-[13px] px-3 py-2 border border-gray-200 rounded-lg"
+              />
+              <button
+                onClick={sendTestMessage}
+                disabled={testLoading || !testInput.trim()}
+                className="px-4 py-2 rounded-md bg-[#534AB7] text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {testLoading ? 'Sending…' : 'Send'}
+              </button>
+            </div>
+            {testResponse && (
+              <pre className="text-xs bg-gray-50 rounded p-3 overflow-x-auto text-gray-600">{testResponse}</pre>
+            )}
           </div>
         </div>
       )}
@@ -256,6 +415,71 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
 
       {tab === 'Sessions' && <Table rows={sessions} empty="No sessions yet" columns={['peer_kind', 'peer_id', 'external_sender_id', 'conversation_id', 'last_active_at']} />}
       {tab === 'Reminders' && <Table rows={reminders} empty="No reminders yet" columns={['title', 'message', 'due_at', 'status', 'created_at']} />}
+      {tab === 'Scheduled' && (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <p className="text-[12px] font-medium text-gray-700 mb-3">Schedule a message</p>
+            <div className="flex flex-wrap gap-3">
+              <select value={schedContact} onChange={(e) => setSchedContact(e.target.value)} className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white min-w-[160px]">
+                <option value="">Pick contact…</option>
+                {contacts.map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+              </select>
+              <input value={schedMsg} onChange={(e) => setSchedMsg(e.target.value)} placeholder="Message…" className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg flex-1 min-w-[200px]" />
+              <input type="datetime-local" value={schedSendAt} onChange={(e) => setSchedSendAt(e.target.value)} className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg" />
+              <select value={schedFreq} onChange={(e) => setSchedFreq(e.target.value)} className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white">
+                <option value="">One-time</option>
+                <option value="daily">Daily</option>
+                <option value="weekdays">Weekdays</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+              {schedFreq && <>
+                <input type="number" min={1} value={schedInterval} onChange={(e) => setSchedInterval(parseInt(e.target.value) || 1)} title="Every N periods" className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg w-20" placeholder="×N" />
+                <input type="date" value={schedEndAt} onChange={(e) => setSchedEndAt(e.target.value)} title="End date (optional)" className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg" />
+                <input type="number" min={1} value={schedMaxOcc} onChange={(e) => setSchedMaxOcc(e.target.value)} placeholder="Max sends" title="Max occurrences (optional)" className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg w-28" />
+              </>}
+              <button onClick={scheduleMessage} className="px-4 py-2 rounded-md bg-[#534AB7] text-white text-sm font-medium shrink-0">Schedule</button>
+            </div>
+          </div>
+          <div className="rounded-lg border border-gray-200 overflow-hidden bg-white">
+            {scheduledMessages.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">No scheduled messages yet</div> : (
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-gray-100 bg-gray-50 text-left text-[11px] text-gray-500 uppercase tracking-wide">
+                  <th className="px-4 py-2">Contact / Recipient</th>
+                  <th className="px-4 py-2">Message</th>
+                  <th className="px-4 py-2">Send at</th>
+                  <th className="px-4 py-2">Recurrence</th>
+                  <th className="px-4 py-2">Fires</th>
+                  <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2" />
+                </tr></thead>
+                <tbody>
+                  {scheduledMessages.map((m) => {
+                    const contact = contacts.find((c) => c.id === m.contact_id)
+                    const statusColor = m.status === 'pending' ? 'bg-amber-50 text-amber-700' : m.status === 'sent' ? 'bg-emerald-50 text-emerald-700' : m.status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-500'
+                    const recLabel = m.recurrence_rule
+                      ? `${m.recurrence_rule.interval && m.recurrence_rule.interval > 1 ? `Every ${m.recurrence_rule.interval} ` : ''}${m.recurrence_rule.frequency}${m.recurrence_rule.max_occurrences ? ` (${m.recurrence_rule.max_occurrences}×)` : ''}`
+                      : '—'
+                    return (
+                      <tr key={m.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                        <td className="px-4 py-3 text-gray-700">{contact?.display_name || m.peer_id}</td>
+                        <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={m.message}>{m.message}</td>
+                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{new Date(m.send_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</td>
+                        <td className="px-4 py-3 text-gray-500">{recLabel}</td>
+                        <td className="px-4 py-3 text-gray-500">{m.occurrence_count}</td>
+                        <td className="px-4 py-3"><span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusColor}`}>{m.status}</span></td>
+                        <td className="px-4 py-3">
+                          {m.status === 'pending' && <button onClick={() => cancelScheduledMessage(m.id)} className="text-[11px] px-2 py-1 rounded bg-gray-50 text-gray-400 hover:bg-red-50 hover:text-red-600">Cancel</button>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
       {tab === 'Escalations' && (
         <div className="rounded-lg border border-gray-200 overflow-hidden bg-white">
           {escalations.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">No escalations yet</div> : escalations.map((e) => (
@@ -288,13 +512,17 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
         <div className="space-y-4">
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             <p className="text-[12px] font-medium text-gray-700 mb-3">Add WhatsApp contact</p>
-            <div className="grid grid-cols-[1fr_1fr_150px_auto] gap-3">
+            <div className="grid grid-cols-[1fr_1fr_130px_160px_auto] gap-3">
               <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Aayushi" className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg" />
               <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+91..." className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg" />
               <select value={contactRole} onChange={(e) => setContactRole(e.target.value as 'owner' | 'trusted' | 'blocked')} className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white">
                 <option value="trusted">Trusted</option>
                 <option value="owner">Owner</option>
                 <option value="blocked">Blocked</option>
+              </select>
+              <select value={contactAgentId} onChange={(e) => setContactAgentId(e.target.value)} className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white">
+                <option value="">Channel default</option>
+                {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
               <button onClick={addContact} className="px-4 py-2 rounded-md bg-[#534AB7] text-white text-sm font-medium">Add</button>
             </div>
@@ -303,12 +531,25 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
             {contacts.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">No contacts yet</div> : contacts.map((c) => (
               <div key={c.id} className="px-4 py-3 border-b border-gray-100 last:border-b-0 flex items-center justify-between gap-4">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-gray-800">{c.display_name}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${c.role === 'owner' ? 'bg-purple-50 text-purple-700' : c.role === 'blocked' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{c.role}</span>
                     {!c.auto_reply_enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">auto-reply off</span>}
                   </div>
-                  <div className="text-xs text-gray-400">{c.phone_number || c.whatsapp_jid} · {c.alias || 'no alias'} · last matched {c.last_matched_at ? new Date(c.last_matched_at).toLocaleString() : 'never'}</div>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="text-xs text-gray-400">{c.phone_number || c.whatsapp_jid} · {c.alias || 'no alias'} · last matched {c.last_matched_at ? new Date(c.last_matched_at).toLocaleString() : 'never'}</span>
+                    <select
+                      value={c.agent_id ?? ''}
+                      onChange={async (e) => {
+                        await gatewayAPI.updateContact(c.id, { ...c, agent_id: e.target.value || undefined }).catch(() => {})
+                        load()
+                      }}
+                      className="text-[11px] px-1.5 py-0.5 border border-gray-200 rounded bg-white text-gray-600 cursor-pointer"
+                    >
+                      <option value="">Channel default</option>
+                      {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <label className="inline-flex items-center gap-1.5 cursor-pointer" title={c.auto_reply_enabled ? 'Auto-reply on — click to disable' : 'Auto-reply off — click to enable'}>
@@ -467,6 +708,17 @@ function QRPanel({ value, loading }: { value: Record<string, unknown> | null; lo
   )
 }
 
+const TIME_COLS = new Set(['created_at', 'updated_at', 'due_at', 'last_active_at', 'last_matched_at', 'resolved_at', 'expires_at', 'received_at', 'completed_at', 'started_at'])
+
+function fmtCell(col: string, val: unknown): string {
+  if (val == null || val === '') return '—'
+  if (TIME_COLS.has(col) && typeof val === 'string' && val.length > 0) {
+    const d = new Date(val)
+    if (!isNaN(d.getTime())) return d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+  }
+  return String(val)
+}
+
 function Table({ rows, columns, empty }: { rows: object[]; columns: string[]; empty: string }) {
   if (rows.length === 0) return <div className="p-8 text-center text-sm text-gray-400 border border-gray-200 rounded-lg bg-white">{empty}</div>
   return (
@@ -480,7 +732,7 @@ function Table({ rows, columns, empty }: { rows: object[]; columns: string[]; em
             const row = r as Record<string, unknown>
             return (
             <tr key={String(row.id ?? i)}>
-              {columns.map((c) => <td key={c} className="px-3 py-2 text-xs text-gray-600 max-w-xs truncate">{String(row[c] ?? '—')}</td>)}
+              {columns.map((c) => <td key={c} className="px-3 py-2 text-xs text-gray-600 max-w-xs truncate">{fmtCell(c, row[c])}</td>)}
             </tr>
           )})}
         </tbody>

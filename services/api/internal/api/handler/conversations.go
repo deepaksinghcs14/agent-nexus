@@ -96,3 +96,13 @@ func (h *ConversationsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *ConversationsHandler) DeleteAll(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.WorkspaceIDFromCtx(r.Context())
+	if _, err := h.pool.Exec(r.Context(),
+		`DELETE FROM conversations WHERE workspace_id=$1::uuid`, wsID); err != nil {
+		errs.Write(w, errs.Internal("failed to clear conversations"))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+

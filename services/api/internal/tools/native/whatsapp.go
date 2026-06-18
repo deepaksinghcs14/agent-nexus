@@ -46,6 +46,7 @@ func NewWhatsAppTools(pool *pgxpool.Pool, cfg *config.Config) []tools.NativeTool
 		&whatsAppSummarizeLinkTool{tb},
 		&whatsAppOwnerApprovalTool{tb},
 		&whatsAppMediaStatusTool{tb},
+		&whatsAppScheduleMessageTool{tb},
 	}
 }
 
@@ -318,8 +319,8 @@ func (t *whatsAppCreateReminderTool) Definition() domain.Tool {
 	return waTool("whatsapp_create_reminder", "Create a WhatsApp reminder or follow-up task.", map[string]any{
 		"title":      map[string]any{"type": "string"},
 		"message":    map[string]any{"type": "string"},
-		"due_at":     map[string]any{"type": "string", "description": "RFC3339 timestamp when known"},
-		"contact_id": map[string]any{"type": "string"},
+		"due_at":     map[string]any{"type": "string", "description": "RFC3339 timestamp (e.g. 2026-06-18T15:00:00Z). Use the current year."},
+		"contact_id": map[string]any{"type": "string", "description": "Contact UUID from whatsapp_search_contacts, or the contact's name/alias — the tool will resolve it."},
 		"channel_id": map[string]any{"type": "string"},
 	}, []string{"title"}, "medium")
 }
@@ -335,15 +336,27 @@ func (t *whatsAppCreateReminderTool) ExecuteWithContext(ctx context.Context, exe
 	}
 	var due *time.Time
 	if raw := str(input["due_at"]); raw != "" {
-		parsed, err := time.Parse(time.RFC3339, raw)
+		parsed, err := parseFlexibleTime(raw)
 		if err != nil {
-			return nil, fmt.Errorf("due_at must be RFC3339")
+			return nil, fmt.Errorf("due_at must be a date/time (e.g. 2026-06-18T15:00:00Z)")
 		}
 		due = &parsed
 	}
+	// Resolve contact_id: accept UUID, name/alias, or self-referential terms → use session.
+	contactID := str(input["contact_id"])
+	if contactID != "" && isSelfReference(contactID) {
+		contactID = ""
+	}
+	if contactID != "" && !isUUID(contactID) {
+		contacts, err := t.repo.SearchContacts(ctx, wc.Channel.WorkspaceID, wc.Channel.ID, wc.Config.AccountID, contactID, 1)
+		if err != nil || len(contacts) == 0 {
+			return nil, fmt.Errorf("contact %q not found — use whatsapp_search_contacts to find the right contact", contactID)
+		}
+		contactID = contacts[0].ID
+	}
 	rem := &domain.GatewayReminder{
 		WorkspaceID: wc.Channel.WorkspaceID, ChannelID: wc.Channel.ID, SessionID: execCtx.ChannelSessionID,
-		ContactID: str(input["contact_id"]), AccountID: wc.Config.AccountID, Title: str(input["title"]),
+		ContactID: contactID, AccountID: wc.Config.AccountID, Title: str(input["title"]),
 		Message: str(input["message"]), DueAt: due, Status: "pending", Payload: mustJSON(input),
 	}
 	if rem.Title == "" {
@@ -577,4 +590,131 @@ func looksLikePhone(s string) bool {
 func mustJSON(v any) json.RawMessage {
 	b, _ := json.Marshal(v)
 	return b
+}
+
+type whatsAppScheduleMessageTool struct{ *WhatsAppToolbox }
+
+func (t *whatsAppScheduleMessageTool) Definition() domain.Tool {
+	return waTool("whatsapp_schedule_message", "Schedule a WhatsApp message to be sent to a contact at a specific time. Supports one-time and recurring sends.", map[string]any{
+		"message":                  map[string]any{"type": "string", "description": "Text to send."},
+		"to":                       map[string]any{"type": "string", "description": "Contact name, alias, phone, or JID."},
+		"contact_id":               map[string]any{"type": "string", "description": "Contact UUID from whatsapp_search_contacts."},
+		"send_at":                  map[string]any{"type": "string", "description": "RFC3339 timestamp when to send (use the current year)."},
+		"recurrence_frequency":     map[string]any{"type": "string", "enum": []string{"daily", "weekly", "monthly", "weekdays"}, "description": "Omit for one-time."},
+		"recurrence_interval":      map[string]any{"type": "integer", "description": "Repeat every N periods, default 1."},
+		"recurrence_end_at":        map[string]any{"type": "string", "description": "RFC3339 date after which to stop."},
+		"recurrence_max_occurrences": map[string]any{"type": "integer", "description": "Max number of times to send."},
+		"channel_id":               map[string]any{"type": "string"},
+	}, []string{"message", "send_at"}, "medium")
+}
+
+func (t *whatsAppScheduleMessageTool) Execute(input map[string]any) (any, error) {
+	return nil, fmt.Errorf("whatsapp_schedule_message requires execution context")
+}
+
+func (t *whatsAppScheduleMessageTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
+	wc, err := t.contextFor(ctx, execCtx, input)
+	if err != nil {
+		return nil, err
+	}
+	msg := str(input["message"])
+	if msg == "" {
+		return nil, fmt.Errorf("message is required")
+	}
+	rawSendAt := str(input["send_at"])
+	if rawSendAt == "" {
+		return nil, fmt.Errorf("send_at is required")
+	}
+	sendAt, err := parseFlexibleTime(rawSendAt)
+	if err != nil {
+		return nil, fmt.Errorf("send_at must be a date/time (e.g. 2026-06-18T15:00:00Z)")
+	}
+	peerID, contact, candidates, err := t.resolveRecipient(ctx, wc, input)
+	if err != nil {
+		out := map[string]any{"status": "needs_clarification", "error": err.Error()}
+		if len(candidates) > 0 {
+			out["candidates"] = candidates
+		}
+		return out, nil
+	}
+	contactID := ""
+	if contact != nil {
+		contactID = contact.ID
+	}
+
+	// Build recurrence rule if frequency is provided.
+	var recurrenceRule json.RawMessage
+	if freq := str(input["recurrence_frequency"]); freq != "" {
+		rule := map[string]any{"frequency": freq}
+		if iv := intVal(input["recurrence_interval"], 0); iv > 0 {
+			rule["interval"] = iv
+		}
+		if endAt := str(input["recurrence_end_at"]); endAt != "" {
+			rule["end_at"] = endAt
+		}
+		if maxOcc := intVal(input["recurrence_max_occurrences"], 0); maxOcc > 0 {
+			rule["max_occurrences"] = maxOcc
+		}
+		recurrenceRule, _ = json.Marshal(rule)
+	}
+
+	m := &domain.ScheduledMessage{
+		WorkspaceID:    wc.Channel.WorkspaceID,
+		ChannelID:      wc.Channel.ID,
+		ContactID:      contactID,
+		AccountID:      wc.Config.AccountID,
+		PeerKind:       "direct",
+		PeerID:         peerID,
+		Message:        msg,
+		SendAt:         sendAt,
+		Status:         "pending",
+		RecurrenceRule: recurrenceRule,
+		CreatedBy:      execCtx.RunID,
+	}
+	if err := t.repo.CreateScheduledMessage(ctx, m); err != nil {
+		return nil, err
+	}
+	return map[string]any{"scheduled_message": m, "status": "scheduled", "send_at": sendAt}, nil
+}
+
+// parseFlexibleTime tries RFC3339, then bare datetime without timezone (treated as UTC).
+func parseFlexibleTime(s string) (time.Time, error) {
+	formats := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04",
+		"2006-01-02 15:04",
+	}
+	for _, f := range formats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t.UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unrecognised time format: %q", s)
+}
+
+// isSelfReference returns true when the LLM passes "me", "myself", etc. as a contact_id.
+func isSelfReference(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "me", "myself", "i", "self", "current", "current user", "current contact":
+		return true
+	}
+	return false
+}
+
+func isUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+		} else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }

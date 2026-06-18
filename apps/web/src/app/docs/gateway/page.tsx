@@ -38,6 +38,53 @@ export default function GatewayDoc() {
         </tbody>
       </table>
 
+      <h2>How it works — HTTP channel</h2>
+      <p>
+        An HTTP channel is the simplest way to connect any application to an agent. There is no
+        pairing, no adapter service, and no authentication — just a plain HTTP POST.
+      </p>
+      <ol>
+        <li>
+          <strong>Create a channel</strong> at <a href="/gateway">/gateway</a>. Choose{' '}
+          <em>HTTP</em>, pick a default agent, and save.
+        </li>
+        <li>
+          <strong>Copy the webhook URL</strong> from the channel Overview tab. It looks like:
+          <pre><code>{`POST https://your-api.example.com/gateway/http/<channelId>`}</code></pre>
+        </li>
+        <li>
+          <strong>POST a message</strong> to the URL with a JSON body:
+          <pre><code>{`{
+  "input": "What is the weather today?",
+  "session_id": "user-123"
+}`}</code></pre>
+          <code>input</code> is required. <code>session_id</code> is optional — the same value groups
+          multiple requests into one conversation thread. Omit it to start a fresh conversation on
+          every call.
+        </li>
+        <li>
+          The gateway returns <strong>202 Accepted</strong> immediately with a run reference:
+          <pre><code>{`{
+  "run_id": "...",
+  "session_id": "...",
+  "conversation_id": "...",
+  "status": "running"
+}`}</code></pre>
+          The agent run proceeds asynchronously. Poll <code>GET /api/v1/runs/{'{run_id}'}</code> or
+          stream events at <code>GET /api/v1/runs/{'{run_id}'}/stream</code> to get the reply.
+        </li>
+      </ol>
+
+      <Callout type="tip">
+        Use the <strong>Send a test message</strong> panel on the channel Overview tab to try the
+        webhook directly from the dashboard without writing any code.
+      </Callout>
+
+      <Callout type="info">
+        The HTTP inbound endpoint has no built-in authentication. Keep the channel ID secret or
+        place the API behind a reverse proxy with access controls if you need to restrict access.
+      </Callout>
+
       <h2>How it works — WhatsApp</h2>
       <ol>
         <li>
@@ -66,6 +113,47 @@ export default function GatewayDoc() {
         <code>stop Alice</code>, <code>approve CODE</code>) are still processed even when
         Self-Chat is off.
       </Callout>
+
+      <h2>Channel configuration options</h2>
+      <table>
+        <thead>
+          <tr><th>Option</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Auto-Reply</strong></td>
+            <td>
+              When enabled, every eligible inbound message triggers an agent run automatically.
+              When disabled, the gateway receives messages but does not invoke the agent — useful
+              for pausing the assistant without disconnecting the channel.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Self-Chat</strong></td>
+            <td>
+              When enabled, messages that the WhatsApp account sends <em>to itself</em> (self-chat)
+              are processed as user messages and trigger agent runs. Useful for testing the agent
+              from your own phone without adding yourself as a contact.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Bot Mode</strong></td>
+            <td>
+              When enabled, messages from any sender are forwarded to the agent, even if the sender
+              is not in the contacts list. Equivalent to <em>DM Policy: open</em> set at the channel
+              level via owner command.
+            </td>
+          </tr>
+          <tr>
+            <td><strong>Default Agent</strong></td>
+            <td>
+              The agent that handles inbound messages when no contact-level override is set. You can
+              override the agent per contact to give different users different assistants on the same
+              WhatsApp number.
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
       <h2>Contact roles</h2>
       <table>

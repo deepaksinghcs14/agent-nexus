@@ -71,6 +71,12 @@ type Agent struct {
 	MaxTokens               int       `json:"max_tokens"`
 	MemoryEnabled           bool      `json:"memory_enabled"`
 	MemoryScope             string    `json:"memory_scope"`
+	MemorySaveMode          string    `json:"memory_save_mode"`
+	MemoryReviewPolicy      string    `json:"memory_review_policy"`
+	MaxMemories             int       `json:"max_memories"`
+	MinRelevanceScore       float64   `json:"min_relevance_score"`
+	MemoryMinImportance     float64   `json:"memory_min_importance"`
+	MemoryDedupeThreshold   float64   `json:"memory_dedupe_threshold"`
 	ContextRetrievalEnabled bool      `json:"context_retrieval_enabled"`
 	MaxSteps                int       `json:"max_steps"`
 	MaxToolCalls            int       `json:"max_tool_calls"`
@@ -370,6 +376,25 @@ type GatewayReminder struct {
 	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
+type ScheduledMessage struct {
+	ID              string          `json:"id"`
+	WorkspaceID     string          `json:"workspace_id"`
+	ChannelID       string          `json:"channel_id"`
+	ContactID       string          `json:"contact_id,omitempty"`
+	AccountID       string          `json:"account_id"`
+	PeerKind        string          `json:"peer_kind"`
+	PeerID          string          `json:"peer_id"`
+	Message         string          `json:"message"`
+	SendAt          time.Time       `json:"send_at"`
+	Status          string          `json:"status"`
+	RecurrenceRule  json.RawMessage `json:"recurrence_rule,omitempty"`
+	OccurrenceCount int             `json:"occurrence_count"`
+	LastError       string          `json:"last_error,omitempty"`
+	CreatedBy       string          `json:"created_by,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
+}
+
 type GatewayEscalation struct {
 	ID                 string          `json:"id"`
 	WorkspaceID        string          `json:"workspace_id"`
@@ -395,16 +420,17 @@ type GatewayEscalation struct {
 // ============================================================
 
 type Skill struct {
-	ID          string    `json:"id"`
-	WorkspaceID string    `json:"workspace_id,omitempty"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Content     string    `json:"content"`
-	Source      string    `json:"source"`
-	Enabled     bool      `json:"enabled"`
-	CreatedBy   string    `json:"created_by,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID                string    `json:"id"`
+	WorkspaceID       string    `json:"workspace_id,omitempty"`
+	Name              string    `json:"name"`
+	Description       string    `json:"description"`
+	Content           string    `json:"content"`
+	Source            string    `json:"source"`
+	Enabled           bool      `json:"enabled"`
+	RequiredToolNames []string  `json:"required_tool_names,omitempty"`
+	CreatedBy         string    `json:"created_by,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type AgentSkill struct {
@@ -436,16 +462,21 @@ const (
 )
 
 type Memory struct {
-	ID             string      `json:"id"`
-	WorkspaceID    string      `json:"workspace_id"`
-	AgentID        string      `json:"agent_id,omitempty"`
-	UserID         string      `json:"user_id,omitempty"`
-	Scope          MemoryScope `json:"scope"`
-	Content        string      `json:"content"`
-	RelevanceScore float64     `json:"relevance_score"`
-	SourceRunID    string      `json:"source_run_id,omitempty"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
+	ID              string          `json:"id"`
+	WorkspaceID     string          `json:"workspace_id"`
+	AgentID         string          `json:"agent_id,omitempty"`
+	UserID          string          `json:"user_id,omitempty"`
+	ConversationID  string          `json:"conversation_id,omitempty"`
+	Scope           MemoryScope     `json:"scope"`
+	Content         string          `json:"content"`
+	RelevanceScore  float64         `json:"relevance_score"`
+	ImportanceScore float64         `json:"importance_score"`
+	Status          string          `json:"status"`
+	SaveSource      string          `json:"save_source"`
+	SourceRunID     string          `json:"source_run_id,omitempty"`
+	Metadata        json.RawMessage `json:"metadata,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 // ============================================================

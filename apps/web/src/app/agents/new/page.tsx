@@ -45,9 +45,16 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   const [temperature, setTemperature] = useState(0.7)
   const [memoryEnabled, setMemoryEnabled] = useState(false)
   const [memoryScope, setMemoryScope] = useState('conversation')
+  const [memorySaveMode, setMemorySaveMode] = useState<'tool' | 'extractor' | 'hybrid'>('hybrid')
+  const [memoryReviewPolicy, setMemoryReviewPolicy] = useState<'none' | 'uncertain' | 'all'>('uncertain')
+  const [maxMemories, setMaxMemories] = useState(5)
+  const [minRelevanceScore, setMinRelevanceScore] = useState(0.70)
+  const [memoryMinImportance, setMemoryMinImportance] = useState(0.70)
+  const [memoryDedupeThreshold, setMemoryDedupeThreshold] = useState(0.88)
   const [contextEnabled, setContextEnabled] = useState(false)
   const [maxSteps, setMaxSteps] = useState(10)
   const [maxToolCalls, setMaxToolCalls] = useState(20)
+  const [maxDurationSecs, setMaxDurationSecs] = useState(300)
   const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({ read_file: true })
   const [enabledSkills, setEnabledSkills] = useState<Record<string, boolean>>({})
   const [skillOrder, setSkillOrder] = useState<Record<string, number>>({})
@@ -122,9 +129,16 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
     setTemperature(existing.temperature)
     setMemoryEnabled(existing.memory_enabled)
     setMemoryScope(existing.memory_scope)
+    setMemorySaveMode(existing.memory_save_mode ?? 'hybrid')
+    setMemoryReviewPolicy(existing.memory_review_policy ?? 'uncertain')
+    setMaxMemories(existing.max_memories ?? 5)
+    setMinRelevanceScore(existing.min_relevance_score ?? 0.70)
+    setMemoryMinImportance(existing.memory_min_importance ?? 0.70)
+    setMemoryDedupeThreshold(existing.memory_dedupe_threshold ?? 0.88)
     setContextEnabled(existing.context_retrieval_enabled)
     setMaxSteps(existing.max_steps)
     setMaxToolCalls(existing.max_tool_calls)
+    setMaxDurationSecs(existing.max_duration_secs ?? 300)
   }, [existing])
 
   useEffect(() => {
@@ -161,9 +175,16 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
       max_tokens: maxTokens,
       memory_enabled: memoryEnabled,
       memory_scope: memoryScope,
+      memory_save_mode: memorySaveMode,
+      memory_review_policy: memoryReviewPolicy,
+      max_memories: maxMemories,
+      min_relevance_score: minRelevanceScore,
+      memory_min_importance: memoryMinImportance,
+      memory_dedupe_threshold: memoryDedupeThreshold,
       context_retrieval_enabled: contextEnabled,
       max_steps: maxSteps,
       max_tool_calls: maxToolCalls,
+      max_duration_secs: maxDurationSecs,
       }
       const saved = isEdit ? await agentsAPI.update(params!.id!, body) : await agentsAPI.create(body)
       const id = isEdit ? params!.id! : (saved as Agent).id
@@ -317,6 +338,9 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
                     <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${skill.source === 'managed' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>{skill.source}</span>
                   </div>
                   <p className="text-[11px] text-gray-500 truncate">{skill.description}</p>
+                  {skill.required_tool_names && skill.required_tool_names.length > 0 && (
+                    <p className="text-[10px] text-amber-600 mt-0.5">Requires: {skill.required_tool_names.join(', ')}</p>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <input
@@ -425,11 +449,33 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
                 </select>
               </Field>
               <div className="grid grid-cols-2 gap-4">
+                <Field label="Save mode">
+                  <select value={memorySaveMode} onChange={e => setMemorySaveMode(e.target.value as 'tool' | 'extractor' | 'hybrid')} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none">
+                    <option value="hybrid">Hybrid</option>
+                    <option value="tool">Tool only</option>
+                    <option value="extractor">Extractor only</option>
+                  </select>
+                </Field>
+                <Field label="Review policy">
+                  <select value={memoryReviewPolicy} onChange={e => setMemoryReviewPolicy(e.target.value as 'none' | 'uncertain' | 'all')} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none">
+                    <option value="uncertain">Review uncertain</option>
+                    <option value="all">Review all saves</option>
+                    <option value="none">No review</option>
+                  </select>
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <Field label="Max memories per run">
-                  <input type="number" defaultValue={5} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
+                  <input type="number" value={maxMemories} onChange={e => setMaxMemories(Number(e.target.value))} min={1} max={50} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
                 </Field>
                 <Field label="Min relevance score">
-                  <input type="number" defaultValue={0.70} step={0.05} min={0} max={1} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
+                  <input type="number" value={minRelevanceScore} onChange={e => setMinRelevanceScore(Number(e.target.value))} step={0.05} min={0} max={1} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
+                </Field>
+                <Field label="Min save importance">
+                  <input type="number" value={memoryMinImportance} onChange={e => setMemoryMinImportance(Number(e.target.value))} step={0.05} min={0} max={1} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
+                </Field>
+                <Field label="Dedupe threshold">
+                  <input type="number" value={memoryDedupeThreshold} onChange={e => setMemoryDedupeThreshold(Number(e.target.value))} step={0.01} min={0} max={1} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
                 </Field>
               </div>
             </>
@@ -441,14 +487,14 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
       {tab === 'Guardrails' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Max tool calls per run">
+            <Field label="Max steps">
               <input type="number" value={maxSteps} onChange={e => setMaxSteps(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
             </Field>
-            <Field label="Max steps">
+            <Field label="Max tool calls per run">
               <input type="number" value={maxToolCalls} onChange={e => setMaxToolCalls(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
             </Field>
             <Field label="Max run duration (sec)">
-              <input type="number" defaultValue={120} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
+              <input type="number" value={maxDurationSecs} onChange={e => setMaxDurationSecs(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
             </Field>
             <Field label="On max steps exceeded">
               <select className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none">

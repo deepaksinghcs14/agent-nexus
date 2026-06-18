@@ -938,7 +938,7 @@ func (h *GatewayHandler) ensureGatewayConversation(ctx context.Context, c domain
 }
 
 func (h *GatewayHandler) deliverWhenComplete(ctx context.Context, c domain.GatewayChannel, cfg domain.GatewayChannelConfig, msg inboundMessage, runID, sessionID string) {
-	t := time.NewTicker(time.Second)
+	t := time.NewTicker(200 * time.Millisecond)
 	defer t.Stop()
 	deadline := time.After(5 * time.Minute)
 	for {
@@ -1124,6 +1124,113 @@ func adapterGet(ctx context.Context, base, path string) ([]byte, error) {
 		return nil, err
 	}
 	return adapterDo(req)
+}
+
+// StartConnectionWatchdog checks every 2 min whether any WhatsApp connection is stale
+// (connected but no messages received within 90 s of connecting) and reconnects it.
+func (h *GatewayHandler) StartConnectionWatchdog(ctx context.Context) {
+	t := time.NewTicker(2 * time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			h.checkAndReconnectStaleConnections(ctx)
+		}
+	}
+}
+
+func (h *GatewayHandler) checkAndReconnectStaleConnections(ctx context.Context) {
+	channels, err := h.repo.ListAllActiveWhatsAppChannels(ctx)
+	if err != nil {
+		return
+	}
+	for _, c := range channels {
+		cfg := h.parseGatewayConfig(c.Config, c.ChannelType)
+		statusBody, err := adapterGet(ctx, cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/status")
+		if err != nil {
+			continue
+		}
+		var st struct {
+			Status        string `json:"status"`
+			ConnectedAt   int64  `json:"connected_at"`
+			LastMessageAt int64  `json:"last_message_at"`
+		}
+		if err := json.Unmarshal(statusBody, &st); err != nil {
+			continue
+		}
+		if st.Status != "connected" {
+			continue
+		}
+		// If connected but no message received within 90 s of connecting, the socket is stale.
+		now := time.Now().UnixMilli()
+		connectedFor := now - st.ConnectedAt
+		if st.ConnectedAt > 0 && st.LastMessageAt == 0 && connectedFor > 90_000 {
+			slog.Warn("whatsapp connection stale, reconnecting", "channel", c.ID, "account", cfg.AccountID, "connected_for_ms", connectedFor)
+			_, _ = adapterPost(ctx, cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/reconnect", nil)
+		}
+	}
+}
+
+// StartReminderDispatcher ticks every 30 s and sends any WhatsApp reminders that are past due.
+func (h *GatewayHandler) StartReminderDispatcher(ctx context.Context) {
+	t := time.NewTicker(30 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			h.fireReminders(ctx)
+		}
+	}
+}
+
+func (h *GatewayHandler) fireReminders(ctx context.Context) {
+	due, err := h.repo.FetchDueReminders(ctx)
+	if err != nil {
+		slog.Error("reminder dispatcher: fetch failed", "error", err)
+		return
+	}
+	if len(due) == 0 {
+		return
+	}
+	svc := gatewayservice.NewService(h.pool)
+	for _, rem := range due {
+		if rem.PeerID == "" {
+			slog.Warn("reminder has no peer_id, skipping", "reminder_id", rem.ID, "title", rem.Title)
+			_, _ = h.repo.UpdateReminderStatus(ctx, rem.ID, rem.WorkspaceID, "cancelled")
+			continue
+		}
+		ch, err := h.repo.GetChannel(ctx, rem.ChannelID)
+		if err != nil {
+			slog.Warn("reminder dispatcher: channel not found", "reminder_id", rem.ID, "channel_id", rem.ChannelID)
+			continue
+		}
+		if ch.ChannelType != "whatsapp" {
+			continue
+		}
+		cfg := gatewayservice.ParseConfig(ch.Config, h.cfg.WhatsAppAdapterURL)
+		accountID := rem.AccountID
+		if accountID == "" {
+			accountID = cfg.AccountID
+		}
+		msg := rem.Message
+		if msg == "" {
+			msg = rem.Title
+		}
+		_, sendErr := svc.SendWhatsApp(ctx, gatewayservice.SendRequest{
+			Channel: ch, Config: cfg, AccountID: accountID,
+			PeerKind: rem.PeerKind, PeerID: rem.PeerID, Body: msg,
+		})
+		if sendErr != nil {
+			slog.Warn("reminder send failed", "reminder_id", rem.ID, "title", rem.Title, "error", sendErr)
+			continue
+		}
+		_, _ = h.repo.UpdateReminderStatus(ctx, rem.ID, rem.WorkspaceID, "completed")
+		slog.Info("reminder fired", "reminder_id", rem.ID, "title", rem.Title, "peer_id", rem.PeerID)
+	}
 }
 
 func adapterPost(ctx context.Context, base, path string, payload any) ([]byte, error) {
@@ -1389,6 +1496,182 @@ var whatsappToolNames = []string{
 	"whatsapp_summarize_link",
 	"whatsapp_request_owner_approval",
 	"whatsapp_send_media_status",
+	"whatsapp_schedule_message",
+}
+
+// ─── Scheduled Messages ────────────────────────────────────────────────────
+
+func (h *GatewayHandler) ListScheduledMessages(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	list, err := h.repo.ListScheduledMessages(r.Context(), ws, r.URL.Query().Get("channel_id"), r.URL.Query().Get("status"), intParam(r, "limit", 100))
+	if err != nil {
+		errs.Write(w, errs.Internal("failed to list scheduled messages"))
+		return
+	}
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"data": list})
+}
+
+func (h *GatewayHandler) CreateScheduledMessage(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	uid := middleware.UserIDFromCtx(r.Context())
+	var body domain.ScheduledMessage
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errs.Write(w, errs.BadRequest("invalid request body"))
+		return
+	}
+	if body.ChannelID == "" || body.Message == "" || body.SendAt.IsZero() {
+		errs.Write(w, errs.BadRequest("channel_id, message, and send_at are required"))
+		return
+	}
+	// Resolve peer_id from contact if not provided.
+	if body.PeerID == "" && body.ContactID != "" {
+		c, err := h.repo.GetContact(r.Context(), body.ContactID, ws)
+		if err != nil {
+			errs.Write(w, errs.BadRequest("contact not found"))
+			return
+		}
+		body.PeerID = c.WhatsAppJID
+		if body.PeerID == "" {
+			body.PeerID = c.PhoneNumber
+		}
+	}
+	if body.PeerID == "" {
+		errs.Write(w, errs.BadRequest("peer_id or contact_id is required"))
+		return
+	}
+	if body.PeerKind == "" {
+		body.PeerKind = "direct"
+	}
+	body.WorkspaceID = ws
+	body.CreatedBy = uid
+	if body.AccountID == "" {
+		ch, err := h.repo.GetChannel(r.Context(), body.ChannelID)
+		if err == nil {
+			cfg := gatewayservice.ParseConfig(ch.Config, h.cfg.WhatsAppAdapterURL)
+			body.AccountID = cfg.AccountID
+		}
+	}
+	if err := h.repo.CreateScheduledMessage(r.Context(), &body); err != nil {
+		errs.Write(w, errs.Internal("failed to create scheduled message"))
+		return
+	}
+	errs.WriteJSON(w, http.StatusCreated, body)
+}
+
+func (h *GatewayHandler) GetScheduledMessage(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	m, err := h.repo.GetScheduledMessage(r.Context(), chi.URLParam(r, "id"), ws)
+	if err != nil {
+		errs.Write(w, errs.NotFound("scheduled message not found"))
+		return
+	}
+	errs.WriteJSON(w, http.StatusOK, m)
+}
+
+func (h *GatewayHandler) DeleteScheduledMessage(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	if err := h.repo.UpdateScheduledMessageStatus(r.Context(), chi.URLParam(r, "id"), ws, "cancelled", ""); err != nil {
+		errs.Write(w, errs.NotFound("scheduled message not found"))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// nextScheduledFireAt computes the next fire time for a recurring scheduled message.
+// Returns (zero, false) when the series is complete.
+func nextScheduledFireAt(rule json.RawMessage, from time.Time, count int) (time.Time, bool) {
+	var r struct {
+		Frequency      string     `json:"frequency"`
+		Interval       int        `json:"interval"`
+		EndAt          *time.Time `json:"end_at"`
+		MaxOccurrences int        `json:"max_occurrences"`
+	}
+	if err := json.Unmarshal(rule, &r); err != nil || r.Frequency == "" {
+		return time.Time{}, false
+	}
+	if r.Interval <= 0 {
+		r.Interval = 1
+	}
+	if r.MaxOccurrences > 0 && count >= r.MaxOccurrences {
+		return time.Time{}, false
+	}
+	var next time.Time
+	switch r.Frequency {
+	case "daily":
+		next = from.AddDate(0, 0, r.Interval)
+	case "weekly":
+		next = from.AddDate(0, 0, 7*r.Interval)
+	case "monthly":
+		next = from.AddDate(0, r.Interval, 0)
+	case "weekdays":
+		next = from.AddDate(0, 0, 1)
+		for next.Weekday() == time.Saturday || next.Weekday() == time.Sunday {
+			next = next.AddDate(0, 0, 1)
+		}
+	default:
+		return time.Time{}, false
+	}
+	if r.EndAt != nil && next.After(*r.EndAt) {
+		return time.Time{}, false
+	}
+	return next, true
+}
+
+// StartScheduledMessageDispatcher ticks every 30 s and delivers scheduled messages that are past due.
+func (h *GatewayHandler) StartScheduledMessageDispatcher(ctx context.Context) {
+	t := time.NewTicker(30 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			h.fireScheduledMessages(ctx)
+		}
+	}
+}
+
+func (h *GatewayHandler) fireScheduledMessages(ctx context.Context) {
+	due, err := h.repo.FetchDueScheduledMessages(ctx)
+	if err != nil {
+		slog.Error("scheduled message dispatcher: fetch failed", "error", err)
+		return
+	}
+	if len(due) == 0 {
+		return
+	}
+	svc := gatewayservice.NewService(h.pool)
+	for _, msg := range due {
+		ch, err := h.repo.GetChannel(ctx, msg.ChannelID)
+		if err != nil {
+			slog.Warn("scheduled message dispatcher: channel not found", "msg_id", msg.ID, "channel_id", msg.ChannelID)
+			continue
+		}
+		cfg := gatewayservice.ParseConfig(ch.Config, h.cfg.WhatsAppAdapterURL)
+		accountID := msg.AccountID
+		if accountID == "" {
+			accountID = cfg.AccountID
+		}
+		_, sendErr := svc.SendWhatsApp(ctx, gatewayservice.SendRequest{
+			Channel: ch, Config: cfg, AccountID: accountID,
+			PeerKind: msg.PeerKind, PeerID: msg.PeerID, Body: msg.Message,
+		})
+		if sendErr != nil {
+			slog.Warn("scheduled message send failed", "msg_id", msg.ID, "peer", msg.PeerID, "error", sendErr)
+			_ = h.repo.UpdateScheduledMessageStatus(ctx, msg.ID, msg.WorkspaceID, "failed", sendErr.Error())
+			continue
+		}
+		if len(msg.RecurrenceRule) > 2 {
+			next, ok := nextScheduledFireAt(msg.RecurrenceRule, time.Now(), msg.OccurrenceCount+1)
+			if ok {
+				_ = h.repo.RescheduleMessage(ctx, msg.ID, msg.WorkspaceID, next, msg.OccurrenceCount+1)
+				slog.Info("scheduled message rescheduled", "msg_id", msg.ID, "next_send_at", next)
+				continue
+			}
+		}
+		_ = h.repo.UpdateScheduledMessageStatus(ctx, msg.ID, msg.WorkspaceID, "sent", "")
+		slog.Info("scheduled message sent", "msg_id", msg.ID, "peer", msg.PeerID)
+	}
 }
 
 func AttachWhatsAppCapabilities(ctx context.Context, pool *pgxpool.Pool, agentID string) error {

@@ -20,6 +20,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	agentprompt "github.com/deepaksingh/agent-nexus/services/api/internal/runtime/agent"
 	contextretrieval "github.com/deepaksingh/agent-nexus/services/api/internal/runtime/context"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/cost"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/memory"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
@@ -225,10 +226,17 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	}
 	sseErr := func(msg string) { sseEmitOrNil(fmt.Sprintf(`{"type":"error","error":%q}`, msg)) }
 
+	llm, err := h.runs.providerFor(ctx, ws, a.Provider)
+	if err != nil {
+		sseErr(err.Error())
+		h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
+		return
+	}
+
 	memories, contextChunks := []string{}, []string{}
 	if a.MemoryEnabled {
 		start := time.Now()
-		found, err := memory.NewEngine(h.pool).Retrieve(ctx, a.ID, ws, input)
+		found, err := memory.NewEngine(h.pool).Retrieve(ctx, a.ID, ws, convID, memoryEmbedding(ctx, llm, input), a.MaxMemories, a.MinRelevanceScore)
 		if err == nil {
 			for _, m := range found {
 				memories = append(memories, m.Content)
@@ -238,13 +246,6 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			map[string]any{"query": input},
 			map[string]any{"count": len(memories)},
 			start, 0, "", errString(err))
-	}
-
-	llm, err := h.runs.providerFor(ctx, ws, a.Provider)
-	if err != nil {
-		sseErr(err.Error())
-		h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
-		return
 	}
 
 	if a.ContextRetrievalEnabled {
@@ -270,7 +271,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	}
 
 	historyRows, err := h.pool.Query(ctx,
-		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'') FROM messages WHERE conversation_id=$1::uuid ORDER BY created_at`,
+		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'')
+		 FROM messages WHERE conversation_id=$1::uuid
+		 ORDER BY created_at DESC LIMIT 40`,
 		convID)
 	if err != nil {
 		sseErr("failed to load conversation history")
@@ -285,6 +288,10 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			history = append(history, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
 		}
 	}
+	// Reverse: query returned newest-first, LLM needs oldest-first.
+	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
+		history[i], history[j] = history[j], history[i]
+	}
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	prompt := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
@@ -293,11 +300,15 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		MemorySummaries:    memories,
 		ContextChunks:      contextChunks,
 		History:            history,
+		MemoryEnabled:      a.MemoryEnabled,
+		MemorySaveMode:     a.MemorySaveMode,
 	})
 
 	toolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
+	toolDefs, dbTools = ensureMemoryToolDef(toolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
 	execCtx := tools.ExecutionContext{
 		WorkspaceID:    ws,
+		AgentID:        a.ID,
 		UserID:         uid,
 		RunID:          runID,
 		ConversationID: convID,
@@ -310,6 +321,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	messages := prompt
 	stepCount := 0
 	totalInput, totalOutput := 0, 0
+	memorySaveCalled := false
 
 	for {
 		stream, err := llm.Complete(ctx, provider.CompletionRequest{
@@ -375,28 +387,30 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			h.pool.Exec(ctx, //nolint:errcheck
 				`INSERT INTO messages(id,conversation_id,role,content,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4)`,
 				uuid.NewString(), convID, reply, usage.OutputTokens)
-			if a.MemoryEnabled {
-				mem := &domain.Memory{
-					WorkspaceID: ws, UserID: uid, AgentID: a.ID,
-					Scope:       domain.MemoryScope(a.MemoryScope),
-					Content:     "User: " + input + "\nAssistant: " + reply,
-					SourceRunID: runID,
-				}
-				if a.MemoryScope == string(domain.MemoryScopeWorkspace) {
-					mem.AgentID = ""
-				}
-				memory.NewEngine(h.pool).Store(ctx, mem) //nolint:errcheck
-			}
 			h.runs.createStep(ctx, runID, domain.StepFinalResponse, //nolint:errcheck
 				map[string]any{},
 				map[string]any{"content": reply},
 				time.Now(), usage.OutputTokens, "", "")
 			runCompleted = true
+			costUSD := cost.Estimate(a.Provider, a.Model, totalInput, totalOutput)
 			h.pool.Exec(dbCtx, //nolint:errcheck
-				`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4 WHERE id=$1::uuid`,
-				runID, reply, totalInput, totalOutput)
-			sseEmitOrNil(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":0}`,
-				runID, totalInput, totalOutput))
+				`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
+				runID, reply, totalInput, totalOutput, costUSD)
+			sseEmitOrNil(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`,
+				runID, totalInput, totalOutput, costUSD))
+			// Memory extraction runs after marking run complete so gateway delivery
+			// is not blocked by the extra LLM call.
+			if shouldRunMemoryExtractor(a, memorySaveCalled) {
+				aCopy, llmCopy, replySnap, inputSnap := a, llm, reply, input
+				go func() {
+					start := time.Now()
+					count, err := runMemoryExtractor(context.Background(), h.pool, llmCopy, aCopy, ws, uid, convID, runID, inputSnap, replySnap)
+					h.runs.createStep(context.Background(), runID, domain.StepToolCall, //nolint:errcheck
+						map[string]any{"tool": "memory_extractor"},
+						map[string]any{"saved": count},
+						start, 0, "memory_extractor", errString(err))
+				}()
+			}
 			return
 		}
 
@@ -407,6 +421,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		})
 
 		for _, call := range pendingCalls {
+			if call.Name == "native_save_memory" {
+				memorySaveCalled = true
+			}
 			// Delegate tool — hand off to a team agent and return its output.
 			if handler, isDelegate := delegateHandlers[call.Name]; isDelegate {
 				delegateStart := time.Now()
@@ -1160,12 +1177,21 @@ func (h *InvokeHandler) executeGroupRun(
 			}
 		}
 	}
-	runMarked = true
-	h.pool.Exec(ctx, //nolint:errcheck
-		`UPDATE runs SET output=$2,status='success',completed_at=NOW() WHERE id=$1::uuid`,
-		parentRunID, finalOutput)
+	// Aggregate token counts and cost from all sub-runs belonging to this trace.
+	var totalInputTokens, totalOutputTokens int
+	var totalCostUSD float64
+	h.pool.QueryRow(context.Background(), //nolint:errcheck
+		`SELECT COALESCE(SUM(total_input_tokens),0), COALESCE(SUM(total_output_tokens),0), COALESCE(SUM(cost_estimate),0)
+		 FROM runs WHERE trace_id=$1::uuid AND id!=$1::uuid`,
+		parentRunID).Scan(&totalInputTokens, &totalOutputTokens, &totalCostUSD)
 
-	sseEmit(fmt.Sprintf(`{"type":"run_completed","run_id":%q}`, parentRunID))
+	runMarked = true
+	h.pool.Exec(context.Background(), //nolint:errcheck
+		`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
+		parentRunID, finalOutput, totalInputTokens, totalOutputTokens, totalCostUSD)
+
+	sseEmit(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`,
+		parentRunID, totalInputTokens, totalOutputTokens, totalCostUSD))
 }
 
 // edgesTargeting returns all edges in adj whose target is targetNodeID.
@@ -1211,10 +1237,17 @@ func (h *InvokeHandler) executeSupervisorRun(
 	}
 	sseErr := func(msg string) { sseEmitOrNil(fmt.Sprintf(`{"type":"error","error":%q}`, msg)) }
 
+	llm, err := h.runs.providerFor(ctx, ws, a.Provider)
+	if err != nil {
+		sseErr(err.Error())
+		h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
+		return
+	}
+
 	memories, contextChunks := []string{}, []string{}
 	if a.MemoryEnabled {
 		start := time.Now()
-		found, err := memory.NewEngine(h.pool).Retrieve(ctx, a.ID, ws, input)
+		found, err := memory.NewEngine(h.pool).Retrieve(ctx, a.ID, ws, convID, memoryEmbedding(ctx, llm, input), a.MaxMemories, a.MinRelevanceScore)
 		if err == nil {
 			for _, m := range found {
 				memories = append(memories, m.Content)
@@ -1224,13 +1257,6 @@ func (h *InvokeHandler) executeSupervisorRun(
 			map[string]any{"query": input},
 			map[string]any{"count": len(memories)},
 			start, 0, "", errString(err))
-	}
-
-	llm, err := h.runs.providerFor(ctx, ws, a.Provider)
-	if err != nil {
-		sseErr(err.Error())
-		h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
-		return
 	}
 
 	if a.ContextRetrievalEnabled {
@@ -1256,7 +1282,9 @@ func (h *InvokeHandler) executeSupervisorRun(
 	}
 
 	historyRows, err := h.pool.Query(ctx,
-		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'') FROM messages WHERE conversation_id=$1::uuid ORDER BY created_at`,
+		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'')
+		 FROM messages WHERE conversation_id=$1::uuid
+		 ORDER BY created_at DESC LIMIT 40`,
 		convID)
 	if err != nil {
 		sseErr("failed to load conversation history")
@@ -1270,6 +1298,10 @@ func (h *InvokeHandler) executeSupervisorRun(
 		if historyRows.Scan(&role, &content, &toolCallID, &toolName) == nil && (role == "user" || role == "assistant" || role == "tool") {
 			history = append(history, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
 		}
+	}
+	// Reverse: query returned newest-first, LLM needs oldest-first.
+	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
+		history[i], history[j] = history[j], history[i]
 	}
 
 	// Regular agent tools + delegate tools merged into one list.
@@ -1298,10 +1330,14 @@ func (h *InvokeHandler) executeSupervisorRun(
 		MemorySummaries:    memories,
 		ContextChunks:      contextChunks,
 		History:            history,
+		MemoryEnabled:      a.MemoryEnabled,
+		MemorySaveMode:     a.MemorySaveMode,
 	})
+	regularToolDefs, dbTools = ensureMemoryToolDef(regularToolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
 	toolDefs := append(regularToolDefs, delegateToolDefs...)
 	execCtx := tools.ExecutionContext{
 		WorkspaceID:    ws,
+		AgentID:        a.ID,
 		UserID:         uid,
 		RunID:          runID,
 		ConversationID: convID,
@@ -1313,6 +1349,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	messages := prompt
 	stepCount := 0
 	totalInput, totalOutput := 0, 0
+	memorySaveCalled := false
 
 	for {
 		stream, err := llm.Complete(ctx, provider.CompletionRequest{
@@ -1378,28 +1415,28 @@ func (h *InvokeHandler) executeSupervisorRun(
 			h.pool.Exec(ctx, //nolint:errcheck
 				`INSERT INTO messages(id,conversation_id,role,content,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4)`,
 				uuid.NewString(), convID, reply, usage.OutputTokens)
-			if a.MemoryEnabled {
-				mem := &domain.Memory{
-					WorkspaceID: ws, UserID: uid, AgentID: a.ID,
-					Scope:       domain.MemoryScope(a.MemoryScope),
-					Content:     "User: " + input + "\nAssistant: " + reply,
-					SourceRunID: runID,
-				}
-				if a.MemoryScope == string(domain.MemoryScopeWorkspace) {
-					mem.AgentID = ""
-				}
-				memory.NewEngine(h.pool).Store(ctx, mem) //nolint:errcheck
-			}
 			h.runs.createStep(ctx, runID, domain.StepFinalResponse, //nolint:errcheck
 				map[string]any{},
 				map[string]any{"content": reply},
 				time.Now(), usage.OutputTokens, "", "")
 			runCompleted = true
+			costUSD := cost.Estimate(a.Provider, a.Model, totalInput, totalOutput)
 			h.pool.Exec(dbCtx, //nolint:errcheck
-				`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4 WHERE id=$1::uuid`,
-				runID, reply, totalInput, totalOutput)
-			sseEmitOrNil(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":0}`,
-				runID, totalInput, totalOutput))
+				`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
+				runID, reply, totalInput, totalOutput, costUSD)
+			sseEmitOrNil(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`,
+				runID, totalInput, totalOutput, costUSD))
+			if shouldRunMemoryExtractor(a, memorySaveCalled) {
+				aCopy, llmCopy, replySnap, inputSnap := a, llm, reply, input
+				go func() {
+					start := time.Now()
+					count, err := runMemoryExtractor(context.Background(), h.pool, llmCopy, aCopy, ws, uid, convID, runID, inputSnap, replySnap)
+					h.runs.createStep(context.Background(), runID, domain.StepToolCall, //nolint:errcheck
+						map[string]any{"tool": "memory_extractor"},
+						map[string]any{"saved": count},
+						start, 0, "memory_extractor", errString(err))
+				}()
+			}
 			return
 		}
 
@@ -1410,6 +1447,9 @@ func (h *InvokeHandler) executeSupervisorRun(
 		})
 
 		for _, call := range pendingCalls {
+			if call.Name == "native_save_memory" {
+				memorySaveCalled = true
+			}
 			// Delegate tool — execute the team agent and return its output.
 			if handler, isDelegate := delegateHandlers[call.Name]; isDelegate {
 				delegateStart := time.Now()

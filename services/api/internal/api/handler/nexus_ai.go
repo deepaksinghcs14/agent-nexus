@@ -58,6 +58,11 @@ You have access to these tools:
 - create_workflow: Create a named workflow (the container for a multi-agent graph).
 - save_workflow_graph: Define the visual workflow canvas — nodes and edges — for a workflow.
 - create_trigger: Create a webhook trigger that fires an agent or workflow from an inbound HTTP POST. Returns the public webhook URL.
+- list_gateway_channels: See all gateway channels (WhatsApp and HTTP) configured in this workspace.
+- create_gateway_channel: Create a new gateway channel (http or whatsapp) and connect it to an agent.
+- list_skills: See all skills (named, reusable instruction blocks) available in this workspace.
+- create_skill: Create a new skill — a named block of reusable instructions that agents can be equipped with.
+- attach_skills_to_agent: Attach one or more skills to an agent (replaces the current skill set).
 
 Guidelines:
 - ALWAYS call list_available_models first — before creating any agent, you must know what providers and models are available in this workspace. Never assume a model exists; always verify.
@@ -74,6 +79,8 @@ Guidelines:
 - Use condition nodes for branching (yes/no edges), parallel+join nodes for concurrent execution, loop nodes for retry patterns.
 - For supervisor workflows: use node_type="supervisor" for the coordinating agent (not "agent"). Connect start→supervisor→end with normal edges. Connect supervisor→each team agent node with edges labelled "delegate" — these agents become callable tools the supervisor uses at runtime. The supervisor's LLM decides when and how to call each team agent. Always assign a real agent to the supervisor node via agent_id. IMPORTANT: when writing the supervisor agent's instructions, do NOT include tool names like "delegate_researcher" — the runtime discovers connected team agents and injects their exact names automatically. Write the supervisor's instructions to describe coordination strategy, task sequencing rationale, expected output format, and quality criteria only. When creating team agents for a supervisor workflow, always populate the description field with one sentence stating the agent's specialty (e.g. "Fact-checks claims for accuracy and flags unverified assertions") — this description is shown to the supervisor LLM as the team agent's tool description at runtime.
 - For node positions, use a horizontal layout: start at x=50 y=200, then space nodes 250px apart horizontally; branch parallel nodes ±150px vertically from the main axis. For supervisor team agents, place them to the right of the supervisor node at ±140px vertically.
+- For gateway channels: always call list_agents first to get the agent_id. For http channels, only name/agent_id/channel_type are needed. For whatsapp channels, advise the user to scan the QR code in the Gateway → channel page after creation.
+- For skills: always call list_skills before create_skill to avoid duplicates. Use attach_skills_to_agent to equip an agent with skills — this replaces the full skill set, so list existing skills first if the agent already has some.
 - After creating resources, tell the user what was created and provide navigation links. Keep responses concise.
 - If the user has no provider configured, tell them to go to Settings → Providers to add one.`
 
@@ -201,6 +208,55 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"is_active":{"type":"boolean","description":"Whether the trigger is active immediately. Default true."}
 			},
 			"required":["name","target_type","target_id"]
+		}`),
+	},
+	{
+		Name:        "list_gateway_channels",
+		Description: "List all gateway channels (WhatsApp and HTTP) in this workspace. Call this when the user wants to see existing channels or before creating a new one.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
+	},
+	{
+		Name:        "create_gateway_channel",
+		Description: "Create a new gateway channel connected to an agent. HTTP channels accept webhook POSTs; WhatsApp channels need a QR scan after creation.",
+		InputSchema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"name":{"type":"string","description":"Descriptive name for the channel, e.g. 'Customer Support WhatsApp'"},
+				"description":{"type":"string","description":"Optional description"},
+				"agent_id":{"type":"string","description":"UUID of the agent that handles inbound messages. Get from list_agents."},
+				"channel_type":{"type":"string","enum":["http","whatsapp"],"description":"'http' for webhook-based channels; 'whatsapp' for WhatsApp Business messaging"}
+			},
+			"required":["name","agent_id","channel_type"]
+		}`),
+	},
+	{
+		Name:        "list_skills",
+		Description: "List all skills in this workspace. Skills are named, reusable instruction blocks that can be attached to agents. Call this before create_skill or attach_skills_to_agent.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
+	},
+	{
+		Name:        "create_skill",
+		Description: "Create a new skill — a named block of reusable instructions that can be attached to agents to extend their capabilities.",
+		InputSchema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"name":{"type":"string","description":"Short descriptive name, e.g. 'Formal Tone', 'Spanish Language Support'"},
+				"description":{"type":"string","description":"One sentence describing what this skill does"},
+				"content":{"type":"string","description":"The instruction text injected into the agent's prompt when this skill is active"}
+			},
+			"required":["name","content"]
+		}`),
+	},
+	{
+		Name:        "attach_skills_to_agent",
+		Description: "Attach skills to an agent. This REPLACES the agent's current skill set — call list_skills and check the agent's existing skills first if you want to add without removing.",
+		InputSchema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"agent_id":{"type":"string","description":"UUID of the agent to update. Get from list_agents."},
+				"skill_ids":{"type":"array","items":{"type":"string"},"description":"List of skill UUIDs to attach. Get from list_skills."}
+			},
+			"required":["agent_id","skill_ids"]
 		}`),
 	},
 }
@@ -480,6 +536,16 @@ func (h *NexusAIHandler) executeTool(ctx context.Context, ws, uid, name string, 
 		return h.toolSaveGraph(ctx, ws, input)
 	case "create_trigger":
 		return h.toolCreateTrigger(ctx, ws, uid, input)
+	case "list_gateway_channels":
+		return h.toolListGatewayChannels(ctx, ws)
+	case "create_gateway_channel":
+		return h.toolCreateGatewayChannel(ctx, ws, uid, input)
+	case "list_skills":
+		return h.toolListSkills(ctx, ws)
+	case "create_skill":
+		return h.toolCreateSkill(ctx, ws, uid, input)
+	case "attach_skills_to_agent":
+		return h.toolAttachSkills(ctx, ws, input)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
@@ -983,6 +1049,208 @@ func (h *NexusAIHandler) toolCreateTrigger(ctx context.Context, ws, uid string, 
 	}, nil
 }
 
+func (h *NexusAIHandler) toolListGatewayChannels(ctx context.Context, ws string) (*toolResult, error) {
+	repo := repository.NewGatewayRepository(h.pool)
+	list, err := repo.ListChannels(ctx, ws)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list gateway channels: %w", err)
+	}
+	type entry struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		ChannelType string `json:"channel_type"`
+		AgentID     string `json:"agent_id"`
+		AgentName   string `json:"agent_name,omitempty"`
+		IsActive    bool   `json:"is_active"`
+	}
+	var out []entry
+	for _, c := range list {
+		out = append(out, entry{
+			ID:          c.ID,
+			Name:        c.Name,
+			Description: c.Description,
+			ChannelType: c.ChannelType,
+			AgentID:     c.AgentID,
+			AgentName:   c.AgentName,
+			IsActive:    c.IsActive,
+		})
+	}
+	return &toolResult{Label: fmt.Sprintf("Listed %d gateway channels", len(out)), Data: out}, nil
+}
+
+func (h *NexusAIHandler) toolCreateGatewayChannel(ctx context.Context, ws, uid string, input json.RawMessage) (*toolResult, error) {
+	var args struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		AgentID     string `json:"agent_id"`
+		ChannelType string `json:"channel_type"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return nil, fmt.Errorf("invalid create_gateway_channel input: %w", err)
+	}
+	if args.Name == "" || args.AgentID == "" || args.ChannelType == "" {
+		return nil, fmt.Errorf("create_gateway_channel requires name, agent_id, channel_type")
+	}
+	if args.ChannelType != "http" && args.ChannelType != "whatsapp" {
+		return nil, fmt.Errorf("channel_type must be 'http' or 'whatsapp'")
+	}
+
+	// Verify agent exists in this workspace
+	var agentName string
+	if err := h.pool.QueryRow(ctx,
+		`SELECT name FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+		args.AgentID, ws).Scan(&agentName); err != nil {
+		return nil, fmt.Errorf("agent not found: %s", args.AgentID)
+	}
+
+	cfg := domain.GatewayChannelConfig{
+		AccountID:    "default",
+		DMPolicy:     "pairing",
+		SessionScope: "per-channel-peer",
+		GroupPolicy:  "disabled",
+		HistoryLimit: 50,
+	}
+	if args.ChannelType == "whatsapp" {
+		cfg.AdapterURL = h.cfg.WhatsAppAdapterURL
+		cfg.AssistantEnabled = true
+		cfg.ChatApprovalsEnabled = true
+	}
+	cfgBytes, _ := json.Marshal(cfg)
+
+	c := &domain.GatewayChannel{
+		ID:          uuid.NewString(),
+		WorkspaceID: ws,
+		AgentID:     args.AgentID,
+		Name:        args.Name,
+		Description: args.Description,
+		ChannelType: args.ChannelType,
+		Config:      cfgBytes,
+		IsActive:    true,
+		CreatedBy:   uid,
+	}
+	repo := repository.NewGatewayRepository(h.pool)
+	if err := repo.CreateChannel(ctx, c); err != nil {
+		return nil, fmt.Errorf("failed to create gateway channel: %w", err)
+	}
+
+	note := ""
+	if args.ChannelType == "whatsapp" {
+		note = " — scan the QR code at Gateway → " + c.Name + " → QR Login to connect WhatsApp"
+	}
+	return &toolResult{
+		Label:      fmt.Sprintf("Created %s channel \"%s\"%s", args.ChannelType, c.Name, note),
+		ResultID:   c.ID,
+		ResultName: c.Name,
+		Link:       "/gateway/channels/" + c.ID,
+		Data: map[string]any{
+			"id":           c.ID,
+			"name":         c.Name,
+			"channel_type": c.ChannelType,
+			"agent_id":     c.AgentID,
+			"agent_name":   agentName,
+		},
+	}, nil
+}
+
+func (h *NexusAIHandler) toolListSkills(ctx context.Context, ws string) (*toolResult, error) {
+	repo := repository.NewSkillRepository(h.pool)
+	list, err := repo.List(ctx, ws)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list skills: %w", err)
+	}
+	type entry struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Enabled     bool   `json:"enabled"`
+	}
+	var out []entry
+	for _, s := range list {
+		out = append(out, entry{ID: s.ID, Name: s.Name, Description: s.Description, Enabled: s.Enabled})
+	}
+	return &toolResult{Label: fmt.Sprintf("Listed %d skills", len(out)), Data: out}, nil
+}
+
+func (h *NexusAIHandler) toolCreateSkill(ctx context.Context, ws, uid string, input json.RawMessage) (*toolResult, error) {
+	var args struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Content     string `json:"content"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return nil, fmt.Errorf("invalid create_skill input: %w", err)
+	}
+	if args.Name == "" || args.Content == "" {
+		return nil, fmt.Errorf("create_skill requires name and content")
+	}
+
+	s := &domain.Skill{
+		ID:          uuid.NewString(),
+		WorkspaceID: ws,
+		Name:        args.Name,
+		Description: args.Description,
+		Content:     args.Content,
+		Source:      "manual",
+		Enabled:     true,
+		CreatedBy:   uid,
+	}
+	repo := repository.NewSkillRepository(h.pool)
+	if err := repo.Create(ctx, s); err != nil {
+		return nil, fmt.Errorf("failed to create skill: %w", err)
+	}
+	return &toolResult{
+		Label:      fmt.Sprintf("Created skill \"%s\"", s.Name),
+		ResultID:   s.ID,
+		ResultName: s.Name,
+		Link:       "/skills",
+		Data:       map[string]string{"id": s.ID, "name": s.Name},
+	}, nil
+}
+
+func (h *NexusAIHandler) toolAttachSkills(ctx context.Context, ws string, input json.RawMessage) (*toolResult, error) {
+	var args struct {
+		AgentID  string   `json:"agent_id"`
+		SkillIDs []string `json:"skill_ids"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return nil, fmt.Errorf("invalid attach_skills_to_agent input: %w", err)
+	}
+	if args.AgentID == "" {
+		return nil, fmt.Errorf("attach_skills_to_agent requires agent_id")
+	}
+
+	// Verify agent exists in this workspace
+	var agentName string
+	if err := h.pool.QueryRow(ctx,
+		`SELECT name FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+		args.AgentID, ws).Scan(&agentName); err != nil {
+		return nil, fmt.Errorf("agent not found: %s", args.AgentID)
+	}
+
+	assignments := make([]domain.AgentSkillAssignment, 0, len(args.SkillIDs))
+	for i, sid := range args.SkillIDs {
+		assignments = append(assignments, domain.AgentSkillAssignment{
+			SkillID:    sid,
+			Enabled:    true,
+			OrderIndex: i,
+		})
+	}
+	repo := repository.NewSkillRepository(h.pool)
+	if err := repo.SetForAgent(ctx, args.AgentID, assignments); err != nil {
+		return nil, fmt.Errorf("failed to attach skills: %w", err)
+	}
+	return &toolResult{
+		Label: fmt.Sprintf("Attached %d skill(s) to agent \"%s\"", len(assignments), agentName),
+		Link:  "/agents/" + args.AgentID,
+		Data: map[string]any{
+			"agent_id":   args.AgentID,
+			"agent_name": agentName,
+			"skill_count": len(assignments),
+		},
+	}, nil
+}
+
 // toolStartLabel generates a human-readable label for the tool_started SSE event.
 func toolStartLabel(toolName string, input json.RawMessage) string {
 	var m map[string]any
@@ -1013,6 +1281,22 @@ func toolStartLabel(toolName string, input json.RawMessage) string {
 		return "Listing available tools..."
 	case "list_connectors":
 		return "Listing available connectors..."
+	case "list_gateway_channels":
+		return "Listing gateway channels..."
+	case "create_gateway_channel":
+		if n, ok := m["name"].(string); ok && n != "" {
+			return fmt.Sprintf("Creating gateway channel \"%s\"...", n)
+		}
+		return "Creating gateway channel..."
+	case "list_skills":
+		return "Listing skills..."
+	case "create_skill":
+		if n, ok := m["name"].(string); ok && n != "" {
+			return fmt.Sprintf("Creating skill \"%s\"...", n)
+		}
+		return "Creating skill..."
+	case "attach_skills_to_agent":
+		return "Attaching skills to agent..."
 	}
 	return strings.ReplaceAll(toolName, "_", " ") + "..."
 }

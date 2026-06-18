@@ -162,12 +162,27 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Run tracing** — every webhook-fired run carries a `trigger_id`; filter runs by trigger to see the full execution history for each inbound source
 
 ### Nexus Gateway
-- **Multi-channel messaging** — connect agents to inbound message channels; currently supports WhatsApp (via a self-hosted adapter) and generic HTTP channels
-- **WhatsApp integration** — pair a WhatsApp account to a channel via QR code; inbound messages are routed to the linked agent and replies are sent back automatically; full session lifecycle management (connect, logout, status)
-- **Contact management** — define contacts per channel with roles (`owner`, `trusted`, `blocked`) and optional per-contact agent overrides; trusted contacts get auto-replies, owners get escalation notifications
+- **Multi-channel messaging** — connect agents to inbound message channels; route any inbound message to the right agent and send replies back automatically; full session persistence so each user always resumes their own conversation
+- **HTTP channels** — create a webhook endpoint (`POST /gateway/http/{channelId}`) that any external system can POST to; built-in test panel in the UI; session-aware so the same caller always gets the same conversation thread
+- **WhatsApp integration** — pair a WhatsApp account via QR code; inbound messages are routed to the linked agent and replies are sent back automatically; full session lifecycle management (connect, logout, reconnect)
+- **Per-contact agent assignment** — each contact can have its own agent override; the channel-level agent is the fallback; change the agent inline from the contacts tab without deleting and recreating the contact
+- **Contact management** — define contacts per channel with roles (`owner`, `trusted`, `blocked`); trusted contacts get auto-replies, owners get escalation notifications
 - **Escalation & approval** — agents can call `whatsapp_request_owner_approval` to pause risky actions and wait for an owner to respond in-chat with an approval code; fully audited via the escalations log
 - **Reminders** — schedule timed messages to be sent back to a contact via a channel
-- **Gateway UI** — manage channels, view active sessions, review escalations and reminders, manage contacts — all from `/gateway`
+- **Gateway UI** — manage channels, sessions, events, escalations, reminders, and contacts from `/gateway`
+
+**Gateway channels coming soon:**
+
+| Channel | Notes |
+|---------|-------|
+| Telegram | Bot API — easiest to self-host; no pairing required |
+| SMS (Twilio / Vonage) | Universal reach; plug in your Twilio account SID + auth token |
+| Slack | Events API + Socket Mode; great for internal team bots |
+| Instagram DM | Meta Business Platform; same credential flow as WhatsApp |
+| Facebook Messenger | Meta Messenger Platform; webhook-based |
+| Discord | Bot token; ideal for developer communities |
+| Microsoft Teams | Incoming webhook + Bot Framework |
+| Email (SMTP/IMAP) | Route inbound emails to an agent; reply via SMTP |
 
 ### Skills
 - **Reusable instruction modules** — define named skill blocks (markdown or plain text) that can be attached to any agent's system prompt; centrally managed at `/skills`
@@ -175,7 +190,7 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Agent attachment** — skills are injected into the agent's prompt at run time; attach, detach, or reorder skills per agent from the Agent Builder
 
 ### Nexus AI
-- **Meta-agent** — a built-in AI assistant backed by the same agent runtime as user-created agents. Chat to it in natural language to list agents/tools/connectors, create new agents, build workflow graphs, and set up webhook triggers. Automatically detects available models for your configured providers and selects the best one — no manual model IDs required. Navigation links in responses always point to your actual deployment URL (set via `PUBLIC_APP_URL`)
+- **Meta-agent** — a built-in AI assistant backed by the same agent runtime as user-created agents. Chat to it in natural language to manage the entire platform: list and create agents, build multi-agent workflow graphs, set up webhook triggers, create gateway channels, manage skills, and more. 13 tools total. Automatically detects available models for your configured providers and selects the best one — no manual model IDs required. Navigation links in responses always point to your actual deployment URL (set via `PUBLIC_APP_URL`)
 
 ### Built-in Documentation
 - **In-app docs** — platform documentation lives inside the app at `/docs`; covers agents, tools, connectors, workflows, the invoke API, SSE stream events, run states, and MCP servers — no external site needed
@@ -352,8 +367,16 @@ What's working today vs. what's coming next:
 | Built-in in-app documentation | ✅ Done |
 | Nexus Gateway (WhatsApp + HTTP channel messaging) | ✅ Done |
 | Skills (reusable agent instruction modules) | ✅ Done |
-| Additional connectors (Slack, Jira, Confluence, GitHub, Google Drive) | 🔜 Planned |
 | Webhook / event triggers (run an agent on inbound HTTP event) | ✅ Done |
+| Gateway: Telegram channel | 🔜 Planned |
+| Gateway: SMS channel (Twilio / Vonage) | 🔜 Planned |
+| Gateway: Slack channel | 🔜 Planned |
+| Gateway: Instagram DM channel | 🔜 Planned |
+| Gateway: Facebook Messenger channel | 🔜 Planned |
+| Gateway: Discord channel | 🔜 Planned |
+| Gateway: Microsoft Teams channel | 🔜 Planned |
+| Gateway: Email channel (SMTP/IMAP) | 🔜 Planned |
+| Additional connectors (Slack, Jira, Confluence, GitHub, Google Drive) | 🔜 Planned |
 | Agent versioning and snapshot rollback | 🔜 Planned |
 | Export / import agents and workflows (JSON) | 🔜 Planned |
 | API rate limiting per workspace | 🔜 Planned |
