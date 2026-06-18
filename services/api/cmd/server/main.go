@@ -75,6 +75,8 @@ func main() {
 	reg.Register(native.NewReadFileTool(cfg.StoragePath))
 	reg.Register(native.NewWebSearchTool())
 	reg.Register(native.NewSaveMemoryTool(pool))
+	reg.Register(native.NewListToolsTool())
+	reg.Register(native.NewRequestToolTool())
 	for _, t := range native.NewWhatsAppTools(pool, cfg) {
 		reg.Register(t)
 	}

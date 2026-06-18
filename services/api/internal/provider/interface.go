@@ -23,12 +23,13 @@ type Provider interface {
 
 // CompletionRequest is the normalised request sent to any provider.
 type CompletionRequest struct {
-	Model       string
-	Messages    []Message
-	Tools       []ToolDefinition
-	Temperature float64
-	MaxTokens   int
-	Stream      bool
+	Model               string
+	Messages            []Message
+	Tools               []ToolDefinition
+	Temperature         float64
+	MaxTokens           int
+	Stream              bool
+	StableSystemContent string // non-empty → Anthropic caches this prefix via cache_control
 }
 
 // Message is a normalised chat message.

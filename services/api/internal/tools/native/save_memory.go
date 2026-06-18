@@ -56,6 +56,8 @@ func (t *SaveMemoryTool) Execute(input map[string]any) (any, error) {
 	return nil, fmt.Errorf("native_save_memory requires run context")
 }
 
+const compressThreshold = 200
+
 func (t *SaveMemoryTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	if execCtx.AgentID == "" || execCtx.WorkspaceID == "" {
 		return nil, fmt.Errorf("native_save_memory: missing agent context")
@@ -67,6 +69,13 @@ func (t *SaveMemoryTool) ExecuteWithContext(ctx context.Context, execCtx tools.E
 	content, _ := input["content"].(string)
 	reason, _ := input["reason"].(string)
 	importance, _ := input["importance_score"].(float64)
+
+	// Compress verbose content before storing so all future retrievals are compact.
+	if execCtx.CompressText != nil && len(content) > compressThreshold {
+		if compressed, cerr := execCtx.CompressText(ctx, content); cerr == nil && compressed != "" {
+			content = compressed
+		}
+	}
 	result, err := memory.NewEngine(t.pool).SaveCandidate(ctx, memory.SaveRequest{
 		Agent:          agent,
 		WorkspaceID:    execCtx.WorkspaceID,

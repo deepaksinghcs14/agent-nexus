@@ -81,6 +81,8 @@ type Agent struct {
 	MaxSteps                int       `json:"max_steps"`
 	MaxToolCalls            int       `json:"max_tool_calls"`
 	MaxDurationSecs         int       `json:"max_duration_secs"`
+	MaxHistoryMessages      int       `json:"max_history_messages"` // 0 = default (20)
+	LazyToolLoading         bool      `json:"lazy_tool_loading"`
 	Status                  string    `json:"status"`
 	CreatedBy               string    `json:"created_by"`
 	CreatedAt               time.Time `json:"created_at"`

@@ -23,6 +23,13 @@ type ExecutionContext struct {
 	RunID            string
 	ConversationID   string
 	ChannelSessionID string
+	// CompressText, if non-nil, condenses text via a lightweight LLM call.
+	// Used by native_save_memory to compress verbose content before storing.
+	CompressText func(ctx context.Context, text string) (string, error)
+	// RequestTool, if non-nil, marks a tool as active for the current run (lazy loading).
+	RequestTool func(name string)
+	// ToolSummaries maps tool name → one-line description for the current agent.
+	ToolSummaries map[string]string
 }
 
 type ContextAwareTool interface {

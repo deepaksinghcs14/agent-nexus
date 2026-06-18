@@ -6,6 +6,7 @@ import (
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -45,6 +46,25 @@ func loadAgentToolDefs(ctx context.Context, pool *pgxpool.Pool, agentID string) 
 		nameMap[t.Name] = t
 	}
 	return defs, nameMap, rows.Err()
+}
+
+// lazyMetaToolDefs returns the meta-tools always included in lazy-loading mode.
+func lazyMetaToolDefs(reg *tools.Registry) []provider.ToolDefinition {
+	names := []string{"native_list_tools", "native_request_tool"}
+	var defs []provider.ToolDefinition
+	for _, name := range names {
+		t, err := reg.Get(name)
+		if err != nil {
+			continue
+		}
+		d := t.Definition()
+		defs = append(defs, provider.ToolDefinition{
+			Name:        d.Name,
+			Description: d.Description,
+			InputSchema: d.InputSchema,
+		})
+	}
+	return defs
 }
 
 func ensureMemoryToolDef(defs []provider.ToolDefinition, nameMap map[string]domain.Tool, enabled bool) ([]provider.ToolDefinition, map[string]domain.Tool) {

@@ -55,6 +55,8 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   const [maxSteps, setMaxSteps] = useState(10)
   const [maxToolCalls, setMaxToolCalls] = useState(20)
   const [maxDurationSecs, setMaxDurationSecs] = useState(300)
+  const [maxHistoryMessages, setMaxHistoryMessages] = useState(20)
+  const [lazyToolLoading, setLazyToolLoading] = useState(false)
   const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({ read_file: true })
   const [enabledSkills, setEnabledSkills] = useState<Record<string, boolean>>({})
   const [skillOrder, setSkillOrder] = useState<Record<string, number>>({})
@@ -139,6 +141,8 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
     setMaxSteps(existing.max_steps)
     setMaxToolCalls(existing.max_tool_calls)
     setMaxDurationSecs(existing.max_duration_secs ?? 300)
+    setMaxHistoryMessages(existing.max_history_messages ?? 20)
+    setLazyToolLoading(existing.lazy_tool_loading ?? false)
   }, [existing])
 
   useEffect(() => {
@@ -185,6 +189,8 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
       max_steps: maxSteps,
       max_tool_calls: maxToolCalls,
       max_duration_secs: maxDurationSecs,
+      max_history_messages: maxHistoryMessages,
+      lazy_tool_loading: lazyToolLoading,
       }
       const saved = isEdit ? await agentsAPI.update(params!.id!, body) : await agentsAPI.create(body)
       const id = isEdit ? params!.id! : (saved as Agent).id
@@ -496,12 +502,18 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
             <Field label="Max run duration (sec)">
               <input type="number" value={maxDurationSecs} onChange={e => setMaxDurationSecs(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
             </Field>
-            <Field label="On max steps exceeded">
-              <select className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none">
-                <option>Stop and return partial output</option>
-                <option>Ask user to continue</option>
-              </select>
+            <Field label="Max history messages" hint="Older turns are dropped. Lower = fewer input tokens. Default 20.">
+              <input type="number" min={1} max={100} value={maxHistoryMessages} onChange={e => setMaxHistoryMessages(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
             </Field>
+          </div>
+          <div className="bg-white border border-gray-100 rounded-xl overflow-hidden mt-2">
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
+                <p className="text-[13px] text-gray-800">Lazy tool loading</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Tools are activated on demand — reduces token cost, adds 1 turn latency on first tool use per run.</p>
+              </div>
+              <Toggle on={lazyToolLoading} onToggle={() => setLazyToolLoading(v => !v)} />
+            </div>
           </div>
           <p className="text-[12px] font-medium text-gray-700 mt-2">Require approval for</p>
           <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">

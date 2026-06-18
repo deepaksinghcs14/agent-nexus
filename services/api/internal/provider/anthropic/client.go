@@ -38,12 +38,31 @@ func (c *Client) Complete(ctx context.Context, req provider.CompletionRequest) (
 		"max_tokens":  req.MaxTokens,
 		"stream":      true,
 	}
-	if system != "" {
-		body["system"] = system
-	}
 	if req.MaxTokens <= 0 {
 		body["max_tokens"] = 4096
 	}
+
+	// Build system field: structured array with cache_control when a stable prefix is provided.
+	if req.StableSystemContent != "" && system != "" {
+		dynamicPart := strings.TrimPrefix(system, req.StableSystemContent)
+		sysBlocks := []map[string]any{
+			{
+				"type":          "text",
+				"text":          req.StableSystemContent,
+				"cache_control": map[string]string{"type": "ephemeral"},
+			},
+		}
+		if strings.TrimSpace(dynamicPart) != "" {
+			sysBlocks = append(sysBlocks, map[string]any{
+				"type": "text",
+				"text": dynamicPart,
+			})
+		}
+		body["system"] = sysBlocks
+	} else if system != "" {
+		body["system"] = system
+	}
+
 	if len(req.Tools) > 0 {
 		tools := make([]map[string]any, 0, len(req.Tools))
 		for _, t := range req.Tools {
@@ -55,6 +74,8 @@ func (c *Client) Complete(ctx context.Context, req provider.CompletionRequest) (
 				"input_schema": schema,
 			})
 		}
+		// Cache the tools block — schemas are stable within a conversation.
+		tools[len(tools)-1]["cache_control"] = map[string]string{"type": "ephemeral"}
 		body["tools"] = tools
 	}
 	payload, err := json.Marshal(body)
@@ -68,6 +89,7 @@ func (c *Client) Complete(ctx context.Context, req provider.CompletionRequest) (
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("X-API-Key", c.apiKey)
 	httpReq.Header.Set("Anthropic-Version", "2023-06-01")
+	httpReq.Header.Set("Anthropic-Beta", "prompt-caching-2024-07-16")
 	res, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		return nil, err

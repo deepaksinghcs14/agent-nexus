@@ -83,6 +83,8 @@ export interface Agent {
   max_steps: number
   max_tool_calls: number
   max_duration_secs: number
+  max_history_messages: number
+  lazy_tool_loading: boolean
   status: 'active' | 'paused' | 'archived'
   created_by: string
   created_at: string
