@@ -25,7 +25,7 @@ const TYPE_COLORS: Record<WorkspaceType, string> = {
   sandbox: 'bg-gray-500/20 text-gray-400',
 }
 
-export function WorkspaceSwitcher() {
+export function WorkspaceSwitcher({ collapsed = false }: { collapsed?: boolean }) {
   const router = useRouter()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
@@ -62,22 +62,35 @@ export function WorkspaceSwitcher() {
     }
   }
 
+  const initial = (workspace?.display_name ?? '?')[0].toUpperCase()
+
   return (
     <div className="border-b border-white/[0.06]">
       <button
         ref={triggerRef}
         onClick={handleToggle}
-        className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-white/[0.04] transition-colors text-left"
+        className={cn(
+          'w-full flex items-center hover:bg-white/[0.04] transition-colors text-left',
+          collapsed ? 'justify-center py-2.5 px-0' : 'gap-2 px-4 py-2.5'
+        )}
       >
-        <div className="flex-1 min-w-0">
-          <p className="text-[12px] font-medium text-white/80 truncate leading-tight">
-            {workspace?.display_name ?? 'Loading…'}
-          </p>
-          <span className={cn('inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded mt-0.5 uppercase tracking-wider', TYPE_COLORS[wsType])}>
-            {TYPE_LABELS[wsType]}
-          </span>
-        </div>
-        <ChevronDown className={cn('w-3.5 h-3.5 text-white/30 flex-shrink-0 transition-transform', open && 'rotate-180')} />
+        {collapsed ? (
+          <div className={cn('w-6 h-6 rounded flex items-center justify-center text-[11px] font-bold flex-shrink-0', TYPE_COLORS[wsType])}>
+            {initial}
+          </div>
+        ) : (
+          <>
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-medium text-white/80 truncate leading-tight">
+                {workspace?.display_name ?? 'Loading…'}
+              </p>
+              <span className={cn('inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded mt-0.5 uppercase tracking-wider', TYPE_COLORS[wsType])}>
+                {TYPE_LABELS[wsType]}
+              </span>
+            </div>
+            <ChevronDown className={cn('w-3.5 h-3.5 text-white/30 flex-shrink-0 transition-transform', open && 'rotate-180')} />
+          </>
+        )}
       </button>
 
       {open && dropdownRect && (
