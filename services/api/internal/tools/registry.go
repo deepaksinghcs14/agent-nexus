@@ -19,6 +19,8 @@ type NativeTool interface {
 type ExecutionContext struct {
 	WorkspaceID      string
 	AgentID          string
+	AgentProvider    string
+	AgentModel       string
 	UserID           string
 	RunID            string
 	ConversationID   string

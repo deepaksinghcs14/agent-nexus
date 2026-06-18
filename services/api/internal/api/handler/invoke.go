@@ -418,6 +418,8 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	execCtx := tools.ExecutionContext{
 		WorkspaceID:    ws,
 		AgentID:        a.ID,
+		AgentProvider:  a.Provider,
+		AgentModel:     a.Model,
 		UserID:         uid,
 		RunID:          runID,
 		ConversationID: convID,
@@ -1558,6 +1560,8 @@ func (h *InvokeHandler) executeSupervisorRun(
 	execCtx := tools.ExecutionContext{
 		WorkspaceID:    ws,
 		AgentID:        a.ID,
+		AgentProvider:  a.Provider,
+		AgentModel:     a.Model,
 		UserID:         uid,
 		RunID:          runID,
 		ConversationID: convID,
