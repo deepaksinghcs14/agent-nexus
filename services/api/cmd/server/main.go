@@ -106,9 +106,10 @@ func main() {
 	}
 	exec := tools.NewExecutor(reg)
 
-	// Wire handlers
+	// Wire handlers — runs needs invokeH set post-construction to avoid circular init.
 	runs := handler.NewRunsHandler(pool, cfg, reg, exec)
 	invoke := handler.NewInvokeHandler(pool, cfg, runs, reg, exec)
+	runs.SetInvokeHandler(invoke)
 	h := &handler.Handlers{
 		Auth:            handler.NewAuthHandler(pool, cfg),
 		Providers:       handler.NewProvidersHandler(pool, cfg),

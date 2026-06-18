@@ -19,6 +19,8 @@ type NativeTool interface {
 type ExecutionContext struct {
 	WorkspaceID      string
 	AgentID          string
+	AgentProvider    string
+	AgentModel       string
 	UserID           string
 	RunID            string
 	ConversationID   string
@@ -34,7 +36,6 @@ type ExecutionContext struct {
 	// ToolSummaries maps tool name → one-line description for the current agent.
 	ToolSummaries map[string]string
 	// CallAgent, if non-nil, invokes another workspace agent as a sub-run and returns its output.
-	// Nil when InvokeDepth >= maxInvokeDepth.
 	CallAgent func(ctx context.Context, agentID, task string) (string, error)
 }
 

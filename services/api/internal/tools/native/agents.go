@@ -103,7 +103,10 @@ func (t *CallAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.Ex
 		return nil, fmt.Errorf("native_call_agent: an agent cannot call itself")
 	}
 	if execCtx.CallAgent == nil {
-		return nil, fmt.Errorf("native_call_agent: max recursion depth reached (depth %d)", execCtx.InvokeDepth)
+		if execCtx.InvokeDepth >= 3 {
+			return nil, fmt.Errorf("native_call_agent: max recursion depth (3) reached")
+		}
+		return nil, fmt.Errorf("native_call_agent: sub-agent calls are not available in this execution context (supervisor mode). Run this agent directly from the playground, not as part of a workflow")
 	}
 	output, err := execCtx.CallAgent(ctx, agentID, task)
 	if err != nil {
@@ -124,13 +127,13 @@ func (t *CreateAgentTool) Definition() domain.Tool {
 		"properties": map[string]any{
 			"name":         map[string]any{"type": "string", "description": "Agent name."},
 			"instructions": map[string]any{"type": "string", "description": "System instructions for the agent."},
-			"provider":     map[string]any{"type": "string", "description": "LLM provider (anthropic, openai, gemini, ollama)."},
-			"model":        map[string]any{"type": "string", "description": "Model ID to use."},
+			"provider":     map[string]any{"type": "string", "description": "LLM provider (anthropic, openai, gemini, ollama). Defaults to the calling agent's provider."},
+			"model":        map[string]any{"type": "string", "description": "Model ID. Defaults to the calling agent's model."},
 			"description":  map[string]any{"type": "string", "description": "Short description of what this agent does."},
 			"tool_names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tool names to attach."},
 			"ephemeral":    map[string]any{"type": "boolean", "description": "If true, agent is deleted when this run ends. Default false."},
 		},
-		"required": []string{"name", "instructions", "provider", "model"},
+		"required": []string{"name", "instructions"},
 	})
 	return domain.Tool{
 		Name:             "native_create_agent",
@@ -154,6 +157,14 @@ func (t *CreateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 	model, _ := input["model"].(string)
 	description, _ := input["description"].(string)
 	ephemeral, _ := input["ephemeral"].(bool)
+
+	// Default to the calling agent's provider/model so the LLM doesn't hallucinate stale model names.
+	if provider == "" {
+		provider = execCtx.AgentProvider
+	}
+	if model == "" {
+		model = execCtx.AgentModel
+	}
 
 	var toolNames []string
 	if tn, ok := input["tool_names"].([]any); ok {
