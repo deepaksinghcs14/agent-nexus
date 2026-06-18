@@ -103,7 +103,10 @@ func (t *CallAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.Ex
 		return nil, fmt.Errorf("native_call_agent: an agent cannot call itself")
 	}
 	if execCtx.CallAgent == nil {
-		return nil, fmt.Errorf("native_call_agent: max recursion depth reached (depth %d)", execCtx.InvokeDepth)
+		if execCtx.InvokeDepth >= 3 {
+			return nil, fmt.Errorf("native_call_agent: max recursion depth (3) reached")
+		}
+		return nil, fmt.Errorf("native_call_agent: sub-agent calls are not available in this execution context (supervisor mode). Run this agent directly from the playground, not as part of a workflow")
 	}
 	output, err := execCtx.CallAgent(ctx, agentID, task)
 	if err != nil {

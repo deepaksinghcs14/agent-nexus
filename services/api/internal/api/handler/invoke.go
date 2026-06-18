@@ -1546,12 +1546,24 @@ func (h *InvokeHandler) executeSupervisorRun(
 	})
 	regularToolDefs, dbTools = ensureMemoryToolDef(regularToolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
 	toolDefs := append(regularToolDefs, delegateToolDefs...)
+
+	supRootTraceID := runID
+	var supCallAgentFn func(ctx context.Context, agentID, task string) (string, error)
+	if 0 < maxInvokeDepth {
+		supCallAgentFn = func(ctx context.Context, agentID, task string) (string, error) {
+			return h.runAgentInline(ctx, ws, uid, agentID, task, runID, supRootTraceID, 1)
+		}
+	}
+
 	execCtx := tools.ExecutionContext{
 		WorkspaceID:    ws,
 		AgentID:        a.ID,
 		UserID:         uid,
 		RunID:          runID,
 		ConversationID: convID,
+		InvokeDepth:    0,
+		RootRunID:      supRootTraceID,
+		CallAgent:      supCallAgentFn,
 		CompressText: func(ctx context.Context, text string) (string, error) {
 			ch, cerr := llm.Complete(ctx, provider.CompletionRequest{
 				Model: a.Model,
