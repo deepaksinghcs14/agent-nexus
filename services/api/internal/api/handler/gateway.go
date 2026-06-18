@@ -3,7 +3,6 @@ package handler
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1018,22 +1017,6 @@ func (h *GatewayHandler) senderAllowed(cfg domain.GatewayChannelConfig, msg inbo
 	}
 }
 
-func (h *GatewayHandler) addSenderToAllowlist(ctx context.Context, channelID, ws, sender string) error {
-	c, err := h.repo.GetChannelInWorkspace(ctx, channelID, ws)
-	if err != nil {
-		return err
-	}
-	cfg := h.parseGatewayConfig(c.Config, c.ChannelType)
-	for _, existing := range cfg.AllowFrom {
-		if existing == sender {
-			return nil
-		}
-	}
-	cfg.AllowFrom = append(cfg.AllowFrom, sender)
-	c.Config, _ = json.Marshal(cfg)
-	return h.repo.UpdateChannel(ctx, &c)
-}
-
 func (h *GatewayHandler) createTrustedContactFromPairing(ctx context.Context, p domain.GatewayPairingRequest) error {
 	phone := normalizeGatewayPhone(p.SenderID)
 	contact := &domain.GatewayContact{
@@ -1269,13 +1252,6 @@ func intParam(r *http.Request, key string, fallback int) int {
 	return n
 }
 
-func pairingCode() string {
-	var b [3]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return strings.ToUpper(uuid.NewString()[:6])
-	}
-	return fmt.Sprintf("%02X%02X%02X", b[0], b[1], b[2])
-}
 
 func defaultString(v, fallback string) string {
 	if strings.TrimSpace(v) == "" {

@@ -1180,7 +1180,7 @@ func (h *InvokeHandler) executeGroupRun(
 	// Aggregate token counts and cost from all sub-runs belonging to this trace.
 	var totalInputTokens, totalOutputTokens int
 	var totalCostUSD float64
-	h.pool.QueryRow(context.Background(), //nolint:errcheck
+	_ = h.pool.QueryRow(context.Background(),
 		`SELECT COALESCE(SUM(total_input_tokens),0), COALESCE(SUM(total_output_tokens),0), COALESCE(SUM(cost_estimate),0)
 		 FROM runs WHERE trace_id=$1::uuid AND id!=$1::uuid`,
 		parentRunID).Scan(&totalInputTokens, &totalOutputTokens, &totalCostUSD)
