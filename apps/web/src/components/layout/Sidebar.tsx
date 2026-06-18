@@ -3,9 +3,9 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Bot, GitBranch, Wrench, Plug, Link2, Zap, Sparkles,
+  Bot, GitBranch, Wrench, Plug, Link2, Zap, Sparkles, Radio, BookMarked,
   MessageSquare, History,
-  Activity, Brain, BarChart2,
+  Activity, Brain, BarChart2, Timer,
   Key, Settings, BookOpen,
   LayoutDashboard, Users, Building2, Shield, ClipboardList,
   Hexagon, ShieldCheck,
@@ -28,6 +28,8 @@ const userNav: NavGroup[] = [
       { label: 'MCP Servers',  href: '/mcp-servers',  icon: Plug },
       { label: 'Connectors',   href: '/connectors',   icon: Link2 },
       { label: 'Triggers',     href: '/triggers',     icon: Zap },
+      { label: 'Gateway',      href: '/gateway',      icon: Radio },
+      { label: 'Skills',       href: '/skills',       icon: BookMarked },
     ],
   },
   {
@@ -42,7 +44,8 @@ const userNav: NavGroup[] = [
     items: [
       { label: 'Runs & Traces', href: '/runs', icon: Activity },
       { label: 'Memory', href: '/memory', icon: Brain },
-      { label: 'Usage',  href: '/usage',  icon: BarChart2 },
+      { label: 'Usage',   href: '/usage',         icon: BarChart2 },
+      { label: 'Latency', href: '/observability', icon: Timer },
     ],
   },
   {

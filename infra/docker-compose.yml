@@ -40,10 +40,13 @@ services:
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
       PUBLIC_API_URL: http://localhost:8080
       PUBLIC_APP_URL: http://localhost:3000
+      WHATSAPP_ADAPTER_URL: http://127.0.0.1:18901
+      WHATSAPP_AUTH_ROOT: /data/whatsapp-auth
     ports:
       - "8080:8080"
     volumes:
       - api_storage:/data/files
+      - whatsapp_auth:/data/whatsapp-auth
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -65,3 +68,4 @@ services:
 volumes:
   postgres_data:
   api_storage:
+  whatsapp_auth:

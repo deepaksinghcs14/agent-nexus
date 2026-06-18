@@ -11,11 +11,13 @@ const FIELDS = [
   { field: 'temperature', type: 'float 0–1', desc: 'Controls response randomness. 0 = deterministic, 1 = very creative.' },
   { field: 'max_tokens', type: 'integer', desc: 'Maximum tokens the model can generate in a single response.' },
   { field: 'memory_enabled', type: 'boolean', desc: 'Whether to retrieve and store memories from previous runs.' },
-  { field: 'memory_scope', type: 'conversation | agent | workspace', desc: 'Scope of memories retrieved: per-conversation, per-agent, or shared across the workspace.' },
-  { field: 'context_retrieval_enabled', type: 'boolean', desc: 'Whether to retrieve relevant document chunks from connected connectors.' },
-  { field: 'max_steps', type: 'integer', desc: 'Maximum number of model+tool call cycles per run. Prevents infinite loops.' },
-  { field: 'max_tool_calls', type: 'integer', desc: 'Maximum tool calls per run across all steps.' },
-  { field: 'max_duration_secs', type: 'integer', desc: 'Hard timeout for the run in seconds.' },
+  { field: 'memory_scope', type: 'conversation | agent | workspace', desc: 'Scope of memories retrieved and stored. conversation = not persisted across runs; agent = private to this agent; workspace = shared across all agents in the workspace.' },
+  { field: 'max_memories', type: 'integer (default 5)', desc: 'Maximum number of past memories injected into the prompt per run. Higher values give more context but use more tokens.' },
+  { field: 'min_relevance_score', type: 'float 0–1 (default 0.70)', desc: 'Only memories with a relevance score at or above this threshold are injected. Set to 0 to disable filtering.' },
+  { field: 'context_retrieval_enabled', type: 'boolean', desc: 'Whether to retrieve relevant document chunks from connected connectors (RAG).' },
+  { field: 'max_steps', type: 'integer (default 10)', desc: 'Maximum number of model+tool call cycles per run. Prevents infinite loops.' },
+  { field: 'max_tool_calls', type: 'integer (default 20)', desc: 'Maximum tool calls per run across all steps.' },
+  { field: 'max_duration_secs', type: 'integer (default 300)', desc: 'Hard timeout for the run in seconds. Run is cancelled when exceeded.' },
   { field: 'status', type: 'active | paused | archived', desc: 'Only active agents can be invoked.' },
 ]
 
@@ -63,9 +65,13 @@ PUT /api/v1/agents/:id`}</code></pre>
   "temperature": 0.3,
   "max_tokens": 1024,
   "memory_enabled": true,
-  "memory_scope": "conversation",
+  "memory_scope": "agent",
+  "max_memories": 5,
+  "min_relevance_score": 0.70,
   "context_retrieval_enabled": false,
-  "max_steps": 5,
+  "max_steps": 10,
+  "max_tool_calls": 20,
+  "max_duration_secs": 300,
   "status": "active"
 }`}</code></pre>
 

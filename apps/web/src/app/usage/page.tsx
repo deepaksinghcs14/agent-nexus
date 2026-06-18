@@ -2,35 +2,34 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { BarChart2 } from 'lucide-react'
-import { agentsAPI, runsAPI } from '@/lib/api'
+import { runsAPI } from '@/lib/api'
 import { formatCost, formatTokens } from '@/lib/utils'
-import type { Agent, Run } from '@/types'
 
-const GROUP_KEY = '__group_runs__'
+interface AgentStat {
+  agent_id: string
+  agent_name: string
+  tokens: number
+  cost: number
+  runs: number
+}
+
+interface UsageStats {
+  total_tokens: number
+  total_cost: number
+  total_runs: number
+  by_agent: AgentStat[]
+}
 
 export default function UsagePage() {
-  const { data, isLoading, error } = useQuery({ queryKey: ['runs'], queryFn: () => runsAPI.list() as Promise<{ data: Run[] }> })
-  const { data: agentData } = useQuery({ queryKey: ['agents'], queryFn: () => agentsAPI.list() as Promise<{ data: Agent[] }> })
-  const runs = data?.data ?? []
-  const names = Object.fromEntries((agentData?.data ?? []).map((agent: Agent) => [agent.id, agent.name]))
-  const totalTokens = runs.reduce((sum, run) => sum + run.total_input_tokens + run.total_output_tokens, 0)
-  const totalCost = runs.reduce((sum, run) => sum + run.cost_estimate, 0)
-  const byAgent = Object.values(
-    runs.reduce<Record<string, { id: string; tokens: number; cost: number; runs: number }>>((acc, run) => {
-      const key = run.agent_id || GROUP_KEY
-      const item = acc[key] ?? { id: key, tokens: 0, cost: 0, runs: 0 }
-      item.tokens += run.total_input_tokens + run.total_output_tokens
-      item.cost += run.cost_estimate
-      item.runs += 1
-      acc[key] = item
-      return acc
-    }, {})
-  ).sort((a, b) => b.tokens - a.tokens)
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['runs-stats'],
+    queryFn: () => runsAPI.stats() as Promise<UsageStats>,
+  })
 
-  function agentLabel(id: string) {
-    if (id === GROUP_KEY) return 'Group runs'
-    return names[id] ?? id.slice(0, 8)
-  }
+  const totalTokens = data?.total_tokens ?? 0
+  const totalCost = data?.total_cost ?? 0
+  const totalRuns = data?.total_runs ?? 0
+  const byAgent = data?.by_agent ?? []
 
   return (
     <div className="p-6 max-w-4xl">
@@ -39,8 +38,8 @@ export default function UsagePage() {
         {[
           ['Total tokens', formatTokens(totalTokens)],
           ['Estimated cost', formatCost(totalCost)],
-          ['Recorded runs', String(runs.length)],
-          ['Average tokens / run', formatTokens(runs.length ? Math.round(totalTokens / runs.length) : 0)],
+          ['Recorded runs', String(totalRuns)],
+          ['Average tokens / run', formatTokens(totalRuns ? Math.round(totalTokens / totalRuns) : 0)],
         ].map(([label, value]) => (
           <div key={label} className="bg-gray-50 rounded-lg p-3">
             <p className="text-[11px] text-gray-400 mb-1">{label}</p>
@@ -61,9 +60,9 @@ export default function UsagePage() {
           <p className="text-[12px] font-medium text-gray-700 mb-2">Usage by agent</p>
           <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-4">
             {byAgent.map((item) => (
-              <div key={item.id}>
+              <div key={item.agent_id}>
                 <div className="flex justify-between text-[11px] text-gray-600 mb-1">
-                  <span>{agentLabel(item.id)}</span>
+                  <span>{item.agent_name}</span>
                   <span className="text-gray-400">{item.runs} runs · {formatTokens(item.tokens)} · {formatCost(item.cost)}</span>
                 </div>
                 <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">

@@ -23,6 +23,10 @@ func NewExecutor(registry *Registry) *Executor {
 }
 
 func (e *Executor) Execute(ctx context.Context, toolName string, rawInput json.RawMessage) (*ExecutionResult, error) {
+	return e.ExecuteWithContext(ctx, ExecutionContext{}, toolName, rawInput)
+}
+
+func (e *Executor) ExecuteWithContext(ctx context.Context, execCtx ExecutionContext, toolName string, rawInput json.RawMessage) (*ExecutionResult, error) {
 	tool, err := e.registry.Get(toolName)
 	if err != nil {
 		return nil, fmt.Errorf("executor: %w", err)
@@ -34,7 +38,13 @@ func (e *Executor) Execute(ctx context.Context, toolName string, rawInput json.R
 	}
 
 	start := time.Now()
-	output, execErr := tool.Execute(input)
+	var output any
+	var execErr error
+	if t, ok := tool.(ContextAwareTool); ok {
+		output, execErr = t.ExecuteWithContext(ctx, execCtx, input)
+	} else {
+		output, execErr = tool.Execute(input)
+	}
 	latency := int(time.Since(start).Milliseconds())
 
 	result := &ExecutionResult{Output: output, LatencyMs: latency}

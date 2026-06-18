@@ -39,6 +39,8 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 
 	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC secret)
 	r.Post("/webhook/{webhookId}", h.WebhookIngress.Receive)
+	r.Post("/gateway/whatsapp/{channelId}", h.Gateway.WhatsAppReceive)
+	r.Post("/gateway/http/{channelId}", h.Gateway.HTTPReceive)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public auth routes
@@ -127,6 +129,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			// Conversations
 			r.Get("/conversations", h.Conversations.List)
 			r.Post("/conversations", h.Conversations.Create)
+			r.Delete("/conversations", h.Conversations.DeleteAll)
 			r.Get("/conversations/{id}", h.Conversations.Get)
 			r.Delete("/conversations/{id}", h.Conversations.Delete)
 			r.Post("/conversations/{id}/runs", h.Runs.Start) // SSE stream
@@ -134,6 +137,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 
 			// Runs
 			r.Get("/runs", h.Runs.List)
+			r.Get("/runs/stats", h.Runs.Stats)
 			r.Get("/runs/{id}", h.Runs.Get)
 			r.Get("/runs/{id}/children", h.Runs.ListChildren)
 			r.Post("/runs/{id}/approve", h.Runs.Approve)
@@ -141,6 +145,8 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 
 			// Memory
 			r.Get("/memory", h.Memory.List)
+			r.Patch("/memory/{id}/approve", h.Memory.Approve)
+			r.Patch("/memory/{id}/reject", h.Memory.Reject)
 			r.Delete("/memory/{id}", h.Memory.Delete)
 			r.Delete("/memory", h.Memory.BulkDelete)
 
@@ -150,6 +156,47 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Get("/webhook-triggers/{id}", h.WebhookTriggers.Get)
 			r.Put("/webhook-triggers/{id}", h.WebhookTriggers.Update)
 			r.Delete("/webhook-triggers/{id}", h.WebhookTriggers.Delete)
+
+			// Gateway channels
+			r.Route("/gateway", func(r chi.Router) {
+				r.Get("/channels", h.Gateway.ListChannels)
+				r.Post("/channels", h.Gateway.CreateChannel)
+				r.Get("/channels/{id}", h.Gateway.GetChannel)
+				r.Put("/channels/{id}", h.Gateway.UpdateChannel)
+				r.Delete("/channels/{id}", h.Gateway.DeleteChannel)
+				r.Get("/channels/{id}/adapter/status", h.Gateway.AdapterStatus)
+				r.Post("/channels/{id}/adapter/login/start", h.Gateway.AdapterLoginStart)
+				r.Get("/channels/{id}/adapter/login/qr", h.Gateway.AdapterQR)
+				r.Post("/channels/{id}/adapter/logout", h.Gateway.AdapterLogout)
+				r.Get("/sessions", h.Gateway.ListSessions)
+				r.Delete("/sessions/{id}", h.Gateway.DeleteSession)
+				r.Get("/events", h.Gateway.ListEvents)
+				r.Get("/pairings", h.Gateway.ListPairings)
+				r.Post("/pairings/{id}/approve", h.Gateway.ApprovePairing)
+				r.Post("/pairings/{id}/reject", h.Gateway.RejectPairing)
+				r.Get("/outbox", h.Gateway.ListOutbox)
+				r.Get("/reminders", h.Gateway.ListReminders)
+				r.Get("/scheduled-messages", h.Gateway.ListScheduledMessages)
+				r.Post("/scheduled-messages", h.Gateway.CreateScheduledMessage)
+				r.Get("/scheduled-messages/{id}", h.Gateway.GetScheduledMessage)
+				r.Delete("/scheduled-messages/{id}", h.Gateway.DeleteScheduledMessage)
+				r.Get("/escalations", h.Gateway.ListEscalations)
+				r.Post("/escalations/{id}/approve", h.Gateway.ApproveEscalation)
+				r.Post("/escalations/{id}/reject", h.Gateway.RejectEscalation)
+				r.Get("/contacts", h.Gateway.ListContacts)
+				r.Post("/contacts", h.Gateway.CreateContact)
+				r.Put("/contacts/{id}", h.Gateway.UpdateContact)
+				r.Delete("/contacts/{id}", h.Gateway.DeleteContact)
+			})
+
+			// Skills
+			r.Get("/skills", h.Skills.List)
+			r.Post("/skills", h.Skills.Create)
+			r.Get("/skills/{id}", h.Skills.Get)
+			r.Put("/skills/{id}", h.Skills.Update)
+			r.Delete("/skills/{id}", h.Skills.Delete)
+			r.Get("/agents/{id}/skills", h.Skills.ListForAgent)
+			r.Put("/agents/{id}/skills", h.Skills.SetForAgent)
 
 			// Workflows
 			r.Get("/workflows", h.Workflows.List)
@@ -161,10 +208,13 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Get("/workflows/{id}/graph", h.Workflows.GetGraph)
 			r.Put("/workflows/{id}/graph", h.Workflows.SaveGraph)
 
-			// Nexus AI meta-agent
-				r.Post("/nexus-ai/chat", h.NexusAI.Chat)
+			// Observability
+			r.Get("/observability/latency", h.Observability.Latency)
 
-				// Admin (requires is_admin flag)
+			// Nexus AI meta-agent
+			r.Post("/nexus-ai/chat", h.NexusAI.Chat)
+
+			// Admin (requires is_admin flag)
 			r.Group(func(r chi.Router) {
 				r.Use(mw.RequireAdmin)
 

@@ -19,6 +19,9 @@ type Handlers struct {
 	Invoke          *InvokeHandler
 	WebhookTriggers *WebhookTriggerHandler
 	WebhookIngress  *WebhookIngressHandler
+	Gateway         *GatewayHandler
+	Skills          *SkillsHandler
 	Config          *ConfigHandler
 	NexusAI         *NexusAIHandler
+	Observability   *ObservabilityHandler
 }

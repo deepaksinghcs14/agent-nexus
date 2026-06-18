@@ -74,6 +74,10 @@ func main() {
 	reg := tools.NewRegistry()
 	reg.Register(native.NewReadFileTool(cfg.StoragePath))
 	reg.Register(native.NewWebSearchTool())
+	reg.Register(native.NewSaveMemoryTool(pool))
+	for _, t := range native.NewWhatsAppTools(pool, cfg) {
+		reg.Register(t)
+	}
 	if !cfg.DemoMode {
 		reg.Register(native.NewWriteFileTool(cfg.StoragePath))
 		reg.Register(native.NewHTTPRequestTool())
@@ -82,6 +86,9 @@ func main() {
 		slog.Warn("failed to seed native tools", "error", err)
 	} else {
 		slog.Info("native tools seeded", "count", len(reg.All()), "demo_mode", cfg.DemoMode)
+	}
+	if err := attachExistingWhatsAppCapabilities(ctx, pool); err != nil {
+		slog.Warn("failed to attach whatsapp capabilities", "error", err)
 	}
 	exec := tools.NewExecutor(reg)
 
@@ -105,8 +112,11 @@ func main() {
 		Invoke:          invoke,
 		WebhookTriggers: handler.NewWebhookTriggerHandler(pool, cfg),
 		WebhookIngress:  handler.NewWebhookIngressHandler(pool, invoke),
+		Gateway:         handler.NewGatewayHandler(pool, cfg, invoke),
+		Skills:          handler.NewSkillsHandler(pool, cfg),
 		Config:          handler.NewConfigHandler(cfg),
 		NexusAI:         handler.NewNexusAIHandler(pool, cfg, runs),
+		Observability:   handler.NewObservabilityHandler(pool),
 	}
 
 	// HTTP server
@@ -130,6 +140,22 @@ func main() {
 		}
 	}()
 
+	// Re-push callbackUrl to the WhatsApp adapter for every active channel.
+	// The adapter runs in the same container but loses in-memory state on restart.
+	go func() {
+		time.Sleep(3 * time.Second) // wait for adapter subprocess to be ready
+		h.Gateway.SyncAllAdapters(context.Background())
+	}()
+
+	// Fire pending WhatsApp reminders as they come due.
+	go h.Gateway.StartReminderDispatcher(context.Background())
+
+	// Auto-reconnect stale WhatsApp connections (e.g. after fetchProps timeout).
+	go h.Gateway.StartConnectionWatchdog(context.Background())
+
+	// Deliver scheduled outbound messages as they come due.
+	go h.Gateway.StartScheduledMessageDispatcher(context.Background())
+
 	<-quit
 	slog.Info("shutting down server...")
 
@@ -140,6 +166,24 @@ func main() {
 		slog.Error("server shutdown error", "error", err)
 	}
 	slog.Info("server stopped")
+}
+
+func attachExistingWhatsAppCapabilities(ctx context.Context, pool *pgxpool.Pool) error {
+	rows, err := pool.Query(ctx, `SELECT DISTINCT agent_id::text FROM gateway_channels WHERE channel_type='whatsapp'`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var agentID string
+		if err := rows.Scan(&agentID); err != nil {
+			return err
+		}
+		if err := handler.AttachWhatsAppCapabilities(ctx, pool, agentID); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
 }
 
 // maskURL hides the password in a DB URL for logging.

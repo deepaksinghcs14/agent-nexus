@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MessageSquare, Trash2, Plus } from 'lucide-react'
 import { conversationsAPI } from '@/lib/api'
@@ -9,6 +10,7 @@ import type { Conversation } from '@/types'
 
 export default function ConversationsPage() {
   const queryClient = useQueryClient()
+  const [error, setError] = useState('')
 
   const { data, isLoading } = useQuery({
     queryKey: ['conversations'],
@@ -17,7 +19,14 @@ export default function ConversationsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => conversationsAPI.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversations'] }),
+    onSuccess: () => { setError(''); queryClient.invalidateQueries({ queryKey: ['conversations'] }) },
+    onError: (e: Error) => setError(e.message || 'Failed to delete conversation'),
+  })
+
+  const deleteAllMutation = useMutation({
+    mutationFn: () => conversationsAPI.deleteAll(),
+    onSuccess: () => { setError(''); queryClient.invalidateQueries({ queryKey: ['conversations'] }) },
+    onError: (e: Error) => setError(e.message || 'Failed to clear conversations'),
   })
 
   const conversations = data?.data ?? []
@@ -29,12 +38,25 @@ export default function ConversationsPage() {
           <h1 className="text-xl font-semibold text-gray-900">Conversations</h1>
           <p className="text-sm text-gray-500 mt-0.5">{conversations.length} conversation{conversations.length !== 1 ? 's' : ''}</p>
         </div>
-        <Link href="/playground">
-          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700">
-            <Plus size={15} /> New Chat
-          </button>
-        </Link>
+        <div className="flex items-center gap-2">
+          {conversations.length > 0 && (
+            <button
+              onClick={() => { if (confirm(`Clear all ${conversations.length} conversations? This cannot be undone.`)) deleteAllMutation.mutate() }}
+              disabled={deleteAllMutation.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-red-200 text-red-600 text-sm rounded-lg hover:bg-red-50 disabled:opacity-50"
+            >
+              <Trash2 size={14} /> Clear all
+            </button>
+          )}
+          <Link href="/playground">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700">
+              <Plus size={15} /> New Chat
+            </button>
+          </Link>
+        </div>
       </div>
+
+      {error && <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
 
       {isLoading && <div className="text-sm text-gray-400 py-12 text-center">Loading…</div>}
 
@@ -61,7 +83,8 @@ export default function ConversationsPage() {
             </Link>
             <button
               onClick={() => { if (confirm('Delete this conversation?')) deleteMutation.mutate(c.id) }}
-              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg ml-3"
+              disabled={deleteMutation.isPending}
+              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg ml-3 disabled:opacity-40"
             >
               <Trash2 size={14} />
             </button>

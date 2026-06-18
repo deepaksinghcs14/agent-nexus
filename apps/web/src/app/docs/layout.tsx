@@ -20,6 +20,13 @@ const NAV = [
       { label: 'Tools',      href: '/docs/what-is-a-tool' },
       { label: 'MCP Servers', href: '/docs/mcp-servers' },
       { label: 'Connectors', href: '/docs/what-is-a-connector' },
+      { label: 'Skills',     href: '/docs/skills' },
+    ],
+  },
+  {
+    group: 'Messaging Channels',
+    items: [
+      { label: 'Nexus Gateway', href: '/docs/gateway' },
     ],
   },
   {
