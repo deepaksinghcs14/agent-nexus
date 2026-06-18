@@ -2,14 +2,13 @@ package agent
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
 )
 
 const (
-	maxMemoryChars      = 300
+	maxMemoryChars       = 300
 	maxContextChunkChars = 500
 )
 
@@ -39,32 +38,6 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 		}
 		stable += "- Do not save transient chat, secrets, credentials, private irrelevant details, or one-off requests.\n"
 		stable += "- Keep saved memories compact and self-contained.\n"
-	}
-
-	if len(req.SelfManagementGroups) > 0 {
-		stable += "\n\n## Self-Management Capabilities\n"
-		stable += "You have tools to dynamically create, invoke, and destroy resources during this run:\n"
-		for _, g := range req.SelfManagementGroups {
-			switch g {
-			case "agents":
-				stable += "- **Agents**: native_list_agents, native_call_agent(agent_id, task), native_create_agent(name, instructions, provider, model, ...), native_delete_agent(agent_id)\n"
-			case "skills":
-				stable += "- **Skills**: native_list_skills, native_create_skill(name, content, attach_to_self, ephemeral), native_delete_skill(skill_id)\n"
-			case "http_tools":
-				stable += "- **HTTP Tools**: native_list_http_tools, native_create_http_tool(name, url, method, ...), native_delete_tool(tool_id)\n"
-			}
-		}
-		stable += "\nGuidance:\n"
-		if strings.Contains(strings.Join(req.SelfManagementGroups, ","), "agents") {
-			stable += "- Call multiple native_call_agent in one response to run sub-agents in parallel.\n"
-			stable += "- Create ephemeral agents for one-off specialist tasks (auto-deleted when this run ends).\n"
-		}
-		if strings.Contains(strings.Join(req.SelfManagementGroups, ","), "skills") {
-			stable += "- Use native_create_skill with attach_to_self=true to inject domain knowledge into your own context.\n"
-		}
-		if strings.Contains(strings.Join(req.SelfManagementGroups, ","), "http_tools") {
-			stable += "- Create an HTTP tool to call an external API, then use it in the next turn.\n"
-		}
 	}
 
 	// Dynamic: timestamp + retrieved content — changes each turn.
@@ -113,15 +86,12 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 }
 
 type BuildRequest struct {
-	SystemInstructions      string
-	Skills                  []string
-	MemorySummaries         []string
-	ContextChunks           []string
-	History                 []provider.Message
-	UserMessage             string
-	MemoryEnabled           bool
-	MemorySaveMode          string
-	// SelfManagementGroups lists which capability groups are available (e.g. "agents", "skills", "http_tools").
-	// When non-empty, a capabilities block is injected into the stable system prompt.
-	SelfManagementGroups    []string
+	SystemInstructions string
+	Skills             []string
+	MemorySummaries    []string
+	ContextChunks      []string
+	History            []provider.Message
+	UserMessage        string
+	MemoryEnabled      bool
+	MemorySaveMode     string
 }

@@ -384,36 +384,15 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		toolSummaries[td.Name] = td.Description
 	}
 
-	// Detect self-management tool groups for the prompt awareness block.
-	selfMgmtTools := map[string]string{
-		"native_call_agent": "agents", "native_create_agent": "agents",
-		"native_list_agents": "agents", "native_delete_agent": "agents",
-		"native_create_skill": "skills", "native_list_skills": "skills", "native_delete_skill": "skills",
-		"native_create_http_tool": "http_tools", "native_list_http_tools": "http_tools", "native_delete_tool": "http_tools",
-	}
-	selfMgmtGroupSet := map[string]bool{}
-	for _, td := range allToolDefs {
-		if g, ok := selfMgmtTools[td.Name]; ok {
-			selfMgmtGroupSet[g] = true
-		}
-	}
-	var selfMgmtGroups []string
-	for _, g := range []string{"agents", "skills", "http_tools"} {
-		if selfMgmtGroupSet[g] {
-			selfMgmtGroups = append(selfMgmtGroups, g)
-		}
-	}
-
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
-		SystemInstructions:   a.Instructions,
-		Skills:               skills,
-		MemorySummaries:      memories,
-		ContextChunks:        contextChunks,
-		History:              history,
-		MemoryEnabled:        a.MemoryEnabled,
-		MemorySaveMode:       a.MemorySaveMode,
-		SelfManagementGroups: selfMgmtGroups,
+		SystemInstructions: a.Instructions,
+		Skills:             skills,
+		MemorySummaries:    memories,
+		ContextChunks:      contextChunks,
+		History:            history,
+		MemoryEnabled:      a.MemoryEnabled,
+		MemorySaveMode:     a.MemorySaveMode,
 	})
 
 	// requestedTools grows when native_request_tool is called (lazy loading mode).

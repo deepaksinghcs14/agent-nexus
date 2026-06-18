@@ -119,6 +119,14 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   const availableSkills = skillsData?.data ?? []
   const availableConnectors = connectorsData?.data ?? []
 
+  // Tools locked by an enabled skill (cannot be manually removed)
+  const skillLockedTools = new Set<string>()
+  availableSkills.forEach(s => {
+    if (enabledSkills[s.id] && s.required_tool_names) {
+      s.required_tool_names.forEach(n => skillLockedTools.add(n))
+    }
+  })
+
   useEffect(() => {
     if (!existing) return
     setName(existing.name)
@@ -210,6 +218,8 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] })
       queryClient.invalidateQueries({ queryKey: ['agent', params?.id] })
+      queryClient.invalidateQueries({ queryKey: ['agent-tools', params?.id] })
+      queryClient.invalidateQueries({ queryKey: ['agent-skills', params?.id] })
       router.push('/agents')
     },
     onError: (err: Error) => setSaveError(err.message),
@@ -357,7 +367,34 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
                     title="Order"
                   />
                   <Toggle on={!!enabledSkills[skill.id]}
-                    onToggle={() => setEnabledSkills(prev => ({ ...prev, [skill.id]: !prev[skill.id] }))} />
+                    onToggle={() => {
+                      const turningOn = !enabledSkills[skill.id]
+                      setEnabledSkills(prev => ({ ...prev, [skill.id]: turningOn }))
+                      if (skill.required_tool_names && skill.required_tool_names.length > 0) {
+                        if (turningOn) {
+                          setEnabledTools(prev => {
+                            const next = { ...prev }
+                            skill.required_tool_names!.forEach(n => { next[n] = true })
+                            return next
+                          })
+                        } else {
+                          // Collect tools still required by other enabled skills
+                          const stillRequired = new Set<string>()
+                          availableSkills.forEach(s => {
+                            if (s.id !== skill.id && enabledSkills[s.id] && s.required_tool_names) {
+                              s.required_tool_names.forEach(n => stillRequired.add(n))
+                            }
+                          })
+                          setEnabledTools(prev => {
+                            const next = { ...prev }
+                            skill.required_tool_names!.forEach(n => {
+                              if (!stillRequired.has(n)) delete next[n]
+                            })
+                            return next
+                          })
+                        }
+                      }
+                    }} />
                 </div>
               </div>
             ))}
@@ -371,22 +408,26 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
         <div>
           <p className="text-[12px] text-gray-500 mb-3">Enable tools this agent can use. High-risk tools require approval by default.</p>
           <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-            {availableTools.map((tool, i) => (
-              <div key={tool.id} className={`flex items-center justify-between px-4 py-3 ${i < availableTools.length - 1 ? 'border-b border-gray-50' : ''}`}>
-                <div>
-                  <p className="text-[13px] font-medium text-gray-900">{tool.name}</p>
-                  <p className="text-[11px] text-gray-500">{tool.description}</p>
+            {availableTools.map((tool, i) => {
+              const locked = skillLockedTools.has(tool.name)
+              return (
+                <div key={tool.id} className={`flex items-center justify-between px-4 py-3 ${i < availableTools.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                  <div>
+                    <p className="text-[13px] font-medium text-gray-900">{tool.name}</p>
+                    <p className="text-[11px] text-gray-500">{tool.description}</p>
+                    {locked && <p className="text-[10px] text-purple-600 mt-0.5">enabled by skill</p>}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={riskBadge(tool.risk_level)}>{tool.risk_level} risk</span>
+                    {tool.requires_approval && (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">approval req.</span>
+                    )}
+                    <Toggle on={!!enabledTools[tool.name] || locked}
+                      onToggle={() => { if (!locked) setEnabledTools(prev => ({ ...prev, [tool.name]: !prev[tool.name] })) }} />
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className={riskBadge(tool.risk_level)}>{tool.risk_level} risk</span>
-                  {tool.requires_approval && (
-                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">approval req.</span>
-                  )}
-                  <Toggle on={!!enabledTools[tool.name]}
-                    onToggle={() => setEnabledTools(prev => ({ ...prev, [tool.name]: !prev[tool.name] }))} />
-                </div>
-              </div>
-            ))}
+              )
+            })}
             {availableTools.length === 0 && <div className="p-8 text-center text-[12px] text-gray-400">No tools registered.</div>}
           </div>
         </div>
