@@ -78,6 +78,17 @@ func main() {
 	reg.Register(native.NewSaveMemoryTool(pool))
 	reg.Register(native.NewListToolsTool())
 	reg.Register(native.NewRequestToolTool())
+	// Agent self-management tools
+	reg.Register(native.NewListAgentsTool(pool))
+	reg.Register(native.NewCallAgentTool(pool))
+	reg.Register(native.NewCreateAgentTool(pool))
+	reg.Register(native.NewDeleteAgentTool(pool))
+	reg.Register(native.NewListSkillsTool(pool))
+	reg.Register(native.NewCreateSkillTool(pool))
+	reg.Register(native.NewDeleteSkillTool(pool))
+	reg.Register(native.NewListHttpToolsTool(pool))
+	reg.Register(native.NewCreateHttpToolTool(pool))
+	reg.Register(native.NewDeleteToolTool(pool))
 	for _, t := range native.NewWhatsAppTools(pool, cfg) {
 		reg.Register(t)
 	}

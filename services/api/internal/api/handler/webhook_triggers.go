@@ -314,7 +314,7 @@ func (h *WebhookIngressHandler) dispatchRun(trig domain.WebhookTrigger, input st
 			runID, trig.WorkspaceID, a.ID, convID, trig.CreatedBy, input, trig.ID); e != nil {
 			return "", "", e
 		}
-		go h.invoke.executeRun(ctx, a, trig.WorkspaceID, trig.CreatedBy, runID, convID, input, nil, nil)
+		go h.invoke.executeRun(ctx, a, trig.WorkspaceID, trig.CreatedBy, runID, convID, input, nil, nil, invokeOpts{})
 		return runID, convID, nil
 	}
 
