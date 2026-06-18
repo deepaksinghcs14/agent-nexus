@@ -11,6 +11,11 @@ import (
 // Logger is a structured request logger using slog.
 func Logger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/internal/service-logs/ingest" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 		start := time.Now()
 

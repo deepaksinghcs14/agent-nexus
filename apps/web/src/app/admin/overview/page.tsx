@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Building2, ClipboardList, Users, Zap, Coins, BarChart2 } from 'lucide-react'
+import { Activity, Building2, ClipboardList, Users, Zap, Coins, BarChart2, SquareTerminal } from 'lucide-react'
 import { adminAPI } from '@/lib/api'
 import { relativeTime } from '@/lib/utils'
 import type { AuditLog, User, Workspace } from '@/types'
@@ -30,11 +30,12 @@ export default function AdminOverviewPage() {
       {/* Platform stats */}
       <div>
         <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-3">Platform</p>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-5 gap-3">
           {[
             { label: 'Users', value: users.data?.data?.length ?? '—', icon: Users, href: '/admin/users' },
             { label: 'Workspaces', value: workspaces.data?.data?.length ?? '—', icon: Building2, href: '/admin/workspaces' },
             { label: 'Audit events', value: logs.length > 0 ? `${logs.length}+` : (audit.isLoading ? '—' : '0'), icon: ClipboardList, href: '/admin/audit-logs' },
+            { label: 'Live console', value: 'Stream', icon: SquareTerminal, href: '/admin/service-logs' },
             { label: 'Webhook triggers', value: u?.webhook_triggers ?? '—', icon: Zap, href: '/triggers' },
           ].map((item) => (
             <Link key={item.label} href={item.href}

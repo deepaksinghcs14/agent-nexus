@@ -9,7 +9,7 @@ import {
   Activity, Brain, BarChart2, Timer,
   Key, Settings, BookOpen,
   LayoutDashboard, Users, Building2, Shield, ClipboardList,
-  Hexagon, ShieldCheck, PanelLeftClose, PanelLeftOpen,
+  Hexagon, ShieldCheck, PanelLeftClose, PanelLeftOpen, SquareTerminal,
 } from 'lucide-react'
 import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import { cn } from '@/lib/utils'
@@ -75,6 +75,7 @@ const adminNav: NavGroup[] = [
       { label: 'Workspaces',  href: '/admin/workspaces',  icon: Building2 },
       { label: 'Policies',    href: '/admin/policies',    icon: Shield },
       { label: 'Audit Logs',  href: '/admin/audit-logs',  icon: ClipboardList },
+      { label: 'Service Logs', href: '/admin/service-logs', icon: SquareTerminal },
     ],
   },
 ]

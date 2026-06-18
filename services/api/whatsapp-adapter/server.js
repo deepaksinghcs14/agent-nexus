@@ -1,6 +1,7 @@
 import http from 'node:http'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { Writable } from 'node:stream'
 import { Boom } from '@hapi/boom'
 import makeWASocket, {
   DisconnectReason,
@@ -12,8 +13,65 @@ import QRCode from 'qrcode'
 
 const PORT = Number(process.env.PORT || 18901)
 const AUTH_ROOT = process.env.AUTH_ROOT || '/data/whatsapp-auth'
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
+const API_INTERNAL_URL = process.env.API_INTERNAL_URL || 'http://127.0.0.1:8080'
+const LOG_STREAM_INGEST_TOKEN = process.env.LOG_STREAM_INGEST_TOKEN || ''
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' }, createLogStream())
 const accounts = new Map()
+
+function createLogStream() {
+  return new Writable({
+    write(chunk, _encoding, callback) {
+      const line = chunk.toString()
+      process.stdout.write(line)
+      forwardLogLine(line)
+      callback()
+    }
+  })
+}
+
+function forwardLogLine(line) {
+  if (!LOG_STREAM_INGEST_TOKEN || typeof fetch !== 'function') return
+  let parsed
+  try {
+    parsed = JSON.parse(line)
+  } catch {
+    parsed = { msg: line.trim(), level: 'info' }
+  }
+  const level = typeof parsed.level === 'number'
+    ? pinoLevelName(parsed.level)
+    : String(parsed.level || 'info').toLowerCase()
+  const ts = typeof parsed.time === 'number' ? new Date(parsed.time).toISOString() : new Date().toISOString()
+  const message = String(parsed.msg || parsed.message || line.trim())
+  const attrs = { ...parsed }
+  delete attrs.time
+  delete attrs.level
+  delete attrs.msg
+  delete attrs.message
+
+  fetch(`${API_INTERNAL_URL}/internal/service-logs/ingest`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Log-Stream-Token': LOG_STREAM_INGEST_TOKEN
+    },
+    body: JSON.stringify({
+      ts,
+      source: 'whatsapp-adapter',
+      level,
+      message,
+      attrs
+    })
+  }).catch(() => {})
+}
+
+function pinoLevelName(level) {
+  if (level >= 60) return 'fatal'
+  if (level >= 50) return 'error'
+  if (level >= 40) return 'warn'
+  if (level >= 30) return 'info'
+  if (level >= 20) return 'debug'
+  return 'trace'
+}
 
 function json(res, code, body) {
   const payload = JSON.stringify(body)

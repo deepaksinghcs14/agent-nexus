@@ -341,6 +341,7 @@ export const adminAPI = {
   workspaces: () => api.get('/admin/workspaces'),
   updateWorkspace: (id: string, body: unknown) => api.patch(`/admin/workspaces/${id}`, body),
   auditLogs: (params?: string) => api.get(`/admin/audit-logs${params ? '?' + params : ''}`),
+  serviceLogStream: () => api.sse('/admin/service-logs/stream'),
   usage: () => api.get('/admin/usage'),
   policies: () => api.get('/admin/policies'),
   setPolicies: (body: unknown) => api.put('/admin/policies', body),
