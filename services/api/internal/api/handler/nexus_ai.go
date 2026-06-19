@@ -25,13 +25,19 @@ import (
 // agents and workflow graphs from natural language using the workspace's own
 // provider credentials (no separate API key required).
 type NexusAIHandler struct {
-	pool *pgxpool.Pool
-	cfg  *config.Config
-	runs *RunsHandler // reuse providerFor credential lookup + decryption
+	pool   *pgxpool.Pool
+	cfg    *config.Config
+	runs   *RunsHandler   // reuse providerFor credential lookup + decryption
+	invoke *InvokeHandler // used by toolRunWorkflow to fire executeGroupRun
 }
 
 func NewNexusAIHandler(pool *pgxpool.Pool, cfg *config.Config, runs *RunsHandler) *NexusAIHandler {
 	return &NexusAIHandler{pool: pool, cfg: cfg, runs: runs}
+}
+
+// SetInvokeHandler wires the InvokeHandler after construction (avoids circular init).
+func (h *NexusAIHandler) SetInvokeHandler(invoke *InvokeHandler) {
+	h.invoke = invoke
 }
 
 // nexusSystemPrompt builds the system prompt for the Nexus AI assistant,
@@ -63,6 +69,10 @@ You have access to these tools:
 - list_skills: See all skills (named, reusable instruction blocks) available in this workspace.
 - create_skill: Create a new skill — a named block of reusable instructions that agents can be equipped with.
 - attach_skills_to_agent: Attach one or more skills to an agent (replaces the current skill set).
+- update_agent: Update an existing agent's name, description, instructions, model, or status. Only the fields you provide are changed.
+- attach_tool_to_agent: Attach a single tool to an agent by tool name. No-op if already attached.
+- detach_tool_from_agent: Remove a tool from an agent by tool name.
+- run_workflow: Start a workflow run in the background and return the run ID immediately.
 
 Guidelines:
 - ALWAYS call list_available_models first — before creating any agent, you must know what providers and models are available in this workspace. Never assume a model exists; always verify.
@@ -257,6 +267,58 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"skill_ids":{"type":"array","items":{"type":"string"},"description":"List of skill UUIDs to attach. Get from list_skills."}
 			},
 			"required":["agent_id","skill_ids"]
+		}`),
+	},
+	{
+		Name:        "update_agent",
+		Description: "Update an existing agent's settings. Only the fields you provide are changed — all others are left untouched.",
+		InputSchema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"agent_id":{"type":"string","description":"UUID of the agent to update. Get from list_agents."},
+				"name":{"type":"string","description":"New name for the agent."},
+				"description":{"type":"string","description":"New one-sentence description."},
+				"instructions":{"type":"string","description":"New system prompt / instructions."},
+				"model":{"type":"string","description":"New model ID, e.g. claude-sonnet-4-6. Use list_available_models to verify it exists."},
+				"status":{"type":"string","enum":["active","paused","archived"],"description":"New agent status."}
+			},
+			"required":["agent_id"]
+		}`),
+	},
+	{
+		Name:        "attach_tool_to_agent",
+		Description: "Attach a tool to an agent by tool name. The tool must exist in the workspace (use list_tools to find names). Has no effect if the tool is already attached.",
+		InputSchema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"agent_id":{"type":"string","description":"UUID of the agent. Get from list_agents."},
+				"tool_name":{"type":"string","description":"Exact name of the tool to attach, e.g. 'native_web_search'. Get from list_tools."}
+			},
+			"required":["agent_id","tool_name"]
+		}`),
+	},
+	{
+		Name:        "detach_tool_from_agent",
+		Description: "Remove a tool from an agent. The tool is detached but not deleted from the workspace.",
+		InputSchema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"agent_id":{"type":"string","description":"UUID of the agent. Get from list_agents."},
+				"tool_name":{"type":"string","description":"Exact name of the tool to detach, e.g. 'native_web_search'. Get from list_tools."}
+			},
+			"required":["agent_id","tool_name"]
+		}`),
+	},
+	{
+		Name:        "run_workflow",
+		Description: "Start a workflow run in the background and return immediately with the run ID. Use this to trigger an existing workflow with a given input.",
+		InputSchema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"workflow_id":{"type":"string","description":"UUID of the workflow to run. Get from list_workflows."},
+				"input":{"type":"string","description":"The input text to pass to the workflow."}
+			},
+			"required":["workflow_id","input"]
 		}`),
 	},
 }
@@ -546,6 +608,14 @@ func (h *NexusAIHandler) executeTool(ctx context.Context, ws, uid, name string, 
 		return h.toolCreateSkill(ctx, ws, uid, input)
 	case "attach_skills_to_agent":
 		return h.toolAttachSkills(ctx, ws, input)
+	case "update_agent":
+		return h.toolUpdateAgent(ctx, ws, input)
+	case "attach_tool_to_agent":
+		return h.toolAttachToolToAgent(ctx, ws, input)
+	case "detach_tool_from_agent":
+		return h.toolDetachToolFromAgent(ctx, ws, input)
+	case "run_workflow":
+		return h.toolRunWorkflow(ctx, ws, uid, input)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
@@ -1251,6 +1321,207 @@ func (h *NexusAIHandler) toolAttachSkills(ctx context.Context, ws string, input 
 	}, nil
 }
 
+func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input json.RawMessage) (*toolResult, error) {
+	var args struct {
+		AgentID      string `json:"agent_id"`
+		Name         string `json:"name"`
+		Description  string `json:"description"`
+		Instructions string `json:"instructions"`
+		Model        string `json:"model"`
+		Status       string `json:"status"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return nil, fmt.Errorf("invalid update_agent input: %w", err)
+	}
+	if args.AgentID == "" {
+		return nil, fmt.Errorf("update_agent requires agent_id")
+	}
+	if args.Status != "" && args.Status != "active" && args.Status != "paused" && args.Status != "archived" {
+		return nil, fmt.Errorf("status must be 'active', 'paused', or 'archived'")
+	}
+
+	// Verify agent exists in workspace.
+	var agentName string
+	if err := h.pool.QueryRow(ctx,
+		`SELECT name FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+		args.AgentID, ws).Scan(&agentName); err != nil {
+		return nil, fmt.Errorf("agent not found: %s", args.AgentID)
+	}
+
+	// Build dynamic SET clause — only update provided fields.
+	type setClause struct {
+		col string
+		val any
+	}
+	var clauses []setClause
+	if args.Name != "" {
+		clauses = append(clauses, setClause{"name", args.Name})
+		agentName = args.Name // reflect new name in label
+	}
+	if args.Description != "" {
+		clauses = append(clauses, setClause{"description", args.Description})
+	}
+	if args.Instructions != "" {
+		clauses = append(clauses, setClause{"instructions", args.Instructions})
+	}
+	if args.Model != "" {
+		clauses = append(clauses, setClause{"model", args.Model})
+	}
+	if args.Status != "" {
+		clauses = append(clauses, setClause{"status", args.Status})
+	}
+	if len(clauses) == 0 {
+		return nil, fmt.Errorf("update_agent: no fields to update")
+	}
+
+	setCols := make([]string, 0, len(clauses)+1)
+	vals := make([]any, 0, len(clauses)+2)
+	for i, c := range clauses {
+		setCols = append(setCols, fmt.Sprintf("%s=$%d", c.col, i+1))
+		vals = append(vals, c.val)
+	}
+	setCols = append(setCols, "updated_at=NOW()")
+	vals = append(vals, args.AgentID, ws)
+	query := fmt.Sprintf(
+		`UPDATE agents SET %s WHERE id=$%d::uuid AND workspace_id=$%d::uuid`,
+		strings.Join(setCols, ", "),
+		len(clauses)+1,
+		len(clauses)+2,
+	)
+
+	tag, err := h.pool.Exec(ctx, query, vals...)
+	if err != nil {
+		return nil, fmt.Errorf("update_agent: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, fmt.Errorf("agent not found")
+	}
+
+	return &toolResult{
+		Label: fmt.Sprintf("Updated agent \"%s\"", agentName),
+		Link:  "/agents/" + args.AgentID,
+		Data:  map[string]any{"updated": true, "agent_id": args.AgentID},
+	}, nil
+}
+
+func (h *NexusAIHandler) toolAttachToolToAgent(ctx context.Context, ws string, input json.RawMessage) (*toolResult, error) {
+	var args struct {
+		AgentID  string `json:"agent_id"`
+		ToolName string `json:"tool_name"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return nil, fmt.Errorf("invalid attach_tool_to_agent input: %w", err)
+	}
+	if args.AgentID == "" || args.ToolName == "" {
+		return nil, fmt.Errorf("attach_tool_to_agent requires agent_id and tool_name")
+	}
+
+	// Verify agent exists in workspace.
+	var agentName string
+	if err := h.pool.QueryRow(ctx,
+		`SELECT name FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+		args.AgentID, ws).Scan(&agentName); err != nil {
+		return nil, fmt.Errorf("agent not found: %s", args.AgentID)
+	}
+
+	tag, err := h.pool.Exec(ctx,
+		`INSERT INTO agent_tools(agent_id, tool_id, enabled)
+		 SELECT $1::uuid, id, true FROM tools
+		 WHERE name=$2 AND (workspace_id IS NULL OR workspace_id=$3::uuid)
+		 ON CONFLICT DO NOTHING`,
+		args.AgentID, args.ToolName, ws)
+	if err != nil {
+		return nil, fmt.Errorf("attach_tool_to_agent: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		// Either tool not found or already attached — check which.
+		var toolExists bool
+		_ = h.pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM tools WHERE name=$1 AND (workspace_id IS NULL OR workspace_id=$2::uuid))`,
+			args.ToolName, ws).Scan(&toolExists)
+		if !toolExists {
+			return nil, fmt.Errorf("tool not found: %s", args.ToolName)
+		}
+		// Already attached — treat as success.
+	}
+
+	return &toolResult{
+		Label: fmt.Sprintf("Attached tool \"%s\" to agent \"%s\"", args.ToolName, agentName),
+		Link:  "/agents/" + args.AgentID,
+		Data:  map[string]any{"attached": true, "agent_id": args.AgentID, "tool_name": args.ToolName},
+	}, nil
+}
+
+func (h *NexusAIHandler) toolDetachToolFromAgent(ctx context.Context, ws string, input json.RawMessage) (*toolResult, error) {
+	var args struct {
+		AgentID  string `json:"agent_id"`
+		ToolName string `json:"tool_name"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return nil, fmt.Errorf("invalid detach_tool_from_agent input: %w", err)
+	}
+	if args.AgentID == "" || args.ToolName == "" {
+		return nil, fmt.Errorf("detach_tool_from_agent requires agent_id and tool_name")
+	}
+
+	// Verify agent exists in workspace.
+	var agentName string
+	if err := h.pool.QueryRow(ctx,
+		`SELECT name FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+		args.AgentID, ws).Scan(&agentName); err != nil {
+		return nil, fmt.Errorf("agent not found: %s", args.AgentID)
+	}
+
+	_, err := h.pool.Exec(ctx,
+		`DELETE FROM agent_tools
+		 WHERE agent_id=$1::uuid
+		   AND tool_id=(
+		       SELECT id FROM tools
+		       WHERE name=$2 AND (workspace_id IS NULL OR workspace_id=$3::uuid)
+		       LIMIT 1
+		   )`,
+		args.AgentID, args.ToolName, ws)
+	if err != nil {
+		return nil, fmt.Errorf("detach_tool_from_agent: %w", err)
+	}
+
+	return &toolResult{
+		Label: fmt.Sprintf("Detached tool \"%s\" from agent \"%s\"", args.ToolName, agentName),
+		Link:  "/agents/" + args.AgentID,
+		Data:  map[string]any{"detached": true, "agent_id": args.AgentID, "tool_name": args.ToolName},
+	}, nil
+}
+
+func (h *NexusAIHandler) toolRunWorkflow(ctx context.Context, ws, uid string, input json.RawMessage) (*toolResult, error) {
+	var args struct {
+		WorkflowID string `json:"workflow_id"`
+		Input      string `json:"input"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return nil, fmt.Errorf("invalid run_workflow input: %w", err)
+	}
+	if args.WorkflowID == "" {
+		return nil, fmt.Errorf("run_workflow requires workflow_id")
+	}
+	if args.Input == "" {
+		return nil, fmt.Errorf("run_workflow requires input")
+	}
+	if h.invoke == nil {
+		return nil, fmt.Errorf("run_workflow is not available (invoke handler not wired)")
+	}
+
+	runID, err := h.invoke.runWorkflowInline(ctx, ws, uid, args.WorkflowID, args.Input, "")
+	if err != nil {
+		return nil, fmt.Errorf("run_workflow: %w", err)
+	}
+
+	return &toolResult{
+		Label: fmt.Sprintf("Started workflow run (run_id: %s)", runID),
+		Link:  "/runs/" + runID,
+		Data:  map[string]any{"run_id": runID, "status": "running", "workflow_id": args.WorkflowID},
+	}, nil
+}
+
 // toolStartLabel generates a human-readable label for the tool_started SSE event.
 func toolStartLabel(toolName string, input json.RawMessage) string {
 	var m map[string]any
@@ -1297,6 +1568,26 @@ func toolStartLabel(toolName string, input json.RawMessage) string {
 		return "Creating skill..."
 	case "attach_skills_to_agent":
 		return "Attaching skills to agent..."
+	case "update_agent":
+		if id, ok := m["agent_id"].(string); ok && id != "" {
+			return fmt.Sprintf("Updating agent %s...", id)
+		}
+		return "Updating agent..."
+	case "attach_tool_to_agent":
+		if n, ok := m["tool_name"].(string); ok && n != "" {
+			return fmt.Sprintf("Attaching tool \"%s\"...", n)
+		}
+		return "Attaching tool to agent..."
+	case "detach_tool_from_agent":
+		if n, ok := m["tool_name"].(string); ok && n != "" {
+			return fmt.Sprintf("Detaching tool \"%s\"...", n)
+		}
+		return "Detaching tool from agent..."
+	case "run_workflow":
+		if id, ok := m["workflow_id"].(string); ok && id != "" {
+			return fmt.Sprintf("Running workflow %s...", id)
+		}
+		return "Running workflow..."
 	}
 	return strings.ReplaceAll(toolName, "_", " ") + "..."
 }

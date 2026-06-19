@@ -76,7 +76,7 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
 
       <Callout type="info">
         The built-in <strong>Agent Self-Management</strong> skill uses this mechanism — enabling it
-        auto-attaches all 10 self-management tools and injects the capabilities guide into the system prompt.
+        auto-attaches all 22 self-management tools and injects the capabilities guide into the system prompt.
       </Callout>
 
       <h2>Attaching skills to an agent</h2>
@@ -110,13 +110,14 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
         <tbody>
           <tr>
             <td><strong>Agent Self-Management</strong></td>
-            <td>10 native tools</td>
+            <td>22 native tools</td>
             <td>
-              Enables the agent to call other agents, create ephemeral agents/skills/HTTP tools at
-              runtime, and clean up after itself. Parallel sub-agent execution is supported — issue
-              multiple <code>native_call_agent</code> calls in one response to run them concurrently.
-              See the <a href="/docs/agent-configuration">Agent Configuration</a> page for the full
-              tool reference.
+              Full agent lifecycle management — create, update, and delete agents; attach and detach
+              skills and tools; create ephemeral agents/skills/HTTP tools and code tools at runtime;
+              list and run workflows; and clean up after itself. Parallel sub-agent execution is
+              supported — issue multiple <code>native_call_agent</code> calls in one response to run
+              them concurrently. See the <a href="/docs/agent-configuration">Agent Configuration</a>{' '}
+              page for the full tool reference.
             </td>
           </tr>
           <tr>

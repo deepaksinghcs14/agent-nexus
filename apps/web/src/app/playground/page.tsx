@@ -3,9 +3,13 @@
 import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Bot, ArrowRight } from 'lucide-react'
+import { Bot, ArrowRight, Cpu, MessageSquare } from 'lucide-react'
 import { agentsAPI, conversationsAPI } from '@/lib/api'
 import type { Agent } from '@/types'
+
+function modelShort(model: string) {
+  return model.split('/').pop()?.split('-').slice(0, 3).join('-') ?? model
+}
 
 function PlaygroundInner() {
   const router = useRouter()
@@ -18,59 +22,79 @@ function PlaygroundInner() {
   })
 
   const [selectedAgent, setSelectedAgent] = useState(preselectedAgent)
-  const [title, setTitle] = useState('')
+  const [firstMessage, setFirstMessage] = useState('')
   const [error, setError] = useState('')
 
-  const agents = data?.data ?? []
+  const agents = (data?.data ?? []).filter((a: Agent) => a.status !== 'archived')
 
   const createMutation = useMutation({
-    mutationFn: () => conversationsAPI.create({
-      agent_id: selectedAgent,
-      title: title || 'New Conversation',
-    }),
-    onSuccess: (conv: unknown) => {
-      const c = conv as { id: string }
-      router.push(`/playground/${c.id}`)
+    mutationFn: async () => {
+      const title = firstMessage.trim()
+        ? firstMessage.trim().slice(0, 60)
+        : 'New Conversation'
+      const conv = await conversationsAPI.create({ agent_id: selectedAgent, title }) as { id: string }
+      return { convId: conv.id, message: firstMessage.trim() }
+    },
+    onSuccess: ({ convId, message }) => {
+      if (message) {
+        router.push(`/playground/${convId}?msg=${encodeURIComponent(message)}`)
+      } else {
+        router.push(`/playground/${convId}`)
+      }
     },
     onError: (err: Error) => setError(err.message),
   })
 
   return (
-    <div className="p-6 max-w-xl">
+    <div className="p-6 max-w-2xl">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Playground</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Start a new conversation with an agent</p>
+        <p className="text-sm text-gray-500 mt-0.5">Start a conversation with an agent</p>
       </div>
 
-      <div className="border border-gray-100 rounded-xl p-5 bg-white">
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Select Agent</label>
+      <div className="space-y-5">
+        {/* Agent selection */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Choose an agent</label>
           {agents.length === 0 ? (
-            <p className="text-sm text-gray-400">No agents yet. <a href="/agents/new" className="text-purple-600 underline">Create one</a>.</p>
+            <div className="rounded-xl border border-dashed border-gray-200 p-6 text-center">
+              <Bot size={24} className="text-gray-300 mx-auto mb-2" />
+              <p className="text-sm text-gray-500">No agents yet.</p>
+              <a href="/agents/new" className="text-sm text-purple-600 hover:underline font-medium">Create your first agent →</a>
+            </div>
           ) : (
-            <div className="space-y-2">
-              {agents.map((agent) => (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {agents.map((agent: Agent) => (
                 <button
                   key={agent.id}
                   onClick={() => setSelectedAgent(agent.id)}
-                  className={`w-full text-left p-3 rounded-lg border transition-all ${
+                  className={`text-left p-3 rounded-xl border transition-all ${
                     selectedAgent === agent.id
-                      ? 'border-purple-400 bg-purple-50'
-                      : 'border-gray-100 hover:border-gray-200 bg-white'
+                      ? 'border-purple-400 bg-purple-50 ring-1 ring-purple-200'
+                      : 'border-gray-100 hover:border-gray-200 bg-white hover:bg-gray-50'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                  <div className="flex items-start gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                       selectedAgent === agent.id ? 'bg-purple-200' : 'bg-gray-100'
                     }`}>
                       <Bot size={16} className={selectedAgent === agent.id ? 'text-purple-700' : 'text-gray-400'} />
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{agent.name}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{agent.name}</p>
                       {agent.description && (
-                        <p className="text-xs text-gray-400 truncate">{agent.description}</p>
+                        <p className="text-xs text-gray-400 truncate mt-0.5">{agent.description}</p>
                       )}
+                      <div className="flex items-center gap-1 mt-1.5">
+                        <Cpu size={9} className="text-gray-400" />
+                        <span className="text-[10px] text-gray-400 font-medium">{modelShort(agent.model)}</span>
+                      </div>
                     </div>
+                    {selectedAgent === agent.id && (
+                      <div className="w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                      </div>
+                    )}
                   </div>
                 </button>
               ))}
@@ -78,27 +102,41 @@ function PlaygroundInner() {
           )}
         </div>
 
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Conversation title (optional)</label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. Review auth system"
-            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-400"
-          />
-        </div>
+        {/* First message */}
+        {selectedAgent && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <span className="flex items-center gap-1.5">
+                <MessageSquare size={14} />
+                First message <span className="text-gray-400 font-normal">(optional)</span>
+              </span>
+            </label>
+            <textarea
+              value={firstMessage}
+              onChange={e => setFirstMessage(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && selectedAgent) { e.preventDefault(); createMutation.mutate() } }}
+              placeholder="What would you like to ask? Skip to start with an empty conversation."
+              rows={3}
+              className="w-full text-sm px-3 py-2.5 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-300 bg-white placeholder-gray-400"
+            />
+          </div>
+        )}
 
         {error && (
-          <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2 mb-3">{error}</div>
+          <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
         )}
 
         <button
           onClick={() => createMutation.mutate()}
           disabled={!selectedAgent || createMutation.isPending}
-          className="w-full flex items-center justify-center gap-2 py-2.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-purple-600 text-white text-sm font-medium rounded-xl hover:bg-purple-700 disabled:opacity-50 transition-colors"
         >
-          {createMutation.isPending ? 'Starting…' : <>Start Conversation <ArrowRight size={15} /></>}
+          {createMutation.isPending ? 'Starting…' : (
+            <>
+              {firstMessage.trim() ? 'Send message' : 'Start conversation'}
+              <ArrowRight size={15} />
+            </>
+          )}
         </button>
       </div>
     </div>

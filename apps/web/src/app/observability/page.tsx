@@ -50,7 +50,10 @@ export default function ObservabilityPage() {
     <div className="p-6 max-w-5xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-base font-medium text-gray-900">Latency</h1>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Observability</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Latency and performance metrics for your agents</p>
+        </div>
         <div className="flex gap-1">
           {DAYS_OPTIONS.map((d) => (
             <button

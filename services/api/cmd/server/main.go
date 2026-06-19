@@ -89,6 +89,20 @@ func main() {
 	reg.Register(native.NewListHttpToolsTool(pool))
 	reg.Register(native.NewCreateHttpToolTool(pool))
 	reg.Register(native.NewDeleteToolTool(pool))
+	// Expanded self-management tools
+	reg.Register(native.NewUpdateAgentTool(pool))
+	reg.Register(native.NewAttachSkillTool(pool))
+	reg.Register(native.NewDetachSkillTool(pool))
+	reg.Register(native.NewUpdateSkillTool(pool))
+	reg.Register(native.NewListWorkspaceToolsTool(pool))
+	reg.Register(native.NewAttachToolTool(pool))
+	reg.Register(native.NewDetachToolTool(pool))
+	reg.Register(native.NewCreateCodeToolTool(pool))
+	reg.Register(native.NewListWorkflowsTool(pool))
+	reg.Register(native.NewCreateWorkflowTool(pool))
+	reg.Register(native.NewSaveWorkflowGraphTool(pool))
+	reg.Register(native.NewRunWorkflowTool(pool))
+	reg.Register(native.NewDeleteWorkflowTool(pool))
 	for _, t := range native.NewWhatsAppTools(pool, cfg) {
 		reg.Register(t)
 	}
@@ -101,6 +115,9 @@ func main() {
 	} else {
 		slog.Info("native tools seeded", "count", len(reg.All()), "demo_mode", cfg.DemoMode)
 	}
+	if err := syncRequiredSkillTools(ctx, pool); err != nil {
+		slog.Warn("failed to sync required skill tools", "error", err)
+	}
 	if err := attachExistingWhatsAppCapabilities(ctx, pool); err != nil {
 		slog.Warn("failed to attach whatsapp capabilities", "error", err)
 	}
@@ -110,6 +127,8 @@ func main() {
 	runs := handler.NewRunsHandler(pool, cfg, reg, exec)
 	invoke := handler.NewInvokeHandler(pool, cfg, runs, reg, exec)
 	runs.SetInvokeHandler(invoke)
+	nexusAI := handler.NewNexusAIHandler(pool, cfg, runs)
+	nexusAI.SetInvokeHandler(invoke)
 	h := &handler.Handlers{
 		Auth:            handler.NewAuthHandler(pool, cfg),
 		Providers:       handler.NewProvidersHandler(pool, cfg),
@@ -130,7 +149,7 @@ func main() {
 		Gateway:         handler.NewGatewayHandler(pool, cfg, invoke),
 		Skills:          handler.NewSkillsHandler(pool, cfg),
 		Config:          handler.NewConfigHandler(cfg),
-		NexusAI:         handler.NewNexusAIHandler(pool, cfg, runs),
+		NexusAI:         nexusAI,
 		Observability:   handler.NewObservabilityHandler(pool),
 	}
 
@@ -199,6 +218,19 @@ func attachExistingWhatsAppCapabilities(ctx context.Context, pool *pgxpool.Pool)
 		}
 	}
 	return rows.Err()
+}
+
+func syncRequiredSkillTools(ctx context.Context, pool *pgxpool.Pool) error {
+	_, err := pool.Exec(ctx, `
+		INSERT INTO agent_tools(agent_id, tool_id, enabled)
+		SELECT DISTINCT ask.agent_id, t.id, true
+		FROM agent_skills ask
+		JOIN skills s ON s.id=ask.skill_id AND ask.enabled=true AND s.enabled=true
+		JOIN LATERAL unnest(s.required_tool_names) required_tool_name(name) ON true
+		JOIN tools t ON t.name=required_tool_name.name AND t.enabled=true
+		ON CONFLICT (agent_id, tool_id) DO UPDATE SET enabled=true
+	`)
+	return err
 }
 
 // maskURL hides the password in a DB URL for logging.

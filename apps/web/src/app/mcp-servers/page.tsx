@@ -258,7 +258,7 @@ export default function MCPServersPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-base font-medium text-gray-900">MCP servers</h1>
+          <h1 className="text-xl font-semibold text-gray-900">MCP Servers</h1>
           <p className="text-[12px] text-gray-400 mt-0.5">
             Connect Model Context Protocol servers to give agents access to external tools.
           </p>
@@ -467,7 +467,7 @@ export default function MCPServersPage() {
       <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
         <p className="text-sm text-gray-600">
           Learn how to connect MCP servers and manage tool discovery in the{' '}
-          <a href="/docs/mcp-servers" className="text-[#534AB7] hover:underline">
+          <a href="/docs/mcp-servers" className="text-purple-600 hover:underline">
             documentation
           </a>.
         </p>

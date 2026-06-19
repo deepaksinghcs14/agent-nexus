@@ -18,8 +18,8 @@ export default function WorkflowsPage() {
   return <div className="p-6">
     <div className="flex items-center justify-between mb-5">
       <div>
-        <h1 className="text-base font-medium text-gray-900">Workflows</h1>
-        <p className="text-[12px] text-gray-400 mt-0.5">Pipeline and supervisor multi-agent workflows</p>
+        <h1 className="text-xl font-semibold text-gray-900">Workflows</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Pipeline and supervisor multi-agent workflows</p>
       </div>
       <Link href="/workflows/new" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-[12px] rounded-lg">
         <Plus className="w-3.5 h-3.5" /> New workflow
@@ -70,7 +70,7 @@ export default function WorkflowsPage() {
     <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
       <p className="text-sm text-gray-600">
         Learn how to build multi-agent workflows in the{' '}
-        <Link href="/docs/what-is-an-agent-group" className="text-[#534AB7] hover:underline">
+        <Link href="/docs/what-is-an-agent-group" className="text-purple-600 hover:underline">
           documentation
         </Link>.
       </p>

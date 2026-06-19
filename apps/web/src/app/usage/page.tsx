@@ -33,7 +33,10 @@ export default function UsagePage() {
 
   return (
     <div className="p-6 max-w-4xl">
-      <h1 className="text-base font-medium text-gray-900 mb-4">Usage</h1>
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-gray-900">Usage</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Token consumption and cost across all runs</p>
+      </div>
       <div className="grid grid-cols-4 gap-3 mb-6">
         {[
           ['Total tokens', formatTokens(totalTokens)],
@@ -41,9 +44,9 @@ export default function UsagePage() {
           ['Recorded runs', String(totalRuns)],
           ['Average tokens / run', formatTokens(totalRuns ? Math.round(totalTokens / totalRuns) : 0)],
         ].map(([label, value]) => (
-          <div key={label} className="bg-gray-50 rounded-lg p-3">
-            <p className="text-[11px] text-gray-400 mb-1">{label}</p>
-            <p className="text-xl font-medium text-gray-900">{value}</p>
+          <div key={label} className="bg-white border border-gray-100 rounded-xl p-4">
+            <p className="text-xs text-gray-400 mb-1">{label}</p>
+            <p className="text-2xl font-bold text-gray-900">{value}</p>
           </div>
         ))}
       </div>

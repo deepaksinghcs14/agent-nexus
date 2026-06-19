@@ -65,7 +65,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
         >
           <div
             className="w-6 h-6 rounded-md flex items-center justify-center"
-            style={{ background: '#534AB7' }}
+            style={{ background: '#7c3aed' }}
           >
             <Hexagon className="w-3.5 h-3.5 text-white" />
           </div>
@@ -74,8 +74,8 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
 
         {/* Docs label */}
         <div className="px-5 pt-5 pb-2 flex items-center gap-2">
-          <BookOpen className="w-3.5 h-3.5" style={{ color: '#534AB7' }} />
-          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#534AB7' }}>
+          <BookOpen className="w-3.5 h-3.5" style={{ color: '#7c3aed' }} />
+          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#7c3aed' }}>
             Documentation
           </span>
         </div>

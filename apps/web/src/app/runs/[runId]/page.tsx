@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Ban, ChevronDown, ChevronRight, Sparkles } from 'lucide-react'
+import { ArrowLeft, Ban, ChevronDown, ChevronRight, Loader2, Sparkles } from 'lucide-react'
 import { agentsAPI, runsAPI } from '@/lib/api'
 import { formatCost, formatTokens, statusColor } from '@/lib/utils'
 import type { Agent, Run, RunStep } from '@/types'
@@ -13,6 +13,7 @@ type RunDetail = Run & { steps?: RunStep[]; workflow_id?: string }
 
 const ROW_GRID = 'grid items-center gap-x-3 px-4' as const
 const GRID_COLS = 'grid-cols-[20px_1fr_80px_48px_64px_56px]' as const
+const ACTIVE_RUN_STATUSES = new Set(['pending', 'running', 'approval_wait'])
 
 function SubRunRow({ subRun, agentName }: { subRun: Run; agentName?: string }) {
   const [open, setOpen] = useState(false)
@@ -20,8 +21,12 @@ function SubRunRow({ subRun, agentName }: { subRun: Run; agentName?: string }) {
     queryKey: ['run', subRun.id],
     queryFn: () => runsAPI.get(subRun.id) as Promise<{ run: Run; steps: RunStep[] }>,
     enabled: open,
+    refetchInterval: open && ACTIVE_RUN_STATUSES.has(subRun.status) ? 2000 : false,
   })
   const steps = data?.steps ?? []
+  const currentRun = data?.run ?? subRun
+  const isActive = ACTIVE_RUN_STATUSES.has(currentRun.status)
+  const output = (currentRun.output || currentRun.error_message || '').trim()
   const dur = subRun.completed_at
     ? Math.round((new Date(subRun.completed_at).getTime() - new Date(subRun.started_at).getTime()) / 100) / 10
     : null
@@ -50,7 +55,19 @@ function SubRunRow({ subRun, agentName }: { subRun: Run; agentName?: string }) {
       {open && (
         <div className="mx-4 mb-2 rounded-lg border border-gray-100 bg-gray-50/50 overflow-hidden">
           {isFetching && <p className="text-[11px] text-gray-400 text-center py-3">Loading steps…</p>}
-          {!isFetching && steps.length === 0 && <p className="text-[11px] text-gray-400 text-center py-3">No steps recorded.</p>}
+          {isActive && (
+            <div className="flex items-center gap-2 border-b border-gray-100 bg-white px-3 py-2 text-[11px] text-gray-500">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Waiting for this run to finish…
+            </div>
+          )}
+          {!isFetching && steps.length === 0 && !isActive && <p className="text-[11px] text-gray-400 text-center py-3">No steps recorded.</p>}
+          {!isFetching && output && (
+            <div className="border-b border-gray-100 bg-white p-3">
+              <p className="text-[10px] font-medium uppercase text-gray-400 mb-1.5">Output</p>
+              <div className="text-[12px] text-gray-700 whitespace-pre-wrap max-h-52 overflow-y-auto">{output}</div>
+            </div>
+          )}
           {steps.map((step) => {
             const st = STEP_STYLE[step.step_type] ?? STEP_STYLE.model_call
             return (
@@ -77,11 +94,20 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
   const { data, isLoading, error } = useQuery({
     queryKey: ['run', params.runId],
     queryFn: () => runsAPI.get(params.runId) as Promise<RunDetail | { run: Run; steps: RunStep[]; workflow_id?: string }>,
+    refetchInterval: (query) => {
+      const current = query.state.data as RunDetail | { run: Run; steps: RunStep[]; workflow_id?: string } | undefined
+      const run = current ? ('run' in current ? current.run : current) : undefined
+      return run && ACTIVE_RUN_STATUSES.has(run.status) ? 2000 : false
+    },
   })
 
   const { data: childrenData } = useQuery({
     queryKey: ['run-children', params.runId],
     queryFn: () => runsAPI.listChildren(params.runId) as Promise<{ data: Run[] }>,
+    refetchInterval: (query) => {
+      const current = query.state.data as { data: Run[] } | undefined
+      return current?.data.some((run) => ACTIVE_RUN_STATUSES.has(run.status)) ? 2000 : false
+    },
   })
 
   const { data: agentData } = useQuery({
@@ -106,6 +132,9 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
   const steps = detail?.steps ?? []
   const isWorkflowRoot = !!detail && !detail.agent_id && !detail.parent_run_id
   const children = childrenData?.data ?? []
+  const hasChildren = children.length > 0
+  const hasActiveChildren = children.some((run) => ACTIVE_RUN_STATUSES.has(run.status))
+  const isActive = !!detail && ACTIVE_RUN_STATUSES.has(detail.status)
   const agentNames = Object.fromEntries((agentData?.data ?? []).map((a: Agent) => [a.id, a.name]))
 
   return (
@@ -165,7 +194,12 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
             <div>
               <p className="text-[12px] font-medium text-gray-700 mb-1.5">Output</p>
               <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-[12px] text-gray-600 whitespace-pre-wrap max-h-32 overflow-y-auto">
-                {detail.output || detail.error_message || 'No output recorded.'}
+                {detail.output || detail.error_message || (isActive || hasActiveChildren ? (
+                  <span className="inline-flex items-center gap-2 text-gray-500">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Waiting for active work to finish…
+                  </span>
+                ) : 'No output recorded.')}
               </div>
             </div>
           </div>
@@ -179,22 +213,22 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
                   {steps.length} step{steps.length !== 1 ? 's' : ''} — click nodes to inspect
                 </span>
               )}
-              {isWorkflowRoot && children.length > 0 && (
+              {hasChildren && (
                 <span className="ml-1.5 text-[10px] text-gray-400 font-normal">
-                  click nodes to inspect steps
+                  {hasActiveChildren ? 'child runs still working below' : 'child runs available below'}
                 </span>
               )}
             </p>
             <TraceGraph run={detail} steps={steps} />
           </div>
 
-          {/* Agent runs table — workflow root only */}
-          {isWorkflowRoot && children.length > 0 && (
+          {/* Child runs table */}
+          {hasChildren && (
             <div className="mb-5">
               <p className="text-[12px] font-medium text-gray-700 mb-2">
-                Agent runs
+                {isWorkflowRoot ? 'Agent runs' : 'Background runs'}
                 <span className="ml-1.5 text-[10px] text-gray-400 font-normal">
-                  {children.length} agent run{children.length !== 1 ? 's' : ''} — expand to see steps
+                  {children.length} run{children.length !== 1 ? 's' : ''} — expand to see output and steps
                 </span>
               </p>
               <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">

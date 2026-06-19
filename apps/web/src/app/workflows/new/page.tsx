@@ -23,7 +23,7 @@ export default function NewWorkflowPage() {
   return (
     <div className="p-6 max-w-2xl">
       <div className="mb-6">
-        <h1 className="text-lg font-semibold text-gray-900">Create Workflow</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Create Workflow</h1>
         <p className="text-sm text-gray-500 mt-0.5">
           Set up a name and mode, then build your workflow visually on the canvas.
         </p>
@@ -64,7 +64,7 @@ export default function NewWorkflowPage() {
           <button
             onClick={() => create.mutate()}
             disabled={!name.trim() || create.isPending}
-            className="px-4 py-2 bg-[#534AB7] text-white text-sm font-medium rounded-lg disabled:opacity-50"
+            className="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg disabled:opacity-50"
           >
             {create.isPending ? 'Creating…' : 'Create & open canvas →'}
           </button>

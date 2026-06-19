@@ -24,7 +24,7 @@ export default function NewTriggerPage() {
         Webhook Triggers
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">New Webhook Trigger</h1>
+      <h1 className="text-xl font-semibold text-gray-900 mb-0.5">New Webhook Trigger</h1>
       <p className="text-sm text-gray-500 mb-8">
         Create an inbound HTTP endpoint that fires an agent or workflow run.
       </p>

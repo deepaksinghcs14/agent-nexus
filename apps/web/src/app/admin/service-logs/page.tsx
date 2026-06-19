@@ -106,7 +106,7 @@ export default function AdminServiceLogsPage() {
     <div className="p-6 h-full flex flex-col min-h-0">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-base font-medium text-gray-900">Service logs</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Service logs</h1>
           <p className="text-[11px] text-gray-400 mt-0.5">{filtered.length.toLocaleString()} visible / {logs.length.toLocaleString()} captured</p>
         </div>
         <div className="flex items-center gap-2">

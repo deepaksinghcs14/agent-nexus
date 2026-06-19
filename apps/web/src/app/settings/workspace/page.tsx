@@ -91,8 +91,8 @@ export default function WorkspaceSettingsPage() {
   return (
     <div className="p-6 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-lg font-semibold text-gray-900">Workspace settings</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Manage workspace details, members, and roles</p>
+        <h1 className="text-xl font-semibold text-gray-900">Workspace</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Manage your workspace settings and members</p>
       </div>
 
       {message && (
@@ -138,7 +138,7 @@ export default function WorkspaceSettingsPage() {
             <button
               onClick={() => updateWorkspace.mutate()}
               disabled={!canManage || !displayName.trim() || updateWorkspace.isPending}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#534AB7] text-white text-sm rounded-lg disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg disabled:opacity-50"
             >
               <Check className="w-3.5 h-3.5" /> Save
             </button>

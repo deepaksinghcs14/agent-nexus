@@ -98,12 +98,12 @@ export default function ProvidersPage() {
     <div className="p-6 max-w-2xl">
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-base font-medium text-gray-900">Provider credentials</h1>
-          <p className="text-xs text-gray-400 mt-0.5">API keys are encrypted at rest with AES-256-GCM</p>
+          <h1 className="text-xl font-semibold text-gray-900">Providers</h1>
+          <p className="text-sm text-gray-500 mt-0.5">API keys are encrypted at rest with AES-256-GCM</p>
         </div>
         <button
           onClick={() => { setAdding(true); setFormError('') }}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-700"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
         >
           <Plus size={13} /> Add Key
         </button>

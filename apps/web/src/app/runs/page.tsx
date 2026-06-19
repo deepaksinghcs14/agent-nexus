@@ -112,7 +112,10 @@ export default function RunsPage() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-base font-medium text-gray-900">Runs</h1>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Runs</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Monitor all agent and workflow runs</p>
+        </div>
         <div className="flex gap-2">
           <select value={agent} onChange={(e) => setAgent(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white">
             <option value="">All agents</option>
@@ -131,7 +134,7 @@ export default function RunsPage() {
           { label: 'Success rate', value: completed.length ? `${Math.round(successCount / completed.length * 100)}%` : '—' },
           { label: 'Total tokens', value: formatTokens(totalTokens) },
           { label: 'Estimated cost', value: formatCost(totalCost) },
-        ].map((item) => <div key={item.label} className="bg-gray-50 rounded-lg p-3"><p className="text-[11px] text-gray-400 mb-1">{item.label}</p><p className="text-xl font-medium text-gray-900">{item.value}</p></div>)}
+        ].map((item) => <div key={item.label} className="bg-white border border-gray-100 rounded-xl p-4"><p className="text-[11px] text-gray-400 mb-1">{item.label}</p><p className="text-2xl font-bold text-gray-900">{item.value}</p></div>)}
       </div>
 
       {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">{error}</div>}
@@ -155,7 +158,7 @@ export default function RunsPage() {
             </thead>
             <tbody>
               {runs.map((run) => (
-                <tr key={run.id} className="border-b last:border-b-0 border-gray-50 hover:bg-gray-50/50">
+                <tr key={run.id} className="border-b last:border-b-0 border-gray-50 hover:bg-purple-50/30">
                   <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500">{run.id.slice(0, 12)}</td>
                   <td className="px-4 py-2.5">
                     {(() => {
@@ -223,7 +226,7 @@ export default function RunsPage() {
       <div className="mt-4 p-4 rounded-lg bg-gray-50 border border-gray-200">
         <p className="text-sm text-gray-600">
           Learn about run statuses, approval gates, and polling in the{' '}
-          <Link href="/docs/run-states" className="text-[#534AB7] hover:underline">
+          <Link href="/docs/run-states" className="text-purple-600 hover:underline">
             documentation
           </Link>.
         </p>

@@ -157,7 +157,7 @@ func ExtractCandidates(ctx context.Context, llm provider.Provider, model, userIn
 	stream, err := llm.Complete(ctx, provider.CompletionRequest{
 		Model: model,
 		Messages: []provider.Message{
-			{Role: "system", Content: "Extract only durable long-term memories from the conversation. Return JSON only: {\"memories\":[{\"content\":\"...\",\"importance_score\":0.0,\"reason\":\"...\"}]}. Return an empty memories array for transient facts, secrets, credentials, or one-off requests."},
+			{Role: "system", Content: "Extract only durable long-term memories about the user: stable preferences, identity facts, ongoing projects, and reusable context. Do not store assistant capabilities, tool availability, system limitations, transient failures, secrets, credentials, or one-off requests. Return JSON only: {\"memories\":[{\"content\":\"...\",\"importance_score\":0.0,\"reason\":\"...\"}]}. Return an empty memories array when nothing durable about the user should be saved."},
 			{Role: "user", Content: "User:\n" + userInput + "\n\nAssistant:\n" + assistantReply},
 		},
 		Temperature: 0,
@@ -176,15 +176,66 @@ func ExtractCandidates(ctx context.Context, llm provider.Provider, model, userIn
 			return nil, event.Error
 		}
 	}
+	return parseMemoryCandidates(raw)
+}
+
+func parseMemoryCandidates(raw string) ([]Candidate, error) {
 	raw = strings.TrimSpace(raw)
-	raw = strings.TrimPrefix(raw, "```json")
-	raw = strings.TrimPrefix(raw, "```")
-	raw = strings.TrimSuffix(raw, "```")
+	if raw == "" {
+		return nil, nil
+	}
+	raw = stripJSONFence(raw)
+
 	var parsed struct {
 		Memories []Candidate `json:"memories"`
 	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &parsed); err != nil {
-		return nil, err
+	if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+		return parsed.Memories, nil
 	}
-	return parsed.Memories, nil
+
+	var candidates []Candidate
+	if err := json.Unmarshal([]byte(raw), &candidates); err == nil {
+		return candidates, nil
+	}
+
+	if extracted := extractJSONValue(raw); extracted != raw {
+		if err := json.Unmarshal([]byte(extracted), &parsed); err == nil {
+			return parsed.Memories, nil
+		}
+		if err := json.Unmarshal([]byte(extracted), &candidates); err == nil {
+			return candidates, nil
+		}
+	}
+
+	return nil, fmt.Errorf("memory extractor returned invalid JSON")
+}
+
+func stripJSONFence(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if !strings.HasPrefix(raw, "```") {
+		return raw
+	}
+	if idx := strings.Index(raw, "\n"); idx >= 0 {
+		raw = raw[idx+1:]
+	} else {
+		raw = strings.TrimPrefix(raw, "```")
+	}
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimSuffix(raw, "```")
+	return strings.TrimSpace(raw)
+}
+
+func extractJSONValue(raw string) string {
+	objectStart := strings.Index(raw, "{")
+	objectEnd := strings.LastIndex(raw, "}")
+	arrayStart := strings.Index(raw, "[")
+	arrayEnd := strings.LastIndex(raw, "]")
+
+	if objectStart >= 0 && objectEnd > objectStart && (arrayStart == -1 || objectStart < arrayStart) {
+		return strings.TrimSpace(raw[objectStart : objectEnd+1])
+	}
+	if arrayStart >= 0 && arrayEnd > arrayStart {
+		return strings.TrimSpace(raw[arrayStart : arrayEnd+1])
+	}
+	return raw
 }

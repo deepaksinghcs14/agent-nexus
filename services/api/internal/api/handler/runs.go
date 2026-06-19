@@ -21,6 +21,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/cost"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/memory"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/encrypt"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 	"github.com/go-chi/chi/v5"
@@ -101,6 +102,11 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		sseErr("failed to create run")
 		return
 	}
+	defer func() {
+		if h.invokeH != nil {
+			h.invokeH.cleanupEphemeralResources(context.Background(), id)
+		}
+	}()
 
 	memories, contextChunks := []string{}, []string{}
 	if a.MemoryEnabled {
@@ -159,9 +165,9 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	toolDefs, dbTools, _ := loadAgentToolDefs(r.Context(), h.pool, a.ID)
 	toolDefs, dbTools = ensureMemoryToolDef(toolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
 
+	capturedWs, capturedUID, capturedRunID := ws, uid, id
 	var callAgentFn func(ctx context.Context, agentID, task string) (string, error)
 	if h.invokeH != nil {
-		capturedWs, capturedUID, capturedRunID := ws, uid, id
 		callAgentFn = func(ctx context.Context, agentID, task string) (string, error) {
 			return h.invokeH.runAgentInline(ctx, capturedWs, capturedUID, agentID, task, capturedRunID, capturedRunID, 1)
 		}
@@ -178,6 +184,12 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		InvokeDepth:    0,
 		RootRunID:      id,
 		CallAgent:      callAgentFn,
+		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
+			if h.invokeH == nil {
+				return "", fmt.Errorf("workflow execution not available")
+			}
+			return h.invokeH.runWorkflowInline(ctx, capturedWs, capturedUID, workflowID, input, capturedRunID)
+		},
 	}
 
 	emit(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, id))
@@ -189,6 +201,12 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	memorySaveCalled := false
 
 	for {
+		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
+			messages = trimmed
+			emit(fmt.Sprintf(`{"type":"delta","content":%q}`,
+				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
+		}
+
 		stream, e := llm.Complete(r.Context(), provider.CompletionRequest{
 			Model:               a.Model,
 			Messages:            messages,
@@ -254,15 +272,18 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				sseErr("failed to save assistant message")
 				return
 			}
-			if shouldRunMemoryExtractor(a, memorySaveCalled) {
-				start := time.Now()
-				count, err := runMemoryExtractor(r.Context(), h.pool, llm, a, ws, uid, c.ID, id, q.Input, reply)
-				_ = h.createStep(r.Context(), id, domain.StepToolCall, map[string]any{"tool": "memory_extractor"}, map[string]any{"saved": count}, start, 0, "memory_extractor", errString(err))
-			}
 			_ = h.createStep(r.Context(), id, domain.StepFinalResponse, map[string]any{}, map[string]any{"content": reply}, time.Now(), usage.OutputTokens, "", "")
 			costUSD := cost.Estimate(a.Provider, a.Model, totalInput, totalOutput)
 			_, _ = h.pool.Exec(r.Context(), `UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`, id, reply, totalInput, totalOutput, costUSD)
 			emit(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`, id, totalInput, totalOutput, costUSD))
+			if shouldRunMemoryExtractor(a, memorySaveCalled) {
+				aCopy, llmCopy, inputSnap, replySnap := a, llm, q.Input, reply
+				go func() {
+					start := time.Now()
+					count, err := runMemoryExtractor(context.Background(), h.pool, llmCopy, aCopy, ws, uid, c.ID, id, inputSnap, replySnap)
+					_ = h.createStep(context.Background(), id, domain.StepToolCall, map[string]any{"tool": "memory_extractor"}, map[string]any{"saved": count}, start, 0, "memory_extractor", errString(err))
+				}()
+			}
 			return
 		}
 
@@ -308,13 +329,26 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Execute the tool — HTTP tools bypass the native registry
+			// Execute the tool — HTTP and code tools bypass the native registry
 			var result *tools.ExecutionResult
 			var execErr error
 			if toolExists && dbTool.Type == "http" {
 				var cfg tools.HTTPToolConfig
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(r.Context(), cfg, call.Input, dbTool.TimeoutMs)
+			} else if toolExists && dbTool.Type == "code" {
+				var codeCfg struct {
+					Code string `json:"code"`
+				}
+				_ = json.Unmarshal(dbTool.Config, &codeCfg)
+				start := time.Now()
+				out, codeErr := native.ExecuteCodeTool(r.Context(), codeCfg.Code, call.Input)
+				result = &tools.ExecutionResult{LatencyMs: int(time.Since(start).Milliseconds())}
+				if codeErr != nil {
+					result.Error = codeErr.Error()
+				} else {
+					result.Output = out
+				}
 			} else {
 				result, execErr = h.executor.ExecuteWithContext(r.Context(), execCtx, call.Name, call.Input)
 			}
@@ -355,6 +389,11 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				sseErr("max steps exceeded")
 				return
 			}
+		}
+		// Reload tool definitions to pick up tools created or attached mid-run.
+		if freshDefs, freshDB, err := loadAgentToolDefs(r.Context(), h.pool, a.ID); err == nil {
+			freshDefs, freshDB = ensureMemoryToolDef(freshDefs, freshDB, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+			toolDefs, dbTools = freshDefs, freshDB
 		}
 		// Loop: call model again with tool results in messages
 	}

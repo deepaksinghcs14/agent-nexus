@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
@@ -127,17 +128,16 @@ func (t *CreateAgentTool) Definition() domain.Tool {
 		"properties": map[string]any{
 			"name":         map[string]any{"type": "string", "description": "Agent name."},
 			"instructions": map[string]any{"type": "string", "description": "System instructions for the agent."},
-			"provider":     map[string]any{"type": "string", "description": "LLM provider (anthropic, openai, gemini, ollama). Defaults to the calling agent's provider."},
-			"model":        map[string]any{"type": "string", "description": "Model ID. Defaults to the calling agent's model."},
 			"description":  map[string]any{"type": "string", "description": "Short description of what this agent does."},
 			"tool_names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tool names to attach."},
-			"ephemeral":    map[string]any{"type": "boolean", "description": "If true, agent is deleted when this run ends. Default false."},
+			"skill_names":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Skill names to attach to the agent at creation."},
+			"ephemeral":    map[string]any{"type": "boolean", "description": "If true, agent is deleted when this run ends. Default true; set false only when the user explicitly asks to keep it."},
 		},
 		"required": []string{"name", "instructions"},
 	})
 	return domain.Tool{
 		Name:             "native_create_agent",
-		Description:      "Create a new agent in the workspace. Set ephemeral=true to auto-delete it when this run ends. Use native_call_agent to invoke it.",
+		Description:      "Create a new agent in the workspace. Agents are temporary by default and auto-delete when this run ends unless ephemeral=false is explicitly provided. Use native_call_agent to invoke it.",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),
@@ -153,18 +153,8 @@ func (t *CreateAgentTool) Execute(_ map[string]any) (any, error) {
 func (t *CreateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	name, _ := input["name"].(string)
 	instructions, _ := input["instructions"].(string)
-	provider, _ := input["provider"].(string)
-	model, _ := input["model"].(string)
 	description, _ := input["description"].(string)
-	ephemeral, _ := input["ephemeral"].(bool)
-
-	// Default to the calling agent's provider/model so the LLM doesn't hallucinate stale model names.
-	if provider == "" {
-		provider = execCtx.AgentProvider
-	}
-	if model == "" {
-		model = execCtx.AgentModel
-	}
+	ephemeral := ephemeralFromInput(input)
 
 	var toolNames []string
 	if tn, ok := input["tool_names"].([]any); ok {
@@ -175,19 +165,48 @@ func (t *CreateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 		}
 	}
 
+	var skillNames []string
+	if sn, ok := input["skill_names"].([]any); ok {
+		for _, n := range sn {
+			if s, ok := n.(string); ok {
+				skillNames = append(skillNames, s)
+			}
+		}
+	}
+
 	agentID, err := createAgentRecordFromTool(ctx, t.pool, execCtx.WorkspaceID, execCtx.UserID, createToolAgentParams{
-		Name:        name,
-		Description: description,
+		Name:         name,
+		Description:  description,
 		Instructions: instructions,
-		Provider:    provider,
-		Model:       model,
-		ToolNames:   toolNames,
-		SourceRunID: execCtx.RunID,
-		Ephemeral:   ephemeral,
+		Provider:     execCtx.AgentProvider,
+		Model:        execCtx.AgentModel,
+		ToolNames:    toolNames,
+		SourceRunID:  execCtx.RunID,
+		Ephemeral:    ephemeral,
 	})
 	if err != nil {
 		return nil, err
 	}
+
+	// Attach skills if provided.
+	for _, skillName := range skillNames {
+		var skillID string
+		if err := t.pool.QueryRow(ctx,
+			`SELECT id::text FROM skills
+			 WHERE name=$1 AND (workspace_id IS NULL OR workspace_id=$2::uuid) AND enabled=true
+			 ORDER BY workspace_id NULLS LAST LIMIT 1`,
+			skillName, execCtx.WorkspaceID).Scan(&skillID); err != nil {
+			continue
+		}
+		t.pool.Exec(ctx, //nolint:errcheck
+			`INSERT INTO agent_skills(agent_id, skill_id, enabled, order_index)
+			 SELECT $1::uuid, $2::uuid, true,
+			   COALESCE((SELECT MAX(order_index)+1 FROM agent_skills WHERE agent_id=$1::uuid), 0)
+			 ON CONFLICT DO NOTHING`,
+			agentID, skillID)
+		attachRequiredToolsForSkill(ctx, t.pool, agentID, skillID) //nolint:errcheck
+	}
+
 	return map[string]any{"agent_id": agentID, "name": name, "ephemeral": ephemeral}, nil
 }
 
@@ -237,6 +256,136 @@ func (t *DeleteAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 		return nil, err
 	}
 	return map[string]any{"deleted": true, "agent_id": agentID}, nil
+}
+
+// ── native_update_agent ───────────────────────────────────────────────────────
+
+type UpdateAgentTool struct{ pool *pgxpool.Pool }
+
+func NewUpdateAgentTool(pool *pgxpool.Pool) *UpdateAgentTool { return &UpdateAgentTool{pool} }
+
+func (t *UpdateAgentTool) Definition() domain.Tool {
+	schema, _ := json.Marshal(map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"agent_id":       map[string]any{"type": "string", "description": "UUID of the agent to update."},
+			"name":           map[string]any{"type": "string", "description": "New name for the agent."},
+			"description":    map[string]any{"type": "string", "description": "New description."},
+			"instructions":   map[string]any{"type": "string", "description": "New system instructions."},
+			"provider":       map[string]any{"type": "string", "description": "LLM provider (anthropic, openai, gemini, ollama)."},
+			"model":          map[string]any{"type": "string", "description": "Model ID."},
+			"temperature":    map[string]any{"type": "number", "description": "Sampling temperature."},
+			"max_tokens":     map[string]any{"type": "integer", "description": "Maximum tokens per response."},
+			"max_steps":      map[string]any{"type": "integer", "description": "Maximum tool-call steps per run."},
+			"memory_enabled": map[string]any{"type": "boolean", "description": "Enable or disable memory for this agent."},
+			"memory_scope":   map[string]any{"type": "string", "enum": []string{"conversation", "agent", "workspace"}, "description": "Memory scope: conversation, agent, or workspace."},
+			"status":         map[string]any{"type": "string", "enum": []string{"active", "paused"}, "description": "Agent status: active or paused."},
+		},
+		"required": []string{"agent_id"},
+	})
+	return domain.Tool{
+		Name:             "native_update_agent",
+		Description:      "Update any agent in the workspace. Only the fields you provide are changed. Status can be set to active or paused (not archived).",
+		Type:             "native",
+		InputSchema:      json.RawMessage(schema),
+		OutputSchema:     json.RawMessage(`{"type":"object"}`),
+		RiskLevel:        "medium",
+		RequiresApproval: false,
+		TimeoutMs:        5000,
+		Enabled:          true,
+	}
+}
+func (t *UpdateAgentTool) Execute(_ map[string]any) (any, error) {
+	return nil, fmt.Errorf("native_update_agent requires run context")
+}
+func (t *UpdateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
+	agentID, _ := input["agent_id"].(string)
+	if agentID == "" {
+		return nil, fmt.Errorf("agent_id is required")
+	}
+
+	// Verify agent exists in workspace.
+	var exists bool
+	err := t.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid)`,
+		agentID, execCtx.WorkspaceID).Scan(&exists)
+	if err != nil || !exists {
+		return nil, fmt.Errorf("agent not found in workspace")
+	}
+
+	// Validate status if provided.
+	if s, ok := input["status"].(string); ok && s != "" {
+		if s != "active" && s != "paused" {
+			return nil, fmt.Errorf("status must be 'active' or 'paused' (archived is not allowed)")
+		}
+	}
+
+	// Build dynamic SET clause.
+	setClauses := []string{}
+	args := []any{}
+	argIdx := 1
+
+	addField := func(col string, val any) {
+		setClauses = append(setClauses, fmt.Sprintf("%s=$%d", col, argIdx))
+		args = append(args, val)
+		argIdx++
+	}
+
+	if v, ok := input["name"].(string); ok && v != "" {
+		addField("name", v)
+	}
+	if v, ok := input["description"].(string); ok && v != "" {
+		addField("description", v)
+	}
+	if v, ok := input["instructions"].(string); ok && v != "" {
+		addField("instructions", v)
+	}
+	if v, ok := input["provider"].(string); ok && v != "" {
+		addField("provider", v)
+	}
+	if v, ok := input["model"].(string); ok && v != "" {
+		addField("model", v)
+	}
+	if v, ok := input["temperature"].(float64); ok {
+		addField("temperature", v)
+	}
+	if v, ok := input["max_tokens"].(float64); ok {
+		addField("max_tokens", int(v))
+	}
+	if v, ok := input["max_steps"].(float64); ok {
+		addField("max_steps", int(v))
+	}
+	if v, ok := input["memory_enabled"].(bool); ok {
+		addField("memory_enabled", v)
+	}
+	if v, ok := input["memory_scope"].(string); ok && v != "" {
+		addField("memory_scope", v)
+	}
+	if v, ok := input["status"].(string); ok && v != "" {
+		addField("status", v)
+	}
+
+	if len(setClauses) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	// Append updated_at and the WHERE args.
+	setClauses = append(setClauses, "updated_at=NOW()")
+	query := fmt.Sprintf(
+		`UPDATE agents SET %s WHERE id=$%d::uuid AND workspace_id=$%d::uuid`,
+		strings.Join(setClauses, ", "),
+		argIdx, argIdx+1,
+	)
+	args = append(args, agentID, execCtx.WorkspaceID)
+
+	tag, err := t.pool.Exec(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("update agent: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, fmt.Errorf("agent not found")
+	}
+	return map[string]any{"updated": true, "agent_id": agentID}, nil
 }
 
 // ── internal helper ───────────────────────────────────────────────────────────

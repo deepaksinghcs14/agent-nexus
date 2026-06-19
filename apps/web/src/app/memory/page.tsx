@@ -39,6 +39,10 @@ export default function MemoryPage() {
   const names = Object.fromEntries(agents.map((item) => [item.id, item.name]))
 
   return <div className="p-6">
+    <div className="mb-6">
+      <h1 className="text-xl font-semibold text-gray-900">Memory</h1>
+      <p className="text-sm text-gray-500 mt-0.5">Stored facts your agents can recall across conversations</p>
+    </div>
     <div className="flex items-center justify-between gap-3 mb-4">
       <div className="flex flex-wrap gap-2">
         <div className="inline-flex border border-gray-200 rounded-lg overflow-hidden bg-white">
@@ -59,12 +63,22 @@ export default function MemoryPage() {
       <div className="flex items-center gap-2 mb-1.5"><span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${scopeColor(memory.scope)}`}>{memory.scope}</span><span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${sourceColor(memory.save_source)}`}>{memory.save_source}</span>{memory.agent_id && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{names[memory.agent_id] ?? 'Agent'}</span>}<span className="ml-auto text-[10px] text-gray-400">{relativeTime(memory.created_at)}</span></div>
       <p className="text-[12px] text-gray-700 leading-relaxed">{memory.content}</p>
       {memory.metadata?.reason && <p className="mt-1 text-[11px] text-gray-500">{String(memory.metadata.reason)}</p>}
-      <div className="flex items-center mt-2 gap-2"><span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700">importance {(memory.importance_score ?? memory.relevance_score).toFixed(2)}</span>{tab === 'pending' && <><button onClick={() => approve.mutate(memory.id)} disabled={approve.isPending} className="inline-flex items-center gap-1 px-2 py-1 text-[11px] text-emerald-700 border border-emerald-200 rounded-lg disabled:opacity-40"><Check className="w-3 h-3" /> Approve</button><button onClick={() => reject.mutate(memory.id)} disabled={reject.isPending} className="inline-flex items-center gap-1 px-2 py-1 text-[11px] text-gray-600 border border-gray-200 rounded-lg disabled:opacity-40"><X className="w-3 h-3" /> Reject</button></>}<button onClick={() => { if (confirm('Delete this memory?')) remove.mutate(memory.id) }} className="ml-auto p-1 text-gray-400 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button></div>
+      <div className="flex items-center mt-2 gap-2">{(() => {
+                const score = memory.importance_score ?? memory.relevance_score ?? 0
+                const filled = Math.round(score * 5)
+                return (
+                  <span className="flex items-center gap-0.5" title={`importance ${score.toFixed(2)}`}>
+                    {Array.from({length: 5}).map((_, i) => (
+                      <span key={i} className={`w-1.5 h-1.5 rounded-full ${i < filled ? 'bg-purple-500' : 'bg-gray-200'}`} />
+                    ))}
+                  </span>
+                )
+              })()}{tab === 'pending' && <><button onClick={() => approve.mutate(memory.id)} disabled={approve.isPending} className="inline-flex items-center gap-1 px-2 py-1 text-[11px] text-emerald-700 border border-emerald-200 rounded-lg disabled:opacity-40"><Check className="w-3 h-3" /> Approve</button><button onClick={() => reject.mutate(memory.id)} disabled={reject.isPending} className="inline-flex items-center gap-1 px-2 py-1 text-[11px] text-gray-600 border border-gray-200 rounded-lg disabled:opacity-40"><X className="w-3 h-3" /> Reject</button></>}<button onClick={() => { if (confirm('Delete this memory?')) remove.mutate(memory.id) }} className="ml-auto p-1 text-gray-400 hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button></div>
     </div>)}</div>
     <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
       <p className="text-sm text-gray-600">
         Learn how memory scopes and vector retrieval work in the{' '}
-        <a href="/docs/what-is-an-agent" className="text-[#534AB7] hover:underline">documentation</a>.
+        <a href="/docs/what-is-an-agent" className="text-purple-600 hover:underline">documentation</a>.
       </p>
     </div>
   </div>

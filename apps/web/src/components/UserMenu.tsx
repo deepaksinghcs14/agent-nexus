@@ -30,7 +30,7 @@ export function UserMenu() {
           width: 36,
           height: 36,
           borderRadius: '50%',
-          backgroundColor: '#534AB7',
+          backgroundColor: '#7c3aed',
           color: '#fff',
           border: 'none',
           cursor: 'pointer',

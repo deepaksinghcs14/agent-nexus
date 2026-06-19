@@ -86,7 +86,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. GitHub PR Reviewer"
-          className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7]"
+          className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
         />
       </div>
 
@@ -98,7 +98,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Optional — what does this trigger do?"
-          className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7]"
+          className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
         />
       </div>
 
@@ -113,7 +113,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
               onClick={() => handleTargetTypeChange(type)}
               className={`px-4 py-2 rounded-md border text-sm font-medium transition-colors capitalize ${
                 targetType === type
-                  ? 'bg-[#534AB7] border-[#534AB7] text-white'
+                  ? 'bg-purple-600 border-purple-400 text-white'
                   : 'border-gray-300 text-gray-600 hover:border-gray-400'
               }`}
             >
@@ -131,7 +131,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
         <select
           value={targetId}
           onChange={(e) => setTargetId(e.target.value)}
-          className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7]"
+          className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
         >
           <option value="">Select a {targetType}…</option>
           {targets.map((t) => (
@@ -147,16 +147,16 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
           value={inputTemplate}
           onChange={(e) => setInputTemplate(e.target.value)}
           rows={3}
-          className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7]"
+          className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
         />
         <p className="mt-1.5 text-xs text-gray-400 space-y-0.5">
           Go template evaluated against the inbound request. Available variables:
         </p>
         <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-500">
-          <span><code className="font-mono text-[#534AB7]">{'{{.RawBody}}'}</code> — full JSON body as string</span>
-          <span><code className="font-mono text-[#534AB7]">{'{{.Body.field}}'}</code> — parsed JSON field</span>
-          <span><code className="font-mono text-[#534AB7]">{'{{.Headers.X-Name}}'}</code> — request header</span>
-          <span><code className="font-mono text-[#534AB7]">{'{{.Query.param}}'}</code> — query string param</span>
+          <span><code className="font-mono text-purple-600">{'{{.RawBody}}'}</code> — full JSON body as string</span>
+          <span><code className="font-mono text-purple-600">{'{{.Body.field}}'}</code> — parsed JSON field</span>
+          <span><code className="font-mono text-purple-600">{'{{.Headers.X-Name}}'}</code> — request header</span>
+          <span><code className="font-mono text-purple-600">{'{{.Query.param}}'}</code> — query string param</span>
         </div>
       </div>
 
@@ -170,7 +170,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
           placeholder="Leave blank for no signature verification"
-          className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7]"
+          className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
         />
         <p className="mt-1 text-xs text-gray-400">
           When set, inbound requests must include a valid{' '}
@@ -183,7 +183,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
         <button
           type="button"
           onClick={() => setIsActive(!isActive)}
-          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isActive ? 'bg-[#534AB7]' : 'bg-gray-200'}`}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isActive ? 'bg-purple-600' : 'bg-gray-200'}`}
         >
           <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${isActive ? 'translate-x-4' : 'translate-x-1'}`} />
         </button>
@@ -196,7 +196,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
         <button
           type="submit"
           disabled={saving}
-          className="px-5 py-2 rounded-md bg-[#534AB7] hover:bg-[#4a42a3] text-white text-sm font-medium transition-colors disabled:opacity-50"
+          className="px-5 py-2 rounded-md bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
         >
           {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create trigger'}
         </button>

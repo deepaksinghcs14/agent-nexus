@@ -66,7 +66,7 @@ export function TriggersPanel({ workflowId, onClose }: Props) {
       {/* Header */}
       <div style={{ padding: '12px 14px 10px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Zap size={13} color="#534AB7" />
+          <Zap size={13} color="#7c3aed" />
           <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.5 }}>
             Webhook Triggers
           </span>
@@ -85,7 +85,7 @@ export function TriggersPanel({ workflowId, onClose }: Props) {
         {!isLoading && triggers.length === 0 && (
           <div style={{ textAlign: 'center', paddingTop: 32 }}>
             <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#f1f0ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
-              <Zap size={16} color="#534AB7" />
+              <Zap size={16} color="#7c3aed" />
             </div>
             <p style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>No triggers yet</p>
             <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 16, lineHeight: 1.5 }}>
@@ -115,7 +115,7 @@ export function TriggersPanel({ workflowId, onClose }: Props) {
                   onClick={() => toggleActive.mutate(t)}
                   style={{
                     width: 28, height: 16, borderRadius: 8, border: 'none', cursor: 'pointer',
-                    background: t.is_active ? '#534AB7' : '#d1d5db', position: 'relative', flexShrink: 0,
+                    background: t.is_active ? '#7c3aed' : '#d1d5db', position: 'relative', flexShrink: 0,
                   }}
                 >
                   <span style={{
@@ -124,7 +124,7 @@ export function TriggersPanel({ workflowId, onClose }: Props) {
                     transition: 'left 0.15s',
                   }} />
                 </button>
-                <span style={{ fontSize: 10, color: t.is_active ? '#534AB7' : '#9ca3af', fontWeight: 600 }}>
+                <span style={{ fontSize: 10, color: t.is_active ? '#7c3aed' : '#9ca3af', fontWeight: 600 }}>
                   {t.is_active ? 'Active' : 'Inactive'}
                 </span>
                 {t.trigger_count > 0 && (
@@ -153,7 +153,7 @@ export function TriggersPanel({ workflowId, onClose }: Props) {
           style={{
             width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            background: '#534AB7', color: '#fff', border: 'none',
+            background: '#7c3aed', color: '#fff', border: 'none',
           }}
         >
           <Plus size={12} /> Add trigger

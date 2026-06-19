@@ -53,10 +53,10 @@ export default function GatewayChannelsPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Gateway Channels</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Gateway Channels</h1>
           <p className="text-sm text-gray-500 mt-1">Persistent channel entrypoints for always-on agents.</p>
         </div>
-        <Link href="/gateway/channels/new" className="flex items-center gap-2 px-4 py-2 rounded-md bg-[#534AB7] hover:bg-[#4a42a3] text-white text-sm font-medium">
+        <Link href="/gateway/channels/new" className="flex items-center gap-2 px-4 py-2 rounded-md bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium">
           <Plus className="w-4 h-4" /> New channel
         </Link>
       </div>
@@ -68,7 +68,7 @@ export default function GatewayChannelsPage() {
           <Radio className="w-10 h-10 text-gray-300 mx-auto mb-3" />
           <p className="text-sm font-medium text-gray-600 mb-1">No gateway channels yet</p>
           <p className="text-sm text-gray-400 mb-4">Create a WhatsApp or HTTP channel to route messages into an agent.</p>
-          <Link href="/gateway/channels/new" className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[#534AB7] text-white text-sm font-medium">
+          <Link href="/gateway/channels/new" className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium">
             <Plus className="w-4 h-4" /> Create channel
           </Link>
         </div>
@@ -95,7 +95,7 @@ export default function GatewayChannelsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => toggle(c)} className={`relative inline-flex h-5 w-9 items-center rounded-full ${c.is_active ? 'bg-[#534AB7]' : 'bg-gray-200'}`} title={c.is_active ? 'Disable' : 'Enable'}>
+                  <button onClick={() => toggle(c)} className={`relative inline-flex h-5 w-9 items-center rounded-full ${c.is_active ? 'bg-purple-600' : 'bg-gray-200'}`} title={c.is_active ? 'Disable' : 'Enable'}>
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${c.is_active ? 'translate-x-4' : 'translate-x-1'}`} />
                   </button>
                   <Link href={`/gateway/channels/${c.id}`} className="p-1.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100" title="Open">

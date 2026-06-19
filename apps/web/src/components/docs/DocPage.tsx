@@ -20,11 +20,11 @@ export function DocPage({ title, subtitle, children }: DocPageProps) {
         .doc-content p { font-size: 0.9375rem; line-height: 1.7; color: #4b5563; margin: 0 0 1rem; }
         .doc-content ul, .doc-content ol { padding-left: 1.5rem; margin: 0 0 1rem; }
         .doc-content li { font-size: 0.9375rem; line-height: 1.7; color: #4b5563; margin-bottom: 0.35rem; }
-        .doc-content code { font-family: 'Fira Code', 'JetBrains Mono', 'Consolas', monospace; font-size: 0.8125rem; background: #f1f0ff; color: #534AB7; padding: 0.15em 0.4em; border-radius: 4px; }
+        .doc-content code { font-family: 'Fira Code', 'JetBrains Mono', 'Consolas', monospace; font-size: 0.8125rem; background: #f1f0ff; color: #7c3aed; padding: 0.15em 0.4em; border-radius: 4px; }
         .doc-content pre { background: #0d0d14; border-radius: 10px; padding: 1.25rem 1.5rem; overflow-x: auto; margin: 1.25rem 0; border: 1px solid rgba(255,255,255,0.06); }
         .doc-content pre code { background: none; color: #e2e8f0; padding: 0; font-size: 0.8125rem; line-height: 1.7; }
         .doc-content strong { font-weight: 600; color: #374151; }
-        .doc-content a { color: #534AB7; text-decoration: none; }
+        .doc-content a { color: #7c3aed; text-decoration: none; }
         .doc-content a:hover { text-decoration: underline; }
         .doc-content table { width: 100%; border-collapse: collapse; font-size: 0.875rem; margin: 1rem 0 1.5rem; }
         .doc-content th { text-align: left; padding: 0.5rem 0.75rem; font-weight: 600; color: #374151; background: #f9fafb; border-bottom: 1px solid #e5e7eb; }
@@ -73,7 +73,7 @@ export function Callout({ type = 'info', children }: { type?: 'info' | 'tip' | '
 // A pill-style badge used inline
 export function Badge({ label, color = 'purple' }: { label: string; color?: 'purple' | 'blue' | 'green' | 'amber' | 'red' | 'gray' }) {
   const map = {
-    purple: { bg: '#f1f0ff', text: '#534AB7' },
+    purple: { bg: '#f1f0ff', text: '#7c3aed' },
     blue:   { bg: '#eff6ff', text: '#1d4ed8' },
     green:  { bg: '#f0fdf4', text: '#166534' },
     amber:  { bg: '#fffbeb', text: '#92400e' },
@@ -108,13 +108,13 @@ export function ConceptGrid({ items }: {
             border: '1px solid #e5e7eb', background: '#fff',
             textDecoration: 'none', transition: 'border-color 0.15s, box-shadow 0.15s',
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#534AB7'; (e.currentTarget as HTMLElement).style.boxShadow = '0 0 0 3px rgba(83,74,183,0.08)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#7c3aed'; (e.currentTarget as HTMLElement).style.boxShadow = '0 0 0 3px rgba(83,74,183,0.08)' }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}
         >
           {c.badge && (
             <span style={{
               flexShrink: 0, marginTop: 2,
-              background: '#f1f0ff', color: '#534AB7',
+              background: '#f1f0ff', color: '#7c3aed',
               fontSize: '0.7rem', fontWeight: 700,
               padding: '0.2em 0.55em', borderRadius: 4,
               whiteSpace: 'nowrap', letterSpacing: '0.03em',
