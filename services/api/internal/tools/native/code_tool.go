@@ -142,7 +142,7 @@ func (t *CreateCodeToolTool) ExecuteWithContext(ctx context.Context, execCtx too
 		"tool_id":   toolID,
 		"name":      name,
 		"ephemeral": ephemeral,
-		"note":      "Tool created and attached. You can now call it by name.",
+		"note":      "Tool created and attached. The exact tool name (with 'code_' prefix) is in the 'name' field above — use that exact name when calling it. It is callable immediately in your next message.",
 	}, nil
 }
 

@@ -374,6 +374,11 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		// Reload tool definitions to pick up tools created or attached mid-run.
+		if freshDefs, freshDB, err := loadAgentToolDefs(r.Context(), h.pool, a.ID); err == nil {
+			freshDefs, freshDB = ensureMemoryToolDef(freshDefs, freshDB, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+			toolDefs, dbTools = freshDefs, freshDB
+		}
 		// Loop: call model again with tool results in messages
 	}
 }

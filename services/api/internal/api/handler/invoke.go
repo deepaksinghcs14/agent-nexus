@@ -779,6 +779,14 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				return
 			}
 		}
+		// Reload tool definitions to pick up tools created or attached mid-run.
+		if freshAll, freshDB, err := loadAgentToolDefs(ctx, h.pool, a.ID); err == nil {
+			freshAll, freshDB = ensureMemoryToolDef(freshAll, freshDB, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+			allToolDefs, dbTools = freshAll, freshDB
+			for _, td := range freshAll {
+				toolSummaries[td.Name] = td.Description
+			}
+		}
 	}
 }
 
@@ -1862,6 +1870,12 @@ func (h *InvokeHandler) executeSupervisorRun(
 				sseErr("max steps exceeded")
 				return
 			}
+		}
+		// Reload tool definitions to pick up tools created or attached mid-run.
+		if freshAll, freshDB, err := loadAgentToolDefs(ctx, h.pool, a.ID); err == nil {
+			freshAll, freshDB = ensureMemoryToolDef(freshAll, freshDB, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+			regularToolDefs, dbTools = freshAll, freshDB
+			toolDefs = append(regularToolDefs, delegateToolDefs...)
 		}
 	}
 }
