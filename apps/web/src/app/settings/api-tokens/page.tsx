@@ -73,7 +73,7 @@ export default function APITokensPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">API Tokens</h1>
+          <h1 className="text-xl font-semibold text-gray-900">API Tokens</h1>
           <p className="text-sm text-gray-500 mt-1">
             Use tokens to access the Agent Nexus API from scripts, CI/CD, or integrations.
           </p>
@@ -82,7 +82,7 @@ export default function APITokensPage() {
           onClick={() => { setShowCreate(true); setNewToken(null) }}
           disabled={demoMode}
           title={demoMode ? 'Not available in demo mode' : undefined}
-          className="flex items-center gap-2 px-4 py-2 rounded-md bg-[#534AB7] hover:bg-[#4a42a3] text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-4 py-2 rounded-md bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Plus className="w-4 h-4" />
           New token
@@ -125,7 +125,7 @@ export default function APITokensPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. CI Pipeline, Slack Bot"
-              className="w-full px-3 py-2 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7]"
+              className="w-full px-3 py-2 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
             />
           </div>
           <div>
@@ -136,7 +136,7 @@ export default function APITokensPage() {
               type="date"
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value ? new Date(e.target.value).toISOString() : '')}
-              className="px-3 py-2 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7]"
+              className="px-3 py-2 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
             />
           </div>
           {createError && <p className="text-sm text-red-500">{createError}</p>}
@@ -144,7 +144,7 @@ export default function APITokensPage() {
             <button
               onClick={handleCreate}
               disabled={creating}
-              className="px-4 py-2 rounded-md bg-[#534AB7] hover:bg-[#4a42a3] text-white text-sm font-medium transition-colors disabled:opacity-50"
+              className="px-4 py-2 rounded-md bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
             >
               {creating ? 'Creating…' : 'Create token'}
             </button>
@@ -196,7 +196,7 @@ export default function APITokensPage() {
       <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
         <p className="text-sm text-gray-600">
           Use your token in the{' '}
-          <a href="/docs/api-tokens" className="text-[#534AB7] hover:underline">
+          <a href="/docs/api-tokens" className="text-purple-600 hover:underline">
             interactive documentation
           </a>{' '}
           to test API calls directly in the browser.

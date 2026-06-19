@@ -252,7 +252,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
       </div>
       <div className="flex items-start justify-between mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{channel.name}</h1>
+          <h1 className="text-xl font-semibold text-gray-900">{channel.name}</h1>
           <p className="text-sm text-gray-500 mt-1">{channel.description || 'Channel runtime and delivery controls.'}</p>
         </div>
         <button onClick={load} className="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-gray-600 text-[12px] rounded-lg hover:bg-gray-50">
@@ -362,7 +362,7 @@ Content-Type: application/json
               <button
                 onClick={sendTestMessage}
                 disabled={testLoading || !testInput.trim()}
-                className="px-4 py-2 rounded-md bg-[#534AB7] text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {testLoading ? 'Sending…' : 'Send'}
               </button>
@@ -381,7 +381,7 @@ Content-Type: application/json
             <button
               onClick={startLogin}
               disabled={loginLoading}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#534AB7] text-sm text-white hover:bg-[#4a42a3] disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-purple-600 text-sm text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loginLoading ? <Spinner /> : <QrCode className="w-4 h-4" />}
               {loginLoading ? 'Connecting…' : 'Start login'}
@@ -407,7 +407,7 @@ Content-Type: application/json
             </div>
             <label className="inline-flex items-center cursor-pointer">
               <input type="checkbox" checked={!!channel.config?.self_chat_enabled} onChange={(e) => updateSelfChat(e.target.checked)} className="sr-only peer" />
-              <span className="relative w-10 h-5 rounded-full bg-gray-200 peer-checked:bg-[#534AB7] after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
+              <span className="relative w-10 h-5 rounded-full bg-gray-200 peer-checked:bg-purple-600 after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
             </label>
           </div>
         </div>
@@ -438,7 +438,7 @@ Content-Type: application/json
                 <input type="date" value={schedEndAt} onChange={(e) => setSchedEndAt(e.target.value)} title="End date (optional)" className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg" />
                 <input type="number" min={1} value={schedMaxOcc} onChange={(e) => setSchedMaxOcc(e.target.value)} placeholder="Max sends" title="Max occurrences (optional)" className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg w-28" />
               </>}
-              <button onClick={scheduleMessage} className="px-4 py-2 rounded-md bg-[#534AB7] text-white text-sm font-medium shrink-0">Schedule</button>
+              <button onClick={scheduleMessage} className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium shrink-0">Schedule</button>
             </div>
           </div>
           <div className="rounded-lg border border-gray-200 overflow-hidden bg-white">
@@ -524,7 +524,7 @@ Content-Type: application/json
                 <option value="">Channel default</option>
                 {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
-              <button onClick={addContact} className="px-4 py-2 rounded-md bg-[#534AB7] text-white text-sm font-medium">Add</button>
+              <button onClick={addContact} className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium">Add</button>
             </div>
           </div>
           <div className="rounded-lg border border-gray-200 overflow-hidden bg-white">
@@ -563,7 +563,7 @@ Content-Type: application/json
                       }}
                       className="sr-only peer"
                     />
-                    <span className="relative w-8 h-4 rounded-full bg-gray-200 peer-checked:bg-[#534AB7] after:absolute after:top-0.5 after:left-0.5 after:h-3 after:w-3 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
+                    <span className="relative w-8 h-4 rounded-full bg-gray-200 peer-checked:bg-purple-600 after:absolute after:top-0.5 after:left-0.5 after:h-3 after:w-3 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
                   </label>
                   <button onClick={() => deleteContact(c.id)} className="px-3 py-1 text-xs rounded bg-gray-50 text-gray-500 hover:bg-red-50 hover:text-red-600">Delete</button>
                 </div>
@@ -607,7 +607,7 @@ function ToggleCard({ title, description, checked, onChange }: { title: string; 
       </div>
       <label className="inline-flex items-center cursor-pointer shrink-0">
         <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only peer" />
-        <span className="relative w-10 h-5 rounded-full bg-gray-200 peer-checked:bg-[#534AB7] after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
+        <span className="relative w-10 h-5 rounded-full bg-gray-200 peer-checked:bg-purple-600 after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
       </label>
     </div>
   )

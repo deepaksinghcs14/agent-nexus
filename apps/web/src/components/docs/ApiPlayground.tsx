@@ -115,7 +115,7 @@ export default function ApiPlayground({ method, path, defaultBody, pathParams = 
                     value={paramValues[p.name]}
                     onChange={(e) => setParamValues((v) => ({ ...v, [p.name]: e.target.value }))}
                     placeholder={p.placeholder ?? `Enter ${p.label}`}
-                    className="flex-1 px-3 py-1.5 text-sm rounded border border-white/10 bg-black/30 text-white/80 placeholder-white/20 focus:outline-none focus:border-[#534AB7] font-mono"
+                    className="flex-1 px-3 py-1.5 text-sm rounded border border-white/10 bg-black/30 text-white/80 placeholder-white/20 focus:outline-none focus:border-[#7c3aed] font-mono"
                   />
                 </div>
               ))}
@@ -131,7 +131,7 @@ export default function ApiPlayground({ method, path, defaultBody, pathParams = 
                 onChange={(e) => setBody(e.target.value)}
                 rows={Math.min(12, body.split('\n').length + 1)}
                 spellCheck={false}
-                className="w-full px-3 py-2 text-sm rounded border border-white/10 bg-black/30 text-white/80 font-mono focus:outline-none focus:border-[#534AB7] resize-none"
+                className="w-full px-3 py-2 text-sm rounded border border-white/10 bg-black/30 text-white/80 font-mono focus:outline-none focus:border-[#7c3aed] resize-none"
               />
               {bodyError && <p className="text-xs text-red-400">{bodyError}</p>}
             </div>
@@ -141,7 +141,7 @@ export default function ApiPlayground({ method, path, defaultBody, pathParams = 
           <button
             onClick={handleSend}
             disabled={!tokenRaw || loading}
-            className="flex items-center gap-2 px-4 py-2 rounded-md bg-[#534AB7] hover:bg-[#4a42a3] text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 rounded-md bg-[#7c3aed] hover:bg-[#6d28d9] text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
             Send Request

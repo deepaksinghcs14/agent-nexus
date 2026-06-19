@@ -102,6 +102,11 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		sseErr("failed to create run")
 		return
 	}
+	defer func() {
+		if h.invokeH != nil {
+			h.invokeH.cleanupEphemeralResources(context.Background(), id)
+		}
+	}()
 
 	memories, contextChunks := []string{}, []string{}
 	if a.MemoryEnabled {
@@ -196,6 +201,12 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	memorySaveCalled := false
 
 	for {
+		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
+			messages = trimmed
+			emit(fmt.Sprintf(`{"type":"delta","content":%q}`,
+				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
+		}
+
 		stream, e := llm.Complete(r.Context(), provider.CompletionRequest{
 			Model:               a.Model,
 			Messages:            messages,
@@ -261,15 +272,18 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				sseErr("failed to save assistant message")
 				return
 			}
-			if shouldRunMemoryExtractor(a, memorySaveCalled) {
-				start := time.Now()
-				count, err := runMemoryExtractor(r.Context(), h.pool, llm, a, ws, uid, c.ID, id, q.Input, reply)
-				_ = h.createStep(r.Context(), id, domain.StepToolCall, map[string]any{"tool": "memory_extractor"}, map[string]any{"saved": count}, start, 0, "memory_extractor", errString(err))
-			}
 			_ = h.createStep(r.Context(), id, domain.StepFinalResponse, map[string]any{}, map[string]any{"content": reply}, time.Now(), usage.OutputTokens, "", "")
 			costUSD := cost.Estimate(a.Provider, a.Model, totalInput, totalOutput)
 			_, _ = h.pool.Exec(r.Context(), `UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`, id, reply, totalInput, totalOutput, costUSD)
 			emit(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`, id, totalInput, totalOutput, costUSD))
+			if shouldRunMemoryExtractor(a, memorySaveCalled) {
+				aCopy, llmCopy, inputSnap, replySnap := a, llm, q.Input, reply
+				go func() {
+					start := time.Now()
+					count, err := runMemoryExtractor(context.Background(), h.pool, llmCopy, aCopy, ws, uid, c.ID, id, inputSnap, replySnap)
+					_ = h.createStep(context.Background(), id, domain.StepToolCall, map[string]any{"tool": "memory_extractor"}, map[string]any{"saved": count}, start, 0, "memory_extractor", errString(err))
+				}()
+			}
 			return
 		}
 
@@ -323,7 +337,9 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(r.Context(), cfg, call.Input, dbTool.TimeoutMs)
 			} else if toolExists && dbTool.Type == "code" {
-				var codeCfg struct{ Code string `json:"code"` }
+				var codeCfg struct {
+					Code string `json:"code"`
+				}
 				_ = json.Unmarshal(dbTool.Config, &codeCfg)
 				start := time.Now()
 				out, codeErr := native.ExecuteCodeTool(r.Context(), codeCfg.Code, call.Input)

@@ -433,7 +433,7 @@ export default function ToolsPage() {
   return (
     <div className="p-6 max-w-3xl">
       <div className="mb-6">
-        <h1 className="text-base font-medium text-gray-900">Tool registry</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Tools</h1>
         <p className="text-[12px] text-gray-400 mt-0.5">
           Tools let agents take actions beyond text — read files, call APIs, search the web.
         </p>
@@ -514,7 +514,7 @@ export default function ToolsPage() {
       <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
         <p className="text-sm text-gray-600">
           Learn about native tools, HTTP tools, risk levels, and approval gates in the{' '}
-          <Link href="/docs/what-is-a-tool" className="text-[#534AB7] hover:underline">
+          <Link href="/docs/what-is-a-tool" className="text-purple-600 hover:underline">
             documentation
           </Link>.
         </p>

@@ -296,17 +296,37 @@ func (h *InvokeHandler) runWorkflowInline(ctx context.Context, ws, uid, workflow
 	return runID, nil
 }
 
-// cleanupEphemeralResources deletes agents, skills, and tools created with ephemeral=true
-// during the given run. Called after the root run completes.
+// cleanupEphemeralResources deletes run-scoped resources created with
+// ephemeral=true during the given run or any child run.
 func (h *InvokeHandler) cleanupEphemeralResources(ctx context.Context, runID string) {
+	runTree := `
+		WITH RECURSIVE run_tree AS (
+			SELECT id FROM runs WHERE id=$1::uuid
+			UNION ALL
+			SELECT r.id FROM runs r JOIN run_tree rt ON r.parent_run_id=rt.id
+		)`
 	h.pool.Exec(ctx, //nolint:errcheck
-		`DELETE FROM agent_skills WHERE agent_id IN (SELECT id FROM agents WHERE source_run_id=$1::uuid AND ephemeral=true)`, runID)
+		runTree+`
+		DELETE FROM workflows
+		WHERE source_run_id IN (SELECT id FROM run_tree) AND ephemeral=true`, runID)
 	h.pool.Exec(ctx, //nolint:errcheck
-		`DELETE FROM agents WHERE source_run_id=$1::uuid AND ephemeral=true`, runID)
+		runTree+`
+		DELETE FROM agent_skills
+		WHERE agent_id IN (
+			SELECT id FROM agents WHERE source_run_id IN (SELECT id FROM run_tree) AND ephemeral=true
+		)`, runID)
 	h.pool.Exec(ctx, //nolint:errcheck
-		`DELETE FROM skills WHERE source_run_id=$1::uuid AND ephemeral=true`, runID)
+		runTree+`
+		DELETE FROM agents
+		WHERE source_run_id IN (SELECT id FROM run_tree) AND ephemeral=true`, runID)
 	h.pool.Exec(ctx, //nolint:errcheck
-		`DELETE FROM tools WHERE source_run_id=$1::uuid AND ephemeral=true`, runID)
+		runTree+`
+		DELETE FROM skills
+		WHERE source_run_id IN (SELECT id FROM run_tree) AND ephemeral=true`, runID)
+	h.pool.Exec(ctx, //nolint:errcheck
+		runTree+`
+		DELETE FROM tools
+		WHERE source_run_id IN (SELECT id FROM run_tree) AND ephemeral=true`, runID)
 }
 
 // executeRun runs the full agent loop with tool calling. When emit is nil (background mode),
@@ -323,9 +343,13 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	defer dbCancel()
 
 	runCompleted := false
+	runErrMsg := "run terminated unexpectedly"
 	defer func() {
 		if !runCompleted {
-			h.runs.failRun(dbCtx, runID, "run terminated unexpectedly") //nolint:errcheck
+			h.runs.failRun(dbCtx, runID, runErrMsg) //nolint:errcheck
+		}
+		if opts.invokeDepth == 0 {
+			h.cleanupEphemeralResources(context.Background(), runID)
 		}
 	}()
 
@@ -338,8 +362,8 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 	llm, err := h.runs.providerFor(ctx, ws, a.Provider)
 	if err != nil {
+		runErrMsg = err.Error()
 		sseErr(err.Error())
-		h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
 		return
 	}
 
@@ -390,8 +414,8 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		 ORDER BY created_at DESC LIMIT $2`,
 		convID, histLimit)
 	if err != nil {
+		runErrMsg = err.Error()
 		sseErr("failed to load conversation history")
-		h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
 		return
 	}
 	defer historyRows.Close()
@@ -458,7 +482,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		ToolSummaries:  toolSummaries,
 		InvokeDepth:    opts.invokeDepth,
 		RootRunID:      rootTraceID,
-		CallAgent: callAgentFn,
+		CallAgent:      callAgentFn,
 		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
 			return h.runWorkflowInline(ctx, ws, uid, workflowID, input, runID)
 		},
@@ -516,6 +540,12 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			toolDefs = allToolDefs
 		}
 
+		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
+			messages = trimmed
+			sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`,
+				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
+		}
+
 		stream, err := llm.Complete(ctx, provider.CompletionRequest{
 			Model:               a.Model,
 			Messages:            messages,
@@ -526,7 +556,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			StableSystemContent: stableSystem,
 		})
 		if err != nil {
-			h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
+			runErrMsg = err.Error()
 			sseErr(err.Error())
 			return
 		}
@@ -557,7 +587,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				h.runs.createStep(ctx, runID, domain.StepError, //nolint:errcheck
 					map[string]any{"provider": a.Provider, "model": a.Model},
 					map[string]any{}, modelStart, 0, "", msg)
-				h.runs.failRun(dbCtx, runID, msg) //nolint:errcheck
+				runErrMsg = msg
 				sseErr(msg)
 				return
 			}
@@ -573,7 +603,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		if len(pendingCalls) == 0 {
 			if strings.TrimSpace(reply) == "" {
 				msg := "model returned an empty response"
-				h.runs.failRun(dbCtx, runID, msg) //nolint:errcheck
+				runErrMsg = msg
 				sseErr(msg)
 				return
 			}
@@ -603,11 +633,6 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 						map[string]any{"saved": count},
 						start, 0, "memory_extractor", errString(err))
 				}()
-			}
-			// Ephemeral cleanup: delete agents/skills/tools created by this run that are marked ephemeral.
-			// Only do this at the root run (depth 0) to avoid double-cleanup.
-			if opts.invokeDepth == 0 {
-				go h.cleanupEphemeralResources(context.Background(), runID)
 			}
 			return
 		}
@@ -679,7 +704,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				})
 				stepCount++
 				if stepCount > a.MaxSteps {
-					h.runs.failRun(dbCtx, runID, "max steps exceeded") //nolint:errcheck
+					runErrMsg = "max steps exceeded"
 					sseErr("max steps exceeded")
 					return
 				}
@@ -704,7 +729,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				case decision = <-ch:
 				case <-time.After(10 * time.Minute):
 					UnregisterApprovalWait(runID)
-					h.runs.failRun(dbCtx, runID, "approval timed out") //nolint:errcheck
+					runErrMsg = "approval timed out"
 					sseErr("approval timed out after 10 minutes")
 					return
 				}
@@ -729,7 +754,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					_ = json.Unmarshal(dbTool.Config, &cfg)
 					result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
 				} else if toolExists && dbTool.Type == "code" {
-					var codeCfg struct{ Code string `json:"code"` }
+					var codeCfg struct {
+						Code string `json:"code"`
+					}
 					_ = json.Unmarshal(dbTool.Config, &codeCfg)
 					start := time.Now()
 					out, codeErr := native.ExecuteCodeTool(ctx, codeCfg.Code, call.Input)
@@ -774,7 +801,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 			stepCount++
 			if stepCount > a.MaxSteps {
-				h.runs.failRun(dbCtx, runID, "max steps exceeded") //nolint:errcheck
+				runErrMsg = "max steps exceeded"
 				sseErr("max steps exceeded")
 				return
 			}
@@ -837,6 +864,7 @@ func (h *InvokeHandler) executeGroupRun(
 		if !runMarked {
 			h.runs.failRun(context.Background(), parentRunID, "workflow terminated unexpectedly") //nolint:errcheck
 		}
+		h.cleanupEphemeralResources(context.Background(), parentRunID)
 	}()
 
 	// Keepalive: send a ping every 15 s so proxies and browsers don't close the
@@ -1487,10 +1515,12 @@ func (h *InvokeHandler) executeSupervisorRun(
 	defer dbCancel()
 
 	runCompleted := false
+	runErrMsg := "supervisor run terminated unexpectedly"
 	defer func() {
 		if !runCompleted {
-			h.runs.failRun(dbCtx, runID, "supervisor run terminated unexpectedly") //nolint:errcheck
+			h.runs.failRun(dbCtx, runID, runErrMsg) //nolint:errcheck
 		}
+		h.cleanupEphemeralResources(context.Background(), runID)
 	}()
 
 	sseEmitOrNil := func(s string) {
@@ -1502,8 +1532,8 @@ func (h *InvokeHandler) executeSupervisorRun(
 
 	llm, err := h.runs.providerFor(ctx, ws, a.Provider)
 	if err != nil {
+		runErrMsg = err.Error()
 		sseErr(err.Error())
-		h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
 		return
 	}
 
@@ -1554,8 +1584,8 @@ func (h *InvokeHandler) executeSupervisorRun(
 		 ORDER BY created_at DESC LIMIT $2`,
 		convID, supHistLimit)
 	if err != nil {
+		runErrMsg = err.Error()
 		sseErr("failed to load conversation history")
-		h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
 		return
 	}
 	defer historyRows.Close()
@@ -1621,7 +1651,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 		ConversationID: convID,
 		InvokeDepth:    0,
 		RootRunID:      supRootTraceID,
-		CallAgent: supCallAgentFn,
+		CallAgent:      supCallAgentFn,
 		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
 			return h.runWorkflowInline(ctx, ws, uid, workflowID, input, runID)
 		},
@@ -1661,6 +1691,12 @@ func (h *InvokeHandler) executeSupervisorRun(
 	memorySaveCalled := false
 
 	for {
+		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
+			messages = trimmed
+			sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`,
+				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
+		}
+
 		stream, err := llm.Complete(ctx, provider.CompletionRequest{
 			Model:               a.Model,
 			Messages:            messages,
@@ -1671,7 +1707,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 			StableSystemContent: supStableSystem,
 		})
 		if err != nil {
-			h.runs.failRun(dbCtx, runID, err.Error()) //nolint:errcheck
+			runErrMsg = err.Error()
 			sseErr(err.Error())
 			return
 		}
@@ -1702,7 +1738,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 				h.runs.createStep(ctx, runID, domain.StepError, //nolint:errcheck
 					map[string]any{"provider": a.Provider, "model": a.Model},
 					map[string]any{}, modelStart, 0, "", msg)
-				h.runs.failRun(dbCtx, runID, msg) //nolint:errcheck
+				runErrMsg = msg
 				sseErr(msg)
 				return
 			}
@@ -1718,7 +1754,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 		if len(pendingCalls) == 0 {
 			if strings.TrimSpace(reply) == "" {
 				msg := "model returned an empty response"
-				h.runs.failRun(dbCtx, runID, msg) //nolint:errcheck
+				runErrMsg = msg
 				sseErr(msg)
 				return
 			}
@@ -1776,7 +1812,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 				})
 				stepCount++
 				if stepCount > a.MaxSteps {
-					h.runs.failRun(dbCtx, runID, "max steps exceeded") //nolint:errcheck
+					runErrMsg = "max steps exceeded"
 					sseErr("max steps exceeded")
 					return
 				}
@@ -1801,7 +1837,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 				case decision = <-ch:
 				case <-time.After(10 * time.Minute):
 					UnregisterApprovalWait(runID)
-					h.runs.failRun(dbCtx, runID, "approval timed out") //nolint:errcheck
+					runErrMsg = "approval timed out"
 					sseErr("approval timed out after 10 minutes")
 					return
 				}
@@ -1820,7 +1856,9 @@ func (h *InvokeHandler) executeSupervisorRun(
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
 			} else if toolExists && dbTool.Type == "code" {
-				var codeCfg struct{ Code string `json:"code"` }
+				var codeCfg struct {
+					Code string `json:"code"`
+				}
 				_ = json.Unmarshal(dbTool.Config, &codeCfg)
 				start := time.Now()
 				out, codeErr := native.ExecuteCodeTool(ctx, codeCfg.Code, call.Input)
@@ -1866,7 +1904,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 
 			stepCount++
 			if stepCount > a.MaxSteps {
-				h.runs.failRun(dbCtx, runID, "max steps exceeded") //nolint:errcheck
+				runErrMsg = "max steps exceeded"
 				sseErr("max steps exceeded")
 				return
 			}

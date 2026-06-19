@@ -76,13 +76,13 @@ func (t *CreateHttpToolTool) Definition() domain.Tool {
 			"method":       map[string]any{"type": "string", "description": "HTTP method: GET, POST, PUT, DELETE. Default GET."},
 			"headers":      map[string]any{"type": "object", "description": "Static headers to include (e.g. Authorization)."},
 			"input_schema": map[string]any{"type": "object", "description": "JSON Schema for the tool's input parameters. Defaults to accepting any object."},
-			"ephemeral":    map[string]any{"type": "boolean", "description": "If true, tool is deleted when this run ends. Default false."},
+			"ephemeral":    map[string]any{"type": "boolean", "description": "If true, tool is deleted when this run ends. Default true; set false only when the user explicitly asks to keep it."},
 		},
 		"required": []string{"name", "url"},
 	})
 	return domain.Tool{
 		Name:             "native_create_http_tool",
-		Description:      "Create a new HTTP tool that calls an external URL. The tool can be attached to this agent and used immediately. Set ephemeral=true to auto-delete when this run ends.",
+		Description:      "Create a new HTTP tool that calls an external URL. Tools are temporary by default and auto-delete when this run ends unless ephemeral=false is explicitly provided.",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),
@@ -100,7 +100,7 @@ func (t *CreateHttpToolTool) ExecuteWithContext(ctx context.Context, execCtx too
 	description, _ := input["description"].(string)
 	url, _ := input["url"].(string)
 	method, _ := input["method"].(string)
-	ephemeral, _ := input["ephemeral"].(bool)
+	ephemeral := ephemeralFromInput(input)
 	if name == "" || url == "" {
 		return nil, fmt.Errorf("name and url are required")
 	}

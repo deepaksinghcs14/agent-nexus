@@ -30,10 +30,10 @@ export default function SkillsPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Skills</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Skills</h1>
           <p className="text-sm text-gray-500 mt-1">Reusable prompt instructions that can be attached to agents.</p>
         </div>
-        <Link href="/skills/new" className="flex items-center gap-2 px-4 py-2 rounded-md bg-[#534AB7] hover:bg-[#4a42a3] text-white text-sm font-medium">
+        <Link href="/skills/new" className="flex items-center gap-2 px-4 py-2 rounded-md bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium">
           <Plus className="w-4 h-4" /> New skill
         </Link>
       </div>
@@ -44,18 +44,18 @@ export default function SkillsPage() {
           <BookMarked className="w-10 h-10 text-gray-300 mx-auto mb-3" />
           <p className="text-sm font-medium text-gray-600 mb-1">No skills yet</p>
           <p className="text-sm text-gray-400 mb-4">Create reusable instructions for agents and channels.</p>
-          <Link href="/skills/new" className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[#534AB7] text-white text-sm font-medium">
+          <Link href="/skills/new" className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium">
             <Plus className="w-4 h-4" /> Create skill
           </Link>
         </div>
       ) : (
-        <div className="rounded-lg border border-gray-200 overflow-hidden divide-y divide-gray-100">
+        <div className="rounded-xl border border-gray-100 overflow-hidden divide-y divide-gray-100">
           {skills.map((s) => (
             <div key={s.id} className="bg-white px-5 py-4 flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-sm font-medium text-gray-900">{s.name}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${s.source === 'managed' ? 'bg-purple-50 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>{s.source}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${s.source === 'managed' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>{s.source}</span>
                   {!s.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">disabled</span>}
                 </div>
                 <p className="text-xs text-gray-500 mb-2">{s.description || 'No description'}</p>

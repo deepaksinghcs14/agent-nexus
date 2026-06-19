@@ -74,13 +74,13 @@ func (t *CreateSkillTool) Definition() domain.Tool {
 			"description":    map[string]any{"type": "string", "description": "One-line description of what this skill does."},
 			"content":        map[string]any{"type": "string", "description": "The skill instructions or knowledge to inject into the system prompt."},
 			"attach_to_self": map[string]any{"type": "boolean", "description": "If true, attach this skill to the calling agent immediately (active next turn). Default false."},
-			"ephemeral":      map[string]any{"type": "boolean", "description": "If true, skill is deleted when this run ends. Default false."},
+			"ephemeral":      map[string]any{"type": "boolean", "description": "If true, skill is deleted when this run ends. Default true; set false only when the user explicitly asks to keep it."},
 		},
 		"required": []string{"name", "content"},
 	})
 	return domain.Tool{
 		Name:             "native_create_skill",
-		Description:      "Create a new skill (reusable instruction block). Set attach_to_self=true to inject it into the calling agent's context immediately. Set ephemeral=true to auto-delete when this run ends.",
+		Description:      "Create a new skill instruction block. Skills are temporary by default and auto-delete when this run ends unless ephemeral=false is explicitly provided. Set attach_to_self=true to inject it into the calling agent's context immediately.",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),
@@ -98,7 +98,7 @@ func (t *CreateSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 	description, _ := input["description"].(string)
 	content, _ := input["content"].(string)
 	attachToSelf, _ := input["attach_to_self"].(bool)
-	ephemeral, _ := input["ephemeral"].(bool)
+	ephemeral := ephemeralFromInput(input)
 	if name == "" || content == "" {
 		return nil, fmt.Errorf("name and content are required")
 	}
@@ -236,6 +236,7 @@ func (t *AttachSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 	if err != nil {
 		return nil, fmt.Errorf("attach skill: %w", err)
 	}
+	attachRequiredToolsForSkill(ctx, t.pool, agentID, skillID) //nolint:errcheck
 
 	return map[string]any{
 		"attached":   true,
@@ -243,6 +244,27 @@ func (t *AttachSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 		"skill_id":   skillID,
 		"skill_name": skillName,
 	}, nil
+}
+
+func attachRequiredToolsForSkill(ctx context.Context, pool *pgxpool.Pool, agentID, skillID string) error {
+	rows, err := pool.Query(ctx,
+		`SELECT unnest(required_tool_names) FROM skills WHERE id=$1::uuid AND required_tool_names <> '{}'`,
+		skillID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var toolName string
+		if rows.Scan(&toolName) == nil && toolName != "" {
+			pool.Exec(ctx, //nolint:errcheck
+				`INSERT INTO agent_tools(agent_id, tool_id, enabled)
+				 SELECT $1::uuid, id, true FROM tools WHERE name=$2
+				 ON CONFLICT DO NOTHING`,
+				agentID, toolName)
+		}
+	}
+	return rows.Err()
 }
 
 // ── native_detach_skill ───────────────────────────────────────────────────────

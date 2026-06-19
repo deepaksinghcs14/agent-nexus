@@ -21,6 +21,11 @@ export default function AdminOverviewPage() {
 
   return (
     <div className="p-6 max-w-5xl space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold text-gray-900">Admin Overview</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Platform-wide stats and recent activity</p>
+      </div>
+
       {errors.length > 0 && (
         <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
           {errors[0].message}

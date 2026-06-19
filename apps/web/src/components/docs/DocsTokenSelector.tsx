@@ -45,9 +45,9 @@ export default function DocsTokenSelector() {
           value={value}
           onChange={(e) => handleChange(e.target.value)}
           placeholder="Paste API token (anx_...)"
-          className="w-64 pl-3 pr-7 py-1 text-xs font-mono rounded border bg-black/20 placeholder-white/20 focus:outline-none focus:border-[#534AB7]"
+          className="w-64 pl-3 pr-7 py-1 text-xs font-mono rounded border bg-black/20 placeholder-white/20 focus:outline-none focus:border-[#7c3aed]"
           style={{
-            borderColor: selectedTokenRaw ? '#534AB7' : 'rgba(255,255,255,0.12)',
+            borderColor: selectedTokenRaw ? '#7c3aed' : 'rgba(255,255,255,0.12)',
             color: 'rgba(255,255,255,0.75)',
           }}
         />

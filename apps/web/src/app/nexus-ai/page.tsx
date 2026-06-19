@@ -405,6 +405,32 @@ export default function NexusAIPage() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        {messages.length === 0 && (
+          <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
+            <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center mb-4">
+              <Sparkles size={20} className="text-purple-600" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">Nexus AI</h2>
+            <p className="text-sm text-gray-500 mb-8 text-center">Ask me to build agents, create workflows, or manage your workspace</p>
+            <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
+              {[
+                { label: 'Create a research agent', desc: 'With web search and report generation' },
+                { label: 'Build a support workflow', desc: 'Classify → route → respond pipeline' },
+                { label: 'List my agents', desc: 'See all agents in this workspace' },
+                { label: 'Create a webhook trigger', desc: 'Connect an external event to a workflow' },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => setInput(item.label)}
+                  className="text-left p-3.5 rounded-xl border border-gray-100 hover:border-purple-200 hover:bg-purple-50/30 transition-all"
+                >
+                  <p className="text-sm font-medium text-gray-800">{item.label}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{item.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {messages.map(msg => (
           <MessageBubble
             key={msg.id}

@@ -270,7 +270,7 @@ export default function ConnectorsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1 className="text-base font-medium text-gray-900">Context connectors</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Connectors</h1>
           <p className="text-[12px] text-gray-400 mt-0.5">
             Connect data sources so agents can retrieve relevant context when they run.
           </p>
@@ -487,7 +487,7 @@ export default function ConnectorsPage() {
       <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
         <p className="text-sm text-gray-600">
           Learn how to index external data sources and use them for RAG in the{' '}
-          <a href="/docs/what-is-a-connector" className="text-[#534AB7] hover:underline">
+          <a href="/docs/what-is-a-connector" className="text-purple-600 hover:underline">
             documentation
           </a>.
         </p>

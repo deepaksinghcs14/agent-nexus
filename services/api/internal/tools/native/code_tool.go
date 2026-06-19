@@ -46,14 +46,14 @@ func (t *CreateCodeToolTool) Definition() domain.Tool {
 			},
 			"ephemeral": map[string]any{
 				"type":        "boolean",
-				"description": "If true, tool is deleted when this run ends. Default false.",
+				"description": "If true, tool is deleted when this run ends. Default true; set false only when the user explicitly asks to keep it.",
 			},
 		},
 		"required": []string{"name", "description", "code"},
 	})
 	return domain.Tool{
 		Name:             "native_create_code_tool",
-		Description:      "Create a custom JavaScript tool that runs in a sandboxed JS engine. The code receives `input` (the tool's input object) and must return a value. No network or filesystem access.",
+		Description:      "Create a custom JavaScript tool that runs in a sandboxed JS engine. Tools are temporary by default and auto-delete when this run ends unless ephemeral=false is explicitly provided. The code receives `input` and must return a value. No network or filesystem access.",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),
@@ -73,7 +73,7 @@ func (t *CreateCodeToolTool) ExecuteWithContext(ctx context.Context, execCtx too
 	description, _ := input["description"].(string)
 	code, _ := input["code"].(string)
 	inputSchemaStr, _ := input["input_schema"].(string)
-	ephemeral, _ := input["ephemeral"].(bool)
+	ephemeral := ephemeralFromInput(input)
 
 	if name == "" {
 		return nil, fmt.Errorf("name is required")

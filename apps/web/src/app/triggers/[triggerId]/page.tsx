@@ -58,7 +58,7 @@ function TriggerPageInner({ triggerId }: { triggerId: string }) {
     return (
       <div className="p-6 text-center">
         <p className="text-gray-500 mb-4">Trigger not found.</p>
-        <Link href="/triggers" className="text-[#534AB7] text-sm hover:underline">Back to triggers</Link>
+        <Link href="/triggers" className="text-purple-600 text-sm hover:underline">Back to triggers</Link>
       </div>
     )
   }
@@ -75,7 +75,7 @@ function TriggerPageInner({ triggerId }: { triggerId: string }) {
         Webhook Triggers
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">{trigger.name}</h1>
+      <h1 className="text-xl font-semibold text-gray-900 mb-0.5">{trigger.name}</h1>
       {trigger.description && (
         <p className="text-sm text-gray-500 mb-6">{trigger.description}</p>
       )}
@@ -100,7 +100,7 @@ function TriggerPageInner({ triggerId }: { triggerId: string }) {
             onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors -mb-px ${
               tab === t
-                ? 'border-[#534AB7] text-[#534AB7]'
+                ? 'border-purple-400 text-purple-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >

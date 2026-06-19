@@ -128,18 +128,16 @@ func (t *CreateAgentTool) Definition() domain.Tool {
 		"properties": map[string]any{
 			"name":         map[string]any{"type": "string", "description": "Agent name."},
 			"instructions": map[string]any{"type": "string", "description": "System instructions for the agent."},
-			"provider":     map[string]any{"type": "string", "description": "LLM provider (anthropic, openai, gemini, ollama). Defaults to the calling agent's provider."},
-			"model":        map[string]any{"type": "string", "description": "Model ID. Defaults to the calling agent's model."},
 			"description":  map[string]any{"type": "string", "description": "Short description of what this agent does."},
 			"tool_names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tool names to attach."},
 			"skill_names":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Skill names to attach to the agent at creation."},
-			"ephemeral":    map[string]any{"type": "boolean", "description": "If true, agent is deleted when this run ends. Default false."},
+			"ephemeral":    map[string]any{"type": "boolean", "description": "If true, agent is deleted when this run ends. Default true; set false only when the user explicitly asks to keep it."},
 		},
 		"required": []string{"name", "instructions"},
 	})
 	return domain.Tool{
 		Name:             "native_create_agent",
-		Description:      "Create a new agent in the workspace. Set ephemeral=true to auto-delete it when this run ends. Use native_call_agent to invoke it.",
+		Description:      "Create a new agent in the workspace. Agents are temporary by default and auto-delete when this run ends unless ephemeral=false is explicitly provided. Use native_call_agent to invoke it.",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),
@@ -155,18 +153,8 @@ func (t *CreateAgentTool) Execute(_ map[string]any) (any, error) {
 func (t *CreateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	name, _ := input["name"].(string)
 	instructions, _ := input["instructions"].(string)
-	provider, _ := input["provider"].(string)
-	model, _ := input["model"].(string)
 	description, _ := input["description"].(string)
-	ephemeral, _ := input["ephemeral"].(bool)
-
-	// Default to the calling agent's provider/model so the LLM doesn't hallucinate stale model names.
-	if provider == "" {
-		provider = execCtx.AgentProvider
-	}
-	if model == "" {
-		model = execCtx.AgentModel
-	}
+	ephemeral := ephemeralFromInput(input)
 
 	var toolNames []string
 	if tn, ok := input["tool_names"].([]any); ok {
@@ -190,8 +178,8 @@ func (t *CreateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 		Name:         name,
 		Description:  description,
 		Instructions: instructions,
-		Provider:     provider,
-		Model:        model,
+		Provider:     execCtx.AgentProvider,
+		Model:        execCtx.AgentModel,
 		ToolNames:    toolNames,
 		SourceRunID:  execCtx.RunID,
 		Ephemeral:    ephemeral,
@@ -202,13 +190,21 @@ func (t *CreateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 
 	// Attach skills if provided.
 	for _, skillName := range skillNames {
+		var skillID string
+		if err := t.pool.QueryRow(ctx,
+			`SELECT id::text FROM skills
+			 WHERE name=$1 AND (workspace_id IS NULL OR workspace_id=$2::uuid) AND enabled=true
+			 ORDER BY workspace_id NULLS LAST LIMIT 1`,
+			skillName, execCtx.WorkspaceID).Scan(&skillID); err != nil {
+			continue
+		}
 		t.pool.Exec(ctx, //nolint:errcheck
 			`INSERT INTO agent_skills(agent_id, skill_id, enabled, order_index)
-			 SELECT $1::uuid, id, true,
+			 SELECT $1::uuid, $2::uuid, true,
 			   COALESCE((SELECT MAX(order_index)+1 FROM agent_skills WHERE agent_id=$1::uuid), 0)
-			 FROM skills WHERE name=$2 AND (workspace_id IS NULL OR workspace_id=$3::uuid)
 			 ON CONFLICT DO NOTHING`,
-			agentID, skillName, execCtx.WorkspaceID)
+			agentID, skillID)
+		attachRequiredToolsForSkill(ctx, t.pool, agentID, skillID) //nolint:errcheck
 	}
 
 	return map[string]any{"agent_id": agentID, "name": name, "ephemeral": ephemeral}, nil

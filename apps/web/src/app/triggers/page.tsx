@@ -59,14 +59,14 @@ export default function TriggersPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Webhook Triggers</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Triggers</h1>
           <p className="text-sm text-gray-500 mt-1">
             Inbound HTTP events that automatically run an agent or workflow.
           </p>
         </div>
         <Link
           href="/triggers/new"
-          className="flex items-center gap-2 px-4 py-2 rounded-md bg-[#534AB7] hover:bg-[#4a42a3] text-white text-sm font-medium transition-colors"
+          className="flex items-center gap-2 px-4 py-2 rounded-md bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-colors"
         >
           <Plus className="w-4 h-4" />
           New trigger
@@ -84,7 +84,7 @@ export default function TriggersPage() {
           </p>
           <Link
             href="/triggers/new"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[#534AB7] text-white text-sm font-medium hover:bg-[#4a42a3] transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 transition-colors"
           >
             <Plus className="w-4 h-4" />
             Create your first trigger
@@ -119,7 +119,7 @@ export default function TriggersPage() {
                     <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
                       <Link
                         href={`/triggers/${t.id}?tab=runs`}
-                        className="hover:text-[#534AB7] transition-colors"
+                        className="hover:text-purple-600 transition-colors"
                       >
                         {t.trigger_count} {t.trigger_count === 1 ? 'invocation' : 'invocations'}
                       </Link>
@@ -132,7 +132,7 @@ export default function TriggersPage() {
                     <button
                       onClick={() => handleToggle(t)}
                       title={t.is_active ? 'Deactivate' : 'Activate'}
-                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${t.is_active ? 'bg-[#534AB7]' : 'bg-gray-200'}`}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${t.is_active ? 'bg-purple-600' : 'bg-gray-200'}`}
                     >
                       <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${t.is_active ? 'translate-x-4' : 'translate-x-1'}`} />
                     </button>
@@ -161,7 +161,7 @@ export default function TriggersPage() {
       <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
         <p className="text-sm text-gray-600">
           Learn how to configure and secure webhook triggers in the{' '}
-          <Link href="/docs/webhook-triggers" className="text-[#534AB7] hover:underline">
+          <Link href="/docs/webhook-triggers" className="text-purple-600 hover:underline">
             documentation
           </Link>.
         </p>
