@@ -144,6 +144,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Get("/runs/{id}", h.Runs.Get)
 			r.Get("/runs/{id}/children", h.Runs.ListChildren)
 			r.Post("/runs/{id}/approve", h.Runs.Approve)
+			r.Post("/runs/{id}/input", h.Runs.SubmitUserInput)
 			r.Post("/runs/{id}/cancel", h.Runs.Cancel)
 
 			// Memory

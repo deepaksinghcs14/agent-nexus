@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Check, ChevronRight, Copy, LogOut, QrCode, RefreshCw } from 'lucide-react'
+import { Check, ChevronRight, Copy, LogOut, Pencil, QrCode, RefreshCw, X } from 'lucide-react'
 import { agentsAPI, gatewayAPI } from '@/lib/api'
 import type { ChannelSession, GatewayChannel, GatewayContact, GatewayEscalation, GatewayEvent, GatewayOutboundMessage, GatewayPairingRequest, GatewayReminder, ScheduledMessage } from '@/types'
 
@@ -52,6 +52,54 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const [testSessionId, setTestSessionId] = useState('')
   const [testResponse, setTestResponse] = useState<string | null>(null)
   const [testLoading, setTestLoading] = useState(false)
+
+  const [editMode, setEditMode] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editDesc, setEditDesc] = useState('')
+  const [editAgentId, setEditAgentId] = useState('')
+  const [editIsActive, setEditIsActive] = useState(true)
+  const [editDmPolicy, setEditDmPolicy] = useState('')
+  const [editGroupPolicy, setEditGroupPolicy] = useState('')
+  const [editHistoryLimit, setEditHistoryLimit] = useState('')
+  const [editChatApprovals, setEditChatApprovals] = useState(false)
+  const [editAdapterUrl, setEditAdapterUrl] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+
+  const openEdit = () => {
+    if (!channel) return
+    setEditName(channel.name)
+    setEditDesc(channel.description || '')
+    setEditAgentId(channel.agent_id)
+    setEditIsActive(channel.is_active)
+    setEditDmPolicy(channel.config?.dm_policy || '')
+    setEditGroupPolicy(channel.config?.group_policy || '')
+    setEditHistoryLimit(channel.config?.history_limit != null ? String(channel.config.history_limit) : '')
+    setEditChatApprovals(!!channel.config?.chat_approvals_enabled)
+    setEditAdapterUrl(channel.config?.adapter_url || '')
+    setEditMode(true)
+  }
+
+  const saveEdit = async () => {
+    if (!channel) return
+    setEditSaving(true)
+    setError('')
+    const configPatch: Record<string, unknown> = {}
+    if (editDmPolicy) configPatch.dm_policy = editDmPolicy
+    if (editGroupPolicy) configPatch.group_policy = editGroupPolicy
+    if (editHistoryLimit) configPatch.history_limit = parseInt(editHistoryLimit)
+    configPatch.chat_approvals_enabled = editChatApprovals
+    if (editAdapterUrl) configPatch.adapter_url = editAdapterUrl
+    const body: Record<string, unknown> = {
+      name: editName,
+      description: editDesc,
+      agent_id: editAgentId,
+      is_active: editIsActive,
+      config: { ...channel.config, ...configPatch },
+    }
+    const updated = await gatewayAPI.updateChannel(channel.id, body).catch((e: Error) => { setError(e.message); return null })
+    if (updated) { setChannel(updated as typeof channel); setEditMode(false) }
+    setEditSaving(false)
+  }
 
   const ingressURL = useMemo(() => channel ? `${API_URL}/gateway/${channel.channel_type}/${channel.id}` : '', [channel])
 
@@ -255,11 +303,96 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
           <h1 className="text-xl font-semibold text-gray-900">{channel.name}</h1>
           <p className="text-sm text-gray-500 mt-1">{channel.description || 'Channel runtime and delivery controls.'}</p>
         </div>
-        <button onClick={load} className="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-gray-600 text-[12px] rounded-lg hover:bg-gray-50">
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh
-        </button>
+        <div className="flex gap-2">
+          <button onClick={openEdit} className="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-gray-600 text-[12px] rounded-lg hover:bg-gray-50">
+            <Pencil className="w-3.5 h-3.5" /> Edit
+          </button>
+          <button onClick={load} className="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-gray-600 text-[12px] rounded-lg hover:bg-gray-50">
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </button>
+        </div>
       </div>
       {error && <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+
+      {editMode && (
+        <div className="mb-5 rounded-xl border border-purple-200 bg-purple-50 p-4">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm font-semibold text-purple-900">Edit Channel Settings</p>
+            <button onClick={() => setEditMode(false)} className="p-1 rounded hover:bg-purple-100 text-purple-400"><X className="w-4 h-4" /></button>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">Name</label>
+              <input value={editName} onChange={e => setEditName(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-white" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">Description</label>
+              <input value={editDesc} onChange={e => setEditDesc(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-white" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-600 mb-1">Agent</label>
+              <select value={editAgentId} onChange={e => setEditAgentId(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-white">
+                {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-3 pt-4">
+              <label className="text-[11px] font-medium text-gray-600">Active</label>
+              <button
+                onClick={() => setEditIsActive(v => !v)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editIsActive ? 'bg-green-500' : 'bg-gray-200'}`}
+              >
+                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${editIsActive ? 'translate-x-4' : 'translate-x-1'}`} />
+              </button>
+            </div>
+            {channel.channel_type === 'whatsapp' && (
+              <>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">DM Policy</label>
+                  <select value={editDmPolicy} onChange={e => setEditDmPolicy(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-white">
+                    <option value="">— keep existing —</option>
+                    <option value="pairing">pairing</option>
+                    <option value="allowlist">allowlist</option>
+                    <option value="open">open</option>
+                    <option value="disabled">disabled</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Group Policy</label>
+                  <select value={editGroupPolicy} onChange={e => setEditGroupPolicy(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-white">
+                    <option value="">— keep existing —</option>
+                    <option value="disabled">disabled</option>
+                    <option value="allowlist">allowlist</option>
+                    <option value="open">open</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">History Limit</label>
+                  <input type="number" value={editHistoryLimit} onChange={e => setEditHistoryLimit(e.target.value)} placeholder="e.g. 20" className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-white" />
+                </div>
+                <div className="flex items-center gap-3 pt-4">
+                  <label className="text-[11px] font-medium text-gray-600">Chat Approvals</label>
+                  <button
+                    onClick={() => setEditChatApprovals(v => !v)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editChatApprovals ? 'bg-green-500' : 'bg-gray-200'}`}
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${editChatApprovals ? 'translate-x-4' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Adapter URL</label>
+                  <input value={editAdapterUrl} onChange={e => setEditAdapterUrl(e.target.value)} placeholder="http://localhost:3001" className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-white" />
+                </div>
+              </>
+            )}
+          </div>
+          <div className="flex gap-2 mt-4">
+            <button onClick={saveEdit} disabled={editSaving || !editName.trim()} className="px-4 py-1.5 bg-purple-600 text-white text-[12px] font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50">
+              {editSaving ? 'Saving…' : 'Save changes'}
+            </button>
+            <button onClick={() => setEditMode(false)} className="px-4 py-1.5 border border-gray-200 text-gray-600 text-[12px] font-medium rounded-lg hover:bg-gray-50">Cancel</button>
+          </div>
+        </div>
+      )}
       <div className="flex border-b border-gray-100 mb-5 bg-gray-50 rounded-t-lg overflow-hidden">
         {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t as Tab)} className={`px-4 py-2 text-[12px] whitespace-nowrap ${tab === t ? 'bg-white text-purple-600 font-medium border-b-2 border-purple-500' : 'text-gray-500 hover:text-gray-700'}`}>{t}</button>

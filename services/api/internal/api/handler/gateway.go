@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
@@ -884,6 +885,20 @@ func (h *GatewayHandler) dispatchGatewayRun(ctx context.Context, c domain.Gatewa
 		agentID = msg.Contact.AgentID
 	}
 	sessionKey := fmt.Sprintf("agent:%s:%s:%s:%s:%s", agentID, c.ChannelType, msg.AccountID, msg.PeerKind, msg.PeerID)
+
+	// If a run is waiting for user input on this session, deliver the reply to it
+	// instead of creating a new run.
+	var waitingRunID string
+	_ = h.pool.QueryRow(ctx,
+		`SELECT r.id::text FROM runs r
+		 JOIN channel_sessions cs ON cs.id = r.channel_session_id
+		 WHERE cs.channel_id=$1::uuid AND cs.session_key=$2 AND r.status='user_input_wait'
+		 ORDER BY r.created_at DESC LIMIT 1`,
+		c.ID, sessionKey).Scan(&waitingRunID)
+	if waitingRunID != "" && SendUserInput(waitingRunID, msg.Body) {
+		return "", "", "", nil
+	}
+
 	convID, err = h.ensureGatewayConversation(ctx, c, sessionKey)
 	if err != nil {
 		return "", "", "", err
@@ -919,7 +934,34 @@ func (h *GatewayHandler) dispatchGatewayRun(ctx context.Context, c domain.Gatewa
 	if err != nil {
 		return "", "", "", err
 	}
-	go h.invoke.executeRun(context.Background(), a, c.WorkspaceID, c.CreatedBy, runID, convID, msg.Body, nil, nil, invokeOpts{})
+
+	var sendMsg func(ctx context.Context, text string) error
+	if c.ChannelType == "whatsapp" {
+		var (
+			lastSent time.Time
+			mu       sync.Mutex
+			ch       = c
+			chCfg    = cfg
+			peerKind = msg.PeerKind
+			peerID   = msg.PeerID
+			sessID   = sessionID
+		)
+		// Send an immediate acknowledgement before the run starts.
+		h.sendAdapterMessage(ctx, ch, chCfg, chCfg.AccountID, peerKind, peerID, "⏳ On it…", sessID, runID)
+		sendMsg = func(ctx context.Context, text string) error {
+			mu.Lock()
+			if time.Since(lastSent) < 3*time.Second {
+				mu.Unlock()
+				return nil
+			}
+			lastSent = time.Now()
+			mu.Unlock()
+			h.sendAdapterMessage(ctx, ch, chCfg, chCfg.AccountID, peerKind, peerID, text, sessID, runID)
+			return nil
+		}
+	}
+
+	go h.invoke.executeRun(context.Background(), a, c.WorkspaceID, c.CreatedBy, runID, convID, msg.Body, nil, nil, invokeOpts{SendMessage: sendMsg})
 	return runID, sessionID, convID, nil
 }
 
@@ -950,7 +992,7 @@ func (h *GatewayHandler) deliverWhenComplete(ctx context.Context, c domain.Gatew
 			if err := h.pool.QueryRow(ctx, `SELECT output, status FROM runs WHERE id=$1::uuid`, runID).Scan(&output, &status); err != nil {
 				continue
 			}
-			if status == "running" || status == "pending" || status == "approval_wait" {
+			if status == "running" || status == "pending" || status == "approval_wait" || status == "user_input_wait" {
 				continue
 			}
 			if status != "success" {

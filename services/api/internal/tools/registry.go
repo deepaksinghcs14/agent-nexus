@@ -39,6 +39,10 @@ type ExecutionContext struct {
 	CallAgent func(ctx context.Context, agentID, task string) (string, error)
 	// RunWorkflow, if non-nil, triggers a workflow run in the background and returns the run_id.
 	RunWorkflow func(ctx context.Context, workflowID, input string) (string, error)
+	// SendMessage, if non-nil, sends a mid-run progress message back to the caller channel.
+	SendMessage func(ctx context.Context, msg string) error
+	// WaitForUserInput, if non-nil, pauses the run and waits for the user to reply.
+	WaitForUserInput func(ctx context.Context, question string) (string, error)
 }
 
 type ContextAwareTool interface {

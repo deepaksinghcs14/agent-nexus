@@ -207,6 +207,27 @@ const maxInvokeDepth = 3
 type invokeOpts struct {
 	invokeDepth int    // nesting depth; 0 = root run
 	rootTraceID string // trace_id of the root run; empty means this IS the root
+	// SendMessage, if non-nil, delivers mid-run progress text back to the caller (e.g. WhatsApp).
+	SendMessage func(ctx context.Context, msg string) error
+}
+
+// progressLabel returns a short human-readable status for a tool that is about to execute.
+// Returns "" for tools that send their own messages (e.g. native_send_message).
+func progressLabel(toolName string) string {
+	switch toolName {
+	case "native_send_message":
+		return "" // tool sends its own message; skip the automated prefix
+	case "call_agent":
+		return "Calling a sub-agent…"
+	case "run_workflow":
+		return "Running a workflow…"
+	case "web_search":
+		return "Searching the web…"
+	case "read_file", "write_file", "list_files":
+		return "Accessing files…"
+	default:
+		return "Working: " + toolName + "…"
+	}
 }
 
 // runAgentInline executes an agent synchronously as a sub-call from native_call_agent.
@@ -440,6 +461,14 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		toolSummaries[td.Name] = td.Description
 	}
 
+	hasCallAgent := false
+	for _, td := range allToolDefs {
+		if td.Name == "native_call_agent" {
+			hasCallAgent = true
+			break
+		}
+	}
+
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: a.Instructions,
@@ -449,6 +478,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		History:            history,
 		MemoryEnabled:      a.MemoryEnabled,
 		MemorySaveMode:     a.MemorySaveMode,
+		HasCallAgent:       hasCallAgent,
 	})
 
 	// requestedTools grows when native_request_tool is called (lazy loading mode).
@@ -516,6 +546,25 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		},
 	}
 	_ = h.pool.QueryRow(ctx, `SELECT COALESCE(channel_session_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&execCtx.ChannelSessionID)
+	execCtx.SendMessage = opts.SendMessage
+	capturedRunID := runID
+	execCtx.WaitForUserInput = func(ctx context.Context, question string) (string, error) {
+		sseEmitOrNil(fmt.Sprintf(`{"type":"user_input_required","run_id":%q,"question":%s}`,
+			capturedRunID, jsonOrStr([]byte(`"`+question+`"`))))
+		if opts.SendMessage != nil {
+			opts.SendMessage(ctx, question) //nolint:errcheck
+		}
+		ch := RegisterUserInputWait(capturedRunID)
+		h.pool.Exec(ctx, `UPDATE runs SET status='user_input_wait' WHERE id=$1::uuid`, capturedRunID) //nolint:errcheck
+		select {
+		case answer := <-ch:
+			h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, capturedRunID) //nolint:errcheck
+			return answer, nil
+		case <-time.After(30 * time.Minute):
+			UnregisterUserInputWait(capturedRunID)
+			return "", fmt.Errorf("user input timed out after 30 minutes")
+		}
+	}
 
 	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
 
@@ -690,14 +739,16 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			}
 			// Delegate tool — hand off to a team agent and return its output.
 			if handler, isDelegate := delegateHandlers[call.Name]; isDelegate {
+				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
+					call.ID, call.Name, jsonOrStr(call.Input)))
 				delegateStart := time.Now()
 				delegateOutput := handler(ctx, call.Input)
 				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
 					map[string]any{"tool": call.Name, "input": call.Input},
 					map[string]any{"output": delegateOutput},
 					delegateStart, 0, call.Name, "")
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-					call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(delegateOutput)),
+				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
+					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(delegateOutput)),
 					int(time.Since(delegateStart).Milliseconds())))
 				messages = append(messages, provider.Message{
 					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: delegateOutput,
@@ -738,6 +789,14 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				if decision.Decision == "rejected" {
 					messages = append(messages, provider.Message{Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: "Tool call rejected by user."})
 					continue
+				}
+			}
+
+			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
+				call.ID, call.Name, jsonOrStr(call.Input)))
+			if execCtx.SendMessage != nil {
+				if label := progressLabel(call.Name); label != "" {
+					execCtx.SendMessage(ctx, label) //nolint:errcheck
 				}
 			}
 
@@ -789,8 +848,8 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				map[string]any{"output": resultContent},
 				time.Now(), 0, call.Name, errMsg)
 
-			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-				call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
+			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
+				call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
 
 			messages = append(messages, provider.Message{
 				Role:       "tool",
@@ -1621,6 +1680,13 @@ func (h *InvokeHandler) executeSupervisorRun(
 	}
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
+	supHasCallAgent := false
+	for _, td := range regularToolDefs {
+		if td.Name == "native_call_agent" {
+			supHasCallAgent = true
+			break
+		}
+	}
 	supMessages, supStableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: supervisorInstructions,
 		Skills:             skills,
@@ -1629,6 +1695,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 		History:            history,
 		MemoryEnabled:      a.MemoryEnabled,
 		MemorySaveMode:     a.MemorySaveMode,
+		HasCallAgent:       supHasCallAgent || len(delegateToolDefs) > 0,
 	})
 	regularToolDefs, dbTools = ensureMemoryToolDef(regularToolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
 	toolDefs := append(regularToolDefs, delegateToolDefs...)
@@ -1682,6 +1749,8 @@ func (h *InvokeHandler) executeSupervisorRun(
 		},
 	}
 	_ = h.pool.QueryRow(ctx, `SELECT COALESCE(channel_session_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&execCtx.ChannelSessionID)
+	execCtx.SendMessage = nil      // supervisor runs are always embedded inside a workflow, never directly gateway-dispatched
+	execCtx.WaitForUserInput = nil // supervisor runs cannot pause for user input
 
 	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
 
@@ -1792,20 +1861,59 @@ func (h *InvokeHandler) executeSupervisorRun(
 			ToolCalls: pendingCalls,
 		})
 
+		// Pre-compute: if there are multiple delegate calls in this batch, run them concurrently.
+		parallelDelegateResults := map[string]string{}
+		{
+			var delegateCallsInBatch []provider.ToolCall
+			for _, call := range pendingCalls {
+				if _, isDelegate := delegateHandlers[call.Name]; isDelegate {
+					delegateCallsInBatch = append(delegateCallsInBatch, call)
+				}
+			}
+			if len(delegateCallsInBatch) > 1 {
+				type delegateOut struct {
+					id      string
+					content string
+					latency int
+				}
+				resultsCh := make(chan delegateOut, len(delegateCallsInBatch))
+				for _, call := range delegateCallsInBatch {
+					capturedCall := call
+					capturedHandler := delegateHandlers[capturedCall.Name]
+					go func() {
+						start := time.Now()
+						output := capturedHandler(ctx, capturedCall.Input)
+						resultsCh <- delegateOut{id: capturedCall.ID, content: output, latency: int(time.Since(start).Milliseconds())}
+					}()
+				}
+				for range delegateCallsInBatch {
+					out := <-resultsCh
+					parallelDelegateResults[out.id] = out.content
+				}
+			}
+		}
+
 		for _, call := range pendingCalls {
 			if call.Name == "native_save_memory" {
 				memorySaveCalled = true
 			}
 			// Delegate tool — execute the team agent and return its output.
 			if handler, isDelegate := delegateHandlers[call.Name]; isDelegate {
+				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
+					call.ID, call.Name, jsonOrStr(call.Input)))
 				delegateStart := time.Now()
-				delegateOutput := handler(ctx, call.Input)
+				var delegateOutput string
+				if precomputed, ok := parallelDelegateResults[call.ID]; ok {
+					delegateOutput = precomputed
+				} else {
+					delegateOutput = handler(ctx, call.Input)
+				}
 				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
 					map[string]any{"tool": call.Name, "input": call.Input},
 					map[string]any{"output": delegateOutput},
 					delegateStart, 0, call.Name, "")
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-					call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(delegateOutput)),
+				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
+					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(delegateOutput)),
 					int(time.Since(delegateStart).Milliseconds())))
 				messages = append(messages, provider.Message{
 					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: delegateOutput,
@@ -1846,6 +1954,14 @@ func (h *InvokeHandler) executeSupervisorRun(
 				if decision.Decision == "rejected" {
 					messages = append(messages, provider.Message{Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: "Tool call rejected by user."})
 					continue
+				}
+			}
+
+			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
+				call.ID, call.Name, jsonOrStr(call.Input)))
+			if execCtx.SendMessage != nil {
+				if label := progressLabel(call.Name); label != "" {
+					execCtx.SendMessage(ctx, label) //nolint:errcheck
 				}
 			}
 
@@ -1892,8 +2008,8 @@ func (h *InvokeHandler) executeSupervisorRun(
 				map[string]any{"output": resultContent},
 				time.Now(), 0, call.Name, errMsg)
 
-			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-				call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
+			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
+				call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
 
 			messages = append(messages, provider.Message{
 				Role:       "tool",

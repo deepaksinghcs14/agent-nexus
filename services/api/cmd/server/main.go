@@ -106,6 +106,8 @@ func main() {
 	for _, t := range native.NewWhatsAppTools(pool, cfg) {
 		reg.Register(t)
 	}
+	reg.Register(native.NewSendMessageTool())
+	reg.Register(native.NewAskUserTool())
 	if !cfg.DemoMode {
 		reg.Register(native.NewWriteFileTool(cfg.StoragePath))
 		reg.Register(native.NewHTTPRequestTool())

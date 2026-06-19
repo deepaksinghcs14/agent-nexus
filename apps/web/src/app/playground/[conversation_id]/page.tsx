@@ -14,29 +14,37 @@ import type { Agent, Conversation, Message } from '@/types'
 
 interface ConvData { conversation: Conversation; messages: Message[] }
 interface RunEvent {
-  type: 'run_started' | 'delta' | 'run_completed' | 'tool_call' | 'approval_required' | 'error'
+  type: 'run_started' | 'delta' | 'run_completed' | 'tool_call' | 'tool_started' | 'approval_required' | 'user_input_required' | 'error'
   content?: string
   error?: string
   run_id?: string
   usage?: { output?: number }
+  call_id?: string
   tool?: string
   input?: unknown
   output?: unknown
   latency_ms?: number
   approval_id?: string
+  question?: string
 }
 interface TraceEvent {
+  callId: string
   tool: string
   input: unknown
   output: unknown
   latencyMs: number
   error: boolean
+  pending: boolean
 }
 interface ApprovalState {
   approvalId: string
   runId: string
   tool: string
   input: unknown
+}
+interface UserInputState {
+  runId: string
+  question: string
 }
 
 async function responseError(res: Response) {
@@ -64,6 +72,7 @@ function hasError(output: unknown): boolean {
 function ToolTrace({ traces, open }: { traces: TraceEvent[]; open?: boolean }) {
   if (traces.length === 0) return null
   const errorCount = traces.filter(t => t.error).length
+  const pendingCount = traces.filter(t => t.pending).length
   return (
     <div className="ml-10 mr-4 mb-1">
       <details open={open}>
@@ -73,6 +82,9 @@ function ToolTrace({ traces, open }: { traces: TraceEvent[]; open?: boolean }) {
             <span className="text-[11px] font-medium text-gray-500 group-hover:text-gray-700">
               {traces.length} tool call{traces.length !== 1 ? 's' : ''}
             </span>
+            {pendingCount > 0 && (
+              <span className="text-[10px] text-blue-500 font-medium">· {pendingCount} running</span>
+            )}
             {errorCount > 0 && (
               <span className="text-[10px] text-red-500 font-medium">· {errorCount} failed</span>
             )}
@@ -83,9 +95,17 @@ function ToolTrace({ traces, open }: { traces: TraceEvent[]; open?: boolean }) {
           {traces.map((t, i) => (
             <details key={i} className="group/item border-b border-gray-100 last:border-b-0">
               <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer list-none select-none hover:bg-gray-100/80">
-                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.error ? 'bg-red-400' : 'bg-green-400'}`} />
+                {t.pending ? (
+                  <Loader2 size={12} className="text-blue-400 animate-spin flex-shrink-0" />
+                ) : (
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.error ? 'bg-red-400' : 'bg-green-400'}`} />
+                )}
                 <span className="font-mono text-[11px] font-medium text-gray-700 flex-1 truncate">{t.tool}</span>
-                <span className="text-[10px] text-gray-400 flex-shrink-0">{t.latencyMs}ms</span>
+                {t.pending ? (
+                  <span className="text-[10px] text-blue-400 flex-shrink-0">running…</span>
+                ) : (
+                  <span className="text-[10px] text-gray-400 flex-shrink-0">{t.latencyMs}ms</span>
+                )}
                 <ChevronDown size={10} className="text-gray-400 transition-transform group-open/item:rotate-180" />
               </summary>
               <div className="px-3 pb-3 pt-1 space-y-2 bg-white">
@@ -93,10 +113,12 @@ function ToolTrace({ traces, open }: { traces: TraceEvent[]; open?: boolean }) {
                   <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Input</p>
                   <pre className="text-[11px] text-gray-600 bg-gray-50 border border-gray-100 rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-40">{JSON.stringify(t.input, null, 2)}</pre>
                 </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Output</p>
-                  <pre className={`text-[11px] bg-gray-50 border rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-40 ${t.error ? 'text-red-600 border-red-100 bg-red-50' : 'text-gray-600 border-gray-100'}`}>{JSON.stringify(t.output, null, 2)}</pre>
-                </div>
+                {!t.pending && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mb-1">Output</p>
+                    <pre className={`text-[11px] bg-gray-50 border rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-40 ${t.error ? 'text-red-600 border-red-100 bg-red-50' : 'text-gray-600 border-gray-100'}`}>{JSON.stringify(t.output, null, 2)}</pre>
+                  </div>
+                )}
               </div>
             </details>
           ))}
@@ -118,6 +140,9 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
   const [thinking, setThinking] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [approvalState, setApprovalState] = useState<ApprovalState | null>(null)
+  const [userInputState, setUserInputState] = useState<UserInputState | null>(null)
+  const [userInputAnswer, setUserInputAnswer] = useState('')
+  const [submittingInput, setSubmittingInput] = useState(false)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [approvingDecision, setApprovingDecision] = useState<string | null>(null)
 
@@ -199,14 +224,28 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             const event = JSON.parse(line.slice(6)) as RunEvent
             if (event.type === 'run_started') { setActiveRunId(event.run_id ?? null); activeRunIdRef.current = event.run_id ?? null }
             if (event.type === 'delta') { setThinking(false); full += event.content ?? ''; setStreamBuffer(full) }
+            if (event.type === 'tool_started') {
+              const uid = userMsgId
+              setTurnTraces(prev => ({
+                ...prev,
+                [uid]: [...(prev[uid] ?? []), { callId: event.call_id ?? '', tool: event.tool ?? '', input: event.input, output: null, latencyMs: 0, error: false, pending: true }],
+              }))
+            }
             if (event.type === 'tool_call') {
               setThinking(false)
               const uid = userMsgId
               const errored = hasError(event.output)
-              setTurnTraces(prev => ({ ...prev, [uid]: [...(prev[uid] ?? []), { tool: event.tool ?? '', input: event.input, output: event.output, latencyMs: event.latency_ms ?? 0, error: errored }] }))
+              const updated = { callId: event.call_id ?? '', tool: event.tool ?? '', input: event.input, output: event.output, latencyMs: event.latency_ms ?? 0, error: errored, pending: false }
+              setTurnTraces(prev => {
+                const existing = prev[uid] ?? []
+                const idx = existing.findIndex(t => t.callId === event.call_id && t.pending)
+                if (idx >= 0) { const next = [...existing]; next[idx] = updated; return { ...prev, [uid]: next } }
+                return { ...prev, [uid]: [...existing, updated] }
+              })
             }
             if (event.type === 'approval_required') setApprovalState({ approvalId: event.approval_id ?? '', runId: event.run_id ?? '', tool: event.tool ?? '', input: event.input })
-            if (event.type === 'run_completed') { appendAssistant(event.usage?.output ?? 0); setApprovalState(null) }
+            if (event.type === 'user_input_required') setUserInputState({ runId: event.run_id ?? '', question: event.question ?? '' })
+            if (event.type === 'run_completed') { appendAssistant(event.usage?.output ?? 0); setApprovalState(null); setUserInputState(null) }
             if (event.type === 'error') throw new Error(event.error ?? 'Run failed')
           }
           while (true) {
@@ -262,6 +301,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
     setStreaming(true)
     setStreamBuffer('')
     setApprovalState(null)
+    setUserInputState(null)
     setActiveRunId(null)
 
     try {
@@ -310,21 +350,47 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
           full += event.content ?? ''
           setStreamBuffer(full)
         }
+        if (event.type === 'tool_started') {
+          const uid = currentUserMsgIdRef.current
+          if (uid) {
+            setTurnTraces(prev => ({
+              ...prev,
+              [uid]: [...(prev[uid] ?? []), {
+                callId: event.call_id ?? '',
+                tool: event.tool ?? '',
+                input: event.input,
+                output: null,
+                latencyMs: 0,
+                error: false,
+                pending: true,
+              }],
+            }))
+          }
+        }
         if (event.type === 'tool_call') {
           setThinking(false)
           const uid = currentUserMsgIdRef.current
           if (uid) {
             const errored = hasError(event.output)
-            setTurnTraces(prev => ({
-              ...prev,
-              [uid]: [...(prev[uid] ?? []), {
-                tool: event.tool ?? '',
-                input: event.input,
-                output: event.output,
-                latencyMs: event.latency_ms ?? 0,
-                error: errored,
-              }],
-            }))
+            const updated = {
+              callId: event.call_id ?? '',
+              tool: event.tool ?? '',
+              input: event.input,
+              output: event.output,
+              latencyMs: event.latency_ms ?? 0,
+              error: errored,
+              pending: false,
+            }
+            setTurnTraces(prev => {
+              const existing = prev[uid] ?? []
+              const idx = existing.findIndex(t => t.callId === event.call_id && t.pending)
+              if (idx >= 0) {
+                const next = [...existing]
+                next[idx] = updated
+                return { ...prev, [uid]: next }
+              }
+              return { ...prev, [uid]: [...existing, updated] }
+            })
           }
         }
         if (event.type === 'approval_required') {
@@ -335,9 +401,13 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             input: event.input,
           })
         }
+        if (event.type === 'user_input_required') {
+          setUserInputState({ runId: event.run_id ?? activeRunIdRef.current ?? '', question: event.question ?? '' })
+        }
         if (event.type === 'run_completed') {
           appendAssistant(event.usage?.output ?? 0)
           setApprovalState(null)
+          setUserInputState(null)
         }
         if (event.type === 'error') throw new Error(event.error ?? 'Run failed')
       }
@@ -370,6 +440,17 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
     try { await runsAPI.approve(approvalState.runId, { decision }); setApprovalState(null) }
     catch { /* keep UI */ }
     finally { setApprovingDecision(null) }
+  }
+
+  async function handleUserInputSubmit() {
+    if (!userInputState || !userInputAnswer.trim()) return
+    setSubmittingInput(true)
+    try {
+      await runsAPI.submitInput(userInputState.runId, { answer: userInputAnswer.trim() })
+      setUserInputState(null)
+      setUserInputAnswer('')
+    } catch { /* keep UI */ }
+    finally { setSubmittingInput(false) }
   }
 
   const conversation = data?.conversation
@@ -543,6 +624,34 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
                   <XCircle size={12} /> Reject
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* User input gate */}
+        {userInputState && (
+          <div className="flex gap-2.5 justify-start">
+            <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Bot size={13} className="text-blue-600" />
+            </div>
+            <div className="max-w-[80%] rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 w-80">
+              <p className="text-xs font-semibold text-blue-800 mb-2">Agent is asking</p>
+              <p className="text-[13px] text-blue-900 mb-3">{userInputState.question}</p>
+              <textarea
+                value={userInputAnswer}
+                onChange={e => setUserInputAnswer(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleUserInputSubmit() } }}
+                placeholder="Type your answer…"
+                rows={2}
+                className="w-full text-sm bg-white border border-blue-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400 resize-none mb-2"
+              />
+              <button
+                onClick={handleUserInputSubmit}
+                disabled={submittingInput || !userInputAnswer.trim()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-[12px] font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                <Send size={12} /> Send reply
+              </button>
             </div>
           </div>
         )}
