@@ -31,6 +31,9 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 			}
 		}
 	}
+	if req.HasCallAgent {
+		stable += "\n\nParallelism rule: when you need to call native_call_agent for multiple independent tasks, return ALL of those calls in a single response — they execute concurrently and are much faster than calling them one at a time. Only chain calls sequentially when the output of one is required as input to the next."
+	}
 	if req.MemoryEnabled {
 		stable += "\n\nMemory policy:\n"
 		if req.MemorySaveMode != "extractor" {
@@ -94,4 +97,7 @@ type BuildRequest struct {
 	UserMessage        string
 	MemoryEnabled      bool
 	MemorySaveMode     string
+	// HasCallAgent, when true, injects a parallelism instruction telling the LLM to
+	// batch independent native_call_agent calls in a single response for concurrent execution.
+	HasCallAgent bool
 }

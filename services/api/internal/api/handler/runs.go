@@ -150,6 +150,18 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			history = append(history, provider.Message{Role: msg.Role, Content: msg.Content, ToolCallID: msg.ToolCallID, ToolName: msg.ToolName})
 		}
 	}
+	// Load tool definitions for this agent (before building prompt so we can inject hints)
+	toolDefs, dbTools, _ := loadAgentToolDefs(r.Context(), h.pool, a.ID)
+	toolDefs, dbTools = ensureMemoryToolDef(toolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+
+	hasCallAgent := false
+	for _, td := range toolDefs {
+		if td.Name == "native_call_agent" {
+			hasCallAgent = true
+			break
+		}
+	}
+
 	skills, _ := loadAgentSkills(r.Context(), h.pool, a.ID)
 	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: a.Instructions,
@@ -159,11 +171,8 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		History:            history,
 		MemoryEnabled:      a.MemoryEnabled,
 		MemorySaveMode:     a.MemorySaveMode,
+		HasCallAgent:       hasCallAgent,
 	})
-
-	// Load tool definitions for this agent
-	toolDefs, dbTools, _ := loadAgentToolDefs(r.Context(), h.pool, a.ID)
-	toolDefs, dbTools = ensureMemoryToolDef(toolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
 
 	capturedWs, capturedUID, capturedRunID := ws, uid, id
 	var callAgentFn func(ctx context.Context, agentID, task string) (string, error)
@@ -189,6 +198,21 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				return "", fmt.Errorf("workflow execution not available")
 			}
 			return h.invokeH.runWorkflowInline(ctx, capturedWs, capturedUID, workflowID, input, capturedRunID)
+		},
+		SendMessage: nil, // playground runs don't have a gateway channel
+		WaitForUserInput: func(ctx context.Context, question string) (string, error) {
+			emit(fmt.Sprintf(`{"type":"user_input_required","run_id":%q,"question":%s}`,
+				capturedRunID, jsonOrStr([]byte(`"`+question+`"`))))
+			ch := RegisterUserInputWait(capturedRunID)
+			h.pool.Exec(ctx, `UPDATE runs SET status='user_input_wait' WHERE id=$1::uuid`, capturedRunID) //nolint:errcheck
+			select {
+			case answer := <-ch:
+				h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, capturedRunID) //nolint:errcheck
+				return answer, nil
+			case <-time.After(30 * time.Minute):
+				UnregisterUserInputWait(capturedRunID)
+				return "", fmt.Errorf("user input timed out after 30 minutes")
+			}
 		},
 	}
 
@@ -329,6 +353,9 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			emit(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
+				call.ID, call.Name, jsonOrStr(call.Input)))
+
 			// Execute the tool — HTTP and code tools bypass the native registry
 			var result *tools.ExecutionResult
 			var execErr error
@@ -373,8 +400,8 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				map[string]any{"output": resultContent},
 				time.Now(), 0, call.Name, errMsg)
 
-			emit(fmt.Sprintf(`{"type":"tool_call","tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-				call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
+			emit(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
+				call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
 
 			messages = append(messages, provider.Message{
 				Role:       "tool",
@@ -730,6 +757,36 @@ func (h *RunsHandler) Approve(w http.ResponseWriter, r *http.Request) {
 
 	errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "decision": req.Decision})
 }
+
+func (h *RunsHandler) SubmitUserInput(w http.ResponseWriter, r *http.Request) {
+	runID := chi.URLParam(r, "id")
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+
+	var req struct {
+		Answer string `json:"answer"`
+	}
+	if json.NewDecoder(r.Body).Decode(&req) != nil || req.Answer == "" {
+		errs.Write(w, errs.BadRequest("answer is required"))
+		return
+	}
+
+	var status string
+	if err := h.pool.QueryRow(r.Context(),
+		`SELECT status FROM runs WHERE id=$1::uuid AND workspace_id=$2::uuid`, runID, ws).Scan(&status); err != nil {
+		errs.Write(w, errs.NotFound("run not found"))
+		return
+	}
+	if status != "user_input_wait" {
+		errs.Write(w, errs.BadRequest("run is not waiting for user input"))
+		return
+	}
+	if !SendUserInput(runID, req.Answer) {
+		errs.Write(w, errs.BadRequest("run no longer active"))
+		return
+	}
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func (h *RunsHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	t, e := h.pool.Exec(r.Context(), `UPDATE runs SET status='cancelled',completed_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid AND status IN('pending','running','approval_wait')`, chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()))
 	if e != nil {

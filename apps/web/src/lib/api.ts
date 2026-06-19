@@ -150,6 +150,7 @@ export const runsAPI = {
   start: (conversationId: string, body: unknown) =>
     api.post(`/conversations/${conversationId}/runs`, body),
   approve: (id: string, body: unknown) => api.post(`/runs/${id}/approve`, body),
+  submitInput: (id: string, body: { answer: string }) => api.post(`/runs/${id}/input`, body),
   cancel: (id: string) => api.post(`/runs/${id}/cancel`),
 }
 
