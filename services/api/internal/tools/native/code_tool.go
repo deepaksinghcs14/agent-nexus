@@ -127,6 +127,28 @@ func (t *CreateCodeToolTool) ExecuteWithContext(ctx context.Context, execCtx too
 		ephemeral,
 	)
 	if err != nil {
+		// If the tool already exists (unique constraint), look it up and attach it.
+		if strings.Contains(err.Error(), "unique constraint") || strings.Contains(err.Error(), "duplicate key") {
+			var existingID string
+			lookupErr := t.pool.QueryRow(ctx,
+				`SELECT id::text FROM tools WHERE workspace_id=$1::uuid AND name=$2`,
+				execCtx.WorkspaceID, name).Scan(&existingID)
+			if lookupErr != nil {
+				return nil, fmt.Errorf("create code tool: tool already exists but could not retrieve it: %w", lookupErr)
+			}
+			if execCtx.AgentID != "" {
+				t.pool.Exec(ctx, //nolint:errcheck
+					`INSERT INTO agent_tools(agent_id, tool_id, enabled)
+					 VALUES($1::uuid, $2::uuid, true) ON CONFLICT DO NOTHING`,
+					execCtx.AgentID, existingID)
+			}
+			return map[string]any{
+				"tool_id":   existingID,
+				"name":      name,
+				"ephemeral": ephemeral,
+				"note":      "Tool already existed and has been attached. Use the exact name above to call it.",
+			}, nil
+		}
 		return nil, fmt.Errorf("create code tool: %w", err)
 	}
 
