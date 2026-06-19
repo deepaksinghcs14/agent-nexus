@@ -89,6 +89,19 @@ func main() {
 	reg.Register(native.NewListHttpToolsTool(pool))
 	reg.Register(native.NewCreateHttpToolTool(pool))
 	reg.Register(native.NewDeleteToolTool(pool))
+	// Expanded self-management tools
+	reg.Register(native.NewUpdateAgentTool(pool))
+	reg.Register(native.NewAttachSkillTool(pool))
+	reg.Register(native.NewDetachSkillTool(pool))
+	reg.Register(native.NewUpdateSkillTool(pool))
+	reg.Register(native.NewListWorkspaceToolsTool(pool))
+	reg.Register(native.NewAttachToolTool(pool))
+	reg.Register(native.NewDetachToolTool(pool))
+	reg.Register(native.NewCreateCodeToolTool(pool))
+	reg.Register(native.NewListWorkflowsTool(pool))
+	reg.Register(native.NewCreateWorkflowTool(pool))
+	reg.Register(native.NewRunWorkflowTool(pool))
+	reg.Register(native.NewDeleteWorkflowTool(pool))
 	for _, t := range native.NewWhatsAppTools(pool, cfg) {
 		reg.Register(t)
 	}
@@ -110,6 +123,8 @@ func main() {
 	runs := handler.NewRunsHandler(pool, cfg, reg, exec)
 	invoke := handler.NewInvokeHandler(pool, cfg, runs, reg, exec)
 	runs.SetInvokeHandler(invoke)
+	nexusAI := handler.NewNexusAIHandler(pool, cfg, runs)
+	nexusAI.SetInvokeHandler(invoke)
 	h := &handler.Handlers{
 		Auth:            handler.NewAuthHandler(pool, cfg),
 		Providers:       handler.NewProvidersHandler(pool, cfg),
@@ -130,7 +145,7 @@ func main() {
 		Gateway:         handler.NewGatewayHandler(pool, cfg, invoke),
 		Skills:          handler.NewSkillsHandler(pool, cfg),
 		Config:          handler.NewConfigHandler(cfg),
-		NexusAI:         handler.NewNexusAIHandler(pool, cfg, runs),
+		NexusAI:         nexusAI,
 		Observability:   handler.NewObservabilityHandler(pool),
 	}
 

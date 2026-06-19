@@ -21,6 +21,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/cost"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/memory"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/encrypt"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 	"github.com/go-chi/chi/v5"
@@ -159,9 +160,9 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	toolDefs, dbTools, _ := loadAgentToolDefs(r.Context(), h.pool, a.ID)
 	toolDefs, dbTools = ensureMemoryToolDef(toolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
 
+	capturedWs, capturedUID, capturedRunID := ws, uid, id
 	var callAgentFn func(ctx context.Context, agentID, task string) (string, error)
 	if h.invokeH != nil {
-		capturedWs, capturedUID, capturedRunID := ws, uid, id
 		callAgentFn = func(ctx context.Context, agentID, task string) (string, error) {
 			return h.invokeH.runAgentInline(ctx, capturedWs, capturedUID, agentID, task, capturedRunID, capturedRunID, 1)
 		}
@@ -178,6 +179,12 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		InvokeDepth:    0,
 		RootRunID:      id,
 		CallAgent:      callAgentFn,
+		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
+			if h.invokeH == nil {
+				return "", fmt.Errorf("workflow execution not available")
+			}
+			return h.invokeH.runWorkflowInline(ctx, capturedWs, capturedUID, workflowID, input, capturedRunID)
+		},
 	}
 
 	emit(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, id))
@@ -308,13 +315,24 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Execute the tool — HTTP tools bypass the native registry
+			// Execute the tool — HTTP and code tools bypass the native registry
 			var result *tools.ExecutionResult
 			var execErr error
 			if toolExists && dbTool.Type == "http" {
 				var cfg tools.HTTPToolConfig
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(r.Context(), cfg, call.Input, dbTool.TimeoutMs)
+			} else if toolExists && dbTool.Type == "code" {
+				var codeCfg struct{ Code string `json:"code"` }
+				_ = json.Unmarshal(dbTool.Config, &codeCfg)
+				start := time.Now()
+				out, codeErr := native.ExecuteCodeTool(r.Context(), codeCfg.Code, call.Input)
+				result = &tools.ExecutionResult{LatencyMs: int(time.Since(start).Milliseconds())}
+				if codeErr != nil {
+					result.Error = codeErr.Error()
+				} else {
+					result.Output = out
+				}
 			} else {
 				result, execErr = h.executor.ExecuteWithContext(r.Context(), execCtx, call.Name, call.Input)
 			}

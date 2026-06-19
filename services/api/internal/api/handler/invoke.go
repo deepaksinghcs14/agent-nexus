@@ -23,6 +23,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/cost"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/memory"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
 
@@ -264,6 +265,37 @@ func (h *InvokeHandler) runAgentInline(ctx context.Context, ws, uid, agentID, ta
 	return output, nil
 }
 
+// runWorkflowInline creates a run record for workflowID and executes it in a background goroutine.
+// Returns the run_id immediately.
+func (h *InvokeHandler) runWorkflowInline(ctx context.Context, ws, uid, workflowID, input, parentRunID string) (string, error) {
+	// Verify workflow exists
+	var wName string
+	if err := h.pool.QueryRow(ctx,
+		`SELECT name FROM workflows WHERE id=$1::uuid AND workspace_id=$2::uuid AND status='active'`,
+		workflowID, ws).Scan(&wName); err != nil {
+		return "", fmt.Errorf("workflow %s not found", workflowID)
+	}
+	convID := uuid.NewString()
+	if _, err := h.pool.Exec(ctx,
+		`INSERT INTO conversations(id,workspace_id,user_id,title,workflow_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5::uuid)`,
+		convID, ws, uid, "Workflow: "+wName, workflowID); err != nil {
+		return "", fmt.Errorf("create conversation: %w", err)
+	}
+	if _, err := h.pool.Exec(ctx,
+		`INSERT INTO messages(id,conversation_id,role,content) VALUES($1::uuid,$2::uuid,'user',$3)`,
+		uuid.NewString(), convID, input); err != nil {
+		return "", err
+	}
+	runID := uuid.NewString()
+	if _, err := h.pool.Exec(ctx,
+		`INSERT INTO runs(id,workspace_id,conversation_id,user_id,input,status,parent_run_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,'running',$6::uuid)`,
+		runID, ws, convID, uid, input, parentRunID); err != nil {
+		return "", fmt.Errorf("create run: %w", err)
+	}
+	go h.executeGroupRun(context.Background(), workflowID, ws, uid, runID, convID, input, nil)
+	return runID, nil
+}
+
 // cleanupEphemeralResources deletes agents, skills, and tools created with ephemeral=true
 // during the given run. Called after the root run completes.
 func (h *InvokeHandler) cleanupEphemeralResources(ctx context.Context, runID string) {
@@ -426,7 +458,10 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		ToolSummaries:  toolSummaries,
 		InvokeDepth:    opts.invokeDepth,
 		RootRunID:      rootTraceID,
-		CallAgent:      callAgentFn,
+		CallAgent: callAgentFn,
+		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
+			return h.runWorkflowInline(ctx, ws, uid, workflowID, input, runID)
+		},
 		CompressText: func(ctx context.Context, text string) (string, error) {
 			ch, cerr := llm.Complete(ctx, provider.CompletionRequest{
 				Model: a.Model,
@@ -693,6 +728,17 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					var cfg tools.HTTPToolConfig
 					_ = json.Unmarshal(dbTool.Config, &cfg)
 					result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
+				} else if toolExists && dbTool.Type == "code" {
+					var codeCfg struct{ Code string `json:"code"` }
+					_ = json.Unmarshal(dbTool.Config, &codeCfg)
+					start := time.Now()
+					out, codeErr := native.ExecuteCodeTool(ctx, codeCfg.Code, call.Input)
+					result = &tools.ExecutionResult{LatencyMs: int(time.Since(start).Milliseconds())}
+					if codeErr != nil {
+						result.Error = codeErr.Error()
+					} else {
+						result.Output = out
+					}
 				} else {
 					result, execErr = h.executor.ExecuteWithContext(ctx, execCtx, call.Name, call.Input)
 				}
@@ -1567,7 +1613,10 @@ func (h *InvokeHandler) executeSupervisorRun(
 		ConversationID: convID,
 		InvokeDepth:    0,
 		RootRunID:      supRootTraceID,
-		CallAgent:      supCallAgentFn,
+		CallAgent: supCallAgentFn,
+		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
+			return h.runWorkflowInline(ctx, ws, uid, workflowID, input, runID)
+		},
 		CompressText: func(ctx context.Context, text string) (string, error) {
 			ch, cerr := llm.Complete(ctx, provider.CompletionRequest{
 				Model: a.Model,
@@ -1762,6 +1811,17 @@ func (h *InvokeHandler) executeSupervisorRun(
 				var cfg tools.HTTPToolConfig
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
+			} else if toolExists && dbTool.Type == "code" {
+				var codeCfg struct{ Code string `json:"code"` }
+				_ = json.Unmarshal(dbTool.Config, &codeCfg)
+				start := time.Now()
+				out, codeErr := native.ExecuteCodeTool(ctx, codeCfg.Code, call.Input)
+				result = &tools.ExecutionResult{LatencyMs: int(time.Since(start).Milliseconds())}
+				if codeErr != nil {
+					result.Error = codeErr.Error()
+				} else {
+					result.Output = out
+				}
 			} else {
 				result, execErr = h.executor.ExecuteWithContext(ctx, execCtx, call.Name, call.Input)
 			}

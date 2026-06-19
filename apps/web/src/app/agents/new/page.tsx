@@ -120,10 +120,11 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   const availableConnectors = connectorsData?.data ?? []
 
   // Tools locked by an enabled skill (cannot be manually removed)
-  const skillLockedTools = new Set<string>()
+  // Maps tool_name → skill_name so the UI can show which skill requires it
+  const skillLockedTools = new Map<string, string>()
   availableSkills.forEach(s => {
     if (enabledSkills[s.id] && s.required_tool_names) {
-      s.required_tool_names.forEach(n => skillLockedTools.add(n))
+      s.required_tool_names.forEach(n => skillLockedTools.set(n, s.name))
     }
   })
 
@@ -409,21 +410,21 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
           <p className="text-[12px] text-gray-500 mb-3">Enable tools this agent can use. High-risk tools require approval by default.</p>
           <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
             {availableTools.map((tool, i) => {
-              const locked = skillLockedTools.has(tool.name)
+              const lockedBySkill = skillLockedTools.get(tool.name)
               return (
                 <div key={tool.id} className={`flex items-center justify-between px-4 py-3 ${i < availableTools.length - 1 ? 'border-b border-gray-50' : ''}`}>
                   <div>
                     <p className="text-[13px] font-medium text-gray-900">{tool.name}</p>
                     <p className="text-[11px] text-gray-500">{tool.description}</p>
-                    {locked && <p className="text-[10px] text-purple-600 mt-0.5">enabled by skill</p>}
+                    {lockedBySkill && <p className="text-[10px] text-purple-600 mt-0.5">Required by: {lockedBySkill}</p>}
                   </div>
                   <div className="flex items-center gap-3">
                     <span className={riskBadge(tool.risk_level)}>{tool.risk_level} risk</span>
                     {tool.requires_approval && (
                       <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">approval req.</span>
                     )}
-                    <Toggle on={!!enabledTools[tool.name] || locked}
-                      onToggle={() => { if (!locked) setEnabledTools(prev => ({ ...prev, [tool.name]: !prev[tool.name] })) }} />
+                    <Toggle on={!!enabledTools[tool.name] || !!lockedBySkill}
+                      onToggle={() => { if (!lockedBySkill) setEnabledTools(prev => ({ ...prev, [tool.name]: !prev[tool.name] })) }} />
                   </div>
                 </div>
               )

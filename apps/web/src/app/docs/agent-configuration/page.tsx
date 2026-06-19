@@ -95,16 +95,34 @@ PUT /api/v1/agents/:id`}</code></pre>
           <tr><td><code>native_call_agent</code></td><td>Delegate a task to another agent and return its output. Issue multiple calls in one response to run sub-agents in parallel.</td></tr>
           <tr><td><code>native_create_agent</code></td><td>Create a new agent at runtime. Set <code>ephemeral=true</code> to auto-delete it when the root run ends.</td></tr>
           <tr><td><code>native_delete_agent</code></td><td>Delete an agent created by the current run.</td></tr>
+          <tr><td><code>native_update_agent</code></td><td>Update fields on an existing agent (name, instructions, model, etc.).</td></tr>
           <tr><td><code>native_list_skills</code></td><td>List skills available in the workspace.</td></tr>
           <tr><td><code>native_create_skill</code></td><td>Create a skill at runtime. Use <code>attach_to_self=true</code> to inject its content into the calling agent&apos;s own context immediately.</td></tr>
           <tr><td><code>native_delete_skill</code></td><td>Delete a skill created by the current run.</td></tr>
+          <tr><td><code>native_attach_skill</code></td><td>Attach an existing skill to an agent.</td></tr>
+          <tr><td><code>native_detach_skill</code></td><td>Detach a skill from an agent.</td></tr>
+          <tr><td><code>native_update_skill</code></td><td>Update the name, description, or content of a skill.</td></tr>
+          <tr><td><code>native_list_workspace_tools</code></td><td>List all tools (HTTP and code) available in the workspace.</td></tr>
+          <tr><td><code>native_attach_tool</code></td><td>Attach an existing tool to an agent.</td></tr>
+          <tr><td><code>native_detach_tool</code></td><td>Detach a tool from an agent.</td></tr>
           <tr><td><code>native_list_http_tools</code></td><td>List HTTP tools in the workspace.</td></tr>
           <tr><td><code>native_create_http_tool</code></td><td>Register an external API endpoint as a callable tool. Auto-attached to the calling agent so it is available on the next turn.</td></tr>
-          <tr><td><code>native_delete_tool</code></td><td>Delete an HTTP tool created by the current run.</td></tr>
+          <tr><td><code>native_delete_tool</code></td><td>Delete an HTTP or code tool created by the current run.</td></tr>
+          <tr><td><code>native_create_code_tool</code></td><td>Create a JavaScript code tool — define a function body that runs in a sandboxed JS runtime. Auto-attached to the calling agent immediately.</td></tr>
+          <tr><td><code>native_list_workflows</code></td><td>List workflows available in the workspace.</td></tr>
+          <tr><td><code>native_create_workflow</code></td><td>Create a new workflow at runtime.</td></tr>
+          <tr><td><code>native_run_workflow</code></td><td>Trigger a workflow and return its run ID.</td></tr>
+          <tr><td><code>native_delete_workflow</code></td><td>Delete a workflow created by the current run.</td></tr>
         </tbody>
       </table>
+      <Callout type="info">
+        Code tools (<code>native_create_code_tool</code>) execute in an isolated JavaScript sandbox
+        with a <strong>5-second timeout</strong>. They have no access to the network, filesystem, or
+        Node.js built-ins — only pure JS logic. Use them for data transformation, formatting, or
+        calculations that do not require external I/O.
+      </Callout>
       <p>
-        Sub-agent chains are capped at <strong>3 levels deep</strong>. Resources created with
+        Sub-agent chains are capped at <strong>3 levels deep</strong>. Resources created with{' '}
         <code>ephemeral=true</code> are deleted automatically after the root run completes.
         Agents can only delete resources they created in the current run.
       </p>

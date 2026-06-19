@@ -37,6 +37,8 @@ type ExecutionContext struct {
 	ToolSummaries map[string]string
 	// CallAgent, if non-nil, invokes another workspace agent as a sub-run and returns its output.
 	CallAgent func(ctx context.Context, agentID, task string) (string, error)
+	// RunWorkflow, if non-nil, triggers a workflow run in the background and returns the run_id.
+	RunWorkflow func(ctx context.Context, workflowID, input string) (string, error)
 }
 
 type ContextAwareTool interface {
