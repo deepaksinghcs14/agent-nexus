@@ -175,7 +175,17 @@ func ExecuteCodeTool(ctx context.Context, code string, rawInput json.RawMessage)
 		return nil, fmt.Errorf("code tool: set input: %w", err)
 	}
 
-	val, err := vm.RunString("(function(input){ " + code + " })(input)")
+	// Normalise code: if the LLM wrote "function(input){...}" or
+	// "function name(input){...}" treat it as an expression and call it directly.
+	trimmed := strings.TrimSpace(code)
+	var src string
+	if strings.HasPrefix(trimmed, "function") {
+		src = "(" + trimmed + ")(input)"
+	} else {
+		src = "(function(input){ " + code + " })(input)"
+	}
+
+	val, err := vm.RunString(src)
 	if err != nil {
 		return nil, fmt.Errorf("code tool: execution error: %w", err)
 	}
