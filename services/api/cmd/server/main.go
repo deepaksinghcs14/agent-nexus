@@ -165,6 +165,7 @@ func main() {
 		Config:          handler.NewConfigHandler(cfg),
 		NexusAI:         nexusAI,
 		Observability:   handler.NewObservabilityHandler(pool),
+		WhatsAppCreds:   handler.NewWhatsAppCredsHandler(pool, cfg),
 	}
 
 	// HTTP server

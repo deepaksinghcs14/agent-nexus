@@ -162,6 +162,13 @@ func (h *GatewayHandler) UpdateChannel(w http.ResponseWriter, r *http.Request) {
 func (h *GatewayHandler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	id := chi.URLParam(r, "id")
+	// For WhatsApp channels: log out the adapter before deleting so credentials
+	// are wiped from the DB and the socket is closed cleanly.
+	if ch, err := h.repo.GetChannelInWorkspace(r.Context(), id, ws); err == nil && ch.ChannelType == "whatsapp" {
+		cfg := h.parseGatewayConfig(ch.Config, ch.ChannelType)
+		// Best-effort — ignore errors; channel deletion proceeds regardless.
+		adapterPost(r.Context(), cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/logout", nil) //nolint:errcheck
+	}
 	if err := h.repo.DeleteChannel(r.Context(), id, ws); err != nil {
 		errs.Write(w, errs.Internal("failed to delete gateway channel"))
 		return

@@ -132,6 +132,69 @@ async function resolvePhonesLIDs(state) {
   }
 }
 
+// ── Credential persistence (survives Railway deploys) ─────────────────────────
+
+const backupTimers = new Map()
+
+async function backupAuthState(accountId) {
+  const dir = path.join(AUTH_ROOT, accountId)
+  try {
+    const entries = await fs.readdir(dir)
+    const files = {}
+    for (const name of entries) {
+      if (!name.endsWith('.json')) continue
+      const raw = await fs.readFile(path.join(dir, name), 'utf8')
+      try { files[name] = JSON.parse(raw) } catch { files[name] = raw }
+    }
+    if (Object.keys(files).length === 0) return
+    const res = await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files })
+    })
+    if (!res.ok) throw new Error(`backup PUT returned ${res.status}`)
+    logger.info({ accountId, fileCount: Object.keys(files).length }, 'backed up auth state to DB')
+  } catch (err) {
+    logger.warn({ err, accountId }, 'failed to backup auth state')
+  }
+}
+
+function scheduleBackup(accountId) {
+  if (backupTimers.has(accountId)) clearTimeout(backupTimers.get(accountId))
+  backupTimers.set(accountId, setTimeout(() => {
+    backupTimers.delete(accountId)
+    backupAuthState(accountId).catch(() => {})
+  }, 2000))
+}
+
+async function restoreAuthState(accountId) {
+  try {
+    const res = await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`)
+    if (!res.ok) return false
+    const { files } = await res.json()
+    if (!files || Object.keys(files).length === 0) return false
+    const dir = path.join(AUTH_ROOT, accountId)
+    await fs.mkdir(dir, { recursive: true })
+    for (const [name, content] of Object.entries(files)) {
+      const data = typeof content === 'string' ? content : JSON.stringify(content)
+      await fs.writeFile(path.join(dir, name), data)
+    }
+    logger.info({ accountId, fileCount: Object.keys(files).length }, 'restored auth state from DB')
+    return true
+  } catch (err) {
+    logger.warn({ err, accountId }, 'failed to restore auth state')
+    return false
+  }
+}
+
+async function deleteAuthStateFromDB(accountId) {
+  try {
+    await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`, { method: 'DELETE' })
+  } catch (_) {}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+
 async function startAccount(accountId, opts = {}) {
   const state = accountState(accountId)
   if (opts.callback_url) state.callbackUrl = opts.callback_url
@@ -149,6 +212,8 @@ async function startAccount(accountId, opts = {}) {
   // New connection — apply initial config from opts.
   state.selfChatEnabled = !!opts.self_chat_enabled
 
+  // Restore credentials from DB if the local auth dir is missing (e.g. after a Railway deploy).
+  await restoreAuthState(accountId)
   await fs.mkdir(path.join(AUTH_ROOT, accountId), { recursive: true })
   const { state: authState, saveCreds } = await useMultiFileAuthState(path.join(AUTH_ROOT, accountId))
   const { version } = await fetchLatestBaileysVersion()
@@ -173,7 +238,7 @@ async function startAccount(accountId, opts = {}) {
   })
   state.socket = socket
 
-  socket.ev.on('creds.update', saveCreds)
+  socket.ev.on('creds.update', () => { saveCreds(); scheduleBackup(accountId) })
 
   // Build LID→phone map so we can resolve @lid JIDs to real phone numbers for contact matching.
   // WhatsApp migrated to LID-based JIDs; contact.id has the phone JID, contact.lid has the LID.
@@ -208,6 +273,7 @@ async function startAccount(accountId, opts = {}) {
       state.selfLid = socket.user?.lid || ''
       state.lastError = ''
       state.connectedAt = Date.now()
+      backupAuthState(accountId).catch(() => {})
       // Newer WhatsApp clients use opaque LID JIDs; Baileys may not expose socket.user.lid.
       // Resolve selfLid via onWhatsApp so the from_me self-chat filter can match correctly.
       if (!state.selfLid && state.selfId) {
@@ -457,9 +523,10 @@ async function route(req, res) {
     state.selfId = ''
     state.selfLid = ''
     state.lastError = ''
-    // Delete stored credentials so the next /login/start gets a fresh QR code.
+    // Delete stored credentials (disk + DB) so the next /login/start gets a fresh QR code.
     const authDir = path.join(AUTH_ROOT, accountId)
     await fs.rm(authDir, { recursive: true, force: true })
+    await deleteAuthStateFromDB(accountId)
     return json(res, 200, { account_id: accountId, status: state.status })
   }
 

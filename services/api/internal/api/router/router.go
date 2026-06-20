@@ -40,6 +40,11 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 	// Internal process log ingestion, protected by LOG_STREAM_INGEST_TOKEN.
 	r.Post("/internal/service-logs/ingest", h.Admin.IngestServiceLog)
 
+	// Internal WhatsApp credential persistence — adapter-only, no JWT.
+	r.Get("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Get)
+	r.Put("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Put)
+	r.Delete("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Delete)
+
 	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC secret)
 	r.Post("/webhook/{webhookId}", h.WebhookIngress.Receive)
 	r.Post("/gateway/whatsapp/{channelId}", h.Gateway.WhatsAppReceive)
