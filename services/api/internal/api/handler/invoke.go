@@ -358,9 +358,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	// dbCtx is used for all DB status writes (failRun, final UPDATE).
 	// It must NOT be the request context because the request context can be
 	// cancelled on client disconnect, which would silently leave the run in
-	// 'running' state. A short-lived background context ensures the write
-	// always completes even after the HTTP connection closes.
-	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// 'running' state. Use a generous timeout that outlasts any realistic run
+	// while still bounding resource lifetime if something hangs.
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer dbCancel()
 
 	runCompleted := false
@@ -1570,7 +1570,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	delegateHandlers map[string]func(context.Context, json.RawMessage) string,
 	emit func(string),
 ) {
-	dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer dbCancel()
 
 	runCompleted := false

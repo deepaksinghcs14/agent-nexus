@@ -70,6 +70,18 @@ func main() {
 		slog.Warn("bootstrap admin promotion failed", "error", err)
 	}
 
+	// Mark orphaned runs as failed. Any run still in running/pending/approval_wait/user_input_wait
+	// at startup was left stranded by a previous server crash or restart — their goroutines are gone.
+	if t, err := pool.Exec(ctx, `
+		UPDATE runs
+		SET status='failed', completed_at=NOW(), error_message='Server restarted while run was active'
+		WHERE status IN ('running','pending','approval_wait','user_input_wait')
+	`); err != nil {
+		slog.Warn("failed to mark orphaned runs as failed", "error", err)
+	} else if t.RowsAffected() > 0 {
+		slog.Info("marked orphaned runs as failed", "count", t.RowsAffected())
+	}
+
 	// Build tool registry and seed native tools into DB.
 	// In demo mode, skip http_request and write_file to prevent SSRF and disk abuse.
 	reg := tools.NewRegistry()

@@ -946,8 +946,6 @@ func (h *GatewayHandler) dispatchGatewayRun(ctx context.Context, c domain.Gatewa
 			peerID   = msg.PeerID
 			sessID   = sessionID
 		)
-		// Send an immediate acknowledgement before the run starts.
-		h.sendAdapterMessage(ctx, ch, chCfg, chCfg.AccountID, peerKind, peerID, "⏳ On it…", sessID, runID)
 		sendMsg = func(ctx context.Context, text string) error {
 			mu.Lock()
 			if time.Since(lastSent) < 3*time.Second {
