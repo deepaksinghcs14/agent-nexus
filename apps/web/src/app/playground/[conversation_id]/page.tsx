@@ -14,7 +14,7 @@ import type { Agent, Conversation, Message } from '@/types'
 
 interface ConvData { conversation: Conversation; messages: Message[] }
 interface RunEvent {
-  type: 'run_started' | 'delta' | 'run_completed' | 'tool_call' | 'tool_started' | 'approval_required' | 'user_input_required' | 'error'
+  type: 'run_started' | 'delta' | 'run_completed' | 'tool_call' | 'tool_started' | 'approval_required' | 'user_input_required' | 'error' | 'compacting'
   content?: string
   error?: string
   run_id?: string
@@ -26,6 +26,7 @@ interface RunEvent {
   latency_ms?: number
   approval_id?: string
   question?: string
+  status?: string
 }
 interface TraceEvent {
   callId: string
@@ -145,6 +146,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
   const [submittingInput, setSubmittingInput] = useState(false)
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [approvingDecision, setApprovingDecision] = useState<string | null>(null)
+  const [isCompacting, setIsCompacting] = useState(false)
 
   // Per-turn tool traces: keyed by the user message ID that triggered them
   const [turnTraces, setTurnTraces] = useState<Record<string, TraceEvent[]>>({})
@@ -246,6 +248,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             if (event.type === 'approval_required') setApprovalState({ approvalId: event.approval_id ?? '', runId: event.run_id ?? '', tool: event.tool ?? '', input: event.input })
             if (event.type === 'user_input_required') setUserInputState({ runId: event.run_id ?? '', question: event.question ?? '' })
             if (event.type === 'run_completed') { appendAssistant(event.usage?.output ?? 0); setApprovalState(null); setUserInputState(null) }
+            if (event.type === 'compacting') { if (event.status === 'start') setIsCompacting(true); if (event.status === 'done') setIsCompacting(false) }
             if (event.type === 'error') throw new Error(event.error ?? 'Run failed')
           }
           while (true) {
@@ -409,6 +412,10 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
           setApprovalState(null)
           setUserInputState(null)
         }
+        if (event.type === 'compacting') {
+          if (event.status === 'start') setIsCompacting(true)
+          if (event.status === 'done') setIsCompacting(false)
+        }
         if (event.type === 'error') throw new Error(event.error ?? 'Run failed')
       }
 
@@ -431,6 +438,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
     } finally {
       setStreaming(false)
       setThinking(false)
+      setIsCompacting(false)
     }
   }
 
@@ -653,6 +661,14 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
                 <Send size={12} /> Send reply
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Compacting indicator */}
+        {isCompacting && (
+          <div className="flex items-center gap-1.5 px-3 py-1 text-[11px] text-gray-400">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-300 animate-pulse" />
+            Compacting conversation…
           </div>
         )}
 

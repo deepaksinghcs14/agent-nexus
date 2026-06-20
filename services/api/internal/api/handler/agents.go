@@ -2,7 +2,10 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -41,26 +44,30 @@ func (h *AgentsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromCtx(r.Context())
 
 	var req struct {
-		Name                    string  `json:"name"`
-		Description             string  `json:"description"`
-		Instructions            string  `json:"instructions"`
-		Provider                string  `json:"provider"`
-		Model                   string  `json:"model"`
-		Temperature             float64 `json:"temperature"`
-		MaxTokens               int     `json:"max_tokens"`
-		MemoryEnabled           bool    `json:"memory_enabled"`
-		MemoryScope             string  `json:"memory_scope"`
-		MemorySaveMode          string  `json:"memory_save_mode"`
-		MemoryReviewPolicy      string  `json:"memory_review_policy"`
-		MaxMemories             int     `json:"max_memories"`
-		MinRelevanceScore       float64 `json:"min_relevance_score"`
-		MemoryMinImportance     float64 `json:"memory_min_importance"`
-		MemoryDedupeThreshold   float64 `json:"memory_dedupe_threshold"`
-		ContextRetrievalEnabled bool    `json:"context_retrieval_enabled"`
-		MaxSteps                int     `json:"max_steps"`
-		MaxToolCalls            int     `json:"max_tool_calls"`
-		MaxDurationSecs         int     `json:"max_duration_secs"`
-		Status                  string  `json:"status"`
+		Name                     string  `json:"name"`
+		Description              string  `json:"description"`
+		Instructions             string  `json:"instructions"`
+		Provider                 string  `json:"provider"`
+		Model                    string  `json:"model"`
+		Temperature              float64 `json:"temperature"`
+		MaxTokens                int     `json:"max_tokens"`
+		MemoryEnabled            bool    `json:"memory_enabled"`
+		MemoryScope              string  `json:"memory_scope"`
+		MemorySaveMode           string  `json:"memory_save_mode"`
+		MemoryReviewPolicy       string  `json:"memory_review_policy"`
+		MaxMemories              int     `json:"max_memories"`
+		MinRelevanceScore        float64 `json:"min_relevance_score"`
+		MemoryMinImportance      float64 `json:"memory_min_importance"`
+		MemoryDedupeThreshold    float64 `json:"memory_dedupe_threshold"`
+		ContextRetrievalEnabled  bool    `json:"context_retrieval_enabled"`
+		MaxSteps                 int     `json:"max_steps"`
+		MaxToolCalls             int     `json:"max_tool_calls"`
+		MaxDurationSecs          int     `json:"max_duration_secs"`
+		MaxHistoryMessages       int     `json:"max_history_messages"`
+		LazyToolLoading          bool    `json:"lazy_tool_loading"`
+		CompactionThreshold      int     `json:"compaction_threshold"`
+		CompactionTokenThreshold int     `json:"compaction_token_threshold"`
+		Status                   string  `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		errs.Write(w, errs.BadRequest("invalid request body"))
@@ -105,29 +112,33 @@ func (h *AgentsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a := &domain.Agent{
-		ID:                      uuid.New().String(),
-		WorkspaceID:             wsID,
-		Name:                    req.Name,
-		Description:             req.Description,
-		Instructions:            req.Instructions,
-		Provider:                req.Provider,
-		Model:                   req.Model,
-		Temperature:             req.Temperature,
-		MaxTokens:               req.MaxTokens,
-		MemoryEnabled:           req.MemoryEnabled,
-		MemoryScope:             req.MemoryScope,
-		MemorySaveMode:          req.MemorySaveMode,
-		MemoryReviewPolicy:      req.MemoryReviewPolicy,
-		MaxMemories:             req.MaxMemories,
-		MinRelevanceScore:       req.MinRelevanceScore,
-		MemoryMinImportance:     req.MemoryMinImportance,
-		MemoryDedupeThreshold:   req.MemoryDedupeThreshold,
-		ContextRetrievalEnabled: req.ContextRetrievalEnabled,
-		MaxSteps:                req.MaxSteps,
-		MaxToolCalls:            req.MaxToolCalls,
-		MaxDurationSecs:         req.MaxDurationSecs,
-		Status:                  req.Status,
-		CreatedBy:               userID,
+		ID:                       uuid.New().String(),
+		WorkspaceID:              wsID,
+		Name:                     req.Name,
+		Description:              req.Description,
+		Instructions:             req.Instructions,
+		Provider:                 req.Provider,
+		Model:                    req.Model,
+		Temperature:              req.Temperature,
+		MaxTokens:                req.MaxTokens,
+		MemoryEnabled:            req.MemoryEnabled,
+		MemoryScope:              req.MemoryScope,
+		MemorySaveMode:           req.MemorySaveMode,
+		MemoryReviewPolicy:       req.MemoryReviewPolicy,
+		MaxMemories:              req.MaxMemories,
+		MinRelevanceScore:        req.MinRelevanceScore,
+		MemoryMinImportance:      req.MemoryMinImportance,
+		MemoryDedupeThreshold:    req.MemoryDedupeThreshold,
+		ContextRetrievalEnabled:  req.ContextRetrievalEnabled,
+		MaxSteps:                 req.MaxSteps,
+		MaxToolCalls:             req.MaxToolCalls,
+		MaxDurationSecs:          req.MaxDurationSecs,
+		MaxHistoryMessages:       req.MaxHistoryMessages,
+		LazyToolLoading:          req.LazyToolLoading,
+		CompactionThreshold:      req.CompactionThreshold,
+		CompactionTokenThreshold: req.CompactionTokenThreshold,
+		Status:                   req.Status,
+		CreatedBy:                userID,
 	}
 
 	if err := h.agents.Create(r.Context(), a); err != nil {
@@ -309,4 +320,264 @@ func (h *AgentsHandler) SetConnectors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.ListConnectors(w, r)
+}
+
+type agentExport struct {
+	Version                 string             `json:"version"`
+	Name                    string             `json:"name"`
+	Description             string             `json:"description"`
+	Instructions            string             `json:"instructions"`
+	Provider                string             `json:"provider"`
+	Model                   string             `json:"model"`
+	Temperature             float64            `json:"temperature"`
+	MaxTokens               int                `json:"max_tokens"`
+	MemoryEnabled           bool               `json:"memory_enabled"`
+	MemoryScope             string             `json:"memory_scope"`
+	MemorySaveMode          string             `json:"memory_save_mode"`
+	MemoryReviewPolicy      string             `json:"memory_review_policy"`
+	MaxMemories             int                `json:"max_memories"`
+	MinRelevanceScore       float64            `json:"min_relevance_score"`
+	MemoryMinImportance     float64            `json:"memory_min_importance"`
+	MemoryDedupeThreshold   float64            `json:"memory_dedupe_threshold"`
+	ContextRetrievalEnabled bool               `json:"context_retrieval_enabled"`
+	MaxSteps                int                `json:"max_steps"`
+	MaxToolCalls            int                `json:"max_tool_calls"`
+	MaxDurationSecs         int                `json:"max_duration_secs"`
+	MaxHistoryMessages       int                `json:"max_history_messages"`
+	LazyToolLoading          bool               `json:"lazy_tool_loading"`
+	CompactionThreshold      int                `json:"compaction_threshold"`
+	CompactionTokenThreshold int                `json:"compaction_token_threshold"`
+	Status                   string             `json:"status"`
+	ToolNames                []string           `json:"tool_names"`
+	Skills                  []exportedSkill    `json:"skills"`
+}
+
+type exportedSkill struct {
+	Name       string `json:"name"`
+	OrderIndex int    `json:"order_index"`
+}
+
+var safeFilenameRe = regexp.MustCompile(`[^a-z0-9_-]`)
+
+func (h *AgentsHandler) Export(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.WorkspaceIDFromCtx(r.Context())
+	agentID := chi.URLParam(r, "id")
+
+	a, err := h.agents.Get(r.Context(), agentID, wsID)
+	if err != nil {
+		errs.Write(w, errs.NotFound("agent not found"))
+		return
+	}
+
+	// Collect tool names
+	toolRows, err := h.pool.Query(r.Context(),
+		`SELECT t.name FROM agent_tools at JOIN tools t ON t.id=at.tool_id WHERE at.agent_id=$1::uuid ORDER BY t.name`,
+		agentID)
+	if err != nil {
+		errs.Write(w, errs.Internal("failed to read agent tools"))
+		return
+	}
+	defer toolRows.Close()
+	var toolNames []string
+	for toolRows.Next() {
+		var n string
+		if err := toolRows.Scan(&n); err != nil {
+			errs.Write(w, errs.Internal("failed to read agent tools"))
+			return
+		}
+		toolNames = append(toolNames, n)
+	}
+	toolRows.Close()
+
+	// Collect skills with names
+	skillRows, err := h.pool.Query(r.Context(),
+		`SELECT s.name, ags.order_index FROM agent_skills ags JOIN skills s ON s.id=ags.skill_id WHERE ags.agent_id=$1::uuid AND ags.enabled=true ORDER BY ags.order_index`,
+		agentID)
+	if err != nil {
+		errs.Write(w, errs.Internal("failed to read agent skills"))
+		return
+	}
+	defer skillRows.Close()
+	var skills []exportedSkill
+	for skillRows.Next() {
+		var es exportedSkill
+		if err := skillRows.Scan(&es.Name, &es.OrderIndex); err != nil {
+			errs.Write(w, errs.Internal("failed to read agent skills"))
+			return
+		}
+		skills = append(skills, es)
+	}
+	skillRows.Close()
+
+	exp := agentExport{
+		Version:                 "1",
+		Name:                    a.Name,
+		Description:             a.Description,
+		Instructions:            a.Instructions,
+		Provider:                a.Provider,
+		Model:                   a.Model,
+		Temperature:             a.Temperature,
+		MaxTokens:               a.MaxTokens,
+		MemoryEnabled:           a.MemoryEnabled,
+		MemoryScope:             a.MemoryScope,
+		MemorySaveMode:          a.MemorySaveMode,
+		MemoryReviewPolicy:      a.MemoryReviewPolicy,
+		MaxMemories:             a.MaxMemories,
+		MinRelevanceScore:       a.MinRelevanceScore,
+		MemoryMinImportance:     a.MemoryMinImportance,
+		MemoryDedupeThreshold:   a.MemoryDedupeThreshold,
+		ContextRetrievalEnabled: a.ContextRetrievalEnabled,
+		MaxSteps:                a.MaxSteps,
+		MaxToolCalls:            a.MaxToolCalls,
+		MaxDurationSecs:         a.MaxDurationSecs,
+		MaxHistoryMessages:       a.MaxHistoryMessages,
+		LazyToolLoading:          a.LazyToolLoading,
+		CompactionThreshold:      a.CompactionThreshold,
+		CompactionTokenThreshold: a.CompactionTokenThreshold,
+		Status:                   a.Status,
+		ToolNames:                toolNames,
+		Skills:                   skills,
+	}
+
+	slug := safeFilenameRe.ReplaceAllString(strings.ToLower(strings.ReplaceAll(a.Name, " ", "_")), "")
+	if slug == "" {
+		slug = "agent"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="agent_%s.json"`, slug))
+	if err := json.NewEncoder(w).Encode(exp); err != nil {
+		// headers already sent; nothing to do
+		return
+	}
+}
+
+func (h *AgentsHandler) Import(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.WorkspaceIDFromCtx(r.Context())
+	userID := middleware.UserIDFromCtx(r.Context())
+
+	var imp agentExport
+	if err := json.NewDecoder(r.Body).Decode(&imp); err != nil {
+		errs.Write(w, errs.BadRequest("invalid import file"))
+		return
+	}
+	if imp.Name == "" {
+		errs.Write(w, errs.BadRequest("agent name is required"))
+		return
+	}
+
+	// Default zero values
+	if imp.MaxSteps == 0 {
+		imp.MaxSteps = 10
+	}
+	if imp.MaxToolCalls == 0 {
+		imp.MaxToolCalls = 20
+	}
+	if imp.MaxDurationSecs == 0 {
+		imp.MaxDurationSecs = 300
+	}
+	if imp.MaxMemories == 0 {
+		imp.MaxMemories = 5
+	}
+	if imp.MinRelevanceScore == 0 {
+		imp.MinRelevanceScore = 0.70
+	}
+	if imp.MemoryMinImportance == 0 {
+		imp.MemoryMinImportance = 0.70
+	}
+	if imp.MemoryDedupeThreshold == 0 {
+		imp.MemoryDedupeThreshold = 0.88
+	}
+	if imp.MemoryScope == "" {
+		imp.MemoryScope = "conversation"
+	}
+	if imp.MemorySaveMode == "" {
+		imp.MemorySaveMode = "hybrid"
+	}
+	if imp.MemoryReviewPolicy == "" {
+		imp.MemoryReviewPolicy = "uncertain"
+	}
+	if imp.Status == "" {
+		imp.Status = "active"
+	}
+
+	a := &domain.Agent{
+		ID:                      uuid.New().String(),
+		WorkspaceID:             wsID,
+		Name:                    imp.Name,
+		Description:             imp.Description,
+		Instructions:            imp.Instructions,
+		Provider:                imp.Provider,
+		Model:                   imp.Model,
+		Temperature:             imp.Temperature,
+		MaxTokens:               imp.MaxTokens,
+		MemoryEnabled:           imp.MemoryEnabled,
+		MemoryScope:             imp.MemoryScope,
+		MemorySaveMode:          imp.MemorySaveMode,
+		MemoryReviewPolicy:      imp.MemoryReviewPolicy,
+		MaxMemories:             imp.MaxMemories,
+		MinRelevanceScore:       imp.MinRelevanceScore,
+		MemoryMinImportance:     imp.MemoryMinImportance,
+		MemoryDedupeThreshold:   imp.MemoryDedupeThreshold,
+		ContextRetrievalEnabled: imp.ContextRetrievalEnabled,
+		MaxSteps:                imp.MaxSteps,
+		MaxToolCalls:            imp.MaxToolCalls,
+		MaxDurationSecs:         imp.MaxDurationSecs,
+		MaxHistoryMessages:       imp.MaxHistoryMessages,
+		LazyToolLoading:          imp.LazyToolLoading,
+		CompactionThreshold:      imp.CompactionThreshold,
+		CompactionTokenThreshold: imp.CompactionTokenThreshold,
+		Status:                   imp.Status,
+		CreatedBy:                userID,
+	}
+	if err := h.agents.Create(r.Context(), a); err != nil {
+		errs.Write(w, errs.Internal("failed to create agent"))
+		return
+	}
+
+	// Attach tools by name (skip unknowns silently)
+	if len(imp.ToolNames) > 0 {
+		tx, err := h.pool.Begin(r.Context())
+		if err != nil {
+			errs.Write(w, errs.Internal("failed to attach tools"))
+			return
+		}
+		defer func() { _ = tx.Rollback(r.Context()) }()
+		for _, name := range imp.ToolNames {
+			if _, err := tx.Exec(r.Context(),
+				`INSERT INTO agent_tools(agent_id,tool_id,enabled) SELECT $1::uuid,id,true FROM tools WHERE name=$2 AND (workspace_id IS NULL OR workspace_id=$3::uuid) ON CONFLICT DO NOTHING`,
+				a.ID, name, wsID); err != nil {
+				errs.Write(w, errs.Internal("failed to attach tools"))
+				return
+			}
+		}
+		if err := tx.Commit(r.Context()); err != nil {
+			errs.Write(w, errs.Internal("failed to attach tools"))
+			return
+		}
+	}
+
+	// Attach skills by name (skip unknowns silently)
+	if len(imp.Skills) > 0 {
+		tx, err := h.pool.Begin(r.Context())
+		if err != nil {
+			errs.Write(w, errs.Internal("failed to attach skills"))
+			return
+		}
+		defer func() { _ = tx.Rollback(r.Context()) }()
+		for _, es := range imp.Skills {
+			if _, err := tx.Exec(r.Context(),
+				`INSERT INTO agent_skills(agent_id,skill_id,enabled,order_index) SELECT $1::uuid,id,true,$2 FROM skills WHERE name=$3 AND (workspace_id IS NULL OR workspace_id=$4::uuid) ON CONFLICT DO NOTHING`,
+				a.ID, es.OrderIndex, es.Name, wsID); err != nil {
+				errs.Write(w, errs.Internal("failed to attach skills"))
+				return
+			}
+		}
+		if err := tx.Commit(r.Context()); err != nil {
+			errs.Write(w, errs.Internal("failed to attach skills"))
+			return
+		}
+	}
+
+	writeAudit(r, h.pool, "agent.imported", "agent", a.ID)
+	errs.WriteJSON(w, http.StatusCreated, a)
 }

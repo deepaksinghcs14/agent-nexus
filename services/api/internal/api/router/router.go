@@ -100,9 +100,11 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			// Agents
 			r.Get("/agents", h.Agents.List)
 			r.Post("/agents", h.Agents.Create)
+			r.Post("/agents/import", h.Agents.Import)
 			r.Get("/agents/{id}", h.Agents.Get)
 			r.Put("/agents/{id}", h.Agents.Update)
 			r.Delete("/agents/{id}", h.Agents.Delete)
+			r.Get("/agents/{id}/export", h.Agents.Export)
 			r.Get("/agents/{id}/tools", h.Agents.ListTools)
 			r.Put("/agents/{id}/tools", h.Agents.SetTools)
 			r.Get("/agents/{id}/connectors", h.Agents.ListConnectors)

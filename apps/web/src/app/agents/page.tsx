@@ -1,9 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useRef, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, MessageSquare, Pencil, Trash2, Bot } from 'lucide-react'
+import { Plus, MessageSquare, Pencil, Trash2, Bot, Download, Upload } from 'lucide-react'
 import { agentsAPI } from '@/lib/api'
 import type { Agent } from '@/types'
 
@@ -23,6 +23,8 @@ const providerColors: Record<string, string> = {
 export default function AgentsPage() {
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [importError, setImportError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['agents'],
@@ -43,6 +45,45 @@ export default function AgentsPage() {
       queryClient.invalidateQueries({ queryKey: ['agents'] })
     },
   })
+
+  const importMutation = useMutation({
+    mutationFn: (body: unknown) => agentsAPI.importAgent(body),
+    onSuccess: () => {
+      setImportError('')
+      queryClient.invalidateQueries({ queryKey: ['agents'] })
+    },
+    onError: (err: Error) => setImportError(err.message),
+  })
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string)
+        importMutation.mutate(parsed)
+      } catch {
+        setImportError('Invalid JSON file')
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  function exportAgent(agent: Agent) {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+    const url = agentsAPI.exportUrl(agent.id)
+    fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => r.blob())
+      .then(blob => {
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = `agent_${agent.name.toLowerCase().replace(/\s+/g, '_')}.json`
+        a.click()
+        URL.revokeObjectURL(a.href)
+      })
+  }
 
   const agents = useMemo(() => data?.data ?? [], [data?.data])
   const visibleIds = useMemo(() => agents.map((agent) => agent.id), [agents])
@@ -85,12 +126,25 @@ export default function AgentsPage() {
           <h1 className="text-xl font-semibold text-gray-900">Agents</h1>
           <p className="text-sm text-gray-500 mt-0.5">{agents.length} agent{agents.length !== 1 ? 's' : ''}</p>
         </div>
-        <Link href="/agents/new">
-          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700">
-            <Plus size={15} /> New Agent
+        <div className="flex items-center gap-2">
+          <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
+          <button
+            onClick={() => { setImportError(''); fileInputRef.current?.click() }}
+            disabled={importMutation.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-60"
+          >
+            <Upload size={15} /> {importMutation.isPending ? 'Importing…' : 'Import'}
           </button>
-        </Link>
+          <Link href="/agents/new">
+            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700">
+              <Plus size={15} /> New Agent
+            </button>
+          </Link>
+        </div>
       </div>
+      {importError && (
+        <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{importError}</div>
+      )}
 
       {!isLoading && agents.length > 0 && (
         <div className="flex items-center justify-between mb-3 rounded-lg border border-gray-100 bg-white px-3 py-2">
@@ -173,6 +227,13 @@ export default function AgentsPage() {
                     <Pencil size={15} />
                   </button>
                 </Link>
+                <button
+                  onClick={() => exportAgent(agent)}
+                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                  title="Export"
+                >
+                  <Download size={15} />
+                </button>
                 <button
                   onClick={() => { if (confirm('Delete this agent?')) deleteMutation.mutate(agent.id) }}
                   className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"

@@ -138,18 +138,44 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		_ = h.createStep(r.Context(), id, domain.StepContextRetrieval, map[string]any{"connector_ids": connectorIDs}, map[string]any{"count": len(contextChunks), "chunks": contextChunks}, start, 0, "", errString(err))
 	}
 
-	historyRows, e := h.conversations.ListMessages(r.Context(), c.ID)
+	var convCompaction string
+	_ = h.pool.QueryRow(r.Context(),
+		`SELECT COALESCE(compaction, '') FROM conversations WHERE id=$1::uuid`,
+		c.ID).Scan(&convCompaction)
+
+	histLimit := 4
+	if convCompaction == "" {
+		histLimit = a.MaxHistoryMessages
+		if histLimit <= 0 {
+			histLimit = 20
+		}
+	}
+	historyRows, e := h.pool.Query(r.Context(),
+		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'')
+		 FROM messages WHERE conversation_id=$1::uuid
+		 ORDER BY created_at DESC LIMIT $2`,
+		c.ID, histLimit)
 	if e != nil {
 		sseErr("failed to load conversation history")
 		_ = h.failRun(r.Context(), id, e.Error())
 		return
 	}
-	history := make([]provider.Message, 0, len(historyRows))
-	for _, msg := range historyRows {
-		if msg.Role == "user" || msg.Role == "assistant" || msg.Role == "tool" {
-			history = append(history, provider.Message{Role: msg.Role, Content: msg.Content, ToolCallID: msg.ToolCallID, ToolName: msg.ToolName})
+	defer historyRows.Close()
+	history := make([]provider.Message, 0)
+	for historyRows.Next() {
+		var role, content, toolCallID, toolName string
+		if historyRows.Scan(&role, &content, &toolCallID, &toolName) == nil && (role == "user" || role == "assistant" || role == "tool") {
+			if len(content) > 800 {
+				content = content[:800] + "…[truncated]"
+			}
+			history = append(history, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
 		}
 	}
+	// Reverse: query returned newest-first, LLM needs oldest-first.
+	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
+		history[i], history[j] = history[j], history[i]
+	}
+
 	// Load tool definitions for this agent (before building prompt so we can inject hints)
 	toolDefs, dbTools, _ := loadAgentToolDefs(r.Context(), h.pool, a.ID)
 	toolDefs, dbTools = ensureMemoryToolDef(toolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
@@ -172,6 +198,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		MemoryEnabled:      a.MemoryEnabled,
 		MemorySaveMode:     a.MemorySaveMode,
 		HasCallAgent:       hasCallAgent,
+		ConvCompaction:     convCompaction,
 	})
 
 	capturedWs, capturedUID, capturedRunID := ws, uid, id
@@ -231,7 +258,8 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
 		}
 
-		stream, e := llm.Complete(r.Context(), provider.CompletionRequest{
+		modelStart := time.Now()
+		completion, e := completeWithEmptyRetry(r.Context(), llm, provider.CompletionRequest{
 			Model:               a.Model,
 			Messages:            messages,
 			Tools:               toolDefs,
@@ -239,42 +267,18 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			MaxTokens:           a.MaxTokens,
 			Stream:              true,
 			StableSystemContent: stableSystem,
-		})
+		}, func(delta string) {
+			emit(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
+		}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
 		if e != nil {
 			_ = h.failRun(r.Context(), id, e.Error())
 			sseErr(e.Error())
 			return
 		}
 
-		modelStart := time.Now()
-		reply := ""
-		usage := provider.Usage{}
-		var pendingCalls []provider.ToolCall
-
-		for event := range stream {
-			switch event.Type {
-			case provider.EventDelta:
-				reply += event.Delta
-				emit(fmt.Sprintf(`{"type":"delta","content":%q}`, event.Delta))
-			case provider.EventToolCall:
-				if event.ToolCall != nil {
-					pendingCalls = append(pendingCalls, *event.ToolCall)
-				}
-			case provider.EventDone:
-				if event.Usage != nil {
-					usage = *event.Usage
-				}
-			case provider.EventError:
-				msg := "model call failed"
-				if event.Error != nil {
-					msg = event.Error.Error()
-				}
-				_ = h.createStep(r.Context(), id, domain.StepError, map[string]any{"provider": a.Provider, "model": a.Model}, map[string]any{}, modelStart, 0, "", msg)
-				_ = h.failRun(r.Context(), id, msg)
-				sseErr(msg)
-				return
-			}
-		}
+		reply := completion.Reply
+		usage := completion.Usage
+		pendingCalls := completion.ToolCalls
 
 		totalInput += usage.InputTokens
 		totalOutput += usage.OutputTokens
@@ -307,6 +311,28 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 					count, err := runMemoryExtractor(context.Background(), h.pool, llmCopy, aCopy, ws, uid, c.ID, id, inputSnap, replySnap)
 					_ = h.createStep(context.Background(), id, domain.StepToolCall, map[string]any{"tool": "memory_extractor"}, map[string]any{"saved": count}, start, 0, "memory_extractor", errString(err))
 				}()
+			}
+			{
+				threshold := a.CompactionThreshold
+				if threshold <= 0 {
+					threshold = 6
+				}
+				tokenThreshold := a.CompactionTokenThreshold
+				if tokenThreshold <= 0 {
+					tokenThreshold = 3000
+				}
+				if convCompaction != "" || len(history) >= threshold || totalInput > tokenThreshold {
+					llmCopy, modelSnap, convSnap, compSnap := llm, a.Model, c.ID, convCompaction
+					go func() {
+						newCompaction, err := compactConversation(context.Background(), h.pool, llmCopy, modelSnap, convSnap, compSnap)
+						if err != nil || newCompaction == "" {
+							return
+						}
+						h.pool.Exec(context.Background(), //nolint:errcheck
+							`UPDATE conversations SET compaction=$2, updated_at=NOW() WHERE id=$1::uuid`,
+							convSnap, newCompaction)
+					}()
+				}
 			}
 			return
 		}

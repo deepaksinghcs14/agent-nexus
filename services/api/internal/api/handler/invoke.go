@@ -493,9 +493,17 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			start, 0, "", errString(err))
 	}
 
-	histLimit := a.MaxHistoryMessages
-	if histLimit <= 0 {
-		histLimit = 20
+	var convCompaction string
+	_ = h.pool.QueryRow(ctx,
+		`SELECT COALESCE(compaction, '') FROM conversations WHERE id=$1::uuid`,
+		convID).Scan(&convCompaction)
+
+	histLimit := 4
+	if convCompaction == "" {
+		histLimit = a.MaxHistoryMessages
+		if histLimit <= 0 {
+			histLimit = 20
+		}
 	}
 	historyRows, err := h.pool.Query(ctx,
 		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'')
@@ -512,6 +520,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	for historyRows.Next() {
 		var role, content, toolCallID, toolName string
 		if historyRows.Scan(&role, &content, &toolCallID, &toolName) == nil && (role == "user" || role == "assistant" || role == "tool") {
+			if len(content) > 800 {
+				content = content[:800] + "…[truncated]"
+			}
 			history = append(history, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
 		}
 	}
@@ -551,6 +562,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		MemorySaveMode:     a.MemorySaveMode,
 		HasCallAgent:       hasCallAgent,
 		HasCreateAgent:     hasCreateAgent,
+		ConvCompaction:     convCompaction,
 	})
 
 	// requestedTools grows when native_request_tool is called (lazy loading mode).
@@ -667,7 +679,8 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
 		}
 
-		stream, err := llm.Complete(ctx, provider.CompletionRequest{
+		modelStart := time.Now()
+		completion, err := completeWithEmptyRetry(ctx, llm, provider.CompletionRequest{
 			Model:               a.Model,
 			Messages:            messages,
 			Tools:               toolDefs,
@@ -675,44 +688,18 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			MaxTokens:           a.MaxTokens,
 			Stream:              true,
 			StableSystemContent: stableSystem,
-		})
+		}, func(delta string) {
+			sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
+		}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
 		if err != nil {
 			runErrMsg = err.Error()
 			sseErr(err.Error())
 			return
 		}
 
-		modelStart := time.Now()
-		reply := ""
-		usage := provider.Usage{}
-		var pendingCalls []provider.ToolCall
-
-		for event := range stream {
-			switch event.Type {
-			case provider.EventDelta:
-				reply += event.Delta
-				sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, event.Delta))
-			case provider.EventToolCall:
-				if event.ToolCall != nil {
-					pendingCalls = append(pendingCalls, *event.ToolCall)
-				}
-			case provider.EventDone:
-				if event.Usage != nil {
-					usage = *event.Usage
-				}
-			case provider.EventError:
-				msg := "model call failed"
-				if event.Error != nil {
-					msg = event.Error.Error()
-				}
-				h.runs.createStep(ctx, runID, domain.StepError, //nolint:errcheck
-					map[string]any{"provider": a.Provider, "model": a.Model},
-					map[string]any{}, modelStart, 0, "", msg)
-				runErrMsg = msg
-				sseErr(msg)
-				return
-			}
-		}
+		reply := completion.Reply
+		usage := completion.Usage
+		pendingCalls := completion.ToolCalls
 
 		totalInput += usage.InputTokens
 		totalOutput += usage.OutputTokens
@@ -754,6 +741,31 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 						map[string]any{"saved": count},
 						start, 0, "memory_extractor", errString(err))
 				}()
+			}
+			{
+				threshold := a.CompactionThreshold
+				if threshold <= 0 {
+					threshold = 6
+				}
+				tokenThreshold := a.CompactionTokenThreshold
+				if tokenThreshold <= 0 {
+					tokenThreshold = 3000
+				}
+				if convCompaction != "" || len(history) >= threshold || totalInput > tokenThreshold {
+					llmCopy, modelSnap, convSnap, compSnap := llm, a.Model, convID, convCompaction
+					go func() {
+						sseEmitOrNil(`{"type":"compacting","status":"start"}`)
+						newCompaction, err := compactConversation(context.Background(), h.pool, llmCopy, modelSnap, convSnap, compSnap)
+						if err != nil || newCompaction == "" {
+							sseEmitOrNil(`{"type":"compacting","status":"done"}`)
+							return
+						}
+						h.pool.Exec(context.Background(), //nolint:errcheck
+							`UPDATE conversations SET compaction=$2, updated_at=NOW() WHERE id=$1::uuid`,
+							convSnap, newCompaction)
+						sseEmitOrNil(`{"type":"compacting","status":"done"}`)
+					}()
+				}
 			}
 			return
 		}
@@ -1705,9 +1717,17 @@ func (h *InvokeHandler) executeSupervisorRun(
 			start, 0, "", errString(err))
 	}
 
-	supHistLimit := a.MaxHistoryMessages
-	if supHistLimit <= 0 {
-		supHistLimit = 20
+	var supConvCompaction string
+	_ = h.pool.QueryRow(ctx,
+		`SELECT COALESCE(compaction, '') FROM conversations WHERE id=$1::uuid`,
+		convID).Scan(&supConvCompaction)
+
+	supHistLimit := 4
+	if supConvCompaction == "" {
+		supHistLimit = a.MaxHistoryMessages
+		if supHistLimit <= 0 {
+			supHistLimit = 20
+		}
 	}
 	historyRows, err := h.pool.Query(ctx,
 		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'')
@@ -1724,6 +1744,9 @@ func (h *InvokeHandler) executeSupervisorRun(
 	for historyRows.Next() {
 		var role, content, toolCallID, toolName string
 		if historyRows.Scan(&role, &content, &toolCallID, &toolName) == nil && (role == "user" || role == "assistant" || role == "tool") {
+			if len(content) > 800 {
+				content = content[:800] + "…[truncated]"
+			}
 			history = append(history, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
 		}
 	}
@@ -1772,6 +1795,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 		MemorySaveMode:     a.MemorySaveMode,
 		HasCallAgent:       supHasCallAgent || len(delegateToolDefs) > 0,
 		HasCreateAgent:     supHasCreateAgent,
+		ConvCompaction:     supConvCompaction,
 	})
 	regularToolDefs, dbTools = ensureMemoryToolDef(regularToolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
 	toolDefs := append(regularToolDefs, delegateToolDefs...)
@@ -1842,7 +1866,8 @@ func (h *InvokeHandler) executeSupervisorRun(
 				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
 		}
 
-		stream, err := llm.Complete(ctx, provider.CompletionRequest{
+		modelStart := time.Now()
+		completion, err := completeWithEmptyRetry(ctx, llm, provider.CompletionRequest{
 			Model:               a.Model,
 			Messages:            messages,
 			Tools:               toolDefs,
@@ -1850,44 +1875,18 @@ func (h *InvokeHandler) executeSupervisorRun(
 			MaxTokens:           a.MaxTokens,
 			Stream:              true,
 			StableSystemContent: supStableSystem,
-		})
+		}, func(delta string) {
+			sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
+		}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
 		if err != nil {
 			runErrMsg = err.Error()
 			sseErr(err.Error())
 			return
 		}
 
-		modelStart := time.Now()
-		reply := ""
-		usage := provider.Usage{}
-		var pendingCalls []provider.ToolCall
-
-		for event := range stream {
-			switch event.Type {
-			case provider.EventDelta:
-				reply += event.Delta
-				sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, event.Delta))
-			case provider.EventToolCall:
-				if event.ToolCall != nil {
-					pendingCalls = append(pendingCalls, *event.ToolCall)
-				}
-			case provider.EventDone:
-				if event.Usage != nil {
-					usage = *event.Usage
-				}
-			case provider.EventError:
-				msg := "model call failed"
-				if event.Error != nil {
-					msg = event.Error.Error()
-				}
-				h.runs.createStep(ctx, runID, domain.StepError, //nolint:errcheck
-					map[string]any{"provider": a.Provider, "model": a.Model},
-					map[string]any{}, modelStart, 0, "", msg)
-				runErrMsg = msg
-				sseErr(msg)
-				return
-			}
-		}
+		reply := completion.Reply
+		usage := completion.Usage
+		pendingCalls := completion.ToolCalls
 
 		totalInput += usage.InputTokens
 		totalOutput += usage.OutputTokens
@@ -1927,6 +1926,31 @@ func (h *InvokeHandler) executeSupervisorRun(
 						map[string]any{"saved": count},
 						start, 0, "memory_extractor", errString(err))
 				}()
+			}
+			{
+				threshold := a.CompactionThreshold
+				if threshold <= 0 {
+					threshold = 6
+				}
+				tokenThreshold := a.CompactionTokenThreshold
+				if tokenThreshold <= 0 {
+					tokenThreshold = 3000
+				}
+				if supConvCompaction != "" || len(history) >= threshold || totalInput > tokenThreshold {
+					llmCopy, modelSnap, convSnap, compSnap := llm, a.Model, convID, supConvCompaction
+					go func() {
+						sseEmitOrNil(`{"type":"compacting","status":"start"}`)
+						newCompaction, err := compactConversation(context.Background(), h.pool, llmCopy, modelSnap, convSnap, compSnap)
+						if err != nil || newCompaction == "" {
+							sseEmitOrNil(`{"type":"compacting","status":"done"}`)
+							return
+						}
+						h.pool.Exec(context.Background(), //nolint:errcheck
+							`UPDATE conversations SET compaction=$2, updated_at=NOW() WHERE id=$1::uuid`,
+							convSnap, newCompaction)
+						sseEmitOrNil(`{"type":"compacting","status":"done"}`)
+					}()
+				}
 			}
 			return
 		}

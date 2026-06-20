@@ -71,6 +71,9 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 			}
 		}
 	}
+	if req.ConvCompaction != "" {
+		dynamic += "\n\nEarlier conversation (compacted):\n" + req.ConvCompaction
+	}
 
 	system := stable
 	if dynamic != "" {
@@ -106,4 +109,7 @@ type BuildRequest struct {
 	// HasCreateAgent, when true alongside HasCallAgent, injects a delegation pattern reminder
 	// that create_agent does not run the agent — call_agent must follow immediately.
 	HasCreateAgent bool
+	// ConvCompaction is a rolling LLM-generated summary of older conversation turns.
+	// Injected into the dynamic section so it doesn't break Anthropic prompt-cache on the stable prefix.
+	ConvCompaction string
 }

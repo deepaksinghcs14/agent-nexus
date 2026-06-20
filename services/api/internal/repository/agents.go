@@ -24,8 +24,8 @@ func (r *AgentRepository) List(ctx context.Context, workspaceID string) ([]domai
 		        temperature, max_tokens, memory_enabled, memory_scope, memory_save_mode, memory_review_policy,
 		        max_memories, min_relevance_score, memory_min_importance, memory_dedupe_threshold,
 		        context_retrieval_enabled, max_steps, max_tool_calls, max_duration_secs,
-		        max_history_messages, lazy_tool_loading, status, created_by::text,
-		        created_at, updated_at
+		        max_history_messages, lazy_tool_loading, compaction_threshold, compaction_token_threshold,
+		        status, created_by::text, created_at, updated_at
 		 FROM agents
 		 WHERE workspace_id = $1::uuid AND status != 'archived'
 		 ORDER BY created_at DESC`, workspaceID)
@@ -45,6 +45,7 @@ func (r *AgentRepository) List(ctx context.Context, workspaceID string) ([]domai
 			&a.ContextRetrievalEnabled,
 			&a.MaxSteps, &a.MaxToolCalls, &a.MaxDurationSecs,
 			&a.MaxHistoryMessages, &a.LazyToolLoading,
+			&a.CompactionThreshold, &a.CompactionTokenThreshold,
 			&a.Status, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -65,8 +66,9 @@ func (r *AgentRepository) Create(ctx context.Context, a *domain.Agent) error {
 		                     max_memories, min_relevance_score, memory_min_importance, memory_dedupe_threshold,
 		                     context_retrieval_enabled, max_steps, max_tool_calls,
 		                     max_duration_secs, max_history_messages, lazy_tool_loading,
+		                     compaction_threshold, compaction_token_threshold,
 		                     status, created_by, created_at, updated_at)
-		 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25::uuid, NOW(), NOW())`,
+		 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27::uuid, NOW(), NOW())`,
 		a.ID, a.WorkspaceID, a.Name, a.Description, a.Instructions,
 		a.Provider, a.Model, a.Temperature, a.MaxTokens,
 		a.MemoryEnabled, a.MemoryScope, a.MemorySaveMode, a.MemoryReviewPolicy,
@@ -74,6 +76,7 @@ func (r *AgentRepository) Create(ctx context.Context, a *domain.Agent) error {
 		a.ContextRetrievalEnabled,
 		a.MaxSteps, a.MaxToolCalls, a.MaxDurationSecs,
 		a.MaxHistoryMessages, a.LazyToolLoading,
+		a.CompactionThreshold, a.CompactionTokenThreshold,
 		a.Status, a.CreatedBy)
 	return err
 }
@@ -85,8 +88,8 @@ func (r *AgentRepository) Get(ctx context.Context, id, workspaceID string) (*dom
 		        temperature, max_tokens, memory_enabled, memory_scope, memory_save_mode, memory_review_policy,
 		        max_memories, min_relevance_score, memory_min_importance, memory_dedupe_threshold,
 		        context_retrieval_enabled, max_steps, max_tool_calls, max_duration_secs,
-		        max_history_messages, lazy_tool_loading, status, created_by::text,
-		        created_at, updated_at
+		        max_history_messages, lazy_tool_loading, compaction_threshold, compaction_token_threshold,
+		        status, created_by::text, created_at, updated_at
 		 FROM agents WHERE id = $1::uuid AND workspace_id = $2::uuid`, id, workspaceID).
 		Scan(&a.ID, &a.WorkspaceID, &a.Name, &a.Description, &a.Instructions,
 			&a.Provider, &a.Model, &a.Temperature, &a.MaxTokens,
@@ -95,6 +98,7 @@ func (r *AgentRepository) Get(ctx context.Context, id, workspaceID string) (*dom
 			&a.ContextRetrievalEnabled,
 			&a.MaxSteps, &a.MaxToolCalls, &a.MaxDurationSecs,
 			&a.MaxHistoryMessages, &a.LazyToolLoading,
+			&a.CompactionThreshold, &a.CompactionTokenThreshold,
 			&a.Status, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("agent not found")
@@ -112,7 +116,8 @@ func (r *AgentRepository) Update(ctx context.Context, a *domain.Agent) error {
 		                   memory_min_importance=$16, memory_dedupe_threshold=$17,
 		                   context_retrieval_enabled=$18, max_steps=$19, max_tool_calls=$20,
 		                   max_duration_secs=$21, max_history_messages=$22, lazy_tool_loading=$23,
-		                   status=$24, updated_at=NOW()
+		                   compaction_threshold=$24, compaction_token_threshold=$25,
+		                   status=$26, updated_at=NOW()
 		 WHERE id=$1::uuid AND workspace_id=$2::uuid`,
 		a.ID, a.WorkspaceID, a.Name, a.Description, a.Instructions,
 		a.Provider, a.Model, a.Temperature, a.MaxTokens,
@@ -120,7 +125,8 @@ func (r *AgentRepository) Update(ctx context.Context, a *domain.Agent) error {
 		a.MaxMemories, a.MinRelevanceScore, a.MemoryMinImportance, a.MemoryDedupeThreshold,
 		a.ContextRetrievalEnabled,
 		a.MaxSteps, a.MaxToolCalls, a.MaxDurationSecs,
-		a.MaxHistoryMessages, a.LazyToolLoading, a.Status)
+		a.MaxHistoryMessages, a.LazyToolLoading,
+		a.CompactionThreshold, a.CompactionTokenThreshold, a.Status)
 	return err
 }
 
