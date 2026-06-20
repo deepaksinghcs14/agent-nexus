@@ -319,7 +319,7 @@ func (t *whatsAppCreateReminderTool) Definition() domain.Tool {
 	return waTool("whatsapp_create_reminder", "Create a WhatsApp reminder or follow-up task.", map[string]any{
 		"title":      map[string]any{"type": "string", "description": "Short label for the reminder (e.g. 'Drink water'). If omitted, derived from message."},
 		"message":    map[string]any{"type": "string", "description": "The reminder message text to display when due."},
-		"due_at":     map[string]any{"type": "string", "description": "RFC3339 timestamp (e.g. 2026-06-18T15:00:00Z). Use the current year."},
+		"remind_at":  map[string]any{"type": "string", "description": "When to fire the reminder. RFC3339 or natural datetime (e.g. 2026-06-18T15:00:00Z or '2026-06-20 16:47:00 UTC'). Use the current year."},
 		"contact_id": map[string]any{"type": "string", "description": "Contact UUID from whatsapp_search_contacts, or the contact's name/alias — the tool will resolve it."},
 		"channel_id": map[string]any{"type": "string"},
 	}, []string{}, "medium")
@@ -335,10 +335,14 @@ func (t *whatsAppCreateReminderTool) ExecuteWithContext(ctx context.Context, exe
 		return nil, err
 	}
 	var due *time.Time
-	if raw := str(input["due_at"]); raw != "" {
+	raw := str(input["remind_at"])
+	if raw == "" {
+		raw = str(input["due_at"]) // legacy alias
+	}
+	if raw != "" {
 		parsed, err := parseFlexibleTime(raw)
 		if err != nil {
-			return nil, fmt.Errorf("due_at must be a date/time (e.g. 2026-06-18T15:00:00Z)")
+			return nil, fmt.Errorf("remind_at must be a date/time (e.g. 2026-06-18T15:00:00Z)")
 		}
 		due = &parsed
 	}
@@ -694,11 +698,18 @@ func parseFlexibleTime(s string) (time.Time, error) {
 		"2006-01-02 15:04:05",
 		"2006-01-02T15:04",
 		"2006-01-02 15:04",
+		"2006-01-02 15:04:05 UTC",
+		"2006-01-02 15:04 UTC",
+		"2006-01-02T15:04:05 UTC",
 	}
 	for _, f := range formats {
 		if t, err := time.Parse(f, s); err == nil {
 			return t.UTC(), nil
 		}
+	}
+	// Strip a trailing " UTC" suffix and retry as bare datetime.
+	if after, ok := strings.CutSuffix(strings.TrimSpace(s), " UTC"); ok {
+		return parseFlexibleTime(after)
 	}
 	return time.Time{}, fmt.Errorf("unrecognised time format: %q", s)
 }
