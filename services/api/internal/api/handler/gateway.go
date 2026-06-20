@@ -991,17 +991,25 @@ func (h *GatewayHandler) deliverWhenComplete(ctx context.Context, c domain.Gatew
 		select {
 		case <-deadline:
 			_ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"reason": "timeout"})
+			h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, "Sorry, the request timed out. Please try again.", sessionID, runID)
 			return
 		case <-t.C:
-			var output, status string
-			if err := h.pool.QueryRow(ctx, `SELECT output, status FROM runs WHERE id=$1::uuid`, runID).Scan(&output, &status); err != nil {
+			var output, status, errMsg string
+			if err := h.pool.QueryRow(ctx, `SELECT output, status, error_message FROM runs WHERE id=$1::uuid`, runID).Scan(&output, &status, &errMsg); err != nil {
 				continue
 			}
 			if status == "running" || status == "pending" || status == "approval_wait" || status == "user_input_wait" {
 				continue
 			}
 			if status != "success" {
-				_ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"run_status": status})
+				_ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"run_status": status, "error": errMsg})
+				// Send a user-facing error reply. If the agent produced partial output before
+				// failing, use that; otherwise fall back to a generic message.
+				reply := strings.TrimSpace(output)
+				if reply == "" {
+					reply = "Sorry, I ran into an error and couldn't complete your request. Please try again."
+				}
+				h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, reply, sessionID, runID)
 				return
 			}
 			h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, output, sessionID, runID)
