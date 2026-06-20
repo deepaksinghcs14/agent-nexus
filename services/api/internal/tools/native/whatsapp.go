@@ -193,9 +193,9 @@ type whatsAppSearchContactsTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppSearchContactsTool) Definition() domain.Tool {
 	return waTool("whatsapp_search_contacts", "Search WhatsApp gateway contacts by name, alias, phone number, or JID.", map[string]any{
-		"query":      map[string]any{"type": "string"},
-		"channel_id": map[string]any{"type": "string"},
-		"limit":      map[string]any{"type": "integer"},
+		"query":      map[string]any{"type": "string", "description": "Search string — matches contact name, alias, or phone number."},
+		"channel_id": map[string]any{"type": "string", "description": "WhatsApp channel UUID. Auto-resolved from session when omitted."},
+		"limit":      map[string]any{"type": "integer", "description": "Max results to return. Default 10."},
 	}, []string{"query"}, "low")
 }
 
@@ -218,13 +218,13 @@ func (t *whatsAppSearchContactsTool) ExecuteWithContext(ctx context.Context, exe
 type whatsAppSendMessageTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppSendMessageTool) Definition() domain.Tool {
-	return waTool("whatsapp_send_message", "Send a WhatsApp message to a saved contact, name, JID, or raw phone number.", map[string]any{
-		"message":      map[string]any{"type": "string"},
-		"to":           map[string]any{"type": "string"},
-		"contact_id":   map[string]any{"type": "string"},
-		"phone_number": map[string]any{"type": "string"},
-		"whatsapp_jid": map[string]any{"type": "string"},
-		"channel_id":   map[string]any{"type": "string"},
+	return waTool("whatsapp_send_message", "Send a WhatsApp message to a contact. Provide exactly one of: contact_id (preferred), to (name/alias/phone), phone_number, or whatsapp_jid.", map[string]any{
+		"message":      map[string]any{"type": "string", "description": "Text content of the message to send."},
+		"to":           map[string]any{"type": "string", "description": "Contact name, alias, phone number, or WhatsApp JID. Use when you don't have a contact_id. If multiple contacts match, the tool returns candidates for clarification."},
+		"contact_id":   map[string]any{"type": "string", "description": "Contact UUID from whatsapp_search_contacts. Preferred over 'to' when you have the ID."},
+		"phone_number": map[string]any{"type": "string", "description": "Raw phone number with country code (e.g. +14155552671). Use only when no contact exists."},
+		"whatsapp_jid": map[string]any{"type": "string", "description": "Raw WhatsApp JID (e.g. 14155552671@s.whatsapp.net). Use only when you have the exact JID."},
+		"channel_id":   map[string]any{"type": "string", "description": "WhatsApp channel UUID. Auto-resolved from session when omitted."},
 	}, []string{"message"}, "high")
 }
 
@@ -263,7 +263,7 @@ type whatsAppCurrentContextTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppCurrentContextTool) Definition() domain.Tool {
 	return waTool("whatsapp_get_current_context", "Get the current WhatsApp gateway channel, session, peer, and contact trust context.", map[string]any{
-		"channel_id": map[string]any{"type": "string"},
+		"channel_id": map[string]any{"type": "string", "description": "WhatsApp channel UUID. Auto-resolved from session when omitted."},
 	}, nil, "low")
 }
 
@@ -283,7 +283,7 @@ type whatsAppRecentMessagesTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppRecentMessagesTool) Definition() domain.Tool {
 	return waTool("whatsapp_list_recent_messages", "List recent messages in the current WhatsApp conversation.", map[string]any{
-		"limit": map[string]any{"type": "integer"},
+		"limit": map[string]any{"type": "integer", "description": "Number of messages to return (max 50, default 20)."},
 	}, nil, "low")
 }
 
@@ -385,9 +385,9 @@ type whatsAppListRemindersTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppListRemindersTool) Definition() domain.Tool {
 	return waTool("whatsapp_list_reminders", "List WhatsApp reminders and follow-ups.", map[string]any{
-		"status":     map[string]any{"type": "string"},
-		"channel_id": map[string]any{"type": "string"},
-		"limit":      map[string]any{"type": "integer"},
+		"status":     map[string]any{"type": "string", "enum": []string{"pending", "completed", "cancelled"}, "description": "Filter by status. Omit to return all."},
+		"channel_id": map[string]any{"type": "string", "description": "WhatsApp channel UUID. Auto-resolved from session when omitted."},
+		"limit":      map[string]any{"type": "integer", "description": "Max results (default 50)."},
 	}, nil, "low")
 }
 
@@ -411,8 +411,8 @@ type whatsAppCompleteReminderTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppCompleteReminderTool) Definition() domain.Tool {
 	return waTool("whatsapp_complete_reminder", "Mark a WhatsApp reminder completed or cancelled.", map[string]any{
-		"reminder_id": map[string]any{"type": "string"},
-		"status":      map[string]any{"type": "string", "enum": []string{"completed", "cancelled"}},
+		"reminder_id": map[string]any{"type": "string", "description": "UUID of the reminder from whatsapp_list_reminders."},
+		"status":      map[string]any{"type": "string", "enum": []string{"completed", "cancelled"}, "description": "New status. Defaults to 'completed'."},
 	}, []string{"reminder_id"}, "low")
 }
 
@@ -436,7 +436,7 @@ type whatsAppSummarizeLinkTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppSummarizeLinkTool) Definition() domain.Tool {
 	return waTool("whatsapp_summarize_link", "Fetch a URL shared in WhatsApp and return a concise text extract for summarization.", map[string]any{
-		"url": map[string]any{"type": "string"},
+		"url": map[string]any{"type": "string", "description": "Full URL to fetch (must start with http:// or https://)."},
 	}, []string{"url"}, "medium")
 }
 
@@ -465,12 +465,12 @@ func (t *whatsAppSummarizeLinkTool) fetch(input map[string]any) (any, error) {
 type whatsAppOwnerApprovalTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppOwnerApprovalTool) Definition() domain.Tool {
-	return waTool("whatsapp_request_owner_approval", "Create an owner escalation for a risky or ambiguous WhatsApp action.", map[string]any{
-		"action_type": map[string]any{"type": "string"},
-		"recipient":   map[string]any{"type": "string"},
-		"message":     map[string]any{"type": "string"},
-		"reason":      map[string]any{"type": "string"},
-		"channel_id":  map[string]any{"type": "string"},
+	return waTool("whatsapp_request_owner_approval", "Create an owner escalation for a risky or ambiguous WhatsApp action. The owner will receive a message with an approval code they must reply with.", map[string]any{
+		"action_type": map[string]any{"type": "string", "description": "Short label for what action needs approval (e.g. 'send_bulk_message', 'delete_contact', 'external_api_call')."},
+		"recipient":   map[string]any{"type": "string", "description": "Who the action targets, if applicable (contact name or phone number)."},
+		"message":     map[string]any{"type": "string", "description": "The message or content that would be sent/executed if approved."},
+		"reason":      map[string]any{"type": "string", "description": "Why approval is needed — explain the risk or ambiguity."},
+		"channel_id":  map[string]any{"type": "string", "description": "WhatsApp channel UUID. Auto-resolved from session when omitted."},
 	}, []string{"action_type", "reason"}, "medium")
 }
 
@@ -512,9 +512,7 @@ func (t *whatsAppOwnerApprovalTool) ExecuteWithContext(ctx context.Context, exec
 type whatsAppMediaStatusTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppMediaStatusTool) Definition() domain.Tool {
-	return waTool("whatsapp_send_media_status", "Return the current WhatsApp media support status.", map[string]any{
-		"media_type": map[string]any{"type": "string"},
-	}, nil, "low")
+	return waTool("whatsapp_send_media_status", "Return the current WhatsApp media support status.", map[string]any{}, nil, "low")
 }
 
 func (t *whatsAppMediaStatusTool) Execute(input map[string]any) (any, error) {
@@ -612,12 +610,12 @@ func (t *whatsAppScheduleMessageTool) Definition() domain.Tool {
 		"message":                  map[string]any{"type": "string", "description": "Text to send."},
 		"to":                       map[string]any{"type": "string", "description": "Contact name, alias, phone, or JID."},
 		"contact_id":               map[string]any{"type": "string", "description": "Contact UUID from whatsapp_search_contacts."},
-		"send_at":                  map[string]any{"type": "string", "description": "RFC3339 timestamp when to send (use the current year)."},
-		"recurrence_frequency":     map[string]any{"type": "string", "enum": []string{"daily", "weekly", "monthly", "weekdays"}, "description": "Omit for one-time."},
-		"recurrence_interval":      map[string]any{"type": "integer", "description": "Repeat every N periods, default 1."},
-		"recurrence_end_at":        map[string]any{"type": "string", "description": "RFC3339 date after which to stop."},
-		"recurrence_max_occurrences": map[string]any{"type": "integer", "description": "Max number of times to send."},
-		"channel_id":               map[string]any{"type": "string"},
+		"send_at":                  map[string]any{"type": "string", "description": "When to send. Accepts RFC3339 or 'YYYY-MM-DD HH:MM:SS UTC' (e.g. '2026-06-20 16:47:00 UTC'). Use the current year."},
+		"recurrence_frequency":     map[string]any{"type": "string", "enum": []string{"daily", "weekly", "monthly", "weekdays"}, "description": "Repeat pattern. 'daily'=every day, 'weekdays'=Mon-Fri, 'weekly'=once a week, 'monthly'=once a month. Omit for one-time."},
+		"recurrence_interval":      map[string]any{"type": "integer", "description": "Repeat every N frequency-units (e.g. 2 + daily = every 2 days). Default 1."},
+		"recurrence_end_at":        map[string]any{"type": "string", "description": "Stop recurring after this date (same format as send_at)."},
+		"recurrence_max_occurrences": map[string]any{"type": "integer", "description": "Stop after this many sends."},
+		"channel_id":               map[string]any{"type": "string", "description": "WhatsApp channel UUID. Auto-resolved from session when omitted."},
 	}, []string{"message", "send_at"}, "medium")
 }
 
@@ -636,7 +634,10 @@ func (t *whatsAppScheduleMessageTool) ExecuteWithContext(ctx context.Context, ex
 	}
 	rawSendAt := str(input["send_at"])
 	if rawSendAt == "" {
-		return nil, fmt.Errorf("send_at is required")
+		rawSendAt = str(input["schedule_at"]) // common model alias
+	}
+	if rawSendAt == "" {
+		return nil, fmt.Errorf("send_at is required (e.g. '2026-06-20 16:47:00 UTC')")
 	}
 	sendAt, err := parseFlexibleTime(rawSendAt)
 	if err != nil {

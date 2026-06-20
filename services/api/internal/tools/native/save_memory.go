@@ -30,7 +30,9 @@ func (t *SaveMemoryTool) Definition() domain.Tool {
 			},
 			"importance_score": map[string]any{
 				"type":        "number",
-				"description": "0 to 1 score for long-term usefulness.",
+				"minimum":     0,
+				"maximum":     1,
+				"description": "0.0–1.0 score for long-term usefulness (e.g. 0.9 for a strong preference, 0.3 for a minor detail).",
 			},
 			"reason": map[string]any{
 				"type":        "string",
