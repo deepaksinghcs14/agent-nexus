@@ -73,7 +73,7 @@ func (t *CallAgentTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"agent_id": map[string]any{"type": "string", "description": "UUID of the agent to invoke."},
+			"agent_id": map[string]any{"type": "string", "description": "UUID of the agent to invoke. Use native_list_agents to look up agent IDs — names are not accepted here."},
 			"task":     map[string]any{"type": "string", "description": "The task or question to send to the agent."},
 		},
 		"required": []string{"agent_id", "task"},
