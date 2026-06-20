@@ -215,18 +215,86 @@ type invokeOpts struct {
 // Returns "" for tools that send their own messages (e.g. native_send_message).
 func progressLabel(toolName string) string {
 	switch toolName {
-	case "native_send_message":
-		return "" // tool sends its own message; skip the automated prefix
-	case "call_agent":
+	// Tools that send their own message — suppress automated prefix.
+	case "native_send_message", "native_ask_user":
+		return ""
+
+	// Agent & workflow delegation
+	case "native_call_agent", "call_agent":
 		return "Calling a sub-agent…"
-	case "run_workflow":
+	case "native_run_workflow", "run_workflow":
 		return "Running a workflow…"
-	case "web_search":
+	case "native_create_agent":
+		return "Spinning up agents…"
+	case "native_delete_agent":
+		return "Cleaning up…"
+	case "native_update_agent":
+		return "Updating agent…"
+	case "native_list_agents":
+		return "Looking up agents…"
+
+	// Web & HTTP
+	case "native_web_search", "web_search":
 		return "Searching the web…"
-	case "read_file", "write_file", "list_files":
-		return "Accessing files…"
+	case "native_http_request", "http_request":
+		return "Fetching data…"
+
+	// Files
+	case "native_read_file", "read_file":
+		return "Reading file…"
+	case "native_write_file", "write_file":
+		return "Writing file…"
+
+	// Memory
+	case "native_save_memory":
+		return "Saving to memory…"
+
+	// Skills & tools management
+	case "native_create_skill", "native_update_skill", "native_delete_skill",
+		"native_attach_skill", "native_detach_skill", "native_list_skills":
+		return "Managing skills…"
+	case "native_create_http_tool", "native_create_code_tool", "native_delete_tool",
+		"native_attach_tool", "native_detach_tool", "native_list_tools",
+		"native_list_http_tools", "native_list_workspace_tools", "native_request_tool":
+		return "Managing tools…"
+
+	// Workflow management
+	case "native_create_workflow", "native_delete_workflow",
+		"native_save_workflow_graph", "native_list_workflows":
+		return "Managing workflows…"
+
+	// WhatsApp
+	case "whatsapp_send_message":
+		return "Sending message…"
+	case "whatsapp_create_reminder":
+		return "Setting a reminder…"
+	case "whatsapp_complete_reminder":
+		return "Completing reminder…"
+	case "whatsapp_list_reminders":
+		return "Checking reminders…"
+	case "whatsapp_schedule_message":
+		return "Scheduling a message…"
+	case "whatsapp_search_contacts":
+		return "Looking up contacts…"
+	case "whatsapp_list_recent_messages":
+		return "Reading recent messages…"
+	case "whatsapp_get_current_context":
+		return "Checking context…"
+	case "whatsapp_request_owner_approval":
+		return "Requesting approval…"
+	case "whatsapp_send_media_status":
+		return "Updating status…"
+	case "whatsapp_summarize_link":
+		return "Summarizing link…"
+
+	// MCP tools — strip the mcp_ prefix and humanise
 	default:
-		return "Working: " + toolName + "…"
+		if strings.HasPrefix(toolName, "mcp_") {
+			label := strings.ReplaceAll(strings.TrimPrefix(toolName, "mcp_"), "_", " ")
+			return "Working: " + label + "…"
+		}
+		// Code tools and anything else
+		return "Working on it…"
 	}
 }
 
