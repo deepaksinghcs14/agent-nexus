@@ -137,7 +137,7 @@ func (t *CreateAgentTool) Definition() domain.Tool {
 	})
 	return domain.Tool{
 		Name:             "native_create_agent",
-		Description:      "Create a new agent in the workspace. Agents are temporary by default and auto-delete when this run ends unless ephemeral=false is explicitly provided. Use native_call_agent to invoke it.",
+		Description:      "Create a new agent. IMPORTANT: creating an agent does NOT run it — you MUST immediately call native_call_agent with the returned agent_id. Agents never execute autonomously. Typical delegation pattern: (1) call native_create_agent for each sub-task in a single parallel batch, then (2) call native_call_agent for each returned agent_id in a second parallel batch. Agents are ephemeral by default and auto-delete when this run ends.",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),

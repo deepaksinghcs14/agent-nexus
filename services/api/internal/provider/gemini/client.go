@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -98,9 +99,11 @@ func streamGemini(ctx context.Context, body io.Reader, events chan<- provider.Co
 
 		var chunk struct {
 			Candidates []struct {
-				Content struct {
+				FinishReason string `json:"finishReason"`
+				Content      struct {
 					Parts []struct {
 						Text         string `json:"text"`
+						Thought      bool   `json:"thought"`
 						FunctionCall *struct {
 							Name string          `json:"name"`
 							Args json.RawMessage `json:"args"`
@@ -125,7 +128,21 @@ func streamGemini(ctx context.Context, body io.Reader, events chan<- provider.Co
 			return
 		}
 		if len(chunk.Candidates) > 0 {
-			for _, part := range chunk.Candidates[0].Content.Parts {
+			cand := chunk.Candidates[0]
+			if cand.FinishReason != "" && cand.FinishReason != "STOP" && cand.FinishReason != "MAX_TOKENS" {
+				slog.Warn("gemini non-normal finish", "reason", cand.FinishReason)
+			}
+			switch cand.FinishReason {
+			case "SAFETY", "RECITATION", "PROHIBITED_CONTENT", "SPII":
+				events <- provider.CompletionEvent{Type: provider.EventError, Error: fmt.Errorf("gemini: response blocked (%s)", cand.FinishReason)}
+				return
+			}
+			slog.Debug("gemini chunk", "finish_reason", cand.FinishReason, "parts", len(cand.Content.Parts))
+			for _, part := range cand.Content.Parts {
+				// Skip internal thinking/reasoning parts — only emit actual response content.
+				if part.Thought {
+					continue
+				}
 				if part.Text != "" {
 					events <- provider.CompletionEvent{Type: provider.EventDelta, Delta: part.Text}
 				}
@@ -153,6 +170,12 @@ func streamGemini(ctx context.Context, body io.Reader, events chan<- provider.Co
 			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		slog.Error("gemini stream scanner error", "err", err)
+		events <- provider.CompletionEvent{Type: provider.EventError, Error: fmt.Errorf("gemini: stream error: %w", err)}
+		return
+	}
+	slog.Debug("gemini stream done", "input_tokens", usage.InputTokens, "output_tokens", usage.OutputTokens)
 	events <- provider.CompletionEvent{Type: provider.EventDone, Usage: &usage}
 }
 

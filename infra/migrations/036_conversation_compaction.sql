@@ -1,0 +1,6 @@
+ALTER TABLE conversations
+  ADD COLUMN IF NOT EXISTS compaction TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE agents
+  ADD COLUMN IF NOT EXISTS compaction_threshold INT NOT NULL DEFAULT 6,
+  ADD COLUMN IF NOT EXISTS compaction_token_threshold INT NOT NULL DEFAULT 3000;

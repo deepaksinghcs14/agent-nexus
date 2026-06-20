@@ -162,6 +162,13 @@ func (h *GatewayHandler) UpdateChannel(w http.ResponseWriter, r *http.Request) {
 func (h *GatewayHandler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	id := chi.URLParam(r, "id")
+	// For WhatsApp channels: log out the adapter before deleting so credentials
+	// are wiped from the DB and the socket is closed cleanly.
+	if ch, err := h.repo.GetChannelInWorkspace(r.Context(), id, ws); err == nil && ch.ChannelType == "whatsapp" {
+		cfg := h.parseGatewayConfig(ch.Config, ch.ChannelType)
+		// Best-effort — ignore errors; channel deletion proceeds regardless.
+		adapterPost(r.Context(), cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/logout", nil) //nolint:errcheck
+	}
 	if err := h.repo.DeleteChannel(r.Context(), id, ws); err != nil {
 		errs.Write(w, errs.Internal("failed to delete gateway channel"))
 		return
@@ -946,8 +953,6 @@ func (h *GatewayHandler) dispatchGatewayRun(ctx context.Context, c domain.Gatewa
 			peerID   = msg.PeerID
 			sessID   = sessionID
 		)
-		// Send an immediate acknowledgement before the run starts.
-		h.sendAdapterMessage(ctx, ch, chCfg, chCfg.AccountID, peerKind, peerID, "⏳ On it…", sessID, runID)
 		sendMsg = func(ctx context.Context, text string) error {
 			mu.Lock()
 			if time.Since(lastSent) < 3*time.Second {
@@ -986,17 +991,25 @@ func (h *GatewayHandler) deliverWhenComplete(ctx context.Context, c domain.Gatew
 		select {
 		case <-deadline:
 			_ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"reason": "timeout"})
+			h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, "Sorry, the request timed out. Please try again.", sessionID, runID)
 			return
 		case <-t.C:
-			var output, status string
-			if err := h.pool.QueryRow(ctx, `SELECT output, status FROM runs WHERE id=$1::uuid`, runID).Scan(&output, &status); err != nil {
+			var output, status, errMsg string
+			if err := h.pool.QueryRow(ctx, `SELECT output, status, error_message FROM runs WHERE id=$1::uuid`, runID).Scan(&output, &status, &errMsg); err != nil {
 				continue
 			}
 			if status == "running" || status == "pending" || status == "approval_wait" || status == "user_input_wait" {
 				continue
 			}
 			if status != "success" {
-				_ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"run_status": status})
+				_ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"run_status": status, "error": errMsg})
+				// Send a user-facing error reply. If the agent produced partial output before
+				// failing, use that; otherwise fall back to a generic message.
+				reply := strings.TrimSpace(output)
+				if reply == "" {
+					reply = "Sorry, I ran into an error and couldn't complete your request. Please try again."
+				}
+				h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, reply, sessionID, runID)
 				return
 			}
 			h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, output, sessionID, runID)

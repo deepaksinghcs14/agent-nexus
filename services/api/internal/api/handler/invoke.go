@@ -215,18 +215,86 @@ type invokeOpts struct {
 // Returns "" for tools that send their own messages (e.g. native_send_message).
 func progressLabel(toolName string) string {
 	switch toolName {
-	case "native_send_message":
-		return "" // tool sends its own message; skip the automated prefix
-	case "call_agent":
+	// Tools that send their own message — suppress automated prefix.
+	case "native_send_message", "native_ask_user":
+		return ""
+
+	// Agent & workflow delegation
+	case "native_call_agent", "call_agent":
 		return "Calling a sub-agent…"
-	case "run_workflow":
+	case "native_run_workflow", "run_workflow":
 		return "Running a workflow…"
-	case "web_search":
+	case "native_create_agent":
+		return "Spinning up agents…"
+	case "native_delete_agent":
+		return "Cleaning up…"
+	case "native_update_agent":
+		return "Updating agent…"
+	case "native_list_agents":
+		return "Looking up agents…"
+
+	// Web & HTTP
+	case "native_web_search", "web_search":
 		return "Searching the web…"
-	case "read_file", "write_file", "list_files":
-		return "Accessing files…"
+	case "native_http_request", "http_request":
+		return "Fetching data…"
+
+	// Files
+	case "native_read_file", "read_file":
+		return "Reading file…"
+	case "native_write_file", "write_file":
+		return "Writing file…"
+
+	// Memory
+	case "native_save_memory":
+		return "Saving to memory…"
+
+	// Skills & tools management
+	case "native_create_skill", "native_update_skill", "native_delete_skill",
+		"native_attach_skill", "native_detach_skill", "native_list_skills":
+		return "Managing skills…"
+	case "native_create_http_tool", "native_create_code_tool", "native_delete_tool",
+		"native_attach_tool", "native_detach_tool", "native_list_tools",
+		"native_list_http_tools", "native_list_workspace_tools", "native_request_tool":
+		return "Managing tools…"
+
+	// Workflow management
+	case "native_create_workflow", "native_delete_workflow",
+		"native_save_workflow_graph", "native_list_workflows":
+		return "Managing workflows…"
+
+	// WhatsApp
+	case "whatsapp_send_message":
+		return "Sending message…"
+	case "whatsapp_create_reminder":
+		return "Setting a reminder…"
+	case "whatsapp_complete_reminder":
+		return "Completing reminder…"
+	case "whatsapp_list_reminders":
+		return "Checking reminders…"
+	case "whatsapp_schedule_message":
+		return "Scheduling a message…"
+	case "whatsapp_search_contacts":
+		return "Looking up contacts…"
+	case "whatsapp_list_recent_messages":
+		return "Reading recent messages…"
+	case "whatsapp_get_current_context":
+		return "Checking context…"
+	case "whatsapp_request_owner_approval":
+		return "Requesting approval…"
+	case "whatsapp_send_media_status":
+		return "Updating status…"
+	case "whatsapp_summarize_link":
+		return "Summarizing link…"
+
+	// MCP tools — strip the mcp_ prefix and humanise
 	default:
-		return "Working: " + toolName + "…"
+		if strings.HasPrefix(toolName, "mcp_") {
+			label := strings.ReplaceAll(strings.TrimPrefix(toolName, "mcp_"), "_", " ")
+			return "Working: " + label + "…"
+		}
+		// Code tools and anything else
+		return "Working on it…"
 	}
 }
 
@@ -358,9 +426,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	// dbCtx is used for all DB status writes (failRun, final UPDATE).
 	// It must NOT be the request context because the request context can be
 	// cancelled on client disconnect, which would silently leave the run in
-	// 'running' state. A short-lived background context ensures the write
-	// always completes even after the HTTP connection closes.
-	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// 'running' state. Use a generous timeout that outlasts any realistic run
+	// while still bounding resource lifetime if something hangs.
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer dbCancel()
 
 	runCompleted := false
@@ -425,9 +493,17 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			start, 0, "", errString(err))
 	}
 
-	histLimit := a.MaxHistoryMessages
-	if histLimit <= 0 {
-		histLimit = 20
+	var convCompaction string
+	_ = h.pool.QueryRow(ctx,
+		`SELECT COALESCE(compaction, '') FROM conversations WHERE id=$1::uuid`,
+		convID).Scan(&convCompaction)
+
+	histLimit := 4
+	if convCompaction == "" {
+		histLimit = a.MaxHistoryMessages
+		if histLimit <= 0 {
+			histLimit = 20
+		}
 	}
 	historyRows, err := h.pool.Query(ctx,
 		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'')
@@ -444,6 +520,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	for historyRows.Next() {
 		var role, content, toolCallID, toolName string
 		if historyRows.Scan(&role, &content, &toolCallID, &toolName) == nil && (role == "user" || role == "assistant" || role == "tool") {
+			if len(content) > 800 {
+				content = content[:800] + "…[truncated]"
+			}
 			history = append(history, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
 		}
 	}
@@ -462,10 +541,13 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	}
 
 	hasCallAgent := false
+	hasCreateAgent := false
 	for _, td := range allToolDefs {
-		if td.Name == "native_call_agent" {
+		switch td.Name {
+		case "native_call_agent":
 			hasCallAgent = true
-			break
+		case "native_create_agent":
+			hasCreateAgent = true
 		}
 	}
 
@@ -479,6 +561,8 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		MemoryEnabled:      a.MemoryEnabled,
 		MemorySaveMode:     a.MemorySaveMode,
 		HasCallAgent:       hasCallAgent,
+		HasCreateAgent:     hasCreateAgent,
+		ConvCompaction:     convCompaction,
 	})
 
 	// requestedTools grows when native_request_tool is called (lazy loading mode).
@@ -595,7 +679,8 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
 		}
 
-		stream, err := llm.Complete(ctx, provider.CompletionRequest{
+		modelStart := time.Now()
+		completion, err := completeWithEmptyRetry(ctx, llm, provider.CompletionRequest{
 			Model:               a.Model,
 			Messages:            messages,
 			Tools:               toolDefs,
@@ -603,44 +688,18 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			MaxTokens:           a.MaxTokens,
 			Stream:              true,
 			StableSystemContent: stableSystem,
-		})
+		}, func(delta string) {
+			sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
+		}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
 		if err != nil {
 			runErrMsg = err.Error()
 			sseErr(err.Error())
 			return
 		}
 
-		modelStart := time.Now()
-		reply := ""
-		usage := provider.Usage{}
-		var pendingCalls []provider.ToolCall
-
-		for event := range stream {
-			switch event.Type {
-			case provider.EventDelta:
-				reply += event.Delta
-				sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, event.Delta))
-			case provider.EventToolCall:
-				if event.ToolCall != nil {
-					pendingCalls = append(pendingCalls, *event.ToolCall)
-				}
-			case provider.EventDone:
-				if event.Usage != nil {
-					usage = *event.Usage
-				}
-			case provider.EventError:
-				msg := "model call failed"
-				if event.Error != nil {
-					msg = event.Error.Error()
-				}
-				h.runs.createStep(ctx, runID, domain.StepError, //nolint:errcheck
-					map[string]any{"provider": a.Provider, "model": a.Model},
-					map[string]any{}, modelStart, 0, "", msg)
-				runErrMsg = msg
-				sseErr(msg)
-				return
-			}
-		}
+		reply := completion.Reply
+		usage := completion.Usage
+		pendingCalls := completion.ToolCalls
 
 		totalInput += usage.InputTokens
 		totalOutput += usage.OutputTokens
@@ -682,6 +741,31 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 						map[string]any{"saved": count},
 						start, 0, "memory_extractor", errString(err))
 				}()
+			}
+			{
+				threshold := a.CompactionThreshold
+				if threshold <= 0 {
+					threshold = 6
+				}
+				tokenThreshold := a.CompactionTokenThreshold
+				if tokenThreshold <= 0 {
+					tokenThreshold = 3000
+				}
+				if convCompaction != "" || len(history) >= threshold || totalInput > tokenThreshold {
+					llmCopy, modelSnap, convSnap, compSnap := llm, a.Model, convID, convCompaction
+					go func() {
+						sseEmitOrNil(`{"type":"compacting","status":"start"}`)
+						newCompaction, err := compactConversation(context.Background(), h.pool, llmCopy, modelSnap, convSnap, compSnap)
+						if err != nil || newCompaction == "" {
+							sseEmitOrNil(`{"type":"compacting","status":"done"}`)
+							return
+						}
+						h.pool.Exec(context.Background(), //nolint:errcheck
+							`UPDATE conversations SET compaction=$2, updated_at=NOW() WHERE id=$1::uuid`,
+							convSnap, newCompaction)
+						sseEmitOrNil(`{"type":"compacting","status":"done"}`)
+					}()
+				}
 			}
 			return
 		}
@@ -1570,7 +1654,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	delegateHandlers map[string]func(context.Context, json.RawMessage) string,
 	emit func(string),
 ) {
-	dbCtx, dbCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer dbCancel()
 
 	runCompleted := false
@@ -1633,9 +1717,17 @@ func (h *InvokeHandler) executeSupervisorRun(
 			start, 0, "", errString(err))
 	}
 
-	supHistLimit := a.MaxHistoryMessages
-	if supHistLimit <= 0 {
-		supHistLimit = 20
+	var supConvCompaction string
+	_ = h.pool.QueryRow(ctx,
+		`SELECT COALESCE(compaction, '') FROM conversations WHERE id=$1::uuid`,
+		convID).Scan(&supConvCompaction)
+
+	supHistLimit := 4
+	if supConvCompaction == "" {
+		supHistLimit = a.MaxHistoryMessages
+		if supHistLimit <= 0 {
+			supHistLimit = 20
+		}
 	}
 	historyRows, err := h.pool.Query(ctx,
 		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'')
@@ -1652,6 +1744,9 @@ func (h *InvokeHandler) executeSupervisorRun(
 	for historyRows.Next() {
 		var role, content, toolCallID, toolName string
 		if historyRows.Scan(&role, &content, &toolCallID, &toolName) == nil && (role == "user" || role == "assistant" || role == "tool") {
+			if len(content) > 800 {
+				content = content[:800] + "…[truncated]"
+			}
 			history = append(history, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
 		}
 	}
@@ -1681,10 +1776,13 @@ func (h *InvokeHandler) executeSupervisorRun(
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	supHasCallAgent := false
+	supHasCreateAgent := false
 	for _, td := range regularToolDefs {
-		if td.Name == "native_call_agent" {
+		switch td.Name {
+		case "native_call_agent":
 			supHasCallAgent = true
-			break
+		case "native_create_agent":
+			supHasCreateAgent = true
 		}
 	}
 	supMessages, supStableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
@@ -1696,6 +1794,8 @@ func (h *InvokeHandler) executeSupervisorRun(
 		MemoryEnabled:      a.MemoryEnabled,
 		MemorySaveMode:     a.MemorySaveMode,
 		HasCallAgent:       supHasCallAgent || len(delegateToolDefs) > 0,
+		HasCreateAgent:     supHasCreateAgent,
+		ConvCompaction:     supConvCompaction,
 	})
 	regularToolDefs, dbTools = ensureMemoryToolDef(regularToolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
 	toolDefs := append(regularToolDefs, delegateToolDefs...)
@@ -1766,7 +1866,8 @@ func (h *InvokeHandler) executeSupervisorRun(
 				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
 		}
 
-		stream, err := llm.Complete(ctx, provider.CompletionRequest{
+		modelStart := time.Now()
+		completion, err := completeWithEmptyRetry(ctx, llm, provider.CompletionRequest{
 			Model:               a.Model,
 			Messages:            messages,
 			Tools:               toolDefs,
@@ -1774,44 +1875,18 @@ func (h *InvokeHandler) executeSupervisorRun(
 			MaxTokens:           a.MaxTokens,
 			Stream:              true,
 			StableSystemContent: supStableSystem,
-		})
+		}, func(delta string) {
+			sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
+		}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
 		if err != nil {
 			runErrMsg = err.Error()
 			sseErr(err.Error())
 			return
 		}
 
-		modelStart := time.Now()
-		reply := ""
-		usage := provider.Usage{}
-		var pendingCalls []provider.ToolCall
-
-		for event := range stream {
-			switch event.Type {
-			case provider.EventDelta:
-				reply += event.Delta
-				sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, event.Delta))
-			case provider.EventToolCall:
-				if event.ToolCall != nil {
-					pendingCalls = append(pendingCalls, *event.ToolCall)
-				}
-			case provider.EventDone:
-				if event.Usage != nil {
-					usage = *event.Usage
-				}
-			case provider.EventError:
-				msg := "model call failed"
-				if event.Error != nil {
-					msg = event.Error.Error()
-				}
-				h.runs.createStep(ctx, runID, domain.StepError, //nolint:errcheck
-					map[string]any{"provider": a.Provider, "model": a.Model},
-					map[string]any{}, modelStart, 0, "", msg)
-				runErrMsg = msg
-				sseErr(msg)
-				return
-			}
-		}
+		reply := completion.Reply
+		usage := completion.Usage
+		pendingCalls := completion.ToolCalls
 
 		totalInput += usage.InputTokens
 		totalOutput += usage.OutputTokens
@@ -1851,6 +1926,31 @@ func (h *InvokeHandler) executeSupervisorRun(
 						map[string]any{"saved": count},
 						start, 0, "memory_extractor", errString(err))
 				}()
+			}
+			{
+				threshold := a.CompactionThreshold
+				if threshold <= 0 {
+					threshold = 6
+				}
+				tokenThreshold := a.CompactionTokenThreshold
+				if tokenThreshold <= 0 {
+					tokenThreshold = 3000
+				}
+				if supConvCompaction != "" || len(history) >= threshold || totalInput > tokenThreshold {
+					llmCopy, modelSnap, convSnap, compSnap := llm, a.Model, convID, supConvCompaction
+					go func() {
+						sseEmitOrNil(`{"type":"compacting","status":"start"}`)
+						newCompaction, err := compactConversation(context.Background(), h.pool, llmCopy, modelSnap, convSnap, compSnap)
+						if err != nil || newCompaction == "" {
+							sseEmitOrNil(`{"type":"compacting","status":"done"}`)
+							return
+						}
+						h.pool.Exec(context.Background(), //nolint:errcheck
+							`UPDATE conversations SET compaction=$2, updated_at=NOW() WHERE id=$1::uuid`,
+							convSnap, newCompaction)
+						sseEmitOrNil(`{"type":"compacting","status":"done"}`)
+					}()
+				}
 			}
 			return
 		}

@@ -81,8 +81,10 @@ type Agent struct {
 	MaxSteps                int       `json:"max_steps"`
 	MaxToolCalls            int       `json:"max_tool_calls"`
 	MaxDurationSecs         int       `json:"max_duration_secs"`
-	MaxHistoryMessages      int       `json:"max_history_messages"` // 0 = default (20)
-	LazyToolLoading         bool      `json:"lazy_tool_loading"`
+	MaxHistoryMessages        int       `json:"max_history_messages"` // 0 = default (20)
+	LazyToolLoading           bool      `json:"lazy_tool_loading"`
+	CompactionThreshold       int       `json:"compaction_threshold"`       // 0 = default (6)
+	CompactionTokenThreshold  int       `json:"compaction_token_threshold"` // 0 = default (3000)
 	Status                  string    `json:"status"`
 	CreatedBy               string    `json:"created_by"`
 	CreatedAt               time.Time `json:"created_at"`
@@ -157,9 +159,10 @@ type Conversation struct {
 	UserID       string    `json:"user_id"`
 	Title        string    `json:"title"`
 	MessageCount int       `json:"message_count"`
-	TokenCount   int       `json:"token_count"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	TokenCount  int       `json:"token_count"`
+	Compaction  string    `json:"compaction,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type Message struct {

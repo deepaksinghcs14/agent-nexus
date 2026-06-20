@@ -34,6 +34,9 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 	if req.HasCallAgent {
 		stable += "\n\nParallelism rule: when you need to call native_call_agent for multiple independent tasks, return ALL of those calls in a single response — they execute concurrently and are much faster than calling them one at a time. Only chain calls sequentially when the output of one is required as input to the next."
 	}
+	if req.HasCreateAgent && req.HasCallAgent {
+		stable += "\n\nDelegation pattern: native_create_agent only registers an agent — it does NOT run it. After creating agents you MUST call native_call_agent with each returned agent_id before finishing. Never end a turn after create_agent calls without immediately following up with call_agent calls."
+	}
 	if req.MemoryEnabled {
 		stable += "\n\nMemory policy:\n"
 		if req.MemorySaveMode != "extractor" {
@@ -68,6 +71,9 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 			}
 		}
 	}
+	if req.ConvCompaction != "" {
+		dynamic += "\n\nEarlier conversation (compacted):\n" + req.ConvCompaction
+	}
 
 	system := stable
 	if dynamic != "" {
@@ -100,4 +106,10 @@ type BuildRequest struct {
 	// HasCallAgent, when true, injects a parallelism instruction telling the LLM to
 	// batch independent native_call_agent calls in a single response for concurrent execution.
 	HasCallAgent bool
+	// HasCreateAgent, when true alongside HasCallAgent, injects a delegation pattern reminder
+	// that create_agent does not run the agent — call_agent must follow immediately.
+	HasCreateAgent bool
+	// ConvCompaction is a rolling LLM-generated summary of older conversation turns.
+	// Injected into the dynamic section so it doesn't break Anthropic prompt-cache on the stable prefix.
+	ConvCompaction string
 }

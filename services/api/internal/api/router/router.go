@@ -40,6 +40,11 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 	// Internal process log ingestion, protected by LOG_STREAM_INGEST_TOKEN.
 	r.Post("/internal/service-logs/ingest", h.Admin.IngestServiceLog)
 
+	// Internal WhatsApp credential persistence — adapter-only, no JWT.
+	r.Get("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Get)
+	r.Put("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Put)
+	r.Delete("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Delete)
+
 	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC secret)
 	r.Post("/webhook/{webhookId}", h.WebhookIngress.Receive)
 	r.Post("/gateway/whatsapp/{channelId}", h.Gateway.WhatsAppReceive)
@@ -95,9 +100,11 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			// Agents
 			r.Get("/agents", h.Agents.List)
 			r.Post("/agents", h.Agents.Create)
+			r.Post("/agents/import", h.Agents.Import)
 			r.Get("/agents/{id}", h.Agents.Get)
 			r.Put("/agents/{id}", h.Agents.Update)
 			r.Delete("/agents/{id}", h.Agents.Delete)
+			r.Get("/agents/{id}/export", h.Agents.Export)
 			r.Get("/agents/{id}/tools", h.Agents.ListTools)
 			r.Put("/agents/{id}/tools", h.Agents.SetTools)
 			r.Get("/agents/{id}/connectors", h.Agents.ListConnectors)

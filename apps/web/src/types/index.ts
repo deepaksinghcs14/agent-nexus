@@ -85,6 +85,8 @@ export interface Agent {
   max_duration_secs: number
   max_history_messages: number
   lazy_tool_loading: boolean
+  compaction_threshold: number
+  compaction_token_threshold: number
   status: 'active' | 'paused' | 'archived'
   created_by: string
   created_at: string
