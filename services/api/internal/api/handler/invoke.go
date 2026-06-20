@@ -462,10 +462,13 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	}
 
 	hasCallAgent := false
+	hasCreateAgent := false
 	for _, td := range allToolDefs {
-		if td.Name == "native_call_agent" {
+		switch td.Name {
+		case "native_call_agent":
 			hasCallAgent = true
-			break
+		case "native_create_agent":
+			hasCreateAgent = true
 		}
 	}
 
@@ -479,6 +482,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		MemoryEnabled:      a.MemoryEnabled,
 		MemorySaveMode:     a.MemorySaveMode,
 		HasCallAgent:       hasCallAgent,
+		HasCreateAgent:     hasCreateAgent,
 	})
 
 	// requestedTools grows when native_request_tool is called (lazy loading mode).
@@ -1681,10 +1685,13 @@ func (h *InvokeHandler) executeSupervisorRun(
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	supHasCallAgent := false
+	supHasCreateAgent := false
 	for _, td := range regularToolDefs {
-		if td.Name == "native_call_agent" {
+		switch td.Name {
+		case "native_call_agent":
 			supHasCallAgent = true
-			break
+		case "native_create_agent":
+			supHasCreateAgent = true
 		}
 	}
 	supMessages, supStableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
@@ -1696,6 +1703,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 		MemoryEnabled:      a.MemoryEnabled,
 		MemorySaveMode:     a.MemorySaveMode,
 		HasCallAgent:       supHasCallAgent || len(delegateToolDefs) > 0,
+		HasCreateAgent:     supHasCreateAgent,
 	})
 	regularToolDefs, dbTools = ensureMemoryToolDef(regularToolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
 	toolDefs := append(regularToolDefs, delegateToolDefs...)
