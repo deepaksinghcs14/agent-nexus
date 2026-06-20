@@ -110,9 +110,11 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 
 ### Core Agent Platform
 - **Model-agnostic** — Anthropic Claude, OpenAI GPT, Google Gemini, and local Ollama models. Bring your own API keys per workspace. Switch providers without changing your agent config.
-- **Agent builder** — configure instructions (system prompt), model, temperature, max tokens, memory scope, tool list, and guardrails (max steps, max tool calls, timeout) from a clean tabbed UI
+- **Agent builder** — configure instructions (system prompt), model, temperature, max tokens, memory scope, tool list, and guardrails (max steps, max tool calls, timeout) from a clean tabbed UI; tools are grouped by source (native, MCP, HTTP, code) with live search and collapsible sections; skills support drag-to-reorder
+- **Agent export / import** — download any agent as a portable JSON file (tools referenced by name, not ID); import on any workspace or instance to recreate the agent in one click
 - **Playground** — send messages and watch the agent think in real time via a live SSE trace panel showing every memory retrieval, tool call, model call, latency, and token count
 - **Conversations history** — every playground session is saved; browse and replay past conversations from the Conversations page
+- **Conversation compaction** — long conversations are automatically compressed into a rolling LLM-generated summary after a configurable message or token threshold; only the last 4 turns are replayed verbatim, drastically reducing input token cost on extended sessions; runs asynchronously after each reply with a subtle "Compacting…" indicator in the playground; threshold is configurable per agent (default: 6 messages or 3,000 input tokens)
 
 ### Multi-Agent Workflows
 - **Visual canvas editor** — drag-and-drop workflow builder powered by React Flow; add agent nodes, condition branches, parallel fans, join gates, and loop nodes
@@ -378,6 +380,8 @@ What's working today vs. what's coming next:
 | Skills (reusable agent instruction modules with required tool auto-attach) | ✅ Done |
 | Agent Self-Management (call, create, destroy agents/skills/tools at runtime) | ✅ Done |
 | Webhook / event triggers (run an agent on inbound HTTP event) | ✅ Done |
+| Agent export / import (portable JSON — tools by name, one-click reimport) | ✅ Done |
+| Conversation compaction (rolling LLM summary, per-agent message/token thresholds) | ✅ Done |
 | Gateway: Telegram channel | 🔜 Planned |
 | Gateway: SMS channel (Twilio / Vonage) | 🔜 Planned |
 | Gateway: Slack channel | 🔜 Planned |
@@ -388,7 +392,6 @@ What's working today vs. what's coming next:
 | Gateway: Email channel (SMTP/IMAP) | 🔜 Planned |
 | Additional connectors (Slack, Jira, Confluence, GitHub, Google Drive) | 🔜 Planned |
 | Agent versioning and snapshot rollback | 🔜 Planned |
-| Export / import agents and workflows (JSON) | 🔜 Planned |
 | API rate limiting per workspace | 🔜 Planned |
 | Run failure notifications (email, webhook) | 🔜 Planned |
 | Test coverage (Go unit + integration, frontend component tests) | 🔜 Planned |
