@@ -317,12 +317,12 @@ type whatsAppCreateReminderTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppCreateReminderTool) Definition() domain.Tool {
 	return waTool("whatsapp_create_reminder", "Create a WhatsApp reminder or follow-up task.", map[string]any{
-		"title":      map[string]any{"type": "string"},
-		"message":    map[string]any{"type": "string"},
+		"title":      map[string]any{"type": "string", "description": "Short label for the reminder (e.g. 'Drink water'). If omitted, derived from message."},
+		"message":    map[string]any{"type": "string", "description": "The reminder message text to display when due."},
 		"due_at":     map[string]any{"type": "string", "description": "RFC3339 timestamp (e.g. 2026-06-18T15:00:00Z). Use the current year."},
 		"contact_id": map[string]any{"type": "string", "description": "Contact UUID from whatsapp_search_contacts, or the contact's name/alias — the tool will resolve it."},
 		"channel_id": map[string]any{"type": "string"},
-	}, []string{"title"}, "medium")
+	}, []string{}, "medium")
 }
 
 func (t *whatsAppCreateReminderTool) Execute(input map[string]any) (any, error) {
@@ -354,13 +354,22 @@ func (t *whatsAppCreateReminderTool) ExecuteWithContext(ctx context.Context, exe
 		}
 		contactID = contacts[0].ID
 	}
+	title := str(input["title"])
+	if title == "" {
+		msg := str(input["message"])
+		words := strings.Fields(msg)
+		if len(words) > 5 {
+			words = words[:5]
+		}
+		title = strings.Join(words, " ")
+		if title == "" {
+			title = "Reminder"
+		}
+	}
 	rem := &domain.GatewayReminder{
 		WorkspaceID: wc.Channel.WorkspaceID, ChannelID: wc.Channel.ID, SessionID: execCtx.ChannelSessionID,
-		ContactID: contactID, AccountID: wc.Config.AccountID, Title: str(input["title"]),
+		ContactID: contactID, AccountID: wc.Config.AccountID, Title: title,
 		Message: str(input["message"]), DueAt: due, Status: "pending", Payload: mustJSON(input),
-	}
-	if rem.Title == "" {
-		return nil, fmt.Errorf("title is required")
 	}
 	if err := t.repo.CreateReminder(ctx, rem); err != nil {
 		return nil, err

@@ -39,6 +39,7 @@ type Message struct {
 	ToolCallID string     `json:"tool_call_id,omitempty"` // set when Role == "tool"
 	ToolName   string     `json:"name,omitempty"`         // set when Role == "tool"
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`   // set when Role == "assistant" and model called tools
+	IsError    bool       `json:"is_error,omitempty"`     // set when Role == "tool" and the tool call failed
 }
 
 // ToolDefinition describes a tool the model may call.
