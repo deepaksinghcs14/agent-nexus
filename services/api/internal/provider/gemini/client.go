@@ -313,10 +313,16 @@ func geminiRequest(req provider.CompletionRequest) map[string]any {
 				if err := json.Unmarshal([]byte(tm.Content), &result); err != nil {
 					result = tm.Content
 				}
+				var response map[string]any
+				if tm.IsError {
+					response = map[string]any{"error": result, "note": "This function call failed. Retry with corrected arguments."}
+				} else {
+					response = map[string]any{"output": result}
+				}
 				frParts = append(frParts, map[string]any{
 					"functionResponse": map[string]any{
 						"name":     tm.ToolName,
-						"response": map[string]any{"output": result},
+						"response": response,
 					},
 				})
 				i++
@@ -331,12 +337,18 @@ func geminiRequest(req provider.CompletionRequest) map[string]any {
 			if err := json.Unmarshal([]byte(msg.Content), &result); err != nil {
 				result = msg.Content
 			}
+			var response map[string]any
+			if msg.IsError {
+				response = map[string]any{"error": result, "note": "This function call failed. Retry with corrected arguments."}
+			} else {
+				response = map[string]any{"output": result}
+			}
 			contents = append(contents, map[string]any{
 				"role": "user",
 				"parts": []map[string]any{{
 					"functionResponse": map[string]any{
 						"name":     msg.ToolName,
-						"response": map[string]any{"output": result},
+						"response": response,
 					},
 				}},
 			})

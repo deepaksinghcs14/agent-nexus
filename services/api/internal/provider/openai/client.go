@@ -172,10 +172,14 @@ func openAIMessages(messages []provider.Message) []map[string]any {
 			}
 			out = append(out, m)
 		case "tool":
+			content := msg.Content
+			if msg.IsError {
+				content += " (tool call failed — retry with corrected arguments)"
+			}
 			out = append(out, map[string]any{
 				"role":         "tool",
 				"tool_call_id": msg.ToolCallID,
-				"content":      msg.Content,
+				"content":      content,
 			})
 		}
 	}
