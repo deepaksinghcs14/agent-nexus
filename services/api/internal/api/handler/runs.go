@@ -434,6 +434,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				ToolCallID: call.ID,
 				ToolName:   call.Name,
 				Content:    resultContent,
+				IsError:    errMsg != "",
 			})
 
 			stepCount++

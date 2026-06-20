@@ -940,6 +940,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				ToolCallID: call.ID,
 				ToolName:   call.Name,
 				Content:    resultContent,
+				IsError:    errMsg != "",
 			})
 
 			stepCount++
@@ -2116,6 +2117,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 				ToolCallID: call.ID,
 				ToolName:   call.Name,
 				Content:    resultContent,
+				IsError:    errMsg != "",
 			})
 
 			stepCount++

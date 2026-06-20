@@ -218,11 +218,15 @@ func anthropicMessages(messages []provider.Message) (string, []map[string]any) {
 			var toolResults []map[string]any
 			for i < len(messages) && messages[i].Role == "tool" {
 				tm := messages[i]
-				toolResults = append(toolResults, map[string]any{
+				tr := map[string]any{
 					"type":        "tool_result",
 					"tool_use_id": tm.ToolCallID,
 					"content":     tm.Content,
-				})
+				}
+				if tm.IsError {
+					tr["is_error"] = true
+				}
+				toolResults = append(toolResults, tr)
 				i++
 			}
 			if len(toolResults) > 0 {
@@ -231,13 +235,17 @@ func anthropicMessages(messages []provider.Message) (string, []map[string]any) {
 
 		case "tool":
 			// Orphaned tool result (no preceding assistant turn with tool_calls).
+			tr := map[string]any{
+				"type":        "tool_result",
+				"tool_use_id": msg.ToolCallID,
+				"content":     msg.Content,
+			}
+			if msg.IsError {
+				tr["is_error"] = true
+			}
 			out = append(out, map[string]any{
-				"role": "user",
-				"content": []map[string]any{{
-					"type":        "tool_result",
-					"tool_use_id": msg.ToolCallID,
-					"content":     msg.Content,
-				}},
+				"role":    "user",
+				"content": []map[string]any{tr},
 			})
 			i++
 
