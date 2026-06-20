@@ -72,7 +72,7 @@ export default function AgentsPage() {
   }
 
   function exportAgent(agent: Agent) {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
     const url = agentsAPI.exportUrl(agent.id)
     fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then(r => r.blob())

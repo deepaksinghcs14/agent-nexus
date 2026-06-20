@@ -130,7 +130,7 @@ export const agentsAPI = {
     api.put(`/agents/${id}/connectors`, body),
   getSkills: (id: string) => api.get(`/agents/${id}/skills`),
   setSkills: (id: string, body: unknown) => api.put(`/agents/${id}/skills`, body),
-  exportUrl: (id: string) => `${API_URL}/agents/${id}/export`,
+  exportUrl: (id: string) => `${API_URL}/api/v1/agents/${id}/export`,
   importAgent: (body: unknown) => api.post('/agents/import', body),
 }
 

@@ -798,7 +798,7 @@ function AdapterStatusCard({ adapter }: { adapter: Record<string, unknown> | nul
           <code className="bg-gray-50 px-2 py-0.5 rounded text-gray-600">+{phone}</code>
         </div>
       )}
-      {lastError && (
+      {lastError && status !== 'connected' && (
         <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded px-2 py-1">{lastError}</p>
       )}
       {typeof lidMapSize === 'number' && lidMapSize > 0 && (
