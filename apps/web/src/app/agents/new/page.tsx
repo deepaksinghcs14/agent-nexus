@@ -73,6 +73,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({ read_file: true })
   const [enabledSkills, setEnabledSkills] = useState<Record<string, boolean>>({})
   const [skillOrder, setSkillOrder] = useState<Record<string, number>>({})
+  const [skillActivationMode, setSkillActivationMode] = useState<Record<string, 'always' | 'on_demand'>>({})
   const [enabledConnectors, setEnabledConnectors] = useState<Record<string, boolean>>({})
   const [maxChunks, setMaxChunks] = useState(8)
   const [minScore, setMinScore] = useState(0.5)
@@ -210,6 +211,9 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
     if (agentSkillsData?.data) {
       setEnabledSkills(Object.fromEntries(agentSkillsData.data.map((s) => [s.skill_id, s.enabled])))
       setSkillOrder(Object.fromEntries(agentSkillsData.data.map((s) => [s.skill_id, s.order_index])))
+      setSkillActivationMode(Object.fromEntries(
+        agentSkillsData.data.map((s) => [s.skill_id, (s.activation_mode === 'on_demand' ? 'on_demand' : 'always') as 'always' | 'on_demand'])
+      ))
     }
   }, [agentSkillsData])
 
@@ -253,7 +257,12 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
       await agentsAPI.setSkills(id, {
         skills: Object.entries(enabledSkills)
           .filter(([, enabled]) => enabled)
-          .map(([skill_id], i) => ({ skill_id, enabled: true, order_index: skillOrder[skill_id] ?? i })),
+          .map(([skill_id], i) => ({
+            skill_id,
+            enabled: true,
+            activation_mode: skillActivationMode[skill_id] ?? 'always',
+            order_index: skillOrder[skill_id] ?? i,
+          })),
       })
       return saved
     },
@@ -436,9 +445,9 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
       {/* ── SKILLS ── */}
       {tab === 'Skills' && (
         <div className="space-y-3">
-          <p className="text-[12px] text-gray-500">Attach reusable prompt instructions injected after the system prompt.</p>
+          <p className="text-[12px] text-gray-500">Attach reusable prompt instructions injected after the system prompt. <span className="text-gray-400">Always-on skills inject their content every run; on-demand skills are listed as callable tools the model can invoke when relevant.</span></p>
 
-          {/* Search + summary */}
+          {/* Search + summary + bulk action */}
           <div className="flex items-center gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
@@ -448,9 +457,35 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
                 className="w-full text-[12px] pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-purple-400" />
             </div>
             {enabledSkillCount > 0 && (
-              <span className="text-[11px] text-purple-700 font-medium whitespace-nowrap">
-                {enabledSkillCount} of {availableSkills.length} enabled
-              </span>
+              <>
+                <span className="text-[11px] text-purple-700 font-medium whitespace-nowrap">
+                  {enabledSkillCount} of {availableSkills.length} enabled
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next: Record<string, 'always' | 'on_demand'> = {}
+                    Object.entries(enabledSkills).forEach(([id, on]) => {
+                      if (on) next[id] = 'on_demand'
+                    })
+                    setSkillActivationMode(prev => ({ ...prev, ...next }))
+                  }}
+                  className="text-[11px] px-2.5 py-1 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 whitespace-nowrap transition-colors">
+                  All on-demand
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next: Record<string, 'always' | 'on_demand'> = {}
+                    Object.entries(enabledSkills).forEach(([id, on]) => {
+                      if (on) next[id] = 'always'
+                    })
+                    setSkillActivationMode(prev => ({ ...prev, ...next }))
+                  }}
+                  className="text-[11px] px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 whitespace-nowrap transition-colors">
+                  All always
+                </button>
+              </>
             )}
           </div>
 
@@ -465,9 +500,14 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
               description="Platform-provided skills"
               skills={managedSkills}
               enabledSkills={enabledSkills}
+              activationModes={skillActivationMode}
               collapsed={collapsedSkillGroups.has('managed')}
               onToggleCollapse={() => toggleSkillGroup('managed')}
               onToggleSkill={toggleSkill}
+              onToggleMode={(skill) => setSkillActivationMode(prev => ({
+                ...prev,
+                [skill.id]: prev[skill.id] === 'on_demand' ? 'always' : 'on_demand',
+              }))}
             />
           )}
 
@@ -478,9 +518,14 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
               description="Created in this workspace"
               skills={customSkills}
               enabledSkills={enabledSkills}
+              activationModes={skillActivationMode}
               collapsed={collapsedSkillGroups.has('custom')}
               onToggleCollapse={() => toggleSkillGroup('custom')}
               onToggleSkill={toggleSkill}
+              onToggleMode={(skill) => setSkillActivationMode(prev => ({
+                ...prev,
+                [skill.id]: prev[skill.id] === 'on_demand' ? 'always' : 'on_demand',
+              }))}
             />
           )}
 
@@ -712,15 +757,17 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
 }
 
 function SkillSection({
-  label, description, skills, enabledSkills, collapsed, onToggleCollapse, onToggleSkill,
+  label, description, skills, enabledSkills, activationModes, collapsed, onToggleCollapse, onToggleSkill, onToggleMode,
 }: {
   label: string
   description: string
   skills: Skill[]
   enabledSkills: Record<string, boolean>
+  activationModes: Record<string, 'always' | 'on_demand'>
   collapsed: boolean
   onToggleCollapse: () => void
   onToggleSkill: (skill: Skill) => void
+  onToggleMode: (skill: Skill) => void
 }) {
   const enabledCount = skills.filter(s => enabledSkills[s.id]).length
   return (
@@ -737,23 +784,42 @@ function SkillSection({
         </div>
         <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
       </button>
-      {!collapsed && skills.map((skill, i) => (
-        <div key={skill.id} className={`flex items-center justify-between gap-3 px-4 py-3 ${i < skills.length - 1 ? 'border-b border-gray-50' : ''}`}>
-          <div className="flex items-center gap-2 min-w-0">
-            <GripVertical className="w-3.5 h-3.5 text-gray-300 shrink-0" />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <p className="text-[13px] font-medium text-gray-900">{skill.name}</p>
-                {skill.required_tool_names && skill.required_tool_names.length > 0 && (
-                  <span className="text-[10px] text-amber-600">Requires: {skill.required_tool_names.join(', ')}</span>
-                )}
+      {!collapsed && skills.map((skill, i) => {
+        const isEnabled = !!enabledSkills[skill.id]
+        const mode = activationModes[skill.id] ?? 'always'
+        return (
+          <div key={skill.id} className={`flex items-center justify-between gap-3 px-4 py-3 ${i < skills.length - 1 ? 'border-b border-gray-50' : ''}`}>
+            <div className="flex items-center gap-2 min-w-0">
+              <GripVertical className="w-3.5 h-3.5 text-gray-300 shrink-0" />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-[13px] font-medium text-gray-900">{skill.name}</p>
+                  {skill.required_tool_names && skill.required_tool_names.length > 0 && (
+                    <span className="text-[10px] text-amber-600">Requires: {skill.required_tool_names.join(', ')}</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-500 truncate">{skill.description}</p>
               </div>
-              <p className="text-[11px] text-gray-500 truncate">{skill.description}</p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {isEnabled && (
+                <button
+                  type="button"
+                  onClick={() => onToggleMode(skill)}
+                  title={mode === 'on_demand' ? 'On-demand: model calls this skill as a tool' : 'Always: injected into every run'}
+                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                    mode === 'on_demand'
+                      ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                      : 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+                  }`}>
+                  {mode === 'on_demand' ? 'on-demand' : 'always'}
+                </button>
+              )}
+              <Toggle on={isEnabled} onToggle={() => onToggleSkill(skill)} />
             </div>
           </div>
-          <Toggle on={!!enabledSkills[skill.id]} onToggle={() => onToggleSkill(skill)} />
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
