@@ -59,7 +59,7 @@ func (t *ListToolsTool) ExecuteWithContext(_ context.Context, execCtx tools.Exec
 		}
 		sb.WriteString(fmt.Sprintf("  %s,%s\n", name, desc))
 	}
-	sb.WriteString("\nCall native_request_tool(name) to activate a tool before using it.")
+	sb.WriteString("\nThis is the COMPLETE list of all tools available to you (including ones not yet active). Call native_request_tool(name) to activate one, then use it on the next turn.")
 
 	return map[string]any{"summary": sb.String()}, nil
 }

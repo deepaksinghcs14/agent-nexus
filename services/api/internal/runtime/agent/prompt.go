@@ -39,7 +39,7 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 		stable += "\n\nDelegation pattern: native_create_agent only registers an agent — it does NOT run it. After creating agents you MUST call native_call_agent with each returned agent_id before finishing. Never end a turn after create_agent calls without immediately following up with call_agent calls."
 	}
 	if req.LazyToolLoading {
-		stable += "\n\nLazy tool loading: before any tool except native_list_tools and native_request_tool, first call native_request_tool with the exact name; if you do not know it, call native_list_tools. Use requested tools on the next turn only."
+		stable += "\n\nLazy tool loading is ON. You start with only a small set of meta-tools visible. To use any other tool: (1) call native_list_tools — it returns the COMPLETE list of all tools available to you, not just the ones visible now; (2) call native_request_tool(exact_name) to activate the one you need; (3) use it on the NEXT turn. Never invent or guess tool names — always look them up with native_list_tools first."
 	}
 	stable += "\n\nMemory: use native_list_memories to inspect, native_request_memory to load, and native_save_memory to store only durable, non-sensitive facts."
 	stable += "\n\nFor any question about the user's identity, preferences, goals, projects, or prior decisions, first call native_list_memories before answering."
