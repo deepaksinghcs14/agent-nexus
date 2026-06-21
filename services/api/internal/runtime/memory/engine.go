@@ -103,7 +103,7 @@ func (e *Engine) SaveCandidate(ctx context.Context, req SaveRequest) (SaveResult
 	if req.Agent.MemoryScope != string(domain.MemoryScopeConversation) {
 		conversationID = ""
 	}
-	duplicate, duplicateScore, err := e.memories.HasSimilar(ctx, req.WorkspaceID, req.Agent.ID, req.ConversationID, content, req.Embedding, dedupeThreshold)
+	duplicate, duplicateScore, err := e.memories.HasSimilar(ctx, req.WorkspaceID, agentID, conversationID, content, req.Embedding, dedupeThreshold)
 	if err != nil {
 		return SaveResult{}, err
 	}

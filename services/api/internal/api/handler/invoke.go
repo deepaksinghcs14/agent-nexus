@@ -646,6 +646,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			return answer, nil
 		case <-time.After(30 * time.Minute):
 			UnregisterUserInputWait(capturedRunID)
+			h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, capturedRunID) //nolint:errcheck
 			return "", fmt.Errorf("user input timed out after 30 minutes")
 		}
 	}

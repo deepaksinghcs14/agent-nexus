@@ -80,7 +80,9 @@ func (s *Service) SendWhatsApp(ctx context.Context, req SendRequest) (*domain.Ga
 		Body:        req.Body,
 		Status:      "pending",
 	}
-	_ = s.repo.CreateOutbound(ctx, out)
+	if err := s.repo.CreateOutbound(ctx, out); err != nil {
+		return nil, fmt.Errorf("gateway: create outbound record: %w", err)
+	}
 	payload := map[string]any{"peer": map[string]string{"kind": peerKind, "id": req.PeerID}, "text": req.Body}
 	_, err := adapterPost(ctx, req.Config.AdapterURL, "/accounts/"+url.PathEscape(accountID)+"/send", payload)
 	if err != nil {
