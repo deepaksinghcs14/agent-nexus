@@ -191,6 +191,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		MemoryEnabled:      a.MemoryEnabled,
 		MemorySaveMode:     a.MemorySaveMode,
 		HasCallAgent:       hasCallAgent,
+		LazyToolLoading:    a.LazyToolLoading,
 		ConvCompaction:     convCompaction,
 	})
 
@@ -229,10 +230,6 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		return out
-	}
-	toolSummaries = map[string]string{}
-	for _, td := range visibleToolDefs() {
-		toolSummaries[td.Name] = td.Description
 	}
 	activeMemoryIDs := map[string]bool{}
 	var messages []provider.Message
@@ -313,7 +310,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		var toolDefs []provider.ToolDefinition
 		if a.LazyToolLoading {
 			toolDefs = lazyMetaToolDefs(h.registry)
-			for _, td := range visibleToolDefs() {
+			for _, td := range allToolDefs {
 				if requestedTools[td.Name] {
 					toolDefs = append(toolDefs, td)
 				}
@@ -529,7 +526,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			for name := range toolSummaries {
 				delete(toolSummaries, name)
 			}
-			for _, td := range visibleToolDefs() {
+			for _, td := range allToolDefs {
 				toolSummaries[td.Name] = td.Description
 			}
 		}
