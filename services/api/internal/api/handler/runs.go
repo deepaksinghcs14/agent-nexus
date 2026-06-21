@@ -336,7 +336,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			StableSystemContent: stableSystem,
 		}, func(delta string) {
 			emit(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
-		}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
+		}, "Return a direct, non-empty reply. Do not explain limitations or say you cannot help. If you started a multi-step task, continue to the next step rather than asking for confirmation.")
 		if e != nil {
 			_ = h.failRun(r.Context(), id, e.Error())
 			sseErr(e.Error())
