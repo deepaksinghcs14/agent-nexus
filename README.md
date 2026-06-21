@@ -120,7 +120,8 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Visual canvas editor** — drag-and-drop workflow builder powered by React Flow; add agent nodes, condition branches, parallel fans, join gates, and loop nodes
 - **Pipeline mode** — agents execute in sequence, each receiving the previous agent's output
 - **Supervisor mode** — a supervisor LLM routes tasks dynamically to specialist sub-agents; full BFS executor with conditional routing and parallel execution
-- **Workflow SSE** — live node status updates streamed to the canvas as a group run executes
+- **Workflow SSE** — live node status updates streamed to the canvas as a workflow run executes
+- **Invoke API** — trigger any agent or workflow statelessly via `POST /api/v1/invoke/agents/:id` or `/invoke/workflows/:id`; returns an SSE stream; no conversation needed; runs appear in the Runs view with full trace detail
 
 ### Tools & MCP
 - **Native tools** — `read_file`, `write_file`, `web_search`, `http_request` with configurable risk levels
@@ -130,15 +131,19 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 
 ### Memory & Context (RAG)
 - **Layered memory** — conversation, agent, and workspace scopes; each run stores a memory summary with pgvector embeddings for similarity retrieval in future runs
+- **Memory review policy** — set per-agent to `agent_review`; new memories are stored as `pending_review` and are not retrieved until approved via the Memory browser or agent tools (`native_approve_memory` / `native_reject_memory`)
+- **Importance scoring** — each memory carries an importance score used to prioritise retrieval and deduplication; configurable min-importance and dedupe thresholds per agent
 - **Connector RAG** — index external files via the filesystem connector; chunks are embedded with pgvector and retrieved at query time to ground agent responses in your documents
 - **Vector search** — pgvector cosine similarity with configurable score thresholds and chunk counts per agent
 
 ### Observability
 - **Full run traces** — every step is logged: memory retrieval (which memories, score), context retrieval (which chunks, source), model call (input/output tokens, latency, cost), tool calls (name, input, output, latency)
 - **Traces view** — dedicated trace explorer; filter by agent, date range, or status; drill into individual steps with a waterfall breakdown
-- **Runs view** — list all runs across all agents with status, duration, token counts, cost, and one-click approval for pending tool calls
-- **Cost tracking** — per-run input/output token counts with cost estimates displayed in the runs table and usage dashboard
+- **Runs view** — list all runs across all agents with status, duration, token counts, cost, and one-click approval for pending tool calls; child runs (sub-agent, workflow nodes) linked via `trace_id`
+- **Cost tracking** — per-run input/output token counts with cost estimates displayed in the runs table and usage dashboard; workflow runs aggregate cost across all child runs via `trace_id`
 - **Usage dashboard** — workspace-level token and cost aggregates over time
+- **Latency distribution** — `GET /api/v1/observability/latency` returns p50/p95/p99 latency by model and tool; visualised at `/observability`
+- **Admin service log stream** — live SSE stream of API server logs visible to platform admins at `/admin/service-logs`
 
 ### Workspace Management
 - **Multi-workspace** — create and switch between isolated workspaces; each workspace has its own agents, tools, memory, providers, and API keys; support for personal, team, organization, project, and sandbox workspace types
@@ -331,7 +336,7 @@ NEXT_PUBLIC_APP_NAME=Agent Nexus
 | Backend | Go — `net/http` + chi router, no ORM |
 | Database | PostgreSQL 16 + pgvector extension |
 | Frontend | Next.js 14, TypeScript, Tailwind CSS, shadcn/ui |
-| Auth | JWT access token (24h) + refresh token (httpOnly cookie, 30d) |
+| Auth | JWT access token (24h) + refresh token (httpOnly cookie, 30d); Google OAuth for providers |
 | Encryption | AES-256-GCM for API keys and connector credentials |
 | Deployment | Docker Compose |
 
@@ -346,9 +351,12 @@ POST   /api/v1/auth/register
 POST   /api/v1/auth/login
 GET    /api/v1/agents
 POST   /api/v1/agents
+POST   /api/v1/invoke/agents/:id          ← stateless invoke (SSE stream, no conversation needed)
 POST   /api/v1/conversations
-POST   /api/v1/conversations/:id/runs    ← SSE stream
+POST   /api/v1/conversations/:id/runs     ← SSE stream
 GET    /api/v1/runs/:id
+GET    /api/v1/workflows
+POST   /api/v1/workflows/:id/runs
 ...
 ```
 
@@ -367,21 +375,27 @@ What's working today vs. what's coming next:
 | MCP server integration (HTTP + stdio) | ✅ Done |
 | Risk-based approval gates | ✅ Done |
 | pgvector memory (conversation, agent, workspace scopes) | ✅ Done |
+| Memory review policy (agent-controlled approve/reject) | ✅ Done |
+| Memory importance scoring + deduplication thresholds | ✅ Done |
 | Filesystem connector (RAG — chunk, embed, retrieve) | ✅ Done |
 | Runs + Traces views with full step observability | ✅ Done |
 | Cost tracking + usage dashboard | ✅ Done |
+| Latency distribution observability (p50/p95/p99) | ✅ Done |
 | Multi-workspace with member invite + role management | ✅ Done |
 | Role-based access control (owner / admin / member / viewer) | ✅ Done |
 | API token management (named tokens with expiry) | ✅ Done |
-| Admin dashboard (users, workspaces, policies, audit logs) | ✅ Done |
+| Invoke API (stateless agent + workflow execution, SSE stream) | ✅ Done |
+| Admin dashboard (users, workspaces, policies, audit logs, service log stream) | ✅ Done |
 | Nexus AI meta-agent | ✅ Done |
 | Built-in in-app documentation | ✅ Done |
 | Nexus Gateway (WhatsApp + HTTP channel messaging) | ✅ Done |
+| Gateway scheduled messages (one-off and recurring) | ✅ Done |
 | Skills (reusable agent instruction modules with required tool auto-attach) | ✅ Done |
 | Agent Self-Management (call, create, destroy agents/skills/tools at runtime) | ✅ Done |
 | Webhook / event triggers (run an agent on inbound HTTP event) | ✅ Done |
 | Agent export / import (portable JSON — tools by name, one-click reimport) | ✅ Done |
 | Conversation compaction (rolling LLM summary, per-agent message/token thresholds) | ✅ Done |
+| Google OAuth for provider credentials | ✅ Done |
 | Gateway: Telegram channel | 🔜 Planned |
 | Gateway: SMS channel (Twilio / Vonage) | 🔜 Planned |
 | Gateway: Slack channel | 🔜 Planned |
