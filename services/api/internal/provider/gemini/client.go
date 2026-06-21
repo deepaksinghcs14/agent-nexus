@@ -372,8 +372,16 @@ func geminiRequest(req provider.CompletionRequest) map[string]any {
 		body["systemInstruction"] = map[string]any{"parts": []map[string]string{{"text": system}}}
 	}
 	if len(req.Tools) > 0 {
+		seen := make(map[string]struct{}, len(req.Tools))
 		functionDecls := make([]map[string]any, 0, len(req.Tools))
 		for _, t := range req.Tools {
+			if t.Name == "" {
+				continue
+			}
+			if _, ok := seen[t.Name]; ok {
+				continue
+			}
+			seen[t.Name] = struct{}{}
 			var schema any
 			_ = json.Unmarshal(t.InputSchema, &schema)
 			functionDecls = append(functionDecls, map[string]any{

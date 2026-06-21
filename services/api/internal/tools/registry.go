@@ -31,10 +31,18 @@ type ExecutionContext struct {
 	RootRunID string
 	// CompressText, if non-nil, condenses text via a lightweight LLM call.
 	CompressText func(ctx context.Context, text string) (string, error)
+	// SearchMemory, if non-nil, returns relevant memories for a query.
+	SearchMemory func(ctx context.Context, query string, limit int) ([]domain.Memory, error)
+	// RequestMemory, if non-nil, injects selected memories into the current run context.
+	RequestMemory func(memories []domain.Memory) bool
 	// RequestTool, if non-nil, marks a tool as active for the current run (lazy loading).
 	RequestTool func(name string)
+	// RequestSkill activates an attached on-demand skill for the current run.
+	RequestSkill func(name string) bool
 	// ToolSummaries maps tool name → one-line description for the current agent.
 	ToolSummaries map[string]string
+	// SkillSummaries lists on-demand skills attached to the current agent.
+	SkillSummaries map[string]string
 	// CallAgent, if non-nil, invokes another workspace agent as a sub-run and returns its output.
 	CallAgent func(ctx context.Context, agentID, task string) (string, error)
 	// RunWorkflow, if non-nil, triggers a workflow run in the background and returns the run_id.

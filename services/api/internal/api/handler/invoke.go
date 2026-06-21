@@ -456,20 +456,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		return
 	}
 
-	memories, contextChunks := []string{}, []string{}
-	if a.MemoryEnabled {
-		start := time.Now()
-		found, err := memory.NewEngine(h.pool).Retrieve(ctx, a.ID, ws, convID, memoryEmbedding(ctx, llm, input), a.MaxMemories, a.MinRelevanceScore)
-		if err == nil {
-			for _, m := range found {
-				memories = append(memories, m.Content)
-			}
-		}
-		h.runs.createStep(ctx, runID, domain.StepMemoryRetrieval, //nolint:errcheck
-			map[string]any{"query": input},
-			map[string]any{"count": len(memories)},
-			start, 0, "", errString(err))
-	}
+	contextChunks := []string{}
 
 	if a.ContextRetrievalEnabled {
 		start := time.Now()
@@ -532,7 +519,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	}
 
 	allToolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
-	allToolDefs, dbTools = ensureMemoryToolDef(allToolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+	allToolDefs, dbTools = ensureMemoryToolDefs(allToolDefs, dbTools)
 
 	// Build tool summary map for lazy loading and native meta-tools.
 	toolSummaries := make(map[string]string, len(allToolDefs))
@@ -552,21 +539,32 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	}
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
+	instructions := a.Instructions
+	if len(skills.OnDemand) > 0 {
+		instructions += "\n\nAdditional on-demand skills are available. When one is relevant, call native_list_agent_skills, then native_request_skill. The selected skill applies for this run."
+	}
 	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
-		SystemInstructions: a.Instructions,
-		Skills:             skills,
-		MemorySummaries:    memories,
+		SystemInstructions: instructions,
+		Skills:             skills.Always,
 		ContextChunks:      contextChunks,
 		History:            history,
 		MemoryEnabled:      a.MemoryEnabled,
 		MemorySaveMode:     a.MemorySaveMode,
 		HasCallAgent:       hasCallAgent,
 		HasCreateAgent:     hasCreateAgent,
+		LazyToolLoading:    a.LazyToolLoading,
 		ConvCompaction:     convCompaction,
 	})
 
 	// requestedTools grows when native_request_tool is called (lazy loading mode).
 	requestedTools := map[string]bool{}
+	skillSummaries := map[string]string{}
+	for name, skill := range skills.OnDemand {
+		skillSummaries[name] = skill.Description
+	}
+	activeSkills := map[string]bool{}
+	activeMemoryIDs := map[string]bool{}
+	var messages []provider.Message
 
 	// Determine trace root and depth for sub-agent calls.
 	rootTraceID := opts.rootTraceID
@@ -594,6 +592,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		RunID:          runID,
 		ConversationID: convID,
 		ToolSummaries:  toolSummaries,
+		SkillSummaries: skillSummaries,
 		InvokeDepth:    opts.invokeDepth,
 		RootRunID:      rootTraceID,
 		CallAgent:      callAgentFn,
@@ -625,8 +624,27 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			}
 			return strings.TrimSpace(result.String()), nil
 		},
+		SearchMemory: func(ctx context.Context, query string, limit int) ([]domain.Memory, error) {
+			embedding := memoryEmbedding(ctx, llm, query)
+			return memory.NewEngine(h.pool).Retrieve(ctx, a.ID, ws, convID, embedding, limit, a.MinRelevanceScore)
+		},
+		RequestMemory: func(memories []domain.Memory) bool {
+			return appendMemoryContext(messages, memories, activeMemoryIDs) > 0
+		},
 		RequestTool: func(name string) {
 			requestedTools[name] = true
+		},
+		RequestSkill: func(name string) bool {
+			skill, ok := skills.OnDemand[name]
+			if !ok || activeSkills[name] {
+				return false
+			}
+			activeSkills[name] = true
+			if len(messages) > 0 {
+				messages[0].Content += "\n\n[Skill: " + skill.Name + "]\n" + skill.Content
+			}
+			h.runs.createStep(ctx, runID, domain.StepToolCall, map[string]any{"skill": skill.Name}, map[string]any{"activated": true}, time.Now(), 0, "native_request_skill", "") //nolint:errcheck
+			return true
 		},
 	}
 	_ = h.pool.QueryRow(ctx, `SELECT COALESCE(channel_session_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&execCtx.ChannelSessionID)
@@ -654,10 +672,11 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
 
 	// ── Tool calling loop ──────────────────────────────────────────────────────
-	messages := initialMessages
+	messages = initialMessages
 	stepCount := 0
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
+	futureWorkRetried := false
 
 	for {
 		// Build the tool list for this iteration.
@@ -671,8 +690,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				}
 			}
 		} else {
-			toolDefs = allToolDefs
+			toolDefs = append(lazyMetaToolDefs(h.registry), allToolDefs...)
 		}
+		toolDefs = dedupeToolDefs(toolDefs)
 
 		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
 			messages = trimmed
@@ -710,6 +730,14 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			modelStart, usage.InputTokens+usage.OutputTokens, "", "")
 
 		if len(pendingCalls) == 0 {
+			if stepCount == 0 && promisesUnconfirmedFutureWork(reply) {
+				if !futureWorkRetried {
+					futureWorkRetried = true
+					messages[0].Content += futureWorkCorrection
+					continue
+				}
+				reply = "I don't have enough information to answer that."
+			}
 			if strings.TrimSpace(reply) == "" {
 				msg := "model returned an empty response"
 				runErrMsg = msg
@@ -953,7 +981,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		}
 		// Reload tool definitions to pick up tools created or attached mid-run.
 		if freshAll, freshDB, err := loadAgentToolDefs(ctx, h.pool, a.ID); err == nil {
-			freshAll, freshDB = ensureMemoryToolDef(freshAll, freshDB, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+			freshAll, freshDB = ensureMemoryToolDefs(freshAll, freshDB)
 			allToolDefs, dbTools = freshAll, freshDB
 			for _, td := range freshAll {
 				toolSummaries[td.Name] = td.Description
@@ -1682,20 +1710,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 		return
 	}
 
-	memories, contextChunks := []string{}, []string{}
-	if a.MemoryEnabled {
-		start := time.Now()
-		found, err := memory.NewEngine(h.pool).Retrieve(ctx, a.ID, ws, convID, memoryEmbedding(ctx, llm, input), a.MaxMemories, a.MinRelevanceScore)
-		if err == nil {
-			for _, m := range found {
-				memories = append(memories, m.Content)
-			}
-		}
-		h.runs.createStep(ctx, runID, domain.StepMemoryRetrieval, //nolint:errcheck
-			map[string]any{"query": input},
-			map[string]any{"count": len(memories)},
-			start, 0, "", errString(err))
-	}
+	contextChunks := []string{}
 
 	if a.ContextRetrievalEnabled {
 		start := time.Now()
@@ -1789,8 +1804,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	}
 	supMessages, supStableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: supervisorInstructions,
-		Skills:             skills,
-		MemorySummaries:    memories,
+		Skills:             skills.Always,
 		ContextChunks:      contextChunks,
 		History:            history,
 		MemoryEnabled:      a.MemoryEnabled,
@@ -1799,7 +1813,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 		HasCreateAgent:     supHasCreateAgent,
 		ConvCompaction:     supConvCompaction,
 	})
-	regularToolDefs, dbTools = ensureMemoryToolDef(regularToolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+	regularToolDefs, dbTools = ensureMemoryToolDefs(regularToolDefs, dbTools)
 	toolDefs := append(regularToolDefs, delegateToolDefs...)
 
 	supRootTraceID := runID
@@ -1810,6 +1824,8 @@ func (h *InvokeHandler) executeSupervisorRun(
 		}
 	}
 
+	var messages []provider.Message
+	activeMemoryIDs := map[string]bool{}
 	execCtx := tools.ExecutionContext{
 		WorkspaceID:    ws,
 		AgentID:        a.ID,
@@ -1849,6 +1865,13 @@ func (h *InvokeHandler) executeSupervisorRun(
 			}
 			return strings.TrimSpace(result.String()), nil
 		},
+		SearchMemory: func(ctx context.Context, query string, limit int) ([]domain.Memory, error) {
+			embedding := memoryEmbedding(ctx, llm, query)
+			return memory.NewEngine(h.pool).Retrieve(ctx, a.ID, ws, convID, embedding, limit, a.MinRelevanceScore)
+		},
+		RequestMemory: func(memories []domain.Memory) bool {
+			return appendMemoryContext(messages, memories, activeMemoryIDs) > 0
+		},
 	}
 	_ = h.pool.QueryRow(ctx, `SELECT COALESCE(channel_session_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&execCtx.ChannelSessionID)
 	execCtx.SendMessage = nil      // supervisor runs are always embedded inside a workflow, never directly gateway-dispatched
@@ -1856,7 +1879,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 
 	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
 
-	messages := supMessages
+	messages = supMessages
 	stepCount := 0
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
@@ -2130,7 +2153,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 		}
 		// Reload tool definitions to pick up tools created or attached mid-run.
 		if freshAll, freshDB, err := loadAgentToolDefs(ctx, h.pool, a.ID); err == nil {
-			freshAll, freshDB = ensureMemoryToolDef(freshAll, freshDB, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+			freshAll, freshDB = ensureMemoryToolDefs(freshAll, freshDB)
 			regularToolDefs, dbTools = freshAll, freshDB
 			toolDefs = append(regularToolDefs, delegateToolDefs...)
 		}

@@ -88,8 +88,12 @@ func main() {
 	reg.Register(native.NewReadFileTool(cfg.StoragePath))
 	reg.Register(native.NewWebSearchTool())
 	reg.Register(native.NewSaveMemoryTool(pool))
+	reg.Register(native.NewListMemoriesTool())
+	reg.Register(native.NewRequestMemoryTool())
 	reg.Register(native.NewListToolsTool())
 	reg.Register(native.NewRequestToolTool())
+	reg.Register(native.NewListAgentSkillsTool())
+	reg.Register(native.NewRequestSkillTool())
 	// Agent self-management tools
 	reg.Register(native.NewListAgentsTool(pool))
 	reg.Register(native.NewCallAgentTool(pool))

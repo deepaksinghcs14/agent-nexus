@@ -108,17 +108,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	memories, contextChunks := []string{}, []string{}
-	if a.MemoryEnabled {
-		start := time.Now()
-		found, err := memory.NewEngine(h.pool).Retrieve(r.Context(), a.ID, ws, c.ID, memoryEmbedding(r.Context(), llm, q.Input), a.MaxMemories, a.MinRelevanceScore)
-		if err == nil {
-			for _, m := range found {
-				memories = append(memories, m.Content)
-			}
-		}
-		_ = h.createStep(r.Context(), id, domain.StepMemoryRetrieval, map[string]any{"query": q.Input}, map[string]any{"count": len(memories), "memories": memories}, start, 0, "", errString(err))
-	}
+	contextChunks := []string{}
 	if a.ContextRetrievalEnabled {
 		start := time.Now()
 		connectorIDs, err := h.agentConnectorIDs(r.Context(), a.ID)
@@ -177,11 +167,11 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load tool definitions for this agent (before building prompt so we can inject hints)
-	toolDefs, dbTools, _ := loadAgentToolDefs(r.Context(), h.pool, a.ID)
-	toolDefs, dbTools = ensureMemoryToolDef(toolDefs, dbTools, a.MemoryEnabled && a.MemorySaveMode != "extractor")
+	allToolDefs, dbTools, _ := loadAgentToolDefs(r.Context(), h.pool, a.ID)
+	allToolDefs, dbTools = ensureMemoryToolDefs(allToolDefs, dbTools)
 
 	hasCallAgent := false
-	for _, td := range toolDefs {
+	for _, td := range allToolDefs {
 		if td.Name == "native_call_agent" {
 			hasCallAgent = true
 			break
@@ -189,10 +179,13 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	skills, _ := loadAgentSkills(r.Context(), h.pool, a.ID)
+	instructions := a.Instructions
+	if len(skills.OnDemand) > 0 {
+		instructions += "\n\nAdditional on-demand skills are available. When one is relevant, call native_list_agent_skills, then native_request_skill. The selected skill applies for this run."
+	}
 	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
-		SystemInstructions: a.Instructions,
-		Skills:             skills,
-		MemorySummaries:    memories,
+		SystemInstructions: instructions,
+		Skills:             skills.Always,
 		ContextChunks:      contextChunks,
 		History:            history,
 		MemoryEnabled:      a.MemoryEnabled,
@@ -209,6 +202,40 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	toolSummaries := map[string]string{}
+	for _, td := range allToolDefs {
+		toolSummaries[td.Name] = td.Description
+	}
+	skillSummaries := map[string]string{}
+	for name, skill := range skills.OnDemand {
+		skillSummaries[name] = skill.Description
+	}
+	hiddenToolNames := map[string]bool{}
+	for _, skill := range skills.OnDemand {
+		for _, name := range skill.RequiredToolNames {
+			if !skills.AlwaysRequired[name] {
+				hiddenToolNames[name] = true
+			}
+		}
+	}
+	requestedTools := map[string]bool{}
+	activeSkills := map[string]bool{}
+	activeSkillTools := map[string]bool{}
+	visibleToolDefs := func() []provider.ToolDefinition {
+		out := make([]provider.ToolDefinition, 0, len(allToolDefs))
+		for _, td := range allToolDefs {
+			if !hiddenToolNames[td.Name] || activeSkillTools[td.Name] {
+				out = append(out, td)
+			}
+		}
+		return out
+	}
+	toolSummaries = map[string]string{}
+	for _, td := range visibleToolDefs() {
+		toolSummaries[td.Name] = td.Description
+	}
+	activeMemoryIDs := map[string]bool{}
+	var messages []provider.Message
 	execCtx := tools.ExecutionContext{
 		WorkspaceID:    ws,
 		AgentID:        a.ID,
@@ -217,6 +244,8 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		UserID:         uid,
 		RunID:          id,
 		ConversationID: c.ID,
+		ToolSummaries:  toolSummaries,
+		SkillSummaries: skillSummaries,
 		InvokeDepth:    0,
 		RootRunID:      id,
 		CallAgent:      callAgentFn,
@@ -227,6 +256,34 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			return h.invokeH.runWorkflowInline(ctx, capturedWs, capturedUID, workflowID, input, capturedRunID)
 		},
 		SendMessage: nil, // playground runs don't have a gateway channel
+		SearchMemory: func(ctx context.Context, query string, limit int) ([]domain.Memory, error) {
+			embedding := memoryEmbedding(ctx, llm, query)
+			return memory.NewEngine(h.pool).Retrieve(ctx, a.ID, ws, c.ID, embedding, limit, a.MinRelevanceScore)
+		},
+		RequestMemory: func(memories []domain.Memory) bool {
+			return appendMemoryContext(messages, memories, activeMemoryIDs) > 0
+		},
+		RequestTool: func(name string) { requestedTools[name] = true },
+		RequestSkill: func(name string) bool {
+			skill, ok := skills.OnDemand[name]
+			if !ok || activeSkills[name] {
+				return false
+			}
+			activeSkills[name] = true
+			for _, toolName := range skill.RequiredToolNames {
+				activeSkillTools[toolName] = true
+				for _, td := range allToolDefs {
+					if td.Name == toolName {
+						toolSummaries[td.Name] = td.Description
+					}
+				}
+			}
+			if len(messages) > 0 {
+				messages[0].Content += "\n\n[Skill: " + skill.Name + "]\n" + skill.Content
+			}
+			_ = h.createStep(r.Context(), id, domain.StepToolCall, map[string]any{"skill": skill.Name}, map[string]any{"activated": true}, time.Now(), 0, "native_request_skill", "")
+			return true
+		},
 		WaitForUserInput: func(ctx context.Context, question string) (string, error) {
 			emit(fmt.Sprintf(`{"type":"user_input_required","run_id":%q,"question":%s}`,
 				capturedRunID, jsonOrStr([]byte(`"`+question+`"`))))
@@ -246,12 +303,25 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	emit(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, id))
 
 	// ── Tool calling loop ──────────────────────────────────────────────────────
-	messages := initialMessages
+	messages = initialMessages
 	stepCount := 0
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
+	futureWorkRetried := false
 
 	for {
+		var toolDefs []provider.ToolDefinition
+		if a.LazyToolLoading {
+			toolDefs = lazyMetaToolDefs(h.registry)
+			for _, td := range visibleToolDefs() {
+				if requestedTools[td.Name] {
+					toolDefs = append(toolDefs, td)
+				}
+			}
+		} else {
+			toolDefs = append(lazyMetaToolDefs(h.registry), visibleToolDefs()...)
+		}
+		toolDefs = dedupeToolDefs(toolDefs)
 		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
 			messages = trimmed
 			emit(fmt.Sprintf(`{"type":"delta","content":%q}`,
@@ -288,6 +358,14 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			modelStart, usage.InputTokens+usage.OutputTokens, "", "")
 
 		if len(pendingCalls) == 0 {
+			if stepCount == 0 && promisesUnconfirmedFutureWork(reply) {
+				if !futureWorkRetried {
+					futureWorkRetried = true
+					messages[0].Content += futureWorkCorrection
+					continue
+				}
+				reply = "I don't have enough information to answer that."
+			}
 			// No tool calls — this is the final response
 			if strings.TrimSpace(reply) == "" {
 				msg := "model returned an empty response"
@@ -446,8 +524,14 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		}
 		// Reload tool definitions to pick up tools created or attached mid-run.
 		if freshDefs, freshDB, err := loadAgentToolDefs(r.Context(), h.pool, a.ID); err == nil {
-			freshDefs, freshDB = ensureMemoryToolDef(freshDefs, freshDB, a.MemoryEnabled && a.MemorySaveMode != "extractor")
-			toolDefs, dbTools = freshDefs, freshDB
+			freshDefs, freshDB = ensureMemoryToolDefs(freshDefs, freshDB)
+			allToolDefs, dbTools = freshDefs, freshDB
+			for name := range toolSummaries {
+				delete(toolSummaries, name)
+			}
+			for _, td := range visibleToolDefs() {
+				toolSummaries[td.Name] = td.Description
+			}
 		}
 		// Loop: call model again with tool results in messages
 	}

@@ -21,14 +21,14 @@ func (t *RequestToolTool) Definition() domain.Tool {
 		"properties": map[string]any{
 			"name": map[string]any{
 				"type":        "string",
-				"description": "The exact tool name to activate (as returned by native_list_tools).",
+				"description": "Exact tool name.",
 			},
 		},
 		"required": []string{"name"},
 	})
 	return domain.Tool{
 		Name:             "native_request_tool",
-		Description:      "Activate a tool by name so its full schema is available on the next turn. Call native_list_tools first to see available tool names.",
+		Description:      "Request a tool so its full schema is available on the next turn.",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),

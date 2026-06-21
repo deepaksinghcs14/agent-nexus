@@ -24,7 +24,7 @@ func (t *ListToolsTool) Definition() domain.Tool {
 	})
 	return domain.Tool{
 		Name:             "native_list_tools",
-		Description:      "List all tools available to you in this session, with their names and descriptions.",
+		Description:      "List available tools when you need the exact name of a tool.",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),

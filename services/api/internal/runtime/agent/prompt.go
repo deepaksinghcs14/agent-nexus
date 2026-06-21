@@ -23,6 +23,7 @@ func NewBuilder() *Builder { return &Builder{} }
 func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 	// Stable: derived purely from agent config — identical across all turns of a conversation.
 	stable := req.SystemInstructions
+	stable += "\n\nNever promise future work unless an available tool has started it and returned a confirmed result."
 	if len(req.Skills) > 0 {
 		stable += "\n\nAdditional instructions:\n"
 		for _, s := range req.Skills {
@@ -37,13 +38,13 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 	if req.HasCreateAgent && req.HasCallAgent {
 		stable += "\n\nDelegation pattern: native_create_agent only registers an agent — it does NOT run it. After creating agents you MUST call native_call_agent with each returned agent_id before finishing. Never end a turn after create_agent calls without immediately following up with call_agent calls."
 	}
+	if req.LazyToolLoading {
+		stable += "\n\nLazy tool loading: before any tool except native_list_tools and native_request_tool, first call native_request_tool with the exact name; if you do not know it, call native_list_tools. Use requested tools on the next turn only."
+	}
+	stable += "\n\nMemory: use native_list_memories to inspect, native_request_memory to load, and native_save_memory to store only durable, non-sensitive facts."
+	stable += "\n\nFor any question about the user's identity, preferences, goals, projects, or prior decisions, first call native_list_memories before answering."
 	if req.MemoryEnabled {
-		stable += "\n\nMemory policy:\n"
-		if req.MemorySaveMode != "extractor" {
-			stable += "- Use native_save_memory only for stable long-term preferences, durable facts, goals, or reusable decisions.\n"
-		}
-		stable += "- Do not save transient chat, secrets, credentials, private irrelevant details, or one-off requests.\n"
-		stable += "- Keep saved memories compact and self-contained.\n"
+		stable += "\n\nMemory policy: save only stable preferences, durable facts, goals, or reusable decisions; keep them compact and never save secrets or transient chat."
 	}
 
 	// Dynamic: timestamp + retrieved content — changes each turn.
@@ -109,6 +110,8 @@ type BuildRequest struct {
 	// HasCreateAgent, when true alongside HasCallAgent, injects a delegation pattern reminder
 	// that create_agent does not run the agent — call_agent must follow immediately.
 	HasCreateAgent bool
+	// LazyToolLoading requires tool schemas to be requested before use.
+	LazyToolLoading bool
 	// ConvCompaction is a rolling LLM-generated summary of older conversation turns.
 	// Injected into the dynamic section so it doesn't break Anthropic prompt-cache on the stable prefix.
 	ConvCompaction string
