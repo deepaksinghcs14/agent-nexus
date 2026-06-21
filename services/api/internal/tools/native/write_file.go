@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 )
@@ -45,6 +46,9 @@ func (t *WriteFileTool) Execute(input map[string]any) (any, error) {
 		return nil, fmt.Errorf("write_file: path is required")
 	}
 	fullPath := filepath.Join(t.storagePath, path)
+	if !strings.HasPrefix(filepath.Clean(fullPath)+string(filepath.Separator), filepath.Clean(t.storagePath)+string(filepath.Separator)) {
+		return nil, fmt.Errorf("write_file: path escapes storage root")
+	}
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0750); err != nil {
 		return nil, fmt.Errorf("write_file: mkdir: %w", err)
 	}

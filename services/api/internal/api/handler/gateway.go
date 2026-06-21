@@ -1246,6 +1246,9 @@ func (h *GatewayHandler) fireReminders(ctx context.Context) {
 			slog.Warn("reminder dispatcher: channel not found", "reminder_id", rem.ID, "channel_id", rem.ChannelID)
 			continue
 		}
+		if !ch.IsActive {
+			continue
+		}
 		if ch.ChannelType != "whatsapp" {
 			continue
 		}
@@ -1264,6 +1267,7 @@ func (h *GatewayHandler) fireReminders(ctx context.Context) {
 		})
 		if sendErr != nil {
 			slog.Warn("reminder send failed", "reminder_id", rem.ID, "title", rem.Title, "error", sendErr)
+			_, _ = h.repo.UpdateReminderStatus(ctx, rem.ID, rem.WorkspaceID, "failed")
 			continue
 		}
 		_, _ = h.repo.UpdateReminderStatus(ctx, rem.ID, rem.WorkspaceID, "completed")
@@ -1676,6 +1680,9 @@ func (h *GatewayHandler) fireScheduledMessages(ctx context.Context) {
 		ch, err := h.repo.GetChannel(ctx, msg.ChannelID)
 		if err != nil {
 			slog.Warn("scheduled message dispatcher: channel not found", "msg_id", msg.ID, "channel_id", msg.ChannelID)
+			continue
+		}
+		if !ch.IsActive {
 			continue
 		}
 		cfg := gatewayservice.ParseConfig(ch.Config, h.cfg.WhatsAppAdapterURL)

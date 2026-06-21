@@ -499,6 +499,7 @@ func (r *GatewayRepository) FetchDueReminders(ctx context.Context) ([]DueReminde
 		  COALESCE(s.peer_kind,'direct'),
 		  COALESCE(s.peer_id, cont.whatsapp_jid, '')
 		FROM gateway_reminders r
+		JOIN gateway_channels gc ON gc.id = r.channel_id AND gc.is_active = true
 		LEFT JOIN channel_sessions s ON s.id = r.session_id
 		LEFT JOIN gateway_contacts cont ON cont.id = r.contact_id
 		WHERE r.status = 'pending'
@@ -741,13 +742,14 @@ func (r *GatewayRepository) RescheduleMessage(ctx context.Context, id, workspace
 
 func (r *GatewayRepository) FetchDueScheduledMessages(ctx context.Context) ([]domain.ScheduledMessage, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''),
-		       account_id, peer_kind, peer_id, message, send_at, status,
-		       recurrence_rule, occurrence_count, last_error, created_by, created_at, updated_at
-		FROM gateway_scheduled_messages
-		WHERE status = 'pending'
-		  AND send_at <= NOW()
-		ORDER BY send_at ASC
+		SELECT sm.id::text, sm.workspace_id::text, sm.channel_id::text, COALESCE(sm.contact_id::text,''),
+		       sm.account_id, sm.peer_kind, sm.peer_id, sm.message, sm.send_at, sm.status,
+		       sm.recurrence_rule, sm.occurrence_count, sm.last_error, sm.created_by, sm.created_at, sm.updated_at
+		FROM gateway_scheduled_messages sm
+		JOIN gateway_channels gc ON gc.id = sm.channel_id AND gc.is_active = true
+		WHERE sm.status = 'pending'
+		  AND sm.send_at <= NOW()
+		ORDER BY sm.send_at ASC
 		LIMIT 50`)
 	if err != nil {
 		return nil, err

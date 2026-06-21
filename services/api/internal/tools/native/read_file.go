@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 )
@@ -41,7 +43,10 @@ func (t *ReadFileTool) Execute(input map[string]any) (any, error) {
 	if !ok || path == "" {
 		return nil, fmt.Errorf("read_file: path is required")
 	}
-	fullPath := t.storagePath + "/" + path
+	fullPath := filepath.Join(t.storagePath, path)
+	if !strings.HasPrefix(filepath.Clean(fullPath)+string(filepath.Separator), filepath.Clean(t.storagePath)+string(filepath.Separator)) {
+		return nil, fmt.Errorf("read_file: path escapes storage root")
+	}
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
 		return nil, fmt.Errorf("read_file: %w", err)
