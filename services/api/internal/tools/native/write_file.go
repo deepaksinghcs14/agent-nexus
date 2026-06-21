@@ -28,7 +28,7 @@ func (t *WriteFileTool) Definition() domain.Tool {
 		"required": []string{"path", "content"},
 	})
 	return domain.Tool{
-		Name:             "write_file",
+		Name:             "native_write_file",
 		Description:      "Write content to a file in the storage directory",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),

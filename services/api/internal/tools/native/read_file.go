@@ -27,7 +27,7 @@ func (t *ReadFileTool) Definition() domain.Tool {
 		"required": []string{"path"},
 	})
 	return domain.Tool{
-		Name:             "read_file",
+		Name:             "native_read_file",
 		Description:      "Read the contents of a file from the storage directory",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
