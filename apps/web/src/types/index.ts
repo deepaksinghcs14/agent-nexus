@@ -378,6 +378,7 @@ export interface AgentSkill {
   agent_id: string
   skill_id: string
   enabled: boolean
+  activation_mode: string  // 'always' | 'on_demand'
   order_index: number
   created_at: string
   skill?: Skill
