@@ -323,38 +323,46 @@ func (h *AgentsHandler) SetConnectors(w http.ResponseWriter, r *http.Request) {
 }
 
 type agentExport struct {
-	Version                 string             `json:"version"`
-	Name                    string             `json:"name"`
-	Description             string             `json:"description"`
-	Instructions            string             `json:"instructions"`
-	Provider                string             `json:"provider"`
-	Model                   string             `json:"model"`
-	Temperature             float64            `json:"temperature"`
-	MaxTokens               int                `json:"max_tokens"`
-	MemoryEnabled           bool               `json:"memory_enabled"`
-	MemoryScope             string             `json:"memory_scope"`
-	MemorySaveMode          string             `json:"memory_save_mode"`
-	MemoryReviewPolicy      string             `json:"memory_review_policy"`
-	MaxMemories             int                `json:"max_memories"`
-	MinRelevanceScore       float64            `json:"min_relevance_score"`
-	MemoryMinImportance     float64            `json:"memory_min_importance"`
-	MemoryDedupeThreshold   float64            `json:"memory_dedupe_threshold"`
-	ContextRetrievalEnabled bool               `json:"context_retrieval_enabled"`
-	MaxSteps                int                `json:"max_steps"`
-	MaxToolCalls            int                `json:"max_tool_calls"`
-	MaxDurationSecs         int                `json:"max_duration_secs"`
-	MaxHistoryMessages       int                `json:"max_history_messages"`
-	LazyToolLoading          bool               `json:"lazy_tool_loading"`
-	CompactionThreshold      int                `json:"compaction_threshold"`
-	CompactionTokenThreshold int                `json:"compaction_token_threshold"`
-	Status                   string             `json:"status"`
-	ToolNames                []string           `json:"tool_names"`
-	Skills                  []exportedSkill    `json:"skills"`
+	Version                  string          `json:"version"`
+	Name                     string          `json:"name"`
+	Description              string          `json:"description"`
+	Instructions             string          `json:"instructions"`
+	Provider                 string          `json:"provider"`
+	Model                    string          `json:"model"`
+	Temperature              float64         `json:"temperature"`
+	MaxTokens                int             `json:"max_tokens"`
+	MemoryEnabled            bool            `json:"memory_enabled"`
+	MemoryScope              string          `json:"memory_scope"`
+	MemorySaveMode           string          `json:"memory_save_mode"`
+	MemoryReviewPolicy       string          `json:"memory_review_policy"`
+	MaxMemories              int             `json:"max_memories"`
+	MinRelevanceScore        float64         `json:"min_relevance_score"`
+	MemoryMinImportance      float64         `json:"memory_min_importance"`
+	MemoryDedupeThreshold    float64         `json:"memory_dedupe_threshold"`
+	ContextRetrievalEnabled  bool            `json:"context_retrieval_enabled"`
+	MaxSteps                 int             `json:"max_steps"`
+	MaxToolCalls             int             `json:"max_tool_calls"`
+	MaxDurationSecs          int             `json:"max_duration_secs"`
+	MaxHistoryMessages       int             `json:"max_history_messages"`
+	LazyToolLoading          bool            `json:"lazy_tool_loading"`
+	CompactionThreshold      int             `json:"compaction_threshold"`
+	CompactionTokenThreshold int             `json:"compaction_token_threshold"`
+	Status                   string          `json:"status"`
+	ToolNames                []string        `json:"tool_names"`
+	Skills                   []exportedSkill `json:"skills"`
 }
 
 type exportedSkill struct {
-	Name       string `json:"name"`
-	OrderIndex int    `json:"order_index"`
+	Name           string `json:"name"`
+	OrderIndex     int    `json:"order_index"`
+	ActivationMode string `json:"activation_mode,omitempty"`
+}
+
+func defaultActivationMode(mode string) string {
+	if mode == "on_demand" {
+		return mode
+	}
+	return "always"
 }
 
 var safeFilenameRe = regexp.MustCompile(`[^a-z0-9_-]`)
@@ -391,7 +399,7 @@ func (h *AgentsHandler) Export(w http.ResponseWriter, r *http.Request) {
 
 	// Collect skills with names
 	skillRows, err := h.pool.Query(r.Context(),
-		`SELECT s.name, ags.order_index FROM agent_skills ags JOIN skills s ON s.id=ags.skill_id WHERE ags.agent_id=$1::uuid AND ags.enabled=true ORDER BY ags.order_index`,
+		`SELECT s.name, ags.order_index, ags.activation_mode FROM agent_skills ags JOIN skills s ON s.id=ags.skill_id WHERE ags.agent_id=$1::uuid AND ags.enabled=true ORDER BY ags.order_index`,
 		agentID)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to read agent skills"))
@@ -401,7 +409,7 @@ func (h *AgentsHandler) Export(w http.ResponseWriter, r *http.Request) {
 	var skills []exportedSkill
 	for skillRows.Next() {
 		var es exportedSkill
-		if err := skillRows.Scan(&es.Name, &es.OrderIndex); err != nil {
+		if err := skillRows.Scan(&es.Name, &es.OrderIndex, &es.ActivationMode); err != nil {
 			errs.Write(w, errs.Internal("failed to read agent skills"))
 			return
 		}
@@ -410,26 +418,26 @@ func (h *AgentsHandler) Export(w http.ResponseWriter, r *http.Request) {
 	skillRows.Close()
 
 	exp := agentExport{
-		Version:                 "1",
-		Name:                    a.Name,
-		Description:             a.Description,
-		Instructions:            a.Instructions,
-		Provider:                a.Provider,
-		Model:                   a.Model,
-		Temperature:             a.Temperature,
-		MaxTokens:               a.MaxTokens,
-		MemoryEnabled:           a.MemoryEnabled,
-		MemoryScope:             a.MemoryScope,
-		MemorySaveMode:          a.MemorySaveMode,
-		MemoryReviewPolicy:      a.MemoryReviewPolicy,
-		MaxMemories:             a.MaxMemories,
-		MinRelevanceScore:       a.MinRelevanceScore,
-		MemoryMinImportance:     a.MemoryMinImportance,
-		MemoryDedupeThreshold:   a.MemoryDedupeThreshold,
-		ContextRetrievalEnabled: a.ContextRetrievalEnabled,
-		MaxSteps:                a.MaxSteps,
-		MaxToolCalls:            a.MaxToolCalls,
-		MaxDurationSecs:         a.MaxDurationSecs,
+		Version:                  "1",
+		Name:                     a.Name,
+		Description:              a.Description,
+		Instructions:             a.Instructions,
+		Provider:                 a.Provider,
+		Model:                    a.Model,
+		Temperature:              a.Temperature,
+		MaxTokens:                a.MaxTokens,
+		MemoryEnabled:            a.MemoryEnabled,
+		MemoryScope:              a.MemoryScope,
+		MemorySaveMode:           a.MemorySaveMode,
+		MemoryReviewPolicy:       a.MemoryReviewPolicy,
+		MaxMemories:              a.MaxMemories,
+		MinRelevanceScore:        a.MinRelevanceScore,
+		MemoryMinImportance:      a.MemoryMinImportance,
+		MemoryDedupeThreshold:    a.MemoryDedupeThreshold,
+		ContextRetrievalEnabled:  a.ContextRetrievalEnabled,
+		MaxSteps:                 a.MaxSteps,
+		MaxToolCalls:             a.MaxToolCalls,
+		MaxDurationSecs:          a.MaxDurationSecs,
 		MaxHistoryMessages:       a.MaxHistoryMessages,
 		LazyToolLoading:          a.LazyToolLoading,
 		CompactionThreshold:      a.CompactionThreshold,
@@ -501,27 +509,27 @@ func (h *AgentsHandler) Import(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a := &domain.Agent{
-		ID:                      uuid.New().String(),
-		WorkspaceID:             wsID,
-		Name:                    imp.Name,
-		Description:             imp.Description,
-		Instructions:            imp.Instructions,
-		Provider:                imp.Provider,
-		Model:                   imp.Model,
-		Temperature:             imp.Temperature,
-		MaxTokens:               imp.MaxTokens,
-		MemoryEnabled:           imp.MemoryEnabled,
-		MemoryScope:             imp.MemoryScope,
-		MemorySaveMode:          imp.MemorySaveMode,
-		MemoryReviewPolicy:      imp.MemoryReviewPolicy,
-		MaxMemories:             imp.MaxMemories,
-		MinRelevanceScore:       imp.MinRelevanceScore,
-		MemoryMinImportance:     imp.MemoryMinImportance,
-		MemoryDedupeThreshold:   imp.MemoryDedupeThreshold,
-		ContextRetrievalEnabled: imp.ContextRetrievalEnabled,
-		MaxSteps:                imp.MaxSteps,
-		MaxToolCalls:            imp.MaxToolCalls,
-		MaxDurationSecs:         imp.MaxDurationSecs,
+		ID:                       uuid.New().String(),
+		WorkspaceID:              wsID,
+		Name:                     imp.Name,
+		Description:              imp.Description,
+		Instructions:             imp.Instructions,
+		Provider:                 imp.Provider,
+		Model:                    imp.Model,
+		Temperature:              imp.Temperature,
+		MaxTokens:                imp.MaxTokens,
+		MemoryEnabled:            imp.MemoryEnabled,
+		MemoryScope:              imp.MemoryScope,
+		MemorySaveMode:           imp.MemorySaveMode,
+		MemoryReviewPolicy:       imp.MemoryReviewPolicy,
+		MaxMemories:              imp.MaxMemories,
+		MinRelevanceScore:        imp.MinRelevanceScore,
+		MemoryMinImportance:      imp.MemoryMinImportance,
+		MemoryDedupeThreshold:    imp.MemoryDedupeThreshold,
+		ContextRetrievalEnabled:  imp.ContextRetrievalEnabled,
+		MaxSteps:                 imp.MaxSteps,
+		MaxToolCalls:             imp.MaxToolCalls,
+		MaxDurationSecs:          imp.MaxDurationSecs,
 		MaxHistoryMessages:       imp.MaxHistoryMessages,
 		LazyToolLoading:          imp.LazyToolLoading,
 		CompactionThreshold:      imp.CompactionThreshold,
@@ -566,8 +574,8 @@ func (h *AgentsHandler) Import(w http.ResponseWriter, r *http.Request) {
 		defer func() { _ = tx.Rollback(r.Context()) }()
 		for _, es := range imp.Skills {
 			if _, err := tx.Exec(r.Context(),
-				`INSERT INTO agent_skills(agent_id,skill_id,enabled,order_index) SELECT $1::uuid,id,true,$2 FROM skills WHERE name=$3 AND (workspace_id IS NULL OR workspace_id=$4::uuid) ON CONFLICT DO NOTHING`,
-				a.ID, es.OrderIndex, es.Name, wsID); err != nil {
+				`INSERT INTO agent_skills(agent_id,skill_id,enabled,activation_mode,order_index) SELECT $1::uuid,id,true,$2,$3 FROM skills WHERE name=$4 AND (workspace_id IS NULL OR workspace_id=$5::uuid) ON CONFLICT DO NOTHING`,
+				a.ID, defaultActivationMode(es.ActivationMode), es.OrderIndex, es.Name, wsID); err != nil {
 				errs.Write(w, errs.Internal("failed to attach skills"))
 				return
 			}

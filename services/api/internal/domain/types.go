@@ -60,35 +60,35 @@ type ProviderCredential struct {
 // ============================================================
 
 type Agent struct {
-	ID                      string    `json:"id"`
-	WorkspaceID             string    `json:"workspace_id"`
-	Name                    string    `json:"name"`
-	Description             string    `json:"description"`
-	Instructions            string    `json:"instructions"`
-	Provider                string    `json:"provider"`
-	Model                   string    `json:"model"`
-	Temperature             float64   `json:"temperature"`
-	MaxTokens               int       `json:"max_tokens"`
-	MemoryEnabled           bool      `json:"memory_enabled"`
-	MemoryScope             string    `json:"memory_scope"`
-	MemorySaveMode          string    `json:"memory_save_mode"`
-	MemoryReviewPolicy      string    `json:"memory_review_policy"`
-	MaxMemories             int       `json:"max_memories"`
-	MinRelevanceScore       float64   `json:"min_relevance_score"`
-	MemoryMinImportance     float64   `json:"memory_min_importance"`
-	MemoryDedupeThreshold   float64   `json:"memory_dedupe_threshold"`
-	ContextRetrievalEnabled bool      `json:"context_retrieval_enabled"`
-	MaxSteps                int       `json:"max_steps"`
-	MaxToolCalls            int       `json:"max_tool_calls"`
-	MaxDurationSecs         int       `json:"max_duration_secs"`
-	MaxHistoryMessages        int       `json:"max_history_messages"` // 0 = default (20)
-	LazyToolLoading           bool      `json:"lazy_tool_loading"`
-	CompactionThreshold       int       `json:"compaction_threshold"`       // 0 = default (6)
-	CompactionTokenThreshold  int       `json:"compaction_token_threshold"` // 0 = default (3000)
-	Status                  string    `json:"status"`
-	CreatedBy               string    `json:"created_by"`
-	CreatedAt               time.Time `json:"created_at"`
-	UpdatedAt               time.Time `json:"updated_at"`
+	ID                       string    `json:"id"`
+	WorkspaceID              string    `json:"workspace_id"`
+	Name                     string    `json:"name"`
+	Description              string    `json:"description"`
+	Instructions             string    `json:"instructions"`
+	Provider                 string    `json:"provider"`
+	Model                    string    `json:"model"`
+	Temperature              float64   `json:"temperature"`
+	MaxTokens                int       `json:"max_tokens"`
+	MemoryEnabled            bool      `json:"memory_enabled"`
+	MemoryScope              string    `json:"memory_scope"`
+	MemorySaveMode           string    `json:"memory_save_mode"`
+	MemoryReviewPolicy       string    `json:"memory_review_policy"`
+	MaxMemories              int       `json:"max_memories"`
+	MinRelevanceScore        float64   `json:"min_relevance_score"`
+	MemoryMinImportance      float64   `json:"memory_min_importance"`
+	MemoryDedupeThreshold    float64   `json:"memory_dedupe_threshold"`
+	ContextRetrievalEnabled  bool      `json:"context_retrieval_enabled"`
+	MaxSteps                 int       `json:"max_steps"`
+	MaxToolCalls             int       `json:"max_tool_calls"`
+	MaxDurationSecs          int       `json:"max_duration_secs"`
+	MaxHistoryMessages       int       `json:"max_history_messages"` // 0 = default (20)
+	LazyToolLoading          bool      `json:"lazy_tool_loading"`
+	CompactionThreshold      int       `json:"compaction_threshold"`       // 0 = default (6)
+	CompactionTokenThreshold int       `json:"compaction_token_threshold"` // 0 = default (3000)
+	Status                   string    `json:"status"`
+	CreatedBy                string    `json:"created_by"`
+	CreatedAt                time.Time `json:"created_at"`
+	UpdatedAt                time.Time `json:"updated_at"`
 }
 
 // ============================================================
@@ -159,10 +159,10 @@ type Conversation struct {
 	UserID       string    `json:"user_id"`
 	Title        string    `json:"title"`
 	MessageCount int       `json:"message_count"`
-	TokenCount  int       `json:"token_count"`
-	Compaction  string    `json:"compaction,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	TokenCount   int       `json:"token_count"`
+	Compaction   string    `json:"compaction,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type Message struct {
@@ -439,19 +439,21 @@ type Skill struct {
 }
 
 type AgentSkill struct {
-	ID         string    `json:"id"`
-	AgentID    string    `json:"agent_id"`
-	SkillID    string    `json:"skill_id"`
-	Enabled    bool      `json:"enabled"`
-	OrderIndex int       `json:"order_index"`
-	CreatedAt  time.Time `json:"created_at"`
-	Skill      *Skill    `json:"skill,omitempty"`
+	ID             string    `json:"id"`
+	AgentID        string    `json:"agent_id"`
+	SkillID        string    `json:"skill_id"`
+	Enabled        bool      `json:"enabled"`
+	ActivationMode string    `json:"activation_mode"`
+	OrderIndex     int       `json:"order_index"`
+	CreatedAt      time.Time `json:"created_at"`
+	Skill          *Skill    `json:"skill,omitempty"`
 }
 
 type AgentSkillAssignment struct {
-	SkillID    string `json:"skill_id"`
-	Enabled    bool   `json:"enabled"`
-	OrderIndex int    `json:"order_index"`
+	SkillID        string `json:"skill_id"`
+	Enabled        bool   `json:"enabled"`
+	ActivationMode string `json:"activation_mode,omitempty"`
+	OrderIndex     int    `json:"order_index"`
 }
 
 // ============================================================

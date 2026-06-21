@@ -26,24 +26,24 @@ func (t *SaveMemoryTool) Definition() domain.Tool {
 		"properties": map[string]any{
 			"content": map[string]any{
 				"type":        "string",
-				"description": "A compact durable fact, preference, goal, or decision to remember. Do not include secrets or transient chat.",
+				"description": "Compact fact, preference, goal, or decision.",
 			},
 			"importance_score": map[string]any{
 				"type":        "number",
 				"minimum":     0,
 				"maximum":     1,
-				"description": "0.0–1.0 score for long-term usefulness (e.g. 0.9 for a strong preference, 0.3 for a minor detail).",
+				"description": "0.0–1.0 usefulness score.",
 			},
 			"reason": map[string]any{
 				"type":        "string",
-				"description": "Short reason this should be remembered.",
+				"description": "Short reason.",
 			},
 		},
 		"required": []string{"content", "importance_score", "reason"},
 	})
 	return domain.Tool{
 		Name:             "native_save_memory",
-		Description:      "Save a durable memory for future runs when the user reveals a stable preference, fact, goal, or reusable decision.",
+		Description:      "Save a durable memory for future runs.",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),

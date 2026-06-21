@@ -72,7 +72,7 @@ func (r *SkillRepository) Delete(ctx context.Context, id, workspaceID string) er
 
 func (r *SkillRepository) ListForAgent(ctx context.Context, agentID string) ([]domain.AgentSkill, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT ask.id::text, ask.agent_id::text, ask.skill_id::text, ask.enabled, ask.order_index, ask.created_at,
+		SELECT ask.id::text, ask.agent_id::text, ask.skill_id::text, ask.enabled, ask.activation_mode, ask.order_index, ask.created_at,
 		       s.id::text, COALESCE(s.workspace_id::text,''), s.name, s.description, s.content, s.source,
 		       s.enabled, COALESCE(s.required_tool_names, '{}'), COALESCE(s.created_by::text,''), s.created_at, s.updated_at
 		FROM agent_skills ask
@@ -87,7 +87,7 @@ func (r *SkillRepository) ListForAgent(ctx context.Context, agentID string) ([]d
 	for rows.Next() {
 		var a domain.AgentSkill
 		var s domain.Skill
-		if err := rows.Scan(&a.ID, &a.AgentID, &a.SkillID, &a.Enabled, &a.OrderIndex, &a.CreatedAt,
+		if err := rows.Scan(&a.ID, &a.AgentID, &a.SkillID, &a.Enabled, &a.ActivationMode, &a.OrderIndex, &a.CreatedAt,
 			&s.ID, &s.WorkspaceID, &s.Name, &s.Description, &s.Content, &s.Source, &s.Enabled, &s.RequiredToolNames, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -112,8 +112,12 @@ func (r *SkillRepository) SetForAgent(ctx context.Context, agentID string, assig
 		if a.SkillID == "" {
 			continue
 		}
-		batch.Queue(`INSERT INTO agent_skills(agent_id,skill_id,enabled,order_index) VALUES($1::uuid,$2::uuid,$3,$4)`,
-			agentID, a.SkillID, a.Enabled, a.OrderIndex)
+		mode := a.ActivationMode
+		if mode == "" {
+			mode = "always"
+		}
+		batch.Queue(`INSERT INTO agent_skills(agent_id,skill_id,enabled,activation_mode,order_index) VALUES($1::uuid,$2::uuid,$3,$4,$5)`,
+			agentID, a.SkillID, a.Enabled, mode, a.OrderIndex)
 		if a.Enabled {
 			enabledSkillIDs = append(enabledSkillIDs, a.SkillID)
 		}

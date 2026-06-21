@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
@@ -18,6 +20,32 @@ func memoryEmbedding(ctx context.Context, llm provider.Provider, text string) []
 		return nil
 	}
 	return embedding
+}
+
+func appendMemoryContext(messages []provider.Message, memories []domain.Memory, active map[string]bool) int {
+	if len(messages) == 0 || len(memories) == 0 {
+		return 0
+	}
+	blocks := make([]string, 0, len(memories))
+	for _, m := range memories {
+		if active != nil {
+			if active[m.ID] {
+				continue
+			}
+			active[m.ID] = true
+		}
+		content := strings.TrimSpace(m.Content)
+		if len(content) > 300 {
+			content = content[:300] + "…"
+		}
+		blocks = append(blocks, fmt.Sprintf("[Memory]\nscope=%s relevance=%.2f importance=%.2f\n%s",
+			m.Scope, m.RelevanceScore, m.ImportanceScore, content))
+	}
+	if len(blocks) == 0 {
+		return 0
+	}
+	messages[0].Content += "\n\n" + strings.Join(blocks, "\n\n")
+	return len(blocks)
 }
 
 func shouldRunMemoryExtractor(a *domain.Agent, explicitSaveCalled bool) bool {
