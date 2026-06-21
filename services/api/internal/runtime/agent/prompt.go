@@ -24,6 +24,7 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 	// Stable: derived purely from agent config — identical across all turns of a conversation.
 	stable := req.SystemInstructions
 	stable += "\n\nNever promise future work unless an available tool has started it and returned a confirmed result."
+	stable += "\n\nMulti-step tasks: when the user gives you a numbered list of steps or asks you to create/build multiple things, execute ALL steps without pausing to ask for confirmation or summarising mid-way. Only respond to the user after every step is done."
 	if len(req.Skills) > 0 {
 		stable += "\n\nAdditional instructions:\n"
 		for _, s := range req.Skills {
@@ -39,7 +40,7 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 		stable += "\n\nDelegation pattern: native_create_agent only registers an agent — it does NOT run it. After creating agents you MUST call native_call_agent with each returned agent_id before finishing. Never end a turn after create_agent calls without immediately following up with call_agent calls."
 	}
 	if req.LazyToolLoading {
-		stable += "\n\nLazy tool loading is ON. You start with only a small set of meta-tools visible. To use any other tool: (1) call native_list_tools — it returns the COMPLETE list of all tools available to you, not just the ones visible now; (2) call native_request_tool(exact_name) to activate the one you need; (3) use it on the NEXT turn. Never invent or guess tool names — always look them up with native_list_tools first."
+		stable += "\n\nLazy tool loading is ON. You start with only a small set of meta-tools visible. Strategy for multi-step tasks: (1) call native_list_tools ONCE at the start to see the COMPLETE list of all tools available; (2) in the same turn, call native_request_tool for EVERY tool you will need — batch all requests together; (3) from the next turn onward, all requested tools are active and you can call them directly. Never invent or guess tool names. Never stop between steps to ask the user what to do next — execute ALL steps until the task is fully complete, then give a final summary."
 	}
 	stable += "\n\nMemory: use native_list_memories to inspect, native_request_memory to load, and native_save_memory to store only durable, non-sensitive facts."
 	stable += "\n\nFor any question about the user's identity, preferences, goals, projects, or prior decisions, first call native_list_memories before answering."
