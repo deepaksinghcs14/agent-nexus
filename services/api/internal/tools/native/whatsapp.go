@@ -316,11 +316,12 @@ func (t *whatsAppRecentMessagesTool) ExecuteWithContext(ctx context.Context, exe
 type whatsAppCreateReminderTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppCreateReminderTool) Definition() domain.Tool {
-	return waTool("whatsapp_create_reminder", "Create a WhatsApp reminder or follow-up task.", map[string]any{
+	return waTool("whatsapp_create_reminder", "Create a WhatsApp reminder or follow-up task. Set use_agent=true to have the contact's assigned agent generate the reminder message dynamically at fire time (message becomes a prompt).", map[string]any{
 		"title":      map[string]any{"type": "string", "description": "Short label for the reminder (e.g. 'Drink water'). If omitted, derived from message."},
-		"message":    map[string]any{"type": "string", "description": "The reminder message text to display when due."},
+		"message":    map[string]any{"type": "string", "description": "The reminder message text to send when due, or a prompt for the agent when use_agent=true."},
 		"remind_at":  map[string]any{"type": "string", "description": "When to fire the reminder. RFC3339 or natural datetime (e.g. 2026-06-18T15:00:00Z or '2026-06-20 16:47:00 UTC'). Use the current year."},
 		"contact_id": map[string]any{"type": "string", "description": "Contact UUID from whatsapp_search_contacts, or the contact's name/alias — the tool will resolve it."},
+		"use_agent":  map[string]any{"type": "boolean", "description": "When true, message is treated as a prompt; the contact's assigned agent generates and sends the actual response when the reminder fires."},
 		"channel_id": map[string]any{"type": "string"},
 	}, []string{}, "medium")
 }
@@ -370,9 +371,10 @@ func (t *whatsAppCreateReminderTool) ExecuteWithContext(ctx context.Context, exe
 			title = "Reminder"
 		}
 	}
+	useAgent, _ := input["use_agent"].(bool)
 	rem := &domain.GatewayReminder{
 		WorkspaceID: wc.Channel.WorkspaceID, ChannelID: wc.Channel.ID, SessionID: execCtx.ChannelSessionID,
-		ContactID: contactID, AccountID: wc.Config.AccountID, Title: title,
+		ContactID: contactID, UseAgent: useAgent, AccountID: wc.Config.AccountID, Title: title,
 		Message: str(input["message"]), DueAt: due, Status: "pending", Payload: mustJSON(input),
 	}
 	if err := t.repo.CreateReminder(ctx, rem); err != nil {

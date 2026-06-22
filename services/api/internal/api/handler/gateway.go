@@ -1261,14 +1261,36 @@ func (h *GatewayHandler) fireReminders(ctx context.Context) {
 		if msg == "" {
 			msg = rem.Title
 		}
-		_, sendErr := svc.SendWhatsApp(ctx, gatewayservice.SendRequest{
-			Channel: ch, Config: cfg, AccountID: accountID,
-			PeerKind: rem.PeerKind, PeerID: rem.PeerID, Body: msg,
-		})
-		if sendErr != nil {
-			slog.Warn("reminder send failed", "reminder_id", rem.ID, "title", rem.Title, "error", sendErr)
-			_, _ = h.repo.UpdateReminderStatus(ctx, rem.ID, rem.WorkspaceID, "failed")
-			continue
+		if rem.UseAgent {
+			var contact *domain.GatewayContact
+			if rem.ContactID != "" {
+				if c, err := h.repo.GetContact(ctx, rem.ContactID, rem.WorkspaceID); err == nil {
+					contact = &c
+				}
+			}
+			synthetic := inboundMessage{
+				AccountID: accountID,
+				Body:      msg,
+				PeerKind:  rem.PeerKind,
+				PeerID:    rem.PeerID,
+				Source:    "reminder",
+				Contact:   contact,
+			}
+			if _, _, _, err := h.dispatchGatewayRun(ctx, ch, cfg, synthetic); err != nil {
+				slog.Warn("reminder agent dispatch failed", "reminder_id", rem.ID, "title", rem.Title, "error", err)
+				_, _ = h.repo.UpdateReminderStatus(ctx, rem.ID, rem.WorkspaceID, "failed")
+				continue
+			}
+		} else {
+			_, sendErr := svc.SendWhatsApp(ctx, gatewayservice.SendRequest{
+				Channel: ch, Config: cfg, AccountID: accountID,
+				PeerKind: rem.PeerKind, PeerID: rem.PeerID, Body: msg,
+			})
+			if sendErr != nil {
+				slog.Warn("reminder send failed", "reminder_id", rem.ID, "title", rem.Title, "error", sendErr)
+				_, _ = h.repo.UpdateReminderStatus(ctx, rem.ID, rem.WorkspaceID, "failed")
+				continue
+			}
 		}
 		_, _ = h.repo.UpdateReminderStatus(ctx, rem.ID, rem.WorkspaceID, "completed")
 		slog.Info("reminder fired", "reminder_id", rem.ID, "title", rem.Title, "peer_id", rem.PeerID)

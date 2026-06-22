@@ -307,6 +307,7 @@ export interface GatewayReminder {
   channel_id?: string
   session_id?: string
   contact_id?: string
+  use_agent?: boolean
   account_id: string
   title: string
   message: string
