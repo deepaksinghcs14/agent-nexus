@@ -584,18 +584,19 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	}
 
 	execCtx := tools.ExecutionContext{
-		WorkspaceID:    ws,
-		AgentID:        a.ID,
-		AgentProvider:  a.Provider,
-		AgentModel:     a.Model,
-		UserID:         uid,
-		RunID:          runID,
-		ConversationID: convID,
-		ToolSummaries:  toolSummaries,
-		SkillSummaries: skillSummaries,
-		InvokeDepth:    opts.invokeDepth,
-		RootRunID:      rootTraceID,
-		CallAgent:      callAgentFn,
+		WorkspaceID:       ws,
+		AgentID:           a.ID,
+		AgentProvider:     a.Provider,
+		AgentModel:        a.Model,
+		UserID:            uid,
+		RunID:             runID,
+		ConversationID:    convID,
+		ToolSummaries:     toolSummaries,
+		AlwaysActiveTools: metaToolNameSet(),
+		SkillSummaries:    skillSummaries,
+		InvokeDepth:       opts.invokeDepth,
+		RootRunID:         rootTraceID,
+		CallAgent:         callAgentFn,
 		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
 			return h.runWorkflowInline(ctx, ws, uid, workflowID, input, runID)
 		},
@@ -1827,16 +1828,17 @@ func (h *InvokeHandler) executeSupervisorRun(
 	var messages []provider.Message
 	activeMemoryIDs := map[string]bool{}
 	execCtx := tools.ExecutionContext{
-		WorkspaceID:    ws,
-		AgentID:        a.ID,
-		AgentProvider:  a.Provider,
-		AgentModel:     a.Model,
-		UserID:         uid,
-		RunID:          runID,
-		ConversationID: convID,
-		InvokeDepth:    0,
-		RootRunID:      supRootTraceID,
-		CallAgent:      supCallAgentFn,
+		WorkspaceID:       ws,
+		AgentID:           a.ID,
+		AgentProvider:     a.Provider,
+		AgentModel:        a.Model,
+		UserID:            uid,
+		RunID:             runID,
+		ConversationID:    convID,
+		AlwaysActiveTools: metaToolNameSet(),
+		InvokeDepth:       0,
+		RootRunID:         supRootTraceID,
+		CallAgent:         supCallAgentFn,
 		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
 			return h.runWorkflowInline(ctx, ws, uid, workflowID, input, runID)
 		},

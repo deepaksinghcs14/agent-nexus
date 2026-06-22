@@ -131,13 +131,13 @@ func (t *CreateAgentTool) Definition() domain.Tool {
 			"description":  map[string]any{"type": "string", "description": "Short description of what this agent does."},
 			"tool_names":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tool names to attach."},
 			"skill_names":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Skill names to attach to the agent at creation."},
-			"ephemeral":    map[string]any{"type": "boolean", "description": "If true, agent is deleted when this run ends. Default true; set false only when the user explicitly asks to keep it."},
+			"ephemeral":    map[string]any{"type": "boolean", "description": "Default true (auto-deletes at run end). Set false at creation time, or call native_promote_resource after creation once you know it's worth keeping."},
 		},
 		"required": []string{"name", "instructions"},
 	})
 	return domain.Tool{
 		Name:             "native_create_agent",
-		Description:      "Create a new agent. IMPORTANT: creating an agent does NOT run it — you MUST immediately call native_call_agent with the returned agent_id. Agents never execute autonomously. Typical delegation pattern: (1) call native_create_agent for each sub-task in a single parallel batch, then (2) call native_call_agent for each returned agent_id in a second parallel batch. Agents are ephemeral by default and auto-delete when this run ends.",
+		Description:      "Create a new agent. Agents do not run automatically. After creating: (a) call native_call_agent with the agent_id to run it as a sub-task, OR (b) call native_create_workflow with the agent_id to place it in a workflow. When building a system (tools → agents → workflows), ALWAYS proceed to native_create_workflow after this step.",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),
@@ -157,20 +157,26 @@ func (t *CreateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 	ephemeral := ephemeralFromInput(input)
 
 	var toolNames []string
-	if tn, ok := input["tool_names"].([]any); ok {
-		for _, n := range tn {
-			if s, ok := n.(string); ok {
-				toolNames = append(toolNames, s)
+	for _, key := range []string{"tool_names", "tools"} {
+		if tn, ok := input[key].([]any); ok {
+			for _, n := range tn {
+				if s, ok := n.(string); ok {
+					toolNames = append(toolNames, s)
+				}
 			}
+			break
 		}
 	}
 
 	var skillNames []string
-	if sn, ok := input["skill_names"].([]any); ok {
-		for _, n := range sn {
-			if s, ok := n.(string); ok {
-				skillNames = append(skillNames, s)
+	for _, key := range []string{"skill_names", "skills"} {
+		if sn, ok := input[key].([]any); ok {
+			for _, n := range sn {
+				if s, ok := n.(string); ok {
+					skillNames = append(skillNames, s)
+				}
 			}
+			break
 		}
 	}
 
@@ -207,7 +213,12 @@ func (t *CreateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 		attachRequiredToolsForSkill(ctx, t.pool, agentID, skillID) //nolint:errcheck
 	}
 
-	return map[string]any{"agent_id": agentID, "name": name, "ephemeral": ephemeral}, nil
+	return map[string]any{
+		"agent_id": agentID,
+		"name":     name,
+		"ephemeral": ephemeral,
+		"next":     "call native_create_workflow(name, mode, agent_ids=[agent_id]) to add this agent to a workflow, or native_call_agent(agent_id, task) to run it now",
+	}, nil
 }
 
 // ── native_delete_agent ───────────────────────────────────────────────────────
@@ -240,7 +251,7 @@ func (t *DeleteAgentTool) Execute(_ map[string]any) (any, error) {
 func (t *DeleteAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	agentID, _ := input["agent_id"].(string)
 	if agentID == "" {
-		return nil, fmt.Errorf("agent_id is required")
+		return nil, fmt.Errorf("agent_id is required — pass the UUID returned by native_create_agent or native_list_agents, not the agent name")
 	}
 	var runID string
 	err := t.pool.QueryRow(ctx,
@@ -402,8 +413,21 @@ type createToolAgentParams struct {
 }
 
 func createAgentRecordFromTool(ctx context.Context, pool *pgxpool.Pool, ws, uid string, p createToolAgentParams) (string, error) {
-	if p.Name == "" || p.Instructions == "" || p.Provider == "" || p.Model == "" {
-		return "", fmt.Errorf("name, instructions, provider, and model are required")
+	var missing []string
+	if p.Name == "" {
+		missing = append(missing, "name")
+	}
+	if p.Instructions == "" {
+		missing = append(missing, "instructions")
+	}
+	if p.Provider == "" {
+		missing = append(missing, "provider")
+	}
+	if p.Model == "" {
+		missing = append(missing, "model")
+	}
+	if len(missing) > 0 {
+		return "", fmt.Errorf("missing required fields: %s", strings.Join(missing, ", "))
 	}
 	agentID := uuid.NewString()
 	_, err := pool.Exec(ctx, `

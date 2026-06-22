@@ -87,6 +87,7 @@ export interface Agent {
   lazy_tool_loading: boolean
   compaction_threshold: number
   compaction_token_threshold: number
+  protected: boolean
   status: 'active' | 'paused' | 'archived'
   created_by: string
   created_at: string

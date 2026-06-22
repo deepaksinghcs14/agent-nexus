@@ -191,6 +191,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		MemoryEnabled:      a.MemoryEnabled,
 		MemorySaveMode:     a.MemorySaveMode,
 		HasCallAgent:       hasCallAgent,
+		LazyToolLoading:    a.LazyToolLoading,
 		ConvCompaction:     convCompaction,
 	})
 
@@ -230,25 +231,22 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		}
 		return out
 	}
-	toolSummaries = map[string]string{}
-	for _, td := range visibleToolDefs() {
-		toolSummaries[td.Name] = td.Description
-	}
 	activeMemoryIDs := map[string]bool{}
 	var messages []provider.Message
 	execCtx := tools.ExecutionContext{
-		WorkspaceID:    ws,
-		AgentID:        a.ID,
-		AgentProvider:  a.Provider,
-		AgentModel:     a.Model,
-		UserID:         uid,
-		RunID:          id,
-		ConversationID: c.ID,
-		ToolSummaries:  toolSummaries,
-		SkillSummaries: skillSummaries,
-		InvokeDepth:    0,
-		RootRunID:      id,
-		CallAgent:      callAgentFn,
+		WorkspaceID:       ws,
+		AgentID:           a.ID,
+		AgentProvider:     a.Provider,
+		AgentModel:        a.Model,
+		UserID:            uid,
+		RunID:             id,
+		ConversationID:    c.ID,
+		ToolSummaries:     toolSummaries,
+		AlwaysActiveTools: metaToolNameSet(),
+		SkillSummaries:    skillSummaries,
+		InvokeDepth:       0,
+		RootRunID:         id,
+		CallAgent:         callAgentFn,
 		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
 			if h.invokeH == nil {
 				return "", fmt.Errorf("workflow execution not available")
@@ -313,7 +311,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		var toolDefs []provider.ToolDefinition
 		if a.LazyToolLoading {
 			toolDefs = lazyMetaToolDefs(h.registry)
-			for _, td := range visibleToolDefs() {
+			for _, td := range allToolDefs {
 				if requestedTools[td.Name] {
 					toolDefs = append(toolDefs, td)
 				}
@@ -339,7 +337,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			StableSystemContent: stableSystem,
 		}, func(delta string) {
 			emit(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
-		}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
+		}, "Return a direct, non-empty reply. Do not explain limitations or say you cannot help. If you started a multi-step task, continue to the next step rather than asking for confirmation.")
 		if e != nil {
 			_ = h.failRun(r.Context(), id, e.Error())
 			sseErr(e.Error())
@@ -529,7 +527,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			for name := range toolSummaries {
 				delete(toolSummaries, name)
 			}
-			for _, td := range visibleToolDefs() {
+			for _, td := range allToolDefs {
 				toolSummaries[td.Name] = td.Description
 			}
 		}

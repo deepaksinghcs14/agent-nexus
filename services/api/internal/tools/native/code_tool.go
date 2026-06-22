@@ -46,7 +46,7 @@ func (t *CreateCodeToolTool) Definition() domain.Tool {
 			},
 			"ephemeral": map[string]any{
 				"type":        "boolean",
-				"description": "If true, tool is deleted when this run ends. Default true; set false only when the user explicitly asks to keep it.",
+				"description": "Default true (auto-deletes at run end). Set false at creation time, or call native_promote_resource after creation once you know it's worth keeping.",
 			},
 		},
 		"required": []string{"name", "description", "code"},

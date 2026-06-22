@@ -100,8 +100,13 @@ func (t *AttachToolTool) Execute(_ map[string]any) (any, error) {
 func (t *AttachToolTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	agentID, _ := input["agent_id"].(string)
 	toolName, _ := input["tool_name"].(string)
+	if agentID == "" {
+		if agentName, _ := input["agent_name"].(string); agentName != "" {
+			t.pool.QueryRow(ctx, `SELECT id::text FROM agents WHERE name=$1 AND workspace_id=$2::uuid LIMIT 1`, agentName, execCtx.WorkspaceID).Scan(&agentID) //nolint:errcheck
+		}
+	}
 	if agentID == "" || toolName == "" {
-		return nil, fmt.Errorf("agent_id and tool_name are required")
+		return nil, fmt.Errorf("agent_id is required — pass the UUID returned by native_create_agent")
 	}
 	tag, err := t.pool.Exec(ctx,
 		`INSERT INTO agent_tools(agent_id, tool_id, enabled)

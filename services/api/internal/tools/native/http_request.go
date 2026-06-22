@@ -31,7 +31,7 @@ func (t *HTTPRequestTool) Definition() domain.Tool {
 		"required": []string{"url"},
 	})
 	return domain.Tool{
-		Name:             "http_request",
+		Name:             "native_http_request",
 		Description:      "Make an HTTP request to an external URL",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),

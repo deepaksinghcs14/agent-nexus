@@ -41,6 +41,9 @@ type ExecutionContext struct {
 	RequestSkill func(name string) bool
 	// ToolSummaries maps tool name → one-line description for the current agent.
 	ToolSummaries map[string]string
+	// AlwaysActiveTools is the set of meta-tool names always visible in lazy mode.
+	// native_list_tools filters these — they can never be "requested".
+	AlwaysActiveTools map[string]bool
 	// SkillSummaries lists on-demand skills attached to the current agent.
 	SkillSummaries map[string]string
 	// CallAgent, if non-nil, invokes another workspace agent as a sub-run and returns its output.

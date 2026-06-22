@@ -24,6 +24,7 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 	// Stable: derived purely from agent config — identical across all turns of a conversation.
 	stable := req.SystemInstructions
 	stable += "\n\nNever promise future work unless an available tool has started it and returned a confirmed result."
+	stable += "\n\nMulti-step tasks: when the user gives you a numbered list of steps or asks you to create/build multiple things, execute ALL steps without pausing to ask for confirmation or summarising mid-way. Only respond to the user after every step is done."
 	if len(req.Skills) > 0 {
 		stable += "\n\nAdditional instructions:\n"
 		for _, s := range req.Skills {
@@ -39,7 +40,7 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 		stable += "\n\nDelegation pattern: native_create_agent only registers an agent — it does NOT run it. After creating agents you MUST call native_call_agent with each returned agent_id before finishing. Never end a turn after create_agent calls without immediately following up with call_agent calls."
 	}
 	if req.LazyToolLoading {
-		stable += "\n\nLazy tool loading: before any tool except native_list_tools and native_request_tool, first call native_request_tool with the exact name; if you do not know it, call native_list_tools. Use requested tools on the next turn only."
+		stable += "\n\nLazy tool loading is ON. You start with only a small set of meta-tools visible. To use any other tool: if you know the exact name, call native_request_tool(name) directly; if you don't know the name, call native_list_tools with an optional query (e.g. query=\"email\") to filter by keyword, or call it with no arguments to see all available tools. The requested tool is active from the next turn. Never invent or guess tool names."
 	}
 	stable += "\n\nMemory: use native_list_memories to inspect, native_request_memory to load, and native_save_memory to store only durable, non-sensitive facts."
 	stable += "\n\nFor any question about the user's identity, preferences, goals, projects, or prior decisions, first call native_list_memories before answering."

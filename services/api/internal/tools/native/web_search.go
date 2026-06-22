@@ -25,7 +25,7 @@ func (t *WebSearchTool) Definition() domain.Tool {
 		"required": []string{"query"},
 	})
 	return domain.Tool{
-		Name:             "web_search",
+		Name:             "native_web_search",
 		Description:      "Search the web and return a list of results with titles, URLs, and snippets",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),

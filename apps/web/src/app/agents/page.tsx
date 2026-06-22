@@ -86,7 +86,7 @@ export default function AgentsPage() {
   }
 
   const agents = useMemo(() => data?.data ?? [], [data?.data])
-  const visibleIds = useMemo(() => agents.map((agent) => agent.id), [agents])
+  const visibleIds = useMemo(() => agents.filter((a) => !a.protected).map((a) => a.id), [agents])
   const selectedCount = selected.size
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id))
 
@@ -192,13 +192,15 @@ export default function AgentsPage() {
           <div key={agent.id} className={`border rounded-xl p-4 bg-white hover:border-purple-200 hover:shadow-sm transition-all ${selected.has(agent.id) ? 'border-purple-200 ring-1 ring-purple-100' : 'border-gray-100'}`}>
             <div className="flex items-start justify-between">
               <label className="mr-3 mt-0.5 flex h-5 w-5 items-center justify-center">
-                <input
-                  type="checkbox"
-                  checked={selected.has(agent.id)}
-                  onChange={() => toggleSelected(agent.id)}
-                  className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                  aria-label={`Select ${agent.name}`}
-                />
+                {!agent.protected && (
+                  <input
+                    type="checkbox"
+                    checked={selected.has(agent.id)}
+                    onChange={() => toggleSelected(agent.id)}
+                    className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                    aria-label={`Select ${agent.name}`}
+                  />
+                )}
               </label>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
@@ -234,13 +236,15 @@ export default function AgentsPage() {
                 >
                   <Download size={15} />
                 </button>
-                <button
-                  onClick={() => { if (confirm('Delete this agent?')) deleteMutation.mutate(agent.id) }}
-                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
-                  title="Delete"
-                >
-                  <Trash2 size={15} />
-                </button>
+                {!agent.protected && (
+                  <button
+                    onClick={() => { if (confirm('Delete this agent?')) deleteMutation.mutate(agent.id) }}
+                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                    title="Delete"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
             </div>
           </div>

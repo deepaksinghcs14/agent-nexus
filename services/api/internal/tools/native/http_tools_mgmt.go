@@ -76,7 +76,7 @@ func (t *CreateHttpToolTool) Definition() domain.Tool {
 			"method":       map[string]any{"type": "string", "description": "HTTP method: GET, POST, PUT, DELETE. Default GET."},
 			"headers":      map[string]any{"type": "object", "description": "Static headers to include (e.g. Authorization)."},
 			"input_schema": map[string]any{"type": "object", "description": "JSON Schema for the tool's input parameters. Defaults to accepting any object."},
-			"ephemeral":    map[string]any{"type": "boolean", "description": "If true, tool is deleted when this run ends. Default true; set false only when the user explicitly asks to keep it."},
+			"ephemeral":    map[string]any{"type": "boolean", "description": "Default true (auto-deletes at run end). Set false at creation time, or call native_promote_resource after creation once you know it's worth keeping."},
 		},
 		"required": []string{"name", "url"},
 	})
