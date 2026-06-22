@@ -25,7 +25,7 @@ func (r *AgentRepository) List(ctx context.Context, workspaceID string) ([]domai
 		        max_memories, min_relevance_score, memory_min_importance, memory_dedupe_threshold,
 		        context_retrieval_enabled, max_steps, max_tool_calls, max_duration_secs,
 		        max_history_messages, lazy_tool_loading, compaction_threshold, compaction_token_threshold,
-		        status, created_by::text, created_at, updated_at
+		        protected, status, created_by::text, created_at, updated_at
 		 FROM agents
 		 WHERE workspace_id = $1::uuid AND status != 'archived'
 		 ORDER BY created_at DESC`, workspaceID)
@@ -46,7 +46,7 @@ func (r *AgentRepository) List(ctx context.Context, workspaceID string) ([]domai
 			&a.MaxSteps, &a.MaxToolCalls, &a.MaxDurationSecs,
 			&a.MaxHistoryMessages, &a.LazyToolLoading,
 			&a.CompactionThreshold, &a.CompactionTokenThreshold,
-			&a.Status, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt,
+			&a.Protected, &a.Status, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -89,7 +89,7 @@ func (r *AgentRepository) Get(ctx context.Context, id, workspaceID string) (*dom
 		        max_memories, min_relevance_score, memory_min_importance, memory_dedupe_threshold,
 		        context_retrieval_enabled, max_steps, max_tool_calls, max_duration_secs,
 		        max_history_messages, lazy_tool_loading, compaction_threshold, compaction_token_threshold,
-		        status, created_by::text, created_at, updated_at
+		        protected, status, created_by::text, created_at, updated_at
 		 FROM agents WHERE id = $1::uuid AND workspace_id = $2::uuid`, id, workspaceID).
 		Scan(&a.ID, &a.WorkspaceID, &a.Name, &a.Description, &a.Instructions,
 			&a.Provider, &a.Model, &a.Temperature, &a.MaxTokens,
@@ -99,7 +99,7 @@ func (r *AgentRepository) Get(ctx context.Context, id, workspaceID string) (*dom
 			&a.MaxSteps, &a.MaxToolCalls, &a.MaxDurationSecs,
 			&a.MaxHistoryMessages, &a.LazyToolLoading,
 			&a.CompactionThreshold, &a.CompactionTokenThreshold,
-			&a.Status, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt)
+			&a.Protected, &a.Status, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("agent not found")
 	}

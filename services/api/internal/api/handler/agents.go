@@ -187,6 +187,12 @@ func (h *AgentsHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *AgentsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	wsID := middleware.WorkspaceIDFromCtx(r.Context())
 	agentID := chi.URLParam(r, "id")
+	var protected bool
+	h.pool.QueryRow(r.Context(), `SELECT protected FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid`, agentID, wsID).Scan(&protected) //nolint:errcheck
+	if protected {
+		errs.Write(w, errs.Forbidden("this agent is protected and cannot be deleted"))
+		return
+	}
 	if err := h.agents.Delete(r.Context(), agentID, wsID); err != nil {
 		errs.Write(w, errs.Internal("failed to delete agent"))
 		return

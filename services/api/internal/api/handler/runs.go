@@ -234,18 +234,19 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	activeMemoryIDs := map[string]bool{}
 	var messages []provider.Message
 	execCtx := tools.ExecutionContext{
-		WorkspaceID:    ws,
-		AgentID:        a.ID,
-		AgentProvider:  a.Provider,
-		AgentModel:     a.Model,
-		UserID:         uid,
-		RunID:          id,
-		ConversationID: c.ID,
-		ToolSummaries:  toolSummaries,
-		SkillSummaries: skillSummaries,
-		InvokeDepth:    0,
-		RootRunID:      id,
-		CallAgent:      callAgentFn,
+		WorkspaceID:       ws,
+		AgentID:           a.ID,
+		AgentProvider:     a.Provider,
+		AgentModel:        a.Model,
+		UserID:            uid,
+		RunID:             id,
+		ConversationID:    c.ID,
+		ToolSummaries:     toolSummaries,
+		AlwaysActiveTools: metaToolNameSet(),
+		SkillSummaries:    skillSummaries,
+		InvokeDepth:       0,
+		RootRunID:         id,
+		CallAgent:         callAgentFn,
 		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
 			if h.invokeH == nil {
 				return "", fmt.Errorf("workflow execution not available")

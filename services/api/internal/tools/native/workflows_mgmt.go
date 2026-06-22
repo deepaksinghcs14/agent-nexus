@@ -86,7 +86,7 @@ func (t *CreateWorkflowTool) Definition() domain.Tool {
 				"items":       map[string]any{"type": "string"},
 				"description": "Agent UUIDs to add as workflow members. Required: provide at least one agent for pipeline mode and at least two agents for supervisor mode.",
 			},
-			"ephemeral": map[string]any{"type": "boolean", "description": "If true, workflow is deleted when this run ends. Default true; set false only when the user explicitly asks to keep it."},
+			"ephemeral": map[string]any{"type": "boolean", "description": "Default true (auto-deletes at run end). Set false at creation time, or call native_promote_resource after creation once you know it's worth keeping."},
 		},
 		"required": []string{"name", "mode", "agent_ids"},
 	})

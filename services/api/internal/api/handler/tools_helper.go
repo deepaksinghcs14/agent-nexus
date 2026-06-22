@@ -48,17 +48,28 @@ func loadAgentToolDefs(ctx context.Context, pool *pgxpool.Pool, agentID string) 
 	return defs, nameMap, rows.Err()
 }
 
+var metaToolNames = []string{
+	"native_list_tools",
+	"native_request_tool",
+	"native_list_agent_skills",
+	"native_request_skill",
+	"native_list_memories",
+	"native_request_memory",
+	"native_save_memory",
+}
+
+// metaToolNameSet returns the set of always-active meta-tool names for use in AlwaysActiveTools.
+func metaToolNameSet() map[string]bool {
+	s := make(map[string]bool, len(metaToolNames))
+	for _, n := range metaToolNames {
+		s[n] = true
+	}
+	return s
+}
+
 // lazyMetaToolDefs returns the meta-tools always included in lazy-loading mode.
 func lazyMetaToolDefs(reg *tools.Registry) []provider.ToolDefinition {
-	names := []string{
-		"native_list_tools",
-		"native_request_tool",
-		"native_list_agent_skills",
-		"native_request_skill",
-		"native_list_memories",
-		"native_request_memory",
-		"native_save_memory",
-	}
+	names := metaToolNames
 	var defs []provider.ToolDefinition
 	for _, name := range names {
 		t, err := reg.Get(name)

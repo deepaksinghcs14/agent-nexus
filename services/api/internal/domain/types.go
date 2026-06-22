@@ -85,6 +85,7 @@ type Agent struct {
 	LazyToolLoading          bool      `json:"lazy_tool_loading"`
 	CompactionThreshold      int       `json:"compaction_threshold"`       // 0 = default (6)
 	CompactionTokenThreshold int       `json:"compaction_token_threshold"` // 0 = default (3000)
+	Protected                bool      `json:"protected"`
 	Status                   string    `json:"status"`
 	CreatedBy                string    `json:"created_by"`
 	CreatedAt                time.Time `json:"created_at"`

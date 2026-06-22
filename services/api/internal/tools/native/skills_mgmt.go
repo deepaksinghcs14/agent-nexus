@@ -74,7 +74,7 @@ func (t *CreateSkillTool) Definition() domain.Tool {
 			"description":    map[string]any{"type": "string", "description": "One-line description of what this skill does."},
 			"content":        map[string]any{"type": "string", "description": "The skill instructions or knowledge to inject into the system prompt."},
 			"attach_to_self": map[string]any{"type": "boolean", "description": "If true, attach this skill to the calling agent immediately (active next turn). Default false."},
-			"ephemeral":      map[string]any{"type": "boolean", "description": "If true, skill is deleted when this run ends. Default true; set false only when the user explicitly asks to keep it."},
+			"ephemeral":      map[string]any{"type": "boolean", "description": "Default true (auto-deletes at run end). Set false at creation time, or call native_promote_resource after creation once you know it's worth keeping."},
 		},
 		"required": []string{"name", "content"},
 	})
@@ -97,10 +97,13 @@ func (t *CreateSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 	name, _ := input["name"].(string)
 	description, _ := input["description"].(string)
 	content, _ := input["content"].(string)
+	if content == "" {
+		content, _ = input["instructions"].(string) // accept instructions as alias for content
+	}
 	attachToSelf, _ := input["attach_to_self"].(bool)
 	ephemeral := ephemeralFromInput(input)
 	if name == "" || content == "" {
-		return nil, fmt.Errorf("name and content are required")
+		return nil, fmt.Errorf("name and content are required (use field 'content', not 'instructions')")
 	}
 
 	skillID := uuid.NewString()
@@ -213,8 +216,13 @@ func (t *AttachSkillTool) Execute(_ map[string]any) (any, error) {
 func (t *AttachSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	agentID, _ := input["agent_id"].(string)
 	skillName, _ := input["skill_name"].(string)
+	if agentID == "" {
+		if agentName, _ := input["agent_name"].(string); agentName != "" {
+			t.pool.QueryRow(ctx, `SELECT id::text FROM agents WHERE name=$1 AND workspace_id=$2::uuid LIMIT 1`, agentName, execCtx.WorkspaceID).Scan(&agentID) //nolint:errcheck
+		}
+	}
 	if agentID == "" || skillName == "" {
-		return nil, fmt.Errorf("agent_id and skill_name are required")
+		return nil, fmt.Errorf("agent_id is required — pass the UUID returned by native_create_agent")
 	}
 
 	var skillID string
