@@ -322,6 +322,7 @@ export interface ScheduledMessage {
   workspace_id: string
   channel_id: string
   contact_id?: string
+  use_agent?: boolean
   account_id: string
   peer_kind: string
   peer_id: string
@@ -329,7 +330,7 @@ export interface ScheduledMessage {
   send_at: string
   status: 'pending' | 'sent' | 'failed' | 'cancelled'
   recurrence_rule?: {
-    frequency: 'daily' | 'weekly' | 'monthly' | 'weekdays'
+    frequency: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'weekdays'
     interval?: number
     end_at?: string
     max_occurrences?: number

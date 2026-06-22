@@ -48,6 +48,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const [schedInterval, setSchedInterval] = useState(1)
   const [schedEndAt, setSchedEndAt] = useState('')
   const [schedMaxOcc, setSchedMaxOcc] = useState('')
+  const [schedUseAgent, setSchedUseAgent] = useState(false)
   const [testInput, setTestInput] = useState('')
   const [testSessionId, setTestSessionId] = useState('')
   const [testResponse, setTestResponse] = useState<string | null>(null)
@@ -249,6 +250,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
       if (schedMaxOcc) rule.max_occurrences = parseInt(schedMaxOcc)
       body.recurrence_rule = rule
     }
+    if (schedUseAgent) body.use_agent = true
     await gatewayAPI.createScheduledMessage(body).catch((e: Error) => { setError(e.message); return null })
     setSchedMsg('')
     setSchedContact('')
@@ -257,6 +259,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
     setSchedInterval(1)
     setSchedEndAt('')
     setSchedMaxOcc('')
+    setSchedUseAgent(false)
     load()
   }
 
@@ -557,7 +560,11 @@ Content-Type: application/json
                 <option value="">Pick contact…</option>
                 {contacts.map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
               </select>
-              <input value={schedMsg} onChange={(e) => setSchedMsg(e.target.value)} placeholder="Message…" className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg flex-1 min-w-[200px]" />
+              <label className="flex items-center gap-2 cursor-pointer self-center">
+                <input type="checkbox" checked={schedUseAgent} onChange={(e) => setSchedUseAgent(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
+                <span className="text-[13px] text-gray-600">Generate with agent</span>
+              </label>
+              <input value={schedMsg} onChange={(e) => setSchedMsg(e.target.value)} placeholder={schedUseAgent ? 'Prompt for agent…' : 'Message…'} className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg flex-1 min-w-[200px]" />
               <input type="datetime-local" value={schedSendAt} onChange={(e) => setSchedSendAt(e.target.value)} className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg" />
               <select value={schedFreq} onChange={(e) => setSchedFreq(e.target.value)} className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white">
                 <option value="">One-time</option>
@@ -565,6 +572,7 @@ Content-Type: application/json
                 <option value="weekdays">Weekdays</option>
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
               </select>
               {schedFreq && <>
                 <input type="number" min={1} value={schedInterval} onChange={(e) => setSchedInterval(parseInt(e.target.value) || 1)} title="Every N periods" className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg w-20" placeholder="×N" />
@@ -596,7 +604,10 @@ Content-Type: application/json
                     return (
                       <tr key={m.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
                         <td className="px-4 py-3 text-gray-700">{contact?.display_name || m.peer_id}</td>
-                        <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={m.message}>{m.message}</td>
+                        <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={m.message}>
+                          {m.use_agent && <span className="mr-1.5 inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600 font-medium">agent</span>}
+                          {m.message}
+                        </td>
                         <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{new Date(m.send_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</td>
                         <td className="px-4 py-3 text-gray-500">{recLabel}</td>
                         <td className="px-4 py-3 text-gray-500">{m.occurrence_count}</td>

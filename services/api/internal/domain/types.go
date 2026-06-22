@@ -387,6 +387,7 @@ type ScheduledMessage struct {
 	WorkspaceID     string          `json:"workspace_id"`
 	ChannelID       string          `json:"channel_id"`
 	ContactID       string          `json:"contact_id,omitempty"`
+	UseAgent        bool            `json:"use_agent,omitempty"`
 	AccountID       string          `json:"account_id"`
 	PeerKind        string          `json:"peer_kind"`
 	PeerID          string          `json:"peer_id"`

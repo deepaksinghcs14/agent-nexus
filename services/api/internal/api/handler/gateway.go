@@ -1518,6 +1518,7 @@ var whatsappManagedSkillNames = []string{
 	"WhatsApp Task Intake",
 	"WhatsApp Owner Escalation",
 	"WhatsApp Personal Assistant",
+	"WhatsApp Message Scheduler",
 }
 
 var whatsappToolNames = []string{
@@ -1638,6 +1639,8 @@ func nextScheduledFireAt(rule json.RawMessage, from time.Time, count int) (time.
 		next = from.AddDate(0, 0, 7*r.Interval)
 	case "monthly":
 		next = from.AddDate(0, r.Interval, 0)
+	case "yearly":
+		next = from.AddDate(r.Interval, 0, 0)
 	case "weekdays":
 		next = from.AddDate(0, 0, 1)
 		for next.Weekday() == time.Saturday || next.Weekday() == time.Sunday {
@@ -1690,14 +1693,36 @@ func (h *GatewayHandler) fireScheduledMessages(ctx context.Context) {
 		if accountID == "" {
 			accountID = cfg.AccountID
 		}
-		_, sendErr := svc.SendWhatsApp(ctx, gatewayservice.SendRequest{
-			Channel: ch, Config: cfg, AccountID: accountID,
-			PeerKind: msg.PeerKind, PeerID: msg.PeerID, Body: msg.Message,
-		})
-		if sendErr != nil {
-			slog.Warn("scheduled message send failed", "msg_id", msg.ID, "peer", msg.PeerID, "error", sendErr)
-			_ = h.repo.UpdateScheduledMessageStatus(ctx, msg.ID, msg.WorkspaceID, "failed", sendErr.Error())
-			continue
+		if msg.UseAgent {
+			var contact *domain.GatewayContact
+			if msg.ContactID != "" {
+				if c, err := h.repo.GetContact(ctx, msg.ContactID, msg.WorkspaceID); err == nil {
+					contact = &c
+				}
+			}
+			synthetic := inboundMessage{
+				AccountID: accountID,
+				Body:      msg.Message,
+				PeerKind:  msg.PeerKind,
+				PeerID:    msg.PeerID,
+				Source:    "scheduled",
+				Contact:   contact,
+			}
+			if _, _, _, err := h.dispatchGatewayRun(ctx, ch, cfg, synthetic); err != nil {
+				slog.Warn("scheduled message agent dispatch failed", "msg_id", msg.ID, "error", err)
+				_ = h.repo.UpdateScheduledMessageStatus(ctx, msg.ID, msg.WorkspaceID, "failed", err.Error())
+				continue
+			}
+		} else {
+			_, sendErr := svc.SendWhatsApp(ctx, gatewayservice.SendRequest{
+				Channel: ch, Config: cfg, AccountID: accountID,
+				PeerKind: msg.PeerKind, PeerID: msg.PeerID, Body: msg.Message,
+			})
+			if sendErr != nil {
+				slog.Warn("scheduled message send failed", "msg_id", msg.ID, "peer", msg.PeerID, "error", sendErr)
+				_ = h.repo.UpdateScheduledMessageStatus(ctx, msg.ID, msg.WorkspaceID, "failed", sendErr.Error())
+				continue
+			}
 		}
 		if len(msg.RecurrenceRule) > 2 {
 			next, ok := nextScheduledFireAt(msg.RecurrenceRule, time.Now(), msg.OccurrenceCount+1)

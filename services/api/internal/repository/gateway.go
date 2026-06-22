@@ -669,12 +669,12 @@ func (r *GatewayRepository) CreateScheduledMessage(ctx context.Context, m *domai
 	}
 	return r.pool.QueryRow(ctx, `
 		INSERT INTO gateway_scheduled_messages
-		  (workspace_id,channel_id,contact_id,account_id,peer_kind,peer_id,message,send_at,status,recurrence_rule,occurrence_count,created_by)
-		VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		  (workspace_id,channel_id,contact_id,account_id,peer_kind,peer_id,message,send_at,status,recurrence_rule,occurrence_count,created_by,use_agent)
+		VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		RETURNING id::text, created_at, updated_at`,
 		m.WorkspaceID, m.ChannelID, nullableString(m.ContactID),
 		m.AccountID, m.PeerKind, m.PeerID, m.Message, m.SendAt,
-		defaultStatus(m.Status, "pending"), rule, m.OccurrenceCount, m.CreatedBy,
+		defaultStatus(m.Status, "pending"), rule, m.OccurrenceCount, m.CreatedBy, m.UseAgent,
 	).Scan(&m.ID, &m.CreatedAt, &m.UpdatedAt)
 }
 
@@ -683,7 +683,7 @@ func (r *GatewayRepository) ListScheduledMessages(ctx context.Context, workspace
 		limit = 100
 	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''),
+		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''), use_agent,
 		       account_id, peer_kind, peer_id, message, send_at, status,
 		       recurrence_rule, occurrence_count, last_error, created_by, created_at, updated_at
 		FROM gateway_scheduled_messages
@@ -699,7 +699,7 @@ func (r *GatewayRepository) ListScheduledMessages(ctx context.Context, workspace
 	var out []domain.ScheduledMessage
 	for rows.Next() {
 		var m domain.ScheduledMessage
-		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID,
+		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID, &m.UseAgent,
 			&m.AccountID, &m.PeerKind, &m.PeerID, &m.Message, &m.SendAt, &m.Status,
 			&m.RecurrenceRule, &m.OccurrenceCount, &m.LastError, &m.CreatedBy, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
@@ -712,13 +712,13 @@ func (r *GatewayRepository) ListScheduledMessages(ctx context.Context, workspace
 func (r *GatewayRepository) GetScheduledMessage(ctx context.Context, id, workspaceID string) (domain.ScheduledMessage, error) {
 	var m domain.ScheduledMessage
 	err := r.pool.QueryRow(ctx, `
-		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''),
+		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''), use_agent,
 		       account_id, peer_kind, peer_id, message, send_at, status,
 		       recurrence_rule, occurrence_count, last_error, created_by, created_at, updated_at
 		FROM gateway_scheduled_messages
 		WHERE id=$1::uuid AND workspace_id=$2::uuid`,
 		id, workspaceID,
-	).Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID,
+	).Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID, &m.UseAgent,
 		&m.AccountID, &m.PeerKind, &m.PeerID, &m.Message, &m.SendAt, &m.Status,
 		&m.RecurrenceRule, &m.OccurrenceCount, &m.LastError, &m.CreatedBy, &m.CreatedAt, &m.UpdatedAt)
 	return m, err
@@ -742,7 +742,7 @@ func (r *GatewayRepository) RescheduleMessage(ctx context.Context, id, workspace
 
 func (r *GatewayRepository) FetchDueScheduledMessages(ctx context.Context) ([]domain.ScheduledMessage, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT sm.id::text, sm.workspace_id::text, sm.channel_id::text, COALESCE(sm.contact_id::text,''),
+		SELECT sm.id::text, sm.workspace_id::text, sm.channel_id::text, COALESCE(sm.contact_id::text,''), sm.use_agent,
 		       sm.account_id, sm.peer_kind, sm.peer_id, sm.message, sm.send_at, sm.status,
 		       sm.recurrence_rule, sm.occurrence_count, sm.last_error, sm.created_by, sm.created_at, sm.updated_at
 		FROM gateway_scheduled_messages sm
@@ -758,7 +758,7 @@ func (r *GatewayRepository) FetchDueScheduledMessages(ctx context.Context) ([]do
 	var out []domain.ScheduledMessage
 	for rows.Next() {
 		var m domain.ScheduledMessage
-		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID,
+		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID, &m.UseAgent,
 			&m.AccountID, &m.PeerKind, &m.PeerID, &m.Message, &m.SendAt, &m.Status,
 			&m.RecurrenceRule, &m.OccurrenceCount, &m.LastError, &m.CreatedBy, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
