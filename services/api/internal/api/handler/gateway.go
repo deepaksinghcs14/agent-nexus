@@ -1276,11 +1276,13 @@ func (h *GatewayHandler) fireReminders(ctx context.Context) {
 				Source:    "reminder",
 				Contact:   contact,
 			}
-			if _, _, _, err := h.dispatchGatewayRun(ctx, ch, cfg, synthetic); err != nil {
+			runID, sessionID, _, err := h.dispatchGatewayRun(ctx, ch, cfg, synthetic)
+			if err != nil {
 				slog.Warn("reminder agent dispatch failed", "reminder_id", rem.ID, "title", rem.Title, "error", err)
 				_, _ = h.repo.UpdateReminderStatus(ctx, rem.ID, rem.WorkspaceID, "failed")
 				continue
 			}
+			go h.deliverWhenComplete(context.Background(), ch, cfg, synthetic, runID, sessionID)
 		} else {
 			_, sendErr := svc.SendWhatsApp(ctx, gatewayservice.SendRequest{
 				Channel: ch, Config: cfg, AccountID: accountID,
@@ -1730,11 +1732,13 @@ func (h *GatewayHandler) fireScheduledMessages(ctx context.Context) {
 				Source:    "scheduled",
 				Contact:   contact,
 			}
-			if _, _, _, err := h.dispatchGatewayRun(ctx, ch, cfg, synthetic); err != nil {
+			runID, sessionID, _, err := h.dispatchGatewayRun(ctx, ch, cfg, synthetic)
+			if err != nil {
 				slog.Warn("scheduled message agent dispatch failed", "msg_id", msg.ID, "error", err)
 				_ = h.repo.UpdateScheduledMessageStatus(ctx, msg.ID, msg.WorkspaceID, "failed", err.Error())
 				continue
 			}
+			go h.deliverWhenComplete(context.Background(), ch, cfg, synthetic, runID, sessionID)
 		} else {
 			_, sendErr := svc.SendWhatsApp(ctx, gatewayservice.SendRequest{
 				Channel: ch, Config: cfg, AccountID: accountID,
