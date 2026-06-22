@@ -448,11 +448,11 @@ func (r *GatewayRepository) CreateReminder(ctx context.Context, m *domain.Gatewa
 		payload = json.RawMessage(`{}`)
 	}
 	return r.pool.QueryRow(ctx, `
-		INSERT INTO gateway_reminders(workspace_id,channel_id,session_id,contact_id,account_id,title,message,due_at,status,payload)
-		VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,$10)
+		INSERT INTO gateway_reminders(workspace_id,channel_id,session_id,contact_id,account_id,title,message,due_at,status,payload,use_agent)
+		VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,$10,$11)
 		RETURNING id::text, created_at, updated_at`,
 		m.WorkspaceID, nullableString(m.ChannelID), nullableString(m.SessionID), nullableString(m.ContactID),
-		m.AccountID, m.Title, m.Message, m.DueAt, defaultStatus(m.Status, "pending"), payload,
+		m.AccountID, m.Title, m.Message, m.DueAt, defaultStatus(m.Status, "pending"), payload, m.UseAgent,
 	).Scan(&m.ID, &m.CreatedAt, &m.UpdatedAt)
 }
 
@@ -462,7 +462,7 @@ func (r *GatewayRepository) ListReminders(ctx context.Context, workspaceID, chan
 	}
 	rows, err := r.pool.Query(ctx, `
 		SELECT id::text, workspace_id::text, COALESCE(channel_id::text,''), COALESCE(session_id::text,''),
-		       COALESCE(contact_id::text,''), account_id, title, message, due_at, status, payload, created_at, updated_at
+		       COALESCE(contact_id::text,''), use_agent, account_id, title, message, due_at, status, payload, created_at, updated_at
 		FROM gateway_reminders
 		WHERE workspace_id=$1::uuid
 		  AND (NULLIF($2,'') IS NULL OR channel_id=NULLIF($2,'')::uuid)
@@ -476,7 +476,7 @@ func (r *GatewayRepository) ListReminders(ctx context.Context, workspaceID, chan
 	out := []domain.GatewayReminder{}
 	for rows.Next() {
 		var m domain.GatewayReminder
-		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.SessionID, &m.ContactID, &m.AccountID, &m.Title, &m.Message, &m.DueAt, &m.Status, &m.Payload, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.SessionID, &m.ContactID, &m.UseAgent, &m.AccountID, &m.Title, &m.Message, &m.DueAt, &m.Status, &m.Payload, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
@@ -494,7 +494,7 @@ func (r *GatewayRepository) FetchDueReminders(ctx context.Context) ([]DueReminde
 	rows, err := r.pool.Query(ctx, `
 		SELECT
 		  r.id::text, r.workspace_id::text, COALESCE(r.channel_id::text,''),
-		  COALESCE(r.session_id::text,''), COALESCE(r.contact_id::text,''),
+		  COALESCE(r.session_id::text,''), COALESCE(r.contact_id::text,''), r.use_agent,
 		  r.account_id, r.title, r.message, r.due_at, r.status, r.payload, r.created_at, r.updated_at,
 		  COALESCE(s.peer_kind,'direct'),
 		  COALESCE(s.peer_id, cont.whatsapp_jid, '')
@@ -517,7 +517,7 @@ func (r *GatewayRepository) FetchDueReminders(ctx context.Context) ([]DueReminde
 	for rows.Next() {
 		var d DueReminder
 		if err := rows.Scan(
-			&d.ID, &d.WorkspaceID, &d.ChannelID, &d.SessionID, &d.ContactID,
+			&d.ID, &d.WorkspaceID, &d.ChannelID, &d.SessionID, &d.ContactID, &d.UseAgent,
 			&d.AccountID, &d.Title, &d.Message, &d.DueAt, &d.Status, &d.Payload, &d.CreatedAt, &d.UpdatedAt,
 			&d.PeerKind, &d.PeerID,
 		); err != nil {
@@ -669,12 +669,12 @@ func (r *GatewayRepository) CreateScheduledMessage(ctx context.Context, m *domai
 	}
 	return r.pool.QueryRow(ctx, `
 		INSERT INTO gateway_scheduled_messages
-		  (workspace_id,channel_id,contact_id,account_id,peer_kind,peer_id,message,send_at,status,recurrence_rule,occurrence_count,created_by)
-		VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		  (workspace_id,channel_id,contact_id,account_id,peer_kind,peer_id,message,send_at,status,recurrence_rule,occurrence_count,created_by,use_agent)
+		VALUES($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		RETURNING id::text, created_at, updated_at`,
 		m.WorkspaceID, m.ChannelID, nullableString(m.ContactID),
 		m.AccountID, m.PeerKind, m.PeerID, m.Message, m.SendAt,
-		defaultStatus(m.Status, "pending"), rule, m.OccurrenceCount, m.CreatedBy,
+		defaultStatus(m.Status, "pending"), rule, m.OccurrenceCount, m.CreatedBy, m.UseAgent,
 	).Scan(&m.ID, &m.CreatedAt, &m.UpdatedAt)
 }
 
@@ -683,7 +683,7 @@ func (r *GatewayRepository) ListScheduledMessages(ctx context.Context, workspace
 		limit = 100
 	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''),
+		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''), use_agent,
 		       account_id, peer_kind, peer_id, message, send_at, status,
 		       recurrence_rule, occurrence_count, last_error, created_by, created_at, updated_at
 		FROM gateway_scheduled_messages
@@ -699,7 +699,7 @@ func (r *GatewayRepository) ListScheduledMessages(ctx context.Context, workspace
 	var out []domain.ScheduledMessage
 	for rows.Next() {
 		var m domain.ScheduledMessage
-		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID,
+		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID, &m.UseAgent,
 			&m.AccountID, &m.PeerKind, &m.PeerID, &m.Message, &m.SendAt, &m.Status,
 			&m.RecurrenceRule, &m.OccurrenceCount, &m.LastError, &m.CreatedBy, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err
@@ -712,13 +712,13 @@ func (r *GatewayRepository) ListScheduledMessages(ctx context.Context, workspace
 func (r *GatewayRepository) GetScheduledMessage(ctx context.Context, id, workspaceID string) (domain.ScheduledMessage, error) {
 	var m domain.ScheduledMessage
 	err := r.pool.QueryRow(ctx, `
-		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''),
+		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''), use_agent,
 		       account_id, peer_kind, peer_id, message, send_at, status,
 		       recurrence_rule, occurrence_count, last_error, created_by, created_at, updated_at
 		FROM gateway_scheduled_messages
 		WHERE id=$1::uuid AND workspace_id=$2::uuid`,
 		id, workspaceID,
-	).Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID,
+	).Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID, &m.UseAgent,
 		&m.AccountID, &m.PeerKind, &m.PeerID, &m.Message, &m.SendAt, &m.Status,
 		&m.RecurrenceRule, &m.OccurrenceCount, &m.LastError, &m.CreatedBy, &m.CreatedAt, &m.UpdatedAt)
 	return m, err
@@ -742,7 +742,7 @@ func (r *GatewayRepository) RescheduleMessage(ctx context.Context, id, workspace
 
 func (r *GatewayRepository) FetchDueScheduledMessages(ctx context.Context) ([]domain.ScheduledMessage, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT sm.id::text, sm.workspace_id::text, sm.channel_id::text, COALESCE(sm.contact_id::text,''),
+		SELECT sm.id::text, sm.workspace_id::text, sm.channel_id::text, COALESCE(sm.contact_id::text,''), sm.use_agent,
 		       sm.account_id, sm.peer_kind, sm.peer_id, sm.message, sm.send_at, sm.status,
 		       sm.recurrence_rule, sm.occurrence_count, sm.last_error, sm.created_by, sm.created_at, sm.updated_at
 		FROM gateway_scheduled_messages sm
@@ -758,7 +758,7 @@ func (r *GatewayRepository) FetchDueScheduledMessages(ctx context.Context) ([]do
 	var out []domain.ScheduledMessage
 	for rows.Next() {
 		var m domain.ScheduledMessage
-		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID,
+		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.ContactID, &m.UseAgent,
 			&m.AccountID, &m.PeerKind, &m.PeerID, &m.Message, &m.SendAt, &m.Status,
 			&m.RecurrenceRule, &m.OccurrenceCount, &m.LastError, &m.CreatedBy, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, err

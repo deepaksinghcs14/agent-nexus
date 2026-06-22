@@ -316,11 +316,12 @@ func (t *whatsAppRecentMessagesTool) ExecuteWithContext(ctx context.Context, exe
 type whatsAppCreateReminderTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppCreateReminderTool) Definition() domain.Tool {
-	return waTool("whatsapp_create_reminder", "Create a WhatsApp reminder or follow-up task.", map[string]any{
+	return waTool("whatsapp_create_reminder", "Create a WhatsApp reminder or follow-up task. Set use_agent=true to have the contact's assigned agent generate the reminder message dynamically at fire time (message becomes a prompt).", map[string]any{
 		"title":      map[string]any{"type": "string", "description": "Short label for the reminder (e.g. 'Drink water'). If omitted, derived from message."},
-		"message":    map[string]any{"type": "string", "description": "The reminder message text to display when due."},
+		"message":    map[string]any{"type": "string", "description": "The reminder message text to send when due, or a prompt for the agent when use_agent=true."},
 		"remind_at":  map[string]any{"type": "string", "description": "When to fire the reminder. RFC3339 or natural datetime (e.g. 2026-06-18T15:00:00Z or '2026-06-20 16:47:00 UTC'). Use the current year."},
 		"contact_id": map[string]any{"type": "string", "description": "Contact UUID from whatsapp_search_contacts, or the contact's name/alias — the tool will resolve it."},
+		"use_agent":  map[string]any{"type": "boolean", "description": "When true, message is treated as a prompt; the contact's assigned agent generates and sends the actual response when the reminder fires."},
 		"channel_id": map[string]any{"type": "string"},
 	}, []string{}, "medium")
 }
@@ -370,9 +371,10 @@ func (t *whatsAppCreateReminderTool) ExecuteWithContext(ctx context.Context, exe
 			title = "Reminder"
 		}
 	}
+	useAgent, _ := input["use_agent"].(bool)
 	rem := &domain.GatewayReminder{
 		WorkspaceID: wc.Channel.WorkspaceID, ChannelID: wc.Channel.ID, SessionID: execCtx.ChannelSessionID,
-		ContactID: contactID, AccountID: wc.Config.AccountID, Title: title,
+		ContactID: contactID, UseAgent: useAgent, AccountID: wc.Config.AccountID, Title: title,
 		Message: str(input["message"]), DueAt: due, Status: "pending", Payload: mustJSON(input),
 	}
 	if err := t.repo.CreateReminder(ctx, rem); err != nil {
@@ -606,16 +608,17 @@ func mustJSON(v any) json.RawMessage {
 type whatsAppScheduleMessageTool struct{ *WhatsAppToolbox }
 
 func (t *whatsAppScheduleMessageTool) Definition() domain.Tool {
-	return waTool("whatsapp_schedule_message", "Schedule a WhatsApp message to be sent to a contact at a specific time. Supports one-time and recurring sends.", map[string]any{
-		"message":                  map[string]any{"type": "string", "description": "Text to send."},
-		"to":                       map[string]any{"type": "string", "description": "Contact name, alias, phone, or JID."},
-		"contact_id":               map[string]any{"type": "string", "description": "Contact UUID from whatsapp_search_contacts."},
-		"send_at":                  map[string]any{"type": "string", "description": "When to send. Accepts RFC3339 or 'YYYY-MM-DD HH:MM:SS UTC' (e.g. '2026-06-20 16:47:00 UTC'). Use the current year."},
-		"recurrence_frequency":     map[string]any{"type": "string", "enum": []string{"daily", "weekly", "monthly", "weekdays"}, "description": "Repeat pattern. 'daily'=every day, 'weekdays'=Mon-Fri, 'weekly'=once a week, 'monthly'=once a month. Omit for one-time."},
-		"recurrence_interval":      map[string]any{"type": "integer", "description": "Repeat every N frequency-units (e.g. 2 + daily = every 2 days). Default 1."},
-		"recurrence_end_at":        map[string]any{"type": "string", "description": "Stop recurring after this date (same format as send_at)."},
+	return waTool("whatsapp_schedule_message", "Schedule a WhatsApp message to be sent to a contact at a specific time. Supports one-time and recurring sends. Set use_agent=true to have the contact's assigned agent generate the message dynamically at send time (message becomes a prompt).", map[string]any{
+		"message":                    map[string]any{"type": "string", "description": "Text to send, or prompt for the agent when use_agent=true."},
+		"to":                         map[string]any{"type": "string", "description": "Contact name, alias, phone, or JID."},
+		"contact_id":                 map[string]any{"type": "string", "description": "Contact UUID from whatsapp_search_contacts."},
+		"send_at":                    map[string]any{"type": "string", "description": "When to send. Accepts RFC3339 or 'YYYY-MM-DD HH:MM:SS UTC' (e.g. '2026-06-20 16:47:00 UTC'). Use the current year."},
+		"recurrence_frequency":       map[string]any{"type": "string", "enum": []string{"daily", "weekly", "monthly", "yearly", "weekdays"}, "description": "Repeat pattern. 'daily'=every day, 'weekdays'=Mon-Fri, 'weekly'=once a week, 'monthly'=once a month, 'yearly'=once a year. Omit for one-time."},
+		"recurrence_interval":        map[string]any{"type": "integer", "description": "Repeat every N frequency-units (e.g. 2 + daily = every 2 days). Default 1."},
+		"recurrence_end_at":          map[string]any{"type": "string", "description": "Stop recurring after this date (same format as send_at)."},
 		"recurrence_max_occurrences": map[string]any{"type": "integer", "description": "Stop after this many sends."},
-		"channel_id":               map[string]any{"type": "string", "description": "WhatsApp channel UUID. Auto-resolved from session when omitted."},
+		"use_agent":                  map[string]any{"type": "boolean", "description": "When true, message is treated as a prompt; the contact's assigned agent generates and sends the actual response at send time."},
+		"channel_id":                 map[string]any{"type": "string", "description": "WhatsApp channel UUID. Auto-resolved from session when omitted."},
 	}, []string{"message", "send_at"}, "medium")
 }
 
@@ -672,10 +675,12 @@ func (t *whatsAppScheduleMessageTool) ExecuteWithContext(ctx context.Context, ex
 		recurrenceRule, _ = json.Marshal(rule)
 	}
 
+	useAgent, _ := input["use_agent"].(bool)
 	m := &domain.ScheduledMessage{
 		WorkspaceID:    wc.Channel.WorkspaceID,
 		ChannelID:      wc.Channel.ID,
 		ContactID:      contactID,
+		UseAgent:       useAgent,
 		AccountID:      wc.Config.AccountID,
 		PeerKind:       "direct",
 		PeerID:         peerID,
