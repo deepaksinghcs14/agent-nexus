@@ -1012,10 +1012,21 @@ func (h *GatewayHandler) deliverWhenComplete(ctx context.Context, c domain.Gatew
 				h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, reply, sessionID, runID)
 				return
 			}
-			h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, output, sessionID, runID)
+			crossContactSend, err := h.repo.HasSentAgentDirectToOtherPeer(ctx, c.WorkspaceID, c.ID, runID, msg.PeerID)
+			if err != nil {
+				slog.Warn("failed to check direct WhatsApp sends", "run_id", runID, "error", err)
+			}
+			h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, completionReply(output, crossContactSend), sessionID, runID)
 			return
 		}
 	}
+}
+
+func completionReply(output string, sentToOtherPeer bool) string {
+	if sentToOtherPeer {
+		return "Message delivered."
+	}
+	return output
 }
 
 func (h *GatewayHandler) sendAdapterMessage(ctx context.Context, c domain.GatewayChannel, cfg domain.GatewayChannelConfig, accountID, peerKind, peerID, text, sessionID, runID string) {
@@ -1334,7 +1345,6 @@ func intParam(r *http.Request, key string, fallback int) int {
 	}
 	return n
 }
-
 
 func defaultString(v, fallback string) string {
 	if strings.TrimSpace(v) == "" {

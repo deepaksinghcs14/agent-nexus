@@ -56,6 +56,7 @@ type SendRequest struct {
 	PeerKind  string
 	PeerID    string
 	Body      string
+	Source    string
 	SessionID string
 	RunID     string
 }
@@ -69,6 +70,10 @@ func (s *Service) SendWhatsApp(ctx context.Context, req SendRequest) (*domain.Ga
 	if peerKind == "" {
 		peerKind = "direct"
 	}
+	source := req.Source
+	if source == "" {
+		source = "assistant_reply"
+	}
 	out := &domain.GatewayOutboundMessage{
 		WorkspaceID: req.Channel.WorkspaceID,
 		ChannelID:   req.Channel.ID,
@@ -78,6 +83,7 @@ func (s *Service) SendWhatsApp(ctx context.Context, req SendRequest) (*domain.Ga
 		PeerKind:    peerKind,
 		PeerID:      req.PeerID,
 		Body:        req.Body,
+		Source:      source,
 		Status:      "pending",
 	}
 	if err := s.repo.CreateOutbound(ctx, out); err != nil {

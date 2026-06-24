@@ -251,7 +251,7 @@ func (t *whatsAppSendMessageTool) ExecuteWithContext(ctx context.Context, execCt
 	}
 	out, err := t.service.SendWhatsApp(ctx, gatewayservice.SendRequest{
 		Channel: wc.Channel, Config: wc.Config, AccountID: wc.Config.AccountID,
-		PeerKind: "direct", PeerID: peerID, Body: msg, SessionID: execCtx.ChannelSessionID, RunID: execCtx.RunID,
+		PeerKind: "direct", PeerID: peerID, Body: msg, Source: "agent_direct", SessionID: execCtx.ChannelSessionID, RunID: execCtx.RunID,
 	})
 	if err != nil {
 		return map[string]any{"status": "failed", "error": err.Error(), "outbox_id": out.ID}, nil
