@@ -278,10 +278,10 @@ func (r *GatewayRepository) UpdatePairingStatus(ctx context.Context, id, workspa
 
 func (r *GatewayRepository) CreateOutbound(ctx context.Context, m *domain.GatewayOutboundMessage) error {
 	return r.pool.QueryRow(ctx, `
-		INSERT INTO gateway_outbound_messages(workspace_id,channel_id,session_id,run_id,account_id,peer_kind,peer_id,body,status)
-		VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7,$8,$9)
+		INSERT INTO gateway_outbound_messages(workspace_id,channel_id,session_id,run_id,account_id,peer_kind,peer_id,body,source,status)
+		VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,$10)
 		RETURNING id::text, created_at`,
-		m.WorkspaceID, m.ChannelID, nullableString(m.SessionID), nullableString(m.RunID), m.AccountID, m.PeerKind, m.PeerID, m.Body, m.Status,
+		m.WorkspaceID, m.ChannelID, nullableString(m.SessionID), nullableString(m.RunID), m.AccountID, m.PeerKind, m.PeerID, m.Body, m.Source, m.Status,
 	).Scan(&m.ID, &m.CreatedAt)
 }
 
@@ -291,7 +291,7 @@ func (r *GatewayRepository) ListOutbox(ctx context.Context, workspaceID, channel
 	}
 	rows, err := r.pool.Query(ctx, `
 		SELECT id::text, workspace_id::text, channel_id::text, COALESCE(session_id::text,''), COALESCE(run_id::text,''),
-		       account_id, peer_kind, peer_id, body, status, attempts, last_error, created_at, sent_at
+		       account_id, peer_kind, peer_id, body, source, status, attempts, last_error, created_at, sent_at
 		FROM gateway_outbound_messages
 		WHERE workspace_id=$1::uuid AND (NULLIF($2,'') IS NULL OR channel_id=NULLIF($2,'')::uuid)
 		ORDER BY created_at DESC LIMIT $3`, workspaceID, channelID, limit)
@@ -302,12 +302,33 @@ func (r *GatewayRepository) ListOutbox(ctx context.Context, workspaceID, channel
 	out := []domain.GatewayOutboundMessage{}
 	for rows.Next() {
 		var m domain.GatewayOutboundMessage
-		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.SessionID, &m.RunID, &m.AccountID, &m.PeerKind, &m.PeerID, &m.Body, &m.Status, &m.Attempts, &m.LastError, &m.CreatedAt, &m.SentAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.ChannelID, &m.SessionID, &m.RunID, &m.AccountID, &m.PeerKind, &m.PeerID, &m.Body, &m.Source, &m.Status, &m.Attempts, &m.LastError, &m.CreatedAt, &m.SentAt); err != nil {
 			return nil, err
 		}
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// HasSentAgentDirectToOtherPeer reports whether this run successfully sent a
+// direct WhatsApp message to someone other than the inbound conversation peer.
+func (r *GatewayRepository) HasSentAgentDirectToOtherPeer(ctx context.Context, workspaceID, channelID, runID, inboundPeerID string) (bool, error) {
+	if workspaceID == "" || channelID == "" || runID == "" || inboundPeerID == "" {
+		return false, nil
+	}
+	var found bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1
+			FROM gateway_outbound_messages
+			WHERE workspace_id=$1::uuid
+			  AND channel_id=$2::uuid
+			  AND run_id=$3::uuid
+			  AND source='agent_direct'
+			  AND status='sent'
+			  AND peer_id <> $4
+		)`, workspaceID, channelID, runID, inboundPeerID).Scan(&found)
+	return found, err
 }
 
 func (r *GatewayRepository) MarkOutbound(ctx context.Context, id, status, errMsg string) error {

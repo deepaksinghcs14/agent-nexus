@@ -342,6 +342,7 @@ type GatewayOutboundMessage struct {
 	PeerKind    string     `json:"peer_kind"`
 	PeerID      string     `json:"peer_id"`
 	Body        string     `json:"body"`
+	Source      string     `json:"source,omitempty"`
 	Status      string     `json:"status"`
 	Attempts    int        `json:"attempts"`
 	LastError   string     `json:"last_error"`
