@@ -101,6 +101,9 @@ func (t *ListToolsTool) ExecuteWithContext(_ context.Context, execCtx tools.Exec
 	} else {
 		sb.WriteString("\nCall native_request_tool(name) to activate a tool, then use it on the next turn.")
 	}
+	if len(execCtx.SkillSummaries) > 0 {
+		sb.WriteString("\nAdditional tools are available through on-demand skills — call native_list_agent_skills to see them.")
+	}
 
 	return map[string]any{"summary": sb.String()}, nil
 }

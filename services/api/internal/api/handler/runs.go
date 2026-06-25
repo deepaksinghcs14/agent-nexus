@@ -208,8 +208,12 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		toolSummaries[td.Name] = td.Description
 	}
 	skillSummaries := map[string]string{}
+	skillToolMap := map[string]string{}
 	for name, skill := range skills.OnDemand {
 		skillSummaries[name] = skill.Description
+		for _, toolName := range skill.RequiredToolNames {
+			skillToolMap[toolName] = name
+		}
 	}
 	hiddenToolNames := map[string]bool{}
 	for _, skill := range skills.OnDemand {
@@ -244,6 +248,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		ToolSummaries:     toolSummaries,
 		AlwaysActiveTools: metaToolNameSet(),
 		SkillSummaries:    skillSummaries,
+		SkillToolMap:      skillToolMap,
 		InvokeDepth:       0,
 		RootRunID:         id,
 		CallAgent:         callAgentFn,

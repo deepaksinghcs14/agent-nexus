@@ -559,8 +559,12 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	// requestedTools grows when native_request_tool is called (lazy loading mode).
 	requestedTools := map[string]bool{}
 	skillSummaries := map[string]string{}
+	skillToolMap := map[string]string{}
 	for name, skill := range skills.OnDemand {
 		skillSummaries[name] = skill.Description
+		for _, toolName := range skill.RequiredToolNames {
+			skillToolMap[toolName] = name
+		}
 	}
 	activeSkills := map[string]bool{}
 	activeMemoryIDs := map[string]bool{}
@@ -594,6 +598,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		ToolSummaries:     toolSummaries,
 		AlwaysActiveTools: metaToolNameSet(),
 		SkillSummaries:    skillSummaries,
+		SkillToolMap:      skillToolMap,
 		InvokeDepth:       opts.invokeDepth,
 		RootRunID:         rootTraceID,
 		CallAgent:         callAgentFn,
@@ -1821,8 +1826,12 @@ func (h *InvokeHandler) executeSupervisorRun(
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	supSkillSummaries := map[string]string{}
+	supSkillToolMap := map[string]string{}
 	for name, skill := range skills.OnDemand {
 		supSkillSummaries[name] = skill.Description
+		for _, toolName := range skill.RequiredToolNames {
+			supSkillToolMap[toolName] = name
+		}
 	}
 	supActiveSkills := map[string]bool{}
 	supHasCallAgent := false
@@ -1907,6 +1916,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 			return appendMemoryContext(messages, memories, activeMemoryIDs) > 0
 		},
 		SkillSummaries: supSkillSummaries,
+		SkillToolMap:   supSkillToolMap,
 		RequestTool:    func(name string) {}, // no-op: all tools are always visible in supervisor runs
 		RequestSkill: func(name string) bool {
 			skill, ok := skills.OnDemand[name]

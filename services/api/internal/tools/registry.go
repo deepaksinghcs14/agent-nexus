@@ -46,6 +46,10 @@ type ExecutionContext struct {
 	AlwaysActiveTools map[string]bool
 	// SkillSummaries lists on-demand skills attached to the current agent.
 	SkillSummaries map[string]string
+	// SkillToolMap maps each tool name to the on-demand skill that exposes it.
+	// Used by native_request_tool to auto-activate the right skill when the model
+	// requests a tool that is not yet visible (i.e. belongs to an inactive skill).
+	SkillToolMap map[string]string
 	// CallAgent, if non-nil, invokes another workspace agent as a sub-run and returns its output.
 	CallAgent func(ctx context.Context, agentID, task string) (string, error)
 	// RunWorkflow, if non-nil, triggers a workflow run in the background and returns the run_id.

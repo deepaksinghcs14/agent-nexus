@@ -49,9 +49,26 @@ func (t *RequestToolTool) ExecuteWithContext(_ context.Context, execCtx tools.Ex
 		return nil, fmt.Errorf("native_request_tool: name is required")
 	}
 	if _, ok := execCtx.ToolSummaries[name]; !ok {
+		// Check if an on-demand skill exposes this tool and auto-activate it.
+		if skillName, found := execCtx.SkillToolMap[name]; found && execCtx.RequestSkill != nil {
+			activated := execCtx.RequestSkill(skillName)
+			if activated {
+				return map[string]any{
+					"activated":  true,
+					"via_skill":  skillName,
+					"message":    fmt.Sprintf("Tool %q is provided by skill %q — skill activated. The tool (and any other tools from that skill) will be available on the next turn.", name, skillName),
+				}, nil
+			}
+		}
+		hint := fmt.Sprintf("tool %q not found", name)
+		if len(execCtx.SkillSummaries) > 0 {
+			hint += " — it may be exposed by an on-demand skill. Call native_list_agent_skills to see available skills, then native_request_skill(skill_name) to activate one."
+		} else {
+			hint += " — call native_list_tools to see available names."
+		}
 		return map[string]any{
 			"activated": false,
-			"error":     fmt.Sprintf("tool %q not found — call native_list_tools to see available names", name),
+			"error":     hint,
 		}, nil
 	}
 	if execCtx.RequestTool != nil {
