@@ -643,6 +643,14 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			activeSkills[name] = true
 			for _, toolName := range skill.RequiredToolNames {
 				requestedTools[toolName] = true
+				// Ensure the tool appears in toolSummaries so native_list_tools and
+				// native_request_tool can find it even if it isn't in agent_tools.
+				if _, known := toolSummaries[toolName]; !known {
+					if tool, err := h.registry.Get(toolName); err == nil {
+						def := tool.Definition()
+						toolSummaries[def.Name] = def.Description
+					}
+				}
 			}
 			if len(messages) > 0 {
 				messages[0].Content += "\n\n[Skill: " + skill.Name + "]\n" + skill.Content
@@ -688,9 +696,25 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		if a.LazyToolLoading {
 			// Start with just the meta-tools; add any tools the agent has requested.
 			toolDefs = lazyMetaToolDefs(h.registry)
+			coveredByDB := map[string]bool{}
 			for _, td := range allToolDefs {
+				coveredByDB[td.Name] = true
 				if requestedTools[td.Name] {
 					toolDefs = append(toolDefs, td)
+				}
+			}
+			// Fallback: requested tools not in agent_tools (e.g. skill required tools not yet
+			// auto-attached) are loaded directly from the native registry.
+			for name := range requestedTools {
+				if !coveredByDB[name] {
+					if tool, err := h.registry.Get(name); err == nil {
+						def := tool.Definition()
+						toolDefs = append(toolDefs, provider.ToolDefinition{
+							Name:        def.Name,
+							Description: def.Description,
+							InputSchema: def.InputSchema,
+						})
+					}
 				}
 			}
 		} else {
