@@ -46,11 +46,14 @@ func (r *SkillRepository) Get(ctx context.Context, id, workspaceID string) (doma
 }
 
 func (r *SkillRepository) Create(ctx context.Context, s *domain.Skill) error {
+	if s.RequiredToolNames == nil {
+		s.RequiredToolNames = []string{}
+	}
 	return r.pool.QueryRow(ctx,
-		`INSERT INTO skills(id,workspace_id,name,description,content,source,enabled,created_by)
-		 VALUES($1::uuid,$2::uuid,$3,$4,$5,'manual',$6,$7::uuid)
+		`INSERT INTO skills(id,workspace_id,name,description,content,source,enabled,required_tool_names,created_by)
+		 VALUES($1::uuid,$2::uuid,$3,$4,$5,'manual',$6,$7,$8::uuid)
 		 RETURNING created_at, updated_at`,
-		s.ID, s.WorkspaceID, s.Name, s.Description, s.Content, s.Enabled, s.CreatedBy,
+		s.ID, s.WorkspaceID, s.Name, s.Description, s.Content, s.Enabled, s.RequiredToolNames, s.CreatedBy,
 	).Scan(&s.CreatedAt, &s.UpdatedAt)
 }
 
@@ -58,10 +61,13 @@ func (r *SkillRepository) Update(ctx context.Context, s *domain.Skill) error {
 	if s.Source == "managed" {
 		return fmt.Errorf("managed skills are immutable")
 	}
+	if s.RequiredToolNames == nil {
+		s.RequiredToolNames = []string{}
+	}
 	_, err := r.pool.Exec(ctx,
-		`UPDATE skills SET name=$1, description=$2, content=$3, enabled=$4, updated_at=NOW()
-		 WHERE id=$5::uuid AND workspace_id=$6::uuid AND source <> 'managed'`,
-		s.Name, s.Description, s.Content, s.Enabled, s.ID, s.WorkspaceID)
+		`UPDATE skills SET name=$1, description=$2, content=$3, enabled=$4, required_tool_names=$5, updated_at=NOW()
+		 WHERE id=$6::uuid AND workspace_id=$7::uuid AND source <> 'managed'`,
+		s.Name, s.Description, s.Content, s.Enabled, s.RequiredToolNames, s.ID, s.WorkspaceID)
 	return err
 }
 

@@ -641,6 +641,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				return false
 			}
 			activeSkills[name] = true
+			for _, toolName := range skill.RequiredToolNames {
+				requestedTools[toolName] = true
+			}
 			if len(messages) > 0 {
 				messages[0].Content += "\n\n[Skill: " + skill.Name + "]\n" + skill.Content
 			}
@@ -1793,6 +1796,11 @@ func (h *InvokeHandler) executeSupervisorRun(
 	}
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
+	supSkillSummaries := map[string]string{}
+	for name, skill := range skills.OnDemand {
+		supSkillSummaries[name] = skill.Description
+	}
+	supActiveSkills := map[string]bool{}
 	supHasCallAgent := false
 	supHasCreateAgent := false
 	for _, td := range regularToolDefs {
@@ -1873,6 +1881,20 @@ func (h *InvokeHandler) executeSupervisorRun(
 		},
 		RequestMemory: func(memories []domain.Memory) bool {
 			return appendMemoryContext(messages, memories, activeMemoryIDs) > 0
+		},
+		SkillSummaries: supSkillSummaries,
+		RequestTool:    func(name string) {}, // no-op: all tools are always visible in supervisor runs
+		RequestSkill: func(name string) bool {
+			skill, ok := skills.OnDemand[name]
+			if !ok || supActiveSkills[name] {
+				return false
+			}
+			supActiveSkills[name] = true
+			if len(messages) > 0 {
+				messages[0].Content += "\n\n[Skill: " + skill.Name + "]\n" + skill.Content
+			}
+			h.runs.createStep(ctx, runID, domain.StepToolCall, map[string]any{"skill": skill.Name}, map[string]any{"activated": true}, time.Now(), 0, "native_request_skill", "") //nolint:errcheck
+			return true
 		},
 	}
 	_ = h.pool.QueryRow(ctx, `SELECT COALESCE(channel_session_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&execCtx.ChannelSessionID)

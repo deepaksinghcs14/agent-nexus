@@ -1,28 +1,45 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useRouter, useParams } from 'next/navigation'
 import { ChevronRight, Save, X } from 'lucide-react'
 import { skillsAPI } from '@/lib/api'
 
-export default function NewSkillPage() {
+export default function EditSkillPage() {
   const router = useRouter()
+  const { id } = useParams<{ id: string }>()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [content, setContent] = useState('')
   const [requiredTools, setRequiredTools] = useState('')
   const [enabled, setEnabled] = useState(true)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    skillsAPI.get(id)
+      .then((s: any) => {
+        setName(s.name ?? '')
+        setDescription(s.description ?? '')
+        setContent(s.content ?? '')
+        setRequiredTools((s.required_tool_names ?? []).join(', '))
+        setEnabled(s.enabled ?? true)
+      })
+      .catch(() => setError('Failed to load skill'))
+      .finally(() => setLoading(false))
+  }, [id])
 
   const save = async () => {
     if (!name.trim()) {
       setError('Skill name is required')
       return
     }
-    const required_tool_names = requiredTools.split(',').map(s => s.trim()).filter(Boolean)
-    await skillsAPI.create({ name, description, content, enabled, required_tool_names })
+    const required_tool_names = requiredTools.split(',').map((s: string) => s.trim()).filter(Boolean)
+    await skillsAPI.update(id, { name, description, content, enabled, required_tool_names })
     router.push('/skills')
   }
+
+  if (loading) return <div className="p-6 text-sm text-gray-400">Loading…</div>
 
   return (
     <div className="p-6 max-w-3xl">
@@ -30,7 +47,7 @@ export default function NewSkillPage() {
         <div className="flex items-center gap-2 text-[12px] text-gray-400">
           <span onClick={() => router.push('/skills')} className="hover:text-gray-600 cursor-pointer">Skills</span>
           <ChevronRight className="w-3 h-3" />
-          <span className="text-gray-700 font-medium">New skill</span>
+          <span className="text-gray-700 font-medium">Edit skill</span>
         </div>
         <div className="flex gap-2">
           <button onClick={() => router.push('/skills')} className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 text-[12px] rounded-lg hover:bg-gray-50">
