@@ -493,7 +493,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		}
 	}
 	historyRows, err := h.pool.Query(ctx,
-		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'')
+		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,''), COALESCE(tool_calls::text,'')
 		 FROM messages WHERE conversation_id=$1::uuid
 		 ORDER BY created_at DESC LIMIT $2`,
 		convID, histLimit)
@@ -505,8 +505,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	defer historyRows.Close()
 	history := []provider.Message{}
 	for historyRows.Next() {
-		var role, content, toolCallID, toolName string
-		if historyRows.Scan(&role, &content, &toolCallID, &toolName) == nil && (role == "user" || role == "assistant" || role == "tool") {
+		var role, content, toolCallID, toolName, toolCallsRaw string
+		if historyRows.Scan(&role, &content, &toolCallID, &toolName, &toolCallsRaw) == nil && (role == "user" || role == "assistant" || role == "tool") {
+			content = injectActionLog(role, content, toolCallsRaw)
 			if len(content) > 800 {
 				content = content[:800] + "…[truncated]"
 			}
@@ -539,10 +540,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	}
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
-	instructions := a.Instructions
-	if len(skills.OnDemand) > 0 {
-		instructions += "\n\nAdditional on-demand skills are available. When one is relevant, call native_list_agent_skills, then native_request_skill. The selected skill applies for this run."
-	}
+	instructions := a.Instructions + onDemandSkillsInstructions(skills.OnDemand)
 	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: instructions,
 		Skills:             skills.Always,
@@ -694,6 +692,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
 	futureWorkRetried := false
+	actionLog := []string{}
 
 	for {
 		// Build the tool list for this iteration.
@@ -726,6 +725,10 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			toolDefs = append(lazyMetaToolDefs(h.registry), allToolDefs...)
 		}
 		toolDefs = dedupeToolDefs(toolDefs)
+		allowedToolNames := map[string]bool{}
+		for _, td := range toolDefs {
+			allowedToolNames[td.Name] = true
+		}
 
 		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
 			messages = trimmed
@@ -777,9 +780,14 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				sseErr(msg)
 				return
 			}
+			var actionLogJSON any
+			if len(actionLog) > 0 {
+				b, _ := json.Marshal(actionLog)
+				actionLogJSON = b
+			}
 			h.pool.Exec(ctx, //nolint:errcheck
-				`INSERT INTO messages(id,conversation_id,role,content,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4)`,
-				uuid.NewString(), convID, reply, usage.OutputTokens)
+				`INSERT INTO messages(id,conversation_id,role,content,tool_calls,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4::jsonb,$5)`,
+				uuid.NewString(), convID, reply, actionLogJSON, usage.OutputTokens)
 			h.runs.createStep(ctx, runID, domain.StepFinalResponse, //nolint:errcheck
 				map[string]any{},
 				map[string]any{"content": reply},
@@ -908,6 +916,30 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				continue
 			}
 
+			// Lazy loading gate: reject calls to tools that weren't actually offered to the
+			// model this turn (e.g. it guessed a name from native_list_tools output) so it's
+			// forced through native_request_tool/native_request_skill — keeping traces honest
+			// about what was activated.
+			if a.LazyToolLoading && !allowedToolNames[call.Name] {
+				gateErr := lazyToolNotActiveError(call.Name, execCtx.SkillToolMap)
+				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
+					map[string]any{"tool": call.Name, "input": call.Input},
+					map[string]any{"error": gateErr},
+					time.Now(), 0, call.Name, gateErr)
+				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":0}`,
+					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(fmt.Sprintf(`{"error":%q}`, gateErr)))))
+				messages = append(messages, provider.Message{
+					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: fmt.Sprintf(`{"error":%q}`, gateErr),
+				})
+				stepCount++
+				if stepCount > a.MaxSteps {
+					runErrMsg = "max steps exceeded"
+					sseErr("max steps exceeded")
+					return
+				}
+				continue
+			}
+
 			dbTool, toolExists := dbTools[call.Name]
 
 			if toolExists && dbTool.RequiresApproval {
@@ -987,6 +1019,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					errMsg = execErr.Error()
 					resultContent = fmt.Sprintf(`{"error":%q}`, execErr.Error())
 				}
+			}
+			if !execCtx.AlwaysActiveTools[call.Name] {
+				actionLog = append(actionLog, summarizeToolCall(call.Name, call.Input, errMsg))
 			}
 
 			h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
@@ -1780,7 +1815,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 		}
 	}
 	historyRows, err := h.pool.Query(ctx,
-		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'')
+		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,''), COALESCE(tool_calls::text,'')
 		 FROM messages WHERE conversation_id=$1::uuid
 		 ORDER BY created_at DESC LIMIT $2`,
 		convID, supHistLimit)
@@ -1792,8 +1827,9 @@ func (h *InvokeHandler) executeSupervisorRun(
 	defer historyRows.Close()
 	history := []provider.Message{}
 	for historyRows.Next() {
-		var role, content, toolCallID, toolName string
-		if historyRows.Scan(&role, &content, &toolCallID, &toolName) == nil && (role == "user" || role == "assistant" || role == "tool") {
+		var role, content, toolCallID, toolName, toolCallsRaw string
+		if historyRows.Scan(&role, &content, &toolCallID, &toolName, &toolCallsRaw) == nil && (role == "user" || role == "assistant" || role == "tool") {
+			content = injectActionLog(role, content, toolCallsRaw)
 			if len(content) > 800 {
 				content = content[:800] + "…[truncated]"
 			}
@@ -1825,6 +1861,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	}
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
+	supervisorInstructions += onDemandSkillsInstructions(skills.OnDemand)
 	supSkillSummaries := map[string]string{}
 	supSkillToolMap := map[string]string{}
 	for name, skill := range skills.OnDemand {
@@ -1941,6 +1978,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	stepCount := 0
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
+	actionLog := []string{}
 
 	for {
 		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
@@ -1985,9 +2023,14 @@ func (h *InvokeHandler) executeSupervisorRun(
 				sseErr(msg)
 				return
 			}
+			var actionLogJSON any
+			if len(actionLog) > 0 {
+				b, _ := json.Marshal(actionLog)
+				actionLogJSON = b
+			}
 			h.pool.Exec(ctx, //nolint:errcheck
-				`INSERT INTO messages(id,conversation_id,role,content,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4)`,
-				uuid.NewString(), convID, reply, usage.OutputTokens)
+				`INSERT INTO messages(id,conversation_id,role,content,tool_calls,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4::jsonb,$5)`,
+				uuid.NewString(), convID, reply, actionLogJSON, usage.OutputTokens)
 			h.runs.createStep(ctx, runID, domain.StepFinalResponse, //nolint:errcheck
 				map[string]any{},
 				map[string]any{"content": reply},
@@ -2091,6 +2134,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 				} else {
 					delegateOutput = handler(ctx, call.Input)
 				}
+				actionLog = append(actionLog, summarizeToolCall(call.Name, call.Input, ""))
 				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
 					map[string]any{"tool": call.Name, "input": call.Input},
 					map[string]any{"output": delegateOutput},
@@ -2184,6 +2228,9 @@ func (h *InvokeHandler) executeSupervisorRun(
 			} else if execErr != nil {
 				errMsg = execErr.Error()
 				resultContent = fmt.Sprintf(`{"error":%q}`, execErr.Error())
+			}
+			if !execCtx.AlwaysActiveTools[call.Name] {
+				actionLog = append(actionLog, summarizeToolCall(call.Name, call.Input, errMsg))
 			}
 
 			h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck

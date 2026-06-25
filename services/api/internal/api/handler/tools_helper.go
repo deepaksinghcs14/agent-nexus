@@ -3,6 +3,9 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
@@ -118,6 +121,71 @@ func ensureMemoryToolDefs(defs []provider.ToolDefinition, nameMap map[string]dom
 	add("native_request_memory", "Search memories and inject the matching results into the current run context for subsequent turns.", memoryRequestSchema, "low", 2000)
 	add("native_save_memory", "Save a durable memory for future runs when the user reveals a stable preference, fact, goal, or reusable decision.", memorySaveSchema, "low", 5000)
 	return defs, nameMap
+}
+
+// summarizeToolCall returns a compact, single-line description of a tool call's effect for
+// inclusion in conversation history. Only the bare assistant reply text is normally persisted
+// across runs, which lets the model mistake "what I said" for "what I actually did" on a
+// follow-up turn (e.g. repeating a send request gets answered with the prior reply text instead
+// of a new send). Logging real actions here gives future turns the missing context.
+func summarizeToolCall(name string, input json.RawMessage, errMsg string) string {
+	in := strings.TrimSpace(string(input))
+	if len(in) > 160 {
+		in = in[:160] + "…"
+	}
+	if errMsg != "" {
+		return fmt.Sprintf("%s(%s) → failed: %s", name, in, errMsg)
+	}
+	return fmt.Sprintf("%s(%s) → done", name, in)
+}
+
+// injectActionLog parses the action-log JSON stored in an assistant message's tool_calls
+// column (a plain []string of summarizeToolCall entries) and prepends a compact note to the
+// content used to rebuild LLM context for a later run. The raw DB content (and anything
+// returned by ListMessages for display in the UI) is left untouched — this only affects
+// what the model sees when conversation history is reloaded for a new turn.
+func injectActionLog(role, content, toolCallsRaw string) string {
+	if role != "assistant" || toolCallsRaw == "" {
+		return content
+	}
+	var actions []string
+	if err := json.Unmarshal([]byte(toolCallsRaw), &actions); err != nil || len(actions) == 0 {
+		return content
+	}
+	return "[actions taken: " + strings.Join(actions, "; ") + "]\n" + content
+}
+
+// onDemandSkillsInstructions builds the system-prompt section describing on-demand skills.
+// Listing each skill's name + description up front (rather than a generic "check skills if
+// relevant" pointer) is what actually gets the model to activate the right skill before
+// answering — without this, a model can satisfy a request like "send a message to X" by just
+// replying conversationally, never realizing a skill exists that says it must use a tool instead.
+func onDemandSkillsInstructions(onDemand map[string]domain.Skill) string {
+	if len(onDemand) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(onDemand))
+	for name := range onDemand {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	b.WriteString("\n\nAdditional on-demand skills are available. Before responding to any request, check whether one of these matches — if so, call native_request_skill(name) FIRST and follow its instructions; do not answer the request yourself or claim you can't do it.\n")
+	for _, name := range names {
+		b.WriteString("- " + name + ": " + onDemand[name].Description + "\n")
+	}
+	return b.String()
+}
+
+// lazyToolNotActiveError builds the error returned to the model when it calls a tool that
+// wasn't actually offered this turn under lazy tool loading — forcing it through
+// native_request_tool/native_request_skill instead of guessing names from native_list_tools.
+func lazyToolNotActiveError(toolName string, skillToolMap map[string]string) string {
+	if skillName, ok := skillToolMap[toolName]; ok {
+		return fmt.Sprintf("tool %q is not active yet — it belongs to on-demand skill %q. Call native_request_skill(%q) (or native_request_tool(%q)) first, then call %q again next turn.",
+			toolName, skillName, skillName, toolName, toolName)
+	}
+	return fmt.Sprintf("tool %q is not active this turn — call native_request_tool(%q) first, then call it again next turn.", toolName, toolName)
 }
 
 // dedupeToolDefs removes repeated tool names while preserving the first

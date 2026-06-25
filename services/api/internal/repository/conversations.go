@@ -95,10 +95,14 @@ func (r *ConversationRepository) ListMessages(ctx context.Context, conversationI
 }
 
 func (r *ConversationRepository) AddMessage(ctx context.Context, m *domain.Message) error {
+	var toolCalls any
+	if len(m.ToolCalls) > 0 {
+		toolCalls = m.ToolCalls
+	}
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO messages (id, conversation_id, role, content, tokens, created_at)
-		 VALUES ($1::uuid, $2::uuid, $3, $4, $5, NOW())`,
-		m.ID, m.ConversationID, m.Role, m.Content, m.Tokens)
+		`INSERT INTO messages (id, conversation_id, role, content, tool_calls, tokens, created_at)
+		 VALUES ($1::uuid, $2::uuid, $3, $4, $5::jsonb, $6, NOW())`,
+		m.ID, m.ConversationID, m.Role, m.Content, toolCalls, m.Tokens)
 	if err != nil {
 		return err
 	}
