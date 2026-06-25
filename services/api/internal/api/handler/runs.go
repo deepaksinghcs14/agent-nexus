@@ -141,7 +141,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	historyRows, e := h.pool.Query(r.Context(),
-		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,'')
+		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,''), COALESCE(tool_calls::text,'')
 		 FROM messages WHERE conversation_id=$1::uuid
 		 ORDER BY created_at DESC LIMIT $2`,
 		c.ID, histLimit)
@@ -153,8 +153,9 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	defer historyRows.Close()
 	history := make([]provider.Message, 0)
 	for historyRows.Next() {
-		var role, content, toolCallID, toolName string
-		if historyRows.Scan(&role, &content, &toolCallID, &toolName) == nil && (role == "user" || role == "assistant" || role == "tool") {
+		var role, content, toolCallID, toolName, toolCallsRaw string
+		if historyRows.Scan(&role, &content, &toolCallID, &toolName, &toolCallsRaw) == nil && (role == "user" || role == "assistant" || role == "tool") {
+			content = injectActionLog(role, content, toolCallsRaw)
 			if len(content) > 800 {
 				content = content[:800] + "…[truncated]"
 			}
@@ -179,10 +180,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	skills, _ := loadAgentSkills(r.Context(), h.pool, a.ID)
-	instructions := a.Instructions
-	if len(skills.OnDemand) > 0 {
-		instructions += "\n\nAdditional on-demand skills are available. When one is relevant, call native_list_agent_skills, then native_request_skill. The selected skill applies for this run."
-	}
+	instructions := a.Instructions + onDemandSkillsInstructions(skills.OnDemand)
 	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: instructions,
 		Skills:             skills.Always,
@@ -275,9 +273,19 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			activeSkills[name] = true
 			for _, toolName := range skill.RequiredToolNames {
 				activeSkillTools[toolName] = true
-				for _, td := range allToolDefs {
-					if td.Name == toolName {
-						toolSummaries[td.Name] = td.Description
+				requestedTools[toolName] = true
+				// Ensure the tool appears in toolSummaries so native_list_tools and
+				// native_request_tool can find it even if it isn't in agent_tools.
+				if _, known := toolSummaries[toolName]; !known {
+					if tool, err := h.registry.Get(toolName); err == nil {
+						def := tool.Definition()
+						toolSummaries[def.Name] = def.Description
+					}
+				} else {
+					for _, td := range allToolDefs {
+						if td.Name == toolName {
+							toolSummaries[td.Name] = td.Description
+						}
 					}
 				}
 			}
@@ -311,20 +319,41 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
 	futureWorkRetried := false
+	actionLog := []string{}
 
 	for {
 		var toolDefs []provider.ToolDefinition
 		if a.LazyToolLoading {
 			toolDefs = lazyMetaToolDefs(h.registry)
+			coveredByDB := map[string]bool{}
 			for _, td := range allToolDefs {
+				coveredByDB[td.Name] = true
 				if requestedTools[td.Name] {
 					toolDefs = append(toolDefs, td)
+				}
+			}
+			// Fallback: requested tools not in agent_tools (e.g. skill required tools not yet
+			// auto-attached) are loaded directly from the native registry.
+			for name := range requestedTools {
+				if !coveredByDB[name] {
+					if tool, err := h.registry.Get(name); err == nil {
+						def := tool.Definition()
+						toolDefs = append(toolDefs, provider.ToolDefinition{
+							Name:        def.Name,
+							Description: def.Description,
+							InputSchema: def.InputSchema,
+						})
+					}
 				}
 			}
 		} else {
 			toolDefs = append(lazyMetaToolDefs(h.registry), visibleToolDefs()...)
 		}
 		toolDefs = dedupeToolDefs(toolDefs)
+		allowedToolNames := map[string]bool{}
+		for _, td := range toolDefs {
+			allowedToolNames[td.Name] = true
+		}
 		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
 			messages = trimmed
 			emit(fmt.Sprintf(`{"type":"delta","content":%q}`,
@@ -376,7 +405,11 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				sseErr(msg)
 				return
 			}
-			if e := h.conversations.AddMessage(r.Context(), &domain.Message{ID: uuid.NewString(), ConversationID: c.ID, Role: "assistant", Content: reply, Tokens: usage.OutputTokens}); e != nil {
+			var actionLogJSON json.RawMessage
+			if len(actionLog) > 0 {
+				actionLogJSON, _ = json.Marshal(actionLog)
+			}
+			if e := h.conversations.AddMessage(r.Context(), &domain.Message{ID: uuid.NewString(), ConversationID: c.ID, Role: "assistant", Content: reply, ToolCalls: actionLogJSON, Tokens: usage.OutputTokens}); e != nil {
 				_ = h.failRun(r.Context(), id, e.Error())
 				sseErr("failed to save assistant message")
 				return
@@ -429,6 +462,31 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			if call.Name == "native_save_memory" {
 				memorySaveCalled = true
 			}
+
+			// Lazy loading gate: reject calls to tools that weren't actually offered to the
+			// model this turn (e.g. it guessed a name from native_list_tools output) so it's
+			// forced through native_request_tool/native_request_skill — keeping traces honest
+			// about what was activated.
+			if a.LazyToolLoading && !allowedToolNames[call.Name] {
+				gateErr := lazyToolNotActiveError(call.Name, execCtx.SkillToolMap)
+				_ = h.createStep(r.Context(), id, domain.StepToolCall,
+					map[string]any{"tool": call.Name, "input": call.Input},
+					map[string]any{"error": gateErr},
+					time.Now(), 0, call.Name, gateErr)
+				emit(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":0}`,
+					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(fmt.Sprintf(`{"error":%q}`, gateErr)))))
+				messages = append(messages, provider.Message{
+					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: fmt.Sprintf(`{"error":%q}`, gateErr),
+				})
+				stepCount++
+				if stepCount > a.MaxSteps {
+					_ = h.failRun(r.Context(), id, "max steps exceeded")
+					sseErr("max steps exceeded")
+					return
+				}
+				continue
+			}
+
 			dbTool, toolExists := dbTools[call.Name]
 
 			// Approval gate for high-risk tools
@@ -500,6 +558,9 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			} else if execErr != nil {
 				errMsg = execErr.Error()
 				resultContent = fmt.Sprintf(`{"error":%q}`, execErr.Error())
+			}
+			if !execCtx.AlwaysActiveTools[call.Name] {
+				actionLog = append(actionLog, summarizeToolCall(call.Name, call.Input, errMsg))
 			}
 
 			_ = h.createStep(r.Context(), id, domain.StepToolCall,
