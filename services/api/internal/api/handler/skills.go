@@ -38,10 +38,11 @@ func (h *SkillsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	uid := middleware.UserIDFromCtx(r.Context())
 	var body struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Content     string `json:"content"`
-		Enabled     *bool  `json:"enabled"`
+		Name               string   `json:"name"`
+		Description        string   `json:"description"`
+		Content            string   `json:"content"`
+		Enabled            *bool    `json:"enabled"`
+		RequiredToolNames  []string `json:"required_tool_names"`
 	}
 	if json.NewDecoder(r.Body).Decode(&body) != nil || body.Name == "" {
 		errs.Write(w, errs.BadRequest("name is required"))
@@ -52,14 +53,15 @@ func (h *SkillsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		enabled = *body.Enabled
 	}
 	s := &domain.Skill{
-		ID:          uuid.NewString(),
-		WorkspaceID: ws,
-		Name:        body.Name,
-		Description: body.Description,
-		Content:     body.Content,
-		Source:      "manual",
-		Enabled:     enabled,
-		CreatedBy:   uid,
+		ID:                uuid.NewString(),
+		WorkspaceID:       ws,
+		Name:              body.Name,
+		Description:       body.Description,
+		Content:           body.Content,
+		Source:            "manual",
+		Enabled:           enabled,
+		RequiredToolNames: body.RequiredToolNames,
+		CreatedBy:         uid,
 	}
 	if err := h.repo.Create(r.Context(), s); err != nil {
 		errs.Write(w, errs.Internal("failed to create skill"))
@@ -92,10 +94,11 @@ func (h *SkillsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name        *string `json:"name"`
-		Description *string `json:"description"`
-		Content     *string `json:"content"`
-		Enabled     *bool   `json:"enabled"`
+		Name              *string  `json:"name"`
+		Description       *string  `json:"description"`
+		Content           *string  `json:"content"`
+		Enabled           *bool    `json:"enabled"`
+		RequiredToolNames *[]string `json:"required_tool_names"`
 	}
 	if json.NewDecoder(r.Body).Decode(&body) != nil {
 		errs.Write(w, errs.BadRequest("invalid request body"))
@@ -112,6 +115,9 @@ func (h *SkillsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Enabled != nil {
 		s.Enabled = *body.Enabled
+	}
+	if body.RequiredToolNames != nil {
+		s.RequiredToolNames = *body.RequiredToolNames
 	}
 	s.WorkspaceID = ws
 	if err := h.repo.Update(r.Context(), &s); err != nil {
