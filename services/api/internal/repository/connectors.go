@@ -82,7 +82,7 @@ func (r *ConnectorRepository) UpsertDocument(c context.Context, x *domain.Connec
 	return e
 }
 func (r *ConnectorRepository) CreateSyncJob(c context.Context, x *domain.ConnectorSyncJob) error {
-	_, e := r.pool.Exec(c, `INSERT INTO connector_sync_jobs(id,connector_id,status,started_at,completed_at,documents_found,documents_indexed,error_message)VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8)`, x.ID, x.ConnectorID, x.Status, x.StartedAt, x.CompletedAt, x.DocumentsFound, x.DocumentsIndexed, x.ErrorMessage)
+	_, e := r.pool.Exec(c, `INSERT INTO connector_sync_jobs(id,connector_id,status,started_at,completed_at,documents_found,documents_indexed,error_message,checkpoint)VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,'{}')`, x.ID, x.ConnectorID, x.Status, x.StartedAt, x.CompletedAt, x.DocumentsFound, x.DocumentsIndexed, x.ErrorMessage)
 	return e
 }
 func (r *ConnectorRepository) UpdateSyncJob(c context.Context, x *domain.ConnectorSyncJob) error {

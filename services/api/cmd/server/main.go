@@ -201,6 +201,13 @@ func main() {
 		h.Gateway.SyncAllAdapters(context.Background())
 	}()
 
+	// Resume any connector syncs that were in-flight when the pod restarted.
+	// Runs after a short delay to ensure DB connections are settled.
+	go func() {
+		time.Sleep(2 * time.Second)
+		h.Connectors.RecoverInterruptedSyncs(context.Background())
+	}()
+
 	// Fire pending WhatsApp reminders as they come due.
 	go h.Gateway.StartReminderDispatcher(context.Background())
 

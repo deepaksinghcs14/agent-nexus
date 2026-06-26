@@ -451,7 +451,7 @@ export interface Connector {
 export interface ConnectorSyncJob {
   id: string
   connector_id: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'interrupted'
   started_at?: string
   completed_at?: string
   documents_found: number

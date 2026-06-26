@@ -3,9 +3,11 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/connector/providers/confluence"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/connector/providers/filesystem"
 	githubprovider "github.com/deepaksingh/agent-nexus/services/api/internal/connector/providers/github"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/connector/syncstate"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
@@ -139,22 +142,19 @@ func (h *ConnectorsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	provider := getConnectorProvider(conn.Provider)
-	if provider == nil {
+	prov := getConnectorProvider(conn.Provider)
+	if prov == nil {
 		errs.Write(w, errs.BadRequest("unsupported connector provider: "+conn.Provider))
 		return
 	}
 
-	// Mark connector as syncing and create a running job record
 	h.pool.Exec(r.Context(), `UPDATE connectors SET status='syncing', updated_at=NOW() WHERE id=$1::uuid`, id) //nolint:errcheck
 
 	jobID := uuid.NewString()
 	now := time.Now()
 	j := domain.ConnectorSyncJob{
-		ID:          jobID,
-		ConnectorID: id,
-		Status:      "running",
-		StartedAt:   &now,
+		ID: jobID, ConnectorID: id,
+		Status: "running", StartedAt: &now,
 	}
 	repo := repository.NewConnectorRepository(h.pool)
 	if err := repo.CreateSyncJob(r.Context(), &j); err != nil {
@@ -162,27 +162,20 @@ func (h *ConnectorsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get best-effort embedder; nil means chunks will be stored without embeddings
 	embedder, _ := buildAnyProvider(r.Context(), h.pool, h.cfg, ws)
+	rep := syncstate.New(h.pool, jobID, id)
 
 	go func() {
 		ctx := context.Background()
+		slog.Info("connector sync started", "connector_id", id, "provider", conn.Provider, "job_id", jobID)
 		pipeline := connector.NewPipeline(h.pool, h.cfg)
-		err := pipeline.Sync(ctx, id, ws, provider, embedder)
-
-		completed := time.Now()
-		j.CompletedAt = &completed
+		err := pipeline.Sync(ctx, id, ws, prov, embedder, rep)
 		if err != nil {
-			j.Status = "failed"
-			j.ErrorMessage = err.Error()
-			h.pool.Exec(ctx, `UPDATE connectors SET status='error', updated_at=NOW() WHERE id=$1::uuid`, id) //nolint:errcheck
+			slog.Error("connector sync failed", "connector_id", id, "job_id", jobID, "error", err)
+			rep.Fail(err)
 		} else {
-			j.Status = "completed"
-			// Count indexed documents
-			h.pool.QueryRow(ctx, `SELECT COUNT(*) FROM connector_documents WHERE connector_id=$1::uuid`, id).Scan(&j.DocumentsIndexed) //nolint:errcheck
-			j.DocumentsFound = j.DocumentsIndexed
+			rep.Complete()
 		}
-		repo.UpdateSyncJob(ctx, &j) //nolint:errcheck
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -190,8 +183,120 @@ func (h *ConnectorsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(j) //nolint:errcheck
 }
 
+// RecoverInterruptedSyncs is called at server startup to handle syncs that were in-flight
+// when the pod was restarted. It marks orphaned running jobs as 'interrupted' (preserving
+// their checkpoint) and auto-resumes connectors that have a valid checkpoint to resume from.
+func (h *ConnectorsHandler) RecoverInterruptedSyncs(ctx context.Context) {
+	t, err := h.pool.Exec(ctx, `
+		UPDATE connector_sync_jobs
+		SET status='interrupted', completed_at=NOW(), error_message='Interrupted by pod restart'
+		WHERE status='running'
+	`)
+	if err != nil {
+		slog.Warn("connector recovery: failed to mark interrupted jobs", "error", err)
+		return
+	}
+	if t.RowsAffected() == 0 {
+		return
+	}
+	slog.Info("connector recovery: marked interrupted sync jobs", "count", t.RowsAffected())
+
+	// Reset connector statuses for anything still marked 'syncing'.
+	h.pool.Exec(ctx, `UPDATE connectors SET status='error', updated_at=NOW() WHERE status='syncing'`) //nolint:errcheck
+
+	// Find connectors whose last interrupted job has a non-empty checkpoint — those can resume.
+	rows, err := h.pool.Query(ctx, `
+		SELECT DISTINCT ON (j.connector_id)
+			c.id::text, c.workspace_id::text, c.provider
+		FROM connector_sync_jobs j
+		JOIN connectors c ON c.id = j.connector_id
+		WHERE j.status = 'interrupted'
+		  AND j.checkpoint != '{}'::jsonb
+		  AND j.completed_at >= NOW() - INTERVAL '1 hour'
+		ORDER BY j.connector_id, j.created_at DESC
+	`)
+	if err != nil {
+		slog.Warn("connector recovery: failed to query resumable connectors", "error", err)
+		return
+	}
+	defer rows.Close()
+
+	type resumable struct{ id, wsID, providerName string }
+	var candidates []resumable
+	for rows.Next() {
+		var r resumable
+		if rows.Scan(&r.id, &r.wsID, &r.providerName) == nil {
+			candidates = append(candidates, r)
+		}
+	}
+	rows.Close()
+
+	for _, r := range candidates {
+		prov := getConnectorProvider(r.providerName)
+		if prov == nil {
+			continue
+		}
+		slog.Info("connector recovery: resuming sync", "connector_id", r.id, "provider", r.providerName)
+		h.launchSync(ctx, r.id, r.wsID, prov)
+	}
+}
+
+// launchSync creates a new sync job and starts the sync goroutine.
+func (h *ConnectorsHandler) launchSync(ctx context.Context, connID, wsID string, prov connector.Provider) {
+	jobID := uuid.NewString()
+	now := time.Now()
+	j := domain.ConnectorSyncJob{
+		ID: jobID, ConnectorID: connID,
+		Status: "running", StartedAt: &now,
+	}
+	repo := repository.NewConnectorRepository(h.pool)
+	if err := repo.CreateSyncJob(ctx, &j); err != nil {
+		slog.Warn("connector recovery: failed to create job", "connector_id", connID, "error", err)
+		return
+	}
+	h.pool.Exec(ctx, `UPDATE connectors SET status='syncing', updated_at=NOW() WHERE id=$1::uuid`, connID) //nolint:errcheck
+
+	embedder, _ := buildAnyProvider(ctx, h.pool, h.cfg, wsID)
+	rep := syncstate.New(h.pool, jobID, connID)
+
+	go func() {
+		slog.Info("connector recovery: sync goroutine started", "connector_id", connID, "job_id", jobID)
+		pipeline := connector.NewPipeline(h.pool, h.cfg)
+		err := pipeline.Sync(context.Background(), connID, wsID, prov, embedder, rep)
+		if err != nil {
+			slog.Error("connector recovery: sync failed", "connector_id", connID, "error", err)
+			rep.Fail(err)
+		} else {
+			rep.Complete()
+		}
+	}()
+}
+
+// ListDocuments returns paginated documents for a connector (20 per page).
 func (h *ConnectorsHandler) ListDocuments(w http.ResponseWriter, r *http.Request) {
-	rows, e := h.pool.Query(r.Context(), `SELECT d.id::text,d.connector_id::text,d.workspace_id::text,d.source,d.source_document_id,d.title,d.url,d.author,d.content_hash,d.last_modified_at,d.indexed_at,d.metadata FROM connector_documents d JOIN connectors c ON c.id=d.connector_id WHERE d.connector_id=$1::uuid AND c.workspace_id=$2::uuid ORDER BY d.indexed_at DESC NULLS LAST`, chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()))
+	const pageSize = 20
+	page := 1
+	if p, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && p > 0 {
+		page = p
+	}
+	offset := (page - 1) * pageSize
+
+	connID := chi.URLParam(r, "id")
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+
+	var total int
+	_ = h.pool.QueryRow(r.Context(),
+		`SELECT COUNT(*) FROM connector_documents d JOIN connectors c ON c.id=d.connector_id WHERE d.connector_id=$1::uuid AND c.workspace_id=$2::uuid`,
+		connID, ws,
+	).Scan(&total)
+
+	rows, e := h.pool.Query(r.Context(),
+		`SELECT d.id::text,d.connector_id::text,d.workspace_id::text,d.source,d.source_document_id,d.title,d.url,d.author,d.content_hash,d.last_modified_at,d.indexed_at,d.metadata
+		 FROM connector_documents d JOIN connectors c ON c.id=d.connector_id
+		 WHERE d.connector_id=$1::uuid AND c.workspace_id=$2::uuid
+		 ORDER BY d.indexed_at DESC NULLS LAST
+		 LIMIT $3 OFFSET $4`,
+		connID, ws, pageSize, offset)
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to list documents"))
 		return
@@ -206,7 +311,13 @@ func (h *ConnectorsHandler) ListDocuments(w http.ResponseWriter, r *http.Request
 		}
 		a = append(a, d)
 	}
-	errs.WriteJSON(w, 200, map[string]any{"data": a})
+	errs.WriteJSON(w, 200, map[string]any{
+		"data":       a,
+		"total":      total,
+		"page":       page,
+		"page_size":  pageSize,
+		"total_pages": (total + pageSize - 1) / pageSize,
+	})
 }
 
 func (h *ConnectorsHandler) BrowseFilesystem(w http.ResponseWriter, r *http.Request) {
@@ -240,7 +351,12 @@ func (h *ConnectorsHandler) BrowseFilesystem(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *ConnectorsHandler) ListSyncJobs(w http.ResponseWriter, r *http.Request) {
-	rows, e := h.pool.Query(r.Context(), `SELECT j.id::text,j.connector_id::text,j.status,j.started_at,j.completed_at,j.documents_found,j.documents_indexed,j.error_message,j.created_at FROM connector_sync_jobs j JOIN connectors c ON c.id=j.connector_id WHERE j.connector_id=$1::uuid AND c.workspace_id=$2::uuid ORDER BY j.created_at DESC`, chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()))
+	rows, e := h.pool.Query(r.Context(),
+		`SELECT j.id::text,j.connector_id::text,j.status,j.started_at,j.completed_at,j.documents_found,j.documents_indexed,j.error_message,j.created_at
+		 FROM connector_sync_jobs j JOIN connectors c ON c.id=j.connector_id
+		 WHERE j.connector_id=$1::uuid AND c.workspace_id=$2::uuid
+		 ORDER BY j.created_at DESC`,
+		chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()))
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to list sync jobs"))
 		return

@@ -175,7 +175,7 @@ export const connectorsAPI = {
   list: () => api.get('/connectors'),
   create: (body: unknown) => api.post('/connectors', body),
   sync: (id: string) => api.post(`/connectors/${id}/sync`),
-  documents: (id: string) => api.get(`/connectors/${id}/documents`),
+  documents: (id: string, page = 1) => api.get(`/connectors/${id}/documents?page=${page}`),
   syncJobs: (id: string) => api.get(`/connectors/${id}/sync-jobs`),
   delete: (id: string) => api.delete(`/connectors/${id}`),
 }
