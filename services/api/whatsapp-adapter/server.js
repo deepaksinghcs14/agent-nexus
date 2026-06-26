@@ -421,8 +421,11 @@ function messageText(message) {
 
 function peerToJid(peer) {
   const id = peer?.id || ''
-  if (id.includes('@')) return id
-  return id.replace(/\D/g, '') + '@s.whatsapp.net'
+  if (!id.includes('@')) return id.replace(/\D/g, '') + '@s.whatsapp.net'
+  // Strip device suffix (e.g. "9170000001:51@s.whatsapp.net" → "9170000001@s.whatsapp.net")
+  // WhatsApp requires bare number JIDs for sending; device suffixes cause silent send failures.
+  const [user, server] = id.split('@')
+  return user.split(':')[0] + '@' + server
 }
 
 async function postJSON(target, body) {
