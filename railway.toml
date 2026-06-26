@@ -3,7 +3,7 @@
 
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "services/api/Dockerfile.railway"
+dockerfilePath = "Dockerfile.api"
 
 [deploy]
 restartPolicyType = "ON_FAILURE"
