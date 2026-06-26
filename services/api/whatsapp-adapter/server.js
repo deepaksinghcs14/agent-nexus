@@ -228,13 +228,10 @@ async function startAccount(accountId, opts = {}) {
     // Skip full chat history sync on link — avoids "Couldn't finish syncing"
     // caused by Baileys 6.x failing to decode WhatsApp's critical_block patches.
     syncFullHistory: false,
-    // Required so Baileys can respond to WhatsApp retry requests.
-    // Without this, failed decryptions show "Waiting for this message" permanently.
-    getMessage: async (key) => {
-      const stored = state.messageStore.get(key.id)
-      if (stored) return stored
-      return { conversation: '' }
-    }
+    // Return undefined (not a fake message) when not in cache so Baileys v7's
+    // retry/resend mechanism can request the message from the sender's device.
+    // Returning truthy here suppresses the retry and causes permanent message loss.
+    getMessage: async (key) => state.messageStore.get(key.id)
   })
   state.socket = socket
 
