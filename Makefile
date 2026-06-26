@@ -1,4 +1,4 @@
-.PHONY: dev postgres api web stop logs migrate help
+.PHONY: dev postgres api web stop logs migrate docker-up help
 
 # ─── config ──────────────────────────────────────────────────────────────────
 COMPOSE     := docker compose -f infra/docker-compose.yml
@@ -17,6 +17,7 @@ help:
 	@echo "  make logs      tail Docker Compose logs"
 	@echo "  make migrate   apply pending migrations (restarts API container)"
 	@echo "  make docker    run everything in Docker (full stack)"
+	@echo "  make docker-up rebuild images (no cache) + start full stack"
 	@echo ""
 
 # ─── full local dev ──────────────────────────────────────────────────────────
@@ -65,6 +66,14 @@ web:
 docker:
 	$(COMPOSE) up -d
 	@echo "✓ Stack running — http://localhost:3000"
+
+# ─── docker-up (rebuild + start) ─────────────────────────────────────────────
+docker-up:
+	$(COMPOSE) build --no-cache
+	$(COMPOSE) up -d
+	@echo "✓ app running at http://localhost:$${WEB_PORT:-3000}"
+	@echo "✓ admin at http://localhost:$${WEB_PORT:-3000}/admin/"
+	@echo "✓ api at http://localhost:$${API_PORT:-8080}"
 
 # ─── stop ────────────────────────────────────────────────────────────────────
 stop:

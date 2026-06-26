@@ -14,12 +14,12 @@ import type { Connector, ConnectorDocument, ConnectorSyncJob } from '@/types'
 // ─── provider definitions ─────────────────────────────────────────────────────
 
 const PROVIDERS = [
-  { id: 'filesystem', label: 'Filesystem', Icon: FolderOpen, description: 'Index local files and directories', available: true },
-  { id: 'slack',      label: 'Slack',      Icon: MessageSquare, description: 'Index messages and channels',    available: false },
-  { id: 'jira',       label: 'Jira',       Icon: Trello,        description: 'Index issues and comments',      available: false },
-  { id: 'confluence', label: 'Confluence', Icon: BookOpen,      description: 'Index pages and spaces',         available: false },
-  { id: 'github',     label: 'GitHub',     Icon: Github,        description: 'Index issues and pull requests', available: false },
-  { id: 'gdrive',     label: 'Google Drive', Icon: HardDrive,   description: 'Index documents and sheets',     available: false },
+  { id: 'filesystem', label: 'Filesystem',   Icon: FolderOpen,    description: 'Index local files and directories',  available: true },
+  { id: 'github',     label: 'GitHub',       Icon: Github,        description: 'Index repository files and code',    available: true },
+  { id: 'confluence', label: 'Confluence',   Icon: BookOpen,      description: 'Index pages and spaces',             available: true },
+  { id: 'slack',      label: 'Slack',        Icon: MessageSquare, description: 'Index messages and channels',        available: false },
+  { id: 'jira',       label: 'Jira',         Icon: Trello,        description: 'Index issues and comments',          available: false },
+  { id: 'gdrive',     label: 'Google Drive', Icon: HardDrive,     description: 'Index documents and sheets',         available: false },
 ]
 
 // ─── folder browser modal ─────────────────────────────────────────────────────
@@ -106,16 +106,30 @@ function CreatePanel({
   isPending: boolean
 }) {
   const [provider, setProvider] = useState<string | null>(null)
-  const [form, setForm] = useState({ name: '', path: '' })
+  const [form, setForm] = useState({ name: '', path: '', token: '', owner: '', repo: '', branch: '', url: '', username: '', spaceKeys: '' })
   const [formError, setFormError] = useState('')
   const [browserOpen, setBrowserOpen] = useState(false)
 
   const handleSubmit = () => {
     if (!form.name.trim()) { setFormError('Connector name is required'); return }
-    if (!form.path.trim()) { setFormError('Directory path is required'); return }
-    if (!form.path.startsWith('/')) { setFormError('Path must be absolute and start with /'); return }
-    setFormError('')
-    onCreate({ name: form.name.trim(), provider: 'filesystem', type: 'native', auth_type: 'none', config: { path: form.path.trim() } })
+    if (provider === 'filesystem') {
+      if (!form.path.trim()) { setFormError('Directory path is required'); return }
+      if (!form.path.startsWith('/')) { setFormError('Path must be absolute and start with /'); return }
+      setFormError('')
+      onCreate({ name: form.name.trim(), provider: 'filesystem', type: 'native', auth_type: 'none', config: { path: form.path.trim() } })
+    } else if (provider === 'github') {
+      if (!form.token.trim()) { setFormError('Personal access token is required'); return }
+      if (!form.owner.trim()) { setFormError('Owner (org or user) is required'); return }
+      if (!form.repo.trim()) { setFormError('Repository name is required'); return }
+      setFormError('')
+      onCreate({ name: form.name.trim(), provider: 'github', type: 'native', auth_type: 'api_key', config: { token: form.token.trim(), owner: form.owner.trim(), repo: form.repo.trim(), branch: form.branch.trim() } })
+    } else if (provider === 'confluence') {
+      if (!form.url.trim()) { setFormError('Confluence URL is required'); return }
+      if (!form.username.trim()) { setFormError('Username (email) is required'); return }
+      if (!form.token.trim()) { setFormError('API token is required'); return }
+      setFormError('')
+      onCreate({ name: form.name.trim(), provider: 'confluence', type: 'native', auth_type: 'api_key', config: { url: form.url.trim(), username: form.username.trim(), token: form.token.trim(), space_keys: form.spaceKeys.trim() } })
+    }
   }
 
   return (
@@ -203,6 +217,78 @@ function CreatePanel({
               <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-gray-500 hover:text-gray-800">
                 Cancel
               </button>
+            </div>
+          </div>
+        )}
+
+        {provider === 'github' && (
+          <div className="border-t border-gray-100 pt-4">
+            <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-3">Configure GitHub connector</p>
+            {formError && (
+              <p className="text-[12px] text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2 mb-3">{formError}</p>
+            )}
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Connector name *</label>
+                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. agent-nexus repo" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Personal access token *</label>
+                <input type="password" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value })} placeholder="ghp_..." className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg font-mono" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Owner *</label>
+                <input value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} placeholder="org or username" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Repository *</label>
+                <input value={form.repo} onChange={(e) => setForm({ ...form, repo: e.target.value })} placeholder="repo-name" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Branch <span className="text-gray-400">(optional — defaults to repo default)</span></label>
+                <input value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} placeholder="main" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 mb-4">Indexes all text files in the repository. Requires a PAT with <code className="bg-gray-100 px-1 rounded">repo</code> scope (read-only).</p>
+            <div className="flex gap-2">
+              <button onClick={handleSubmit} disabled={isPending} className="px-4 py-1.5 bg-purple-600 text-white text-[12px] rounded-lg font-medium disabled:opacity-50">{isPending ? 'Connecting…' : 'Connect'}</button>
+              <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-gray-500 hover:text-gray-800">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {provider === 'confluence' && (
+          <div className="border-t border-gray-100 pt-4">
+            <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-3">Configure Confluence connector</p>
+            {formError && (
+              <p className="text-[12px] text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2 mb-3">{formError}</p>
+            )}
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Connector name *</label>
+                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Engineering Confluence" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Confluence URL *</label>
+                <input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://yourorg.atlassian.net" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Username (email) *</label>
+                <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="you@company.com" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">API token *</label>
+                <input type="password" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value })} placeholder="Atlassian API token" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Space keys <span className="text-gray-400">(optional — leave blank for all spaces)</span></label>
+                <input value={form.spaceKeys} onChange={(e) => setForm({ ...form, spaceKeys: e.target.value })} placeholder="ENG,OPS,HR" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg font-mono" />
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 mb-4">Indexes pages from your Confluence Cloud space(s). Create an API token at <span className="text-purple-600">id.atlassian.com</span>.</p>
+            <div className="flex gap-2">
+              <button onClick={handleSubmit} disabled={isPending} className="px-4 py-1.5 bg-purple-600 text-white text-[12px] rounded-lg font-medium disabled:opacity-50">{isPending ? 'Connecting…' : 'Connect'}</button>
+              <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-gray-500 hover:text-gray-800">Cancel</button>
             </div>
           </div>
         )}
@@ -352,8 +438,16 @@ export default function ConnectorsPage() {
       {connectors.length > 0 && (
         <div className="grid grid-cols-3 gap-3 mb-6">
           {connectors.map((connector) => {
-            const cfg = connector.config as { path?: string } | undefined
+            const cfg = connector.config as { path?: string; owner?: string; repo?: string; url?: string; space_keys?: string } | undefined
             const isSyncing = sync.isPending && (sync.variables as string) === connector.id
+            const providerMeta = PROVIDERS.find((p) => p.id === connector.provider)
+            const ProviderIcon = providerMeta?.Icon ?? FolderOpen
+            const providerLabel = providerMeta?.label ?? connector.provider
+            const subtitle = connector.provider === 'github' && cfg?.owner && cfg?.repo
+              ? `${cfg.owner}/${cfg.repo}`
+              : connector.provider === 'confluence' && cfg?.url
+              ? cfg.url.replace(/^https?:\/\//, '') + (cfg.space_keys ? ` · ${cfg.space_keys}` : '')
+              : cfg?.path ?? ''
             return (
               <div
                 key={connector.id}
@@ -366,17 +460,17 @@ export default function ConnectorsPage() {
               >
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <FolderOpen size={13} className="text-amber-400 flex-shrink-0" />
+                    <ProviderIcon size={13} className="text-gray-500 flex-shrink-0" />
                     <p className="text-[13px] font-medium text-gray-900 truncate">{connector.name}</p>
                   </div>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ml-1 ${statusColor(connector.status)}`}>
                     {connector.status}
                   </span>
                 </div>
-                {cfg?.path && (
-                  <p className="text-[10px] font-mono text-gray-400 truncate mb-2" title={cfg.path}>{cfg.path}</p>
+                {subtitle && (
+                  <p className="text-[10px] font-mono text-gray-400 truncate mb-2" title={subtitle}>{subtitle}</p>
                 )}
-                <p className="text-[10px] text-gray-400 mb-3">Filesystem</p>
+                <p className="text-[10px] text-gray-400 mb-3">{providerLabel}</p>
                 <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => sync.mutate(connector.id)}

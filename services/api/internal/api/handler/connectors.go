@@ -16,11 +16,26 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/connector"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/connector/providers/confluence"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/connector/providers/filesystem"
+	githubprovider "github.com/deepaksingh/agent-nexus/services/api/internal/connector/providers/github"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
+
+func getConnectorProvider(p string) connector.Provider {
+	switch p {
+	case "filesystem":
+		return filesystem.New()
+	case "github":
+		return githubprovider.New()
+	case "confluence":
+		return confluence.New()
+	default:
+		return nil
+	}
+}
 
 type ConnectorsHandler struct {
 	pool *pgxpool.Pool
@@ -118,9 +133,15 @@ func (h *ConnectorsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 
-	var ok bool
-	if h.pool.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM connectors WHERE id=$1::uuid AND workspace_id=$2::uuid)`, id, ws).Scan(&ok) != nil || !ok {
+	conn, e := scanConnector(h.pool.QueryRow(r.Context(), connectorSelect+` WHERE id=$1::uuid AND workspace_id=$2::uuid`, id, ws))
+	if e != nil {
 		errs.Write(w, errs.NotFound("connector not found"))
+		return
+	}
+
+	provider := getConnectorProvider(conn.Provider)
+	if provider == nil {
+		errs.Write(w, errs.BadRequest("unsupported connector provider: "+conn.Provider))
 		return
 	}
 
@@ -147,7 +168,7 @@ func (h *ConnectorsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx := context.Background()
 		pipeline := connector.NewPipeline(h.pool, h.cfg)
-		err := pipeline.Sync(ctx, id, ws, filesystem.New(), embedder)
+		err := pipeline.Sync(ctx, id, ws, provider, embedder)
 
 		completed := time.Now()
 		j.CompletedAt = &completed
