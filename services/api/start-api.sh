@@ -20,6 +20,13 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
+# Pull embedding model if not already cached (persisted via volume at /root/.ollama).
+EMBED_MODEL="${EMBED_MODEL:-nomic-embed-text}"
+if ! ollama list 2>/dev/null | grep -q "${EMBED_MODEL}"; then
+  echo "Pulling embedding model: ${EMBED_MODEL}"
+  ollama pull "${EMBED_MODEL}" || echo "Warning: failed to pull ${EMBED_MODEL}, embeddings will be disabled"
+fi
+
 /app/agent-nexus-api &
 API_PID="$!"
 

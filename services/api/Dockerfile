@@ -21,13 +21,6 @@ RUN cd whatsapp-adapter && npm install --omit=dev
 COPY start-api.sh .
 RUN chmod +x ./start-api.sh
 
-# Pre-pull the embedding model so startup doesn't require a download.
-# The model is baked into the image layer (~274 MB).
-RUN ollama serve & \
-    sleep 8 && \
-    ollama pull nomic-embed-text && \
-    pkill ollama || true
-
 EXPOSE 8080
 EXPOSE 18901
 CMD ["./start-api.sh"]
