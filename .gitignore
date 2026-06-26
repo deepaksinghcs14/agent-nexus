@@ -12,3 +12,4 @@
 .idea/
 /apps/web/.next/
 CLAUDE.md
+.gocache/
