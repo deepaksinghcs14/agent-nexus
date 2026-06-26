@@ -42,6 +42,8 @@ services:
       PUBLIC_APP_URL: http://localhost:3000
       WHATSAPP_ADAPTER_URL: http://127.0.0.1:18901
       WHATSAPP_AUTH_ROOT: /data/whatsapp-auth
+      EMBED_OLLAMA_URL: http://host.docker.internal:11434
+      EMBED_MODEL: nomic-embed-text
     ports:
       - "8080:8080"
     volumes:
