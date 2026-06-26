@@ -54,6 +54,10 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const [testResponse, setTestResponse] = useState<string | null>(null)
   const [testLoading, setTestLoading] = useState(false)
 
+  const [pairingPhone, setPairingPhone] = useState('')
+  const [pairingCode, setPairingCode] = useState('')
+  const [pairingLoading, setPairingLoading] = useState(false)
+
   const [editMode, setEditMode] = useState(false)
   const [editName, setEditName] = useState('')
   const [editDesc, setEditDesc] = useState('')
@@ -151,6 +155,23 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
       setError((e as Error).message)
     } finally {
       setLoginLoading(false)
+    }
+  }
+
+  const getPairingCode = async () => {
+    if (!pairingPhone.trim()) return
+    setPairingLoading(true)
+    setPairingCode('')
+    setError('')
+    try {
+      await gatewayAPI.startLogin(params.id)
+      await new Promise((res) => setTimeout(res, 1500))
+      const r = await gatewayAPI.requestPairingCode(params.id, pairingPhone.trim())
+      setPairingCode((r as { code?: string }).code ?? '')
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setPairingLoading(false)
     }
   }
 
@@ -536,6 +557,32 @@ Content-Type: application/json
             </button>
           </div>
           <QRPanel value={qr} loading={loginLoading && !qr} />
+          <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+            <p className="text-sm font-medium text-gray-800">Link via phone number (no QR)</p>
+            <p className="text-xs text-gray-500">Instead of scanning a QR code, get an 8-digit code and enter it on your phone: WhatsApp → Linked Devices → Link a Device → Link with phone number instead.</p>
+            <div className="flex gap-2 items-center">
+              <input
+                value={pairingPhone}
+                onChange={(e) => setPairingPhone(e.target.value)}
+                placeholder="e.g. 917599223966 (no + or spaces)"
+                className="flex-1 text-sm border border-gray-200 rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
+              />
+              <button
+                onClick={getPairingCode}
+                disabled={pairingLoading || !pairingPhone.trim()}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-purple-600 text-sm text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {pairingLoading ? <Spinner /> : null}
+                {pairingLoading ? 'Getting code…' : 'Get code'}
+              </button>
+            </div>
+            {pairingCode && (
+              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+                <span className="font-mono text-lg font-semibold tracking-widest text-purple-700">{pairingCode}</span>
+                <CopyButton text={pairingCode} />
+              </div>
+            )}
+          </div>
           <div className="rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-800">Self-chat replies</p>

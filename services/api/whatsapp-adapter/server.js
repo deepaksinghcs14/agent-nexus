@@ -307,6 +307,21 @@ async function startAccount(accountId, opts = {}) {
     }
   })
 
+  // Auto-reject incoming calls — the bot can't take calls and should decline immediately
+  // so the caller's phone doesn't ring indefinitely.
+  socket.ev.on('call', async (calls) => {
+    for (const call of calls) {
+      if (call.status === 'offer') {
+        try {
+          await socket.rejectCall(call.id, call.from)
+          logger.info({ accountId, callId: call.id, from: call.from }, 'rejected incoming call')
+        } catch (err) {
+          logger.warn({ err, accountId, callId: call.id }, 'failed to reject call')
+        }
+      }
+    }
+  })
+
   socket.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return
     for (const msg of messages || []) {
@@ -322,6 +337,11 @@ async function startAccount(accountId, opts = {}) {
         const sentID = msg.key.id || ''
         if (sentID && state.sentMessageIds.has(sentID)) {
           state.sentMessageIds.delete(sentID)
+          // Prune stale IDs to prevent unbounded Set growth on missed echoes.
+          if (state.sentMessageIds.size > 1000) {
+            const oldest = state.sentMessageIds.values().next().value
+            state.sentMessageIds.delete(oldest)
+          }
           logger.info({ accountId, messageId: sentID }, 'ignored adapter-sent whatsapp message')
           continue
         }
@@ -400,6 +420,10 @@ async function forwardMessage(accountId, state, msg) {
     }, 'forwarding whatsapp message')
     await postJSON(state.callbackUrl, payload)
     state.lastMessageAt = Date.now()
+    // Mark the message as read (blue ticks) now that the agent will process it.
+    if (state.socket && !msg.key.fromMe) {
+      state.socket.readMessages([msg.key]).catch(() => {})
+    }
   } catch (err) {
     state.lastError = err.message
     logger.error({ err, accountId }, 'failed to forward whatsapp message')
@@ -412,11 +436,20 @@ function jidPhone(jid) {
 }
 
 function messageText(message) {
-  return message.conversation ||
-    message.extendedTextMessage?.text ||
-    message.imageMessage?.caption ||
-    message.videoMessage?.caption ||
-    ''
+  if (message.conversation) return message.conversation
+  if (message.extendedTextMessage?.text) return message.extendedTextMessage.text
+  if (message.imageMessage) return message.imageMessage.caption || '[Image]'
+  if (message.videoMessage) return message.videoMessage.caption || '[Video]'
+  if (message.audioMessage) return message.audioMessage.ptt ? '[Voice note]' : '[Audio]'
+  if (message.documentMessage) return `[Document: ${message.documentMessage.fileName || 'file'}]`
+  if (message.stickerMessage) return '[Sticker]'
+  if (message.locationMessage) {
+    const { degreesLatitude: lat, degreesLongitude: lng, name } = message.locationMessage
+    return name ? `[Location: ${name}]` : `[Location: ${lat?.toFixed(5)},${lng?.toFixed(5)}]`
+  }
+  if (message.contactMessage) return `[Contact: ${message.contactMessage.displayName || 'unknown'}]`
+  if (message.reactionMessage) return ''  // reactions handled separately, don't forward
+  return ''
 }
 
 function peerToJid(peer) {
@@ -485,6 +518,18 @@ async function route(req, res) {
     const body = await readJSON(req)
     const started = await startAccount(accountId, body)
     return json(res, 200, { account_id: accountId, status: started.status, has_qr: !!started.qr })
+  }
+
+  if (req.method === 'POST' && parts[2] === 'login' && parts[3] === 'pairing-code') {
+    const body = await readJSON(req)
+    const phone = String(body.phone || '').replace(/\D/g, '')
+    if (!phone) return json(res, 400, { error: 'phone number is required (digits only, with country code)' })
+    // Start the socket first (without registered credentials it will show QR; we'll use pairing code instead).
+    const s = state.socket ? state : await startAccount(accountId, { callback_url: body.callback_url || state.callbackUrl })
+    if (!s.socket) return json(res, 409, { error: 'account failed to start' })
+    const code = await s.socket.requestPairingCode(phone)
+    logger.info({ accountId, phone }, 'pairing code requested')
+    return json(res, 200, { code, account_id: accountId })
   }
 
   if (req.method === 'POST' && parts[2] === 'config') {

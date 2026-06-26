@@ -272,6 +272,7 @@ export const gatewayAPI = {
   adapterStatus: (id: string) => api.get(`/gateway/channels/${id}/adapter/status`),
   startLogin: (id: string) => api.post(`/gateway/channels/${id}/adapter/login/start`),
   getQR: (id: string) => api.get(`/gateway/channels/${id}/adapter/login/qr`),
+  requestPairingCode: (id: string, phone: string) => api.post(`/gateway/channels/${id}/adapter/login/pairing-code`, { phone }),
   logout: (id: string) => api.post(`/gateway/channels/${id}/adapter/logout`),
   listSessions: (params?: string) => api.get(`/gateway/sessions${params ? '?' + params : ''}`),
   deleteSession: (id: string) => api.delete(`/gateway/sessions/${id}`),
