@@ -1,8 +1,8 @@
 FROM golang:1.26-alpine AS builder
 WORKDIR /app
-COPY services/api/go.mod services/api/go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
-COPY services/api/ .
+COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /agent-nexus-api ./cmd/server
 
 # Use debian-slim so Ollama (glibc) works. Alpine uses musl and is incompatible.
@@ -16,11 +16,12 @@ RUN curl -fsSL https://ollama.com/install.sh | sh
 
 WORKDIR /app
 COPY --from=builder /agent-nexus-api .
-COPY services/api/whatsapp-adapter ./whatsapp-adapter
+COPY whatsapp-adapter ./whatsapp-adapter
 RUN cd whatsapp-adapter && npm install --omit=dev
-COPY services/api/start-api.sh .
+COPY start-api.sh .
 RUN chmod +x ./start-api.sh
 
 EXPOSE 8080
 EXPOSE 18901
 CMD ["./start-api.sh"]
+

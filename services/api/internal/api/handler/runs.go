@@ -108,13 +108,13 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	contextChunks := []string{}
+	contextChunks := []agentprompt.ContextChunk{}
 	if a.ContextRetrievalEnabled {
 		start := time.Now()
 		connectorIDs, err := h.agentConnectorIDs(r.Context(), a.ID)
 		var queryEmbedding []float32
 		if err == nil {
-			queryEmbedding, _ = llm.Embed(r.Context(), q.Input)
+			queryEmbedding = tryEmbed(r.Context(), h.cfg, llm, q.Input)
 		}
 		chunks := []contextretrieval.Chunk{}
 		if err == nil {
@@ -125,7 +125,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				contextChunks = append(contextChunks, formatChunk(chunk))
 			}
 		}
-		_ = h.createStep(r.Context(), id, domain.StepContextRetrieval, map[string]any{"connector_ids": connectorIDs}, map[string]any{"count": len(contextChunks), "chunks": contextChunks}, start, 0, "", errString(err))
+		_ = h.createStep(r.Context(), id, domain.StepContextRetrieval, map[string]any{"connector_ids": connectorIDs}, map[string]any{"count": len(contextChunks)}, start, 0, "", errString(err))
 	}
 
 	var convCompaction string
@@ -672,15 +672,17 @@ func (h *RunsHandler) agentConnectorIDs(ctx context.Context, agentID string) ([]
 	return ids, rows.Err()
 }
 
-func formatChunk(chunk contextretrieval.Chunk) string {
-	prefix := strings.TrimSpace(chunk.Title)
-	if chunk.URL != "" {
-		prefix = strings.TrimSpace(prefix + " " + chunk.URL)
+func formatChunk(chunk contextretrieval.Chunk) agentprompt.ContextChunk {
+	title := strings.TrimSpace(chunk.Title)
+	var ref string
+	if title != "" && chunk.URL != "" {
+		ref = "[" + title + "](" + chunk.URL + ")"
+	} else if chunk.URL != "" {
+		ref = chunk.URL
+	} else {
+		ref = title
 	}
-	if prefix == "" {
-		return chunk.Content
-	}
-	return prefix + ": " + chunk.Content
+	return agentprompt.ContextChunk{Ref: ref, Content: chunk.Content}
 }
 
 func errString(err error) string {

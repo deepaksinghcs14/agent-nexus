@@ -14,7 +14,8 @@ import (
 )
 
 type Client struct {
-	baseURL string
+	baseURL    string
+	embedModel string // model used for Embed(); defaults to "nomic-embed-text"
 }
 
 func New(baseURL string) *Client {
@@ -22,6 +23,19 @@ func New(baseURL string) *Client {
 		baseURL = "http://localhost:11434"
 	}
 	return &Client{baseURL: baseURL}
+}
+
+// NewEmbedder creates an Ollama client configured solely for embedding.
+// It is separate from the chat client so the embedding model and chat model
+// can differ (e.g. nomic-embed-text vs llama3).
+func NewEmbedder(baseURL, model string) *Client {
+	if baseURL == "" {
+		baseURL = "http://localhost:11434"
+	}
+	if model == "" {
+		model = "nomic-embed-text"
+	}
+	return &Client{baseURL: baseURL, embedModel: model}
 }
 
 func (c *Client) Complete(ctx context.Context, req provider.CompletionRequest) (<-chan provider.CompletionEvent, error) {
@@ -57,7 +71,39 @@ func (c *Client) Complete(ctx context.Context, req provider.CompletionRequest) (
 }
 
 func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
-	return nil, fmt.Errorf("ollama: Embed not implemented")
+	model := c.embedModel
+	if model == "" {
+		model = "nomic-embed-text"
+	}
+	payload, err := json.Marshal(map[string]any{"model": model, "prompt": text})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		strings.TrimRight(c.baseURL, "/")+"/api/embeddings", bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 512))
+		return nil, fmt.Errorf("ollama embed: %s: %s", res.Status, strings.TrimSpace(string(b)))
+	}
+	var body struct {
+		Embedding []float32 `json:"embedding"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		return nil, err
+	}
+	if len(body.Embedding) == 0 {
+		return nil, fmt.Errorf("ollama embed: empty embedding returned")
+	}
+	return body.Embedding, nil
 }
 
 func (c *Client) Models(ctx context.Context) ([]provider.ModelInfo, error) {

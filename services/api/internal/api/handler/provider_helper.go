@@ -2,46 +2,30 @@ package handler
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/anthropic"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/gemini"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/ollama"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/openai"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
-	"github.com/deepaksingh/agent-nexus/services/api/pkg/encrypt"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// buildAnyProvider returns the first active provider credential found for the workspace.
-// Tries openai → anthropic → gemini → ollama in order. Used for embedding during connector sync.
-func buildAnyProvider(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config, workspaceID string) (provider.Provider, error) {
-	provRepo := repository.NewProviderRepository(pool)
-	for _, name := range []string{"openai", "anthropic", "gemini", "ollama"} {
-		cred, encKey, err := provRepo.GetActiveByProvider(ctx, workspaceID, name)
-		if err != nil {
-			continue
-		}
-		// Skip OAuth providers — they need token refresh logic not needed for embedding-only use
-		if cred.AuthType == "oauth" {
-			continue
-		}
-		apiKey, err := encrypt.Decrypt([]byte(cfg.EncryptionKey), encKey)
-		if err != nil {
-			continue
-		}
-		switch cred.Provider {
-		case "openai":
-			return openai.New(apiKey, cred.BaseURL), nil
-		case "anthropic":
-			return anthropic.New(apiKey, cred.BaseURL), nil
-		case "gemini":
-			return gemini.New(apiKey, "api_key"), nil
-		case "ollama":
-			return ollama.New(cred.BaseURL), nil
+// buildEmbedder returns an Ollama client configured for embedding using the
+// local bundled Ollama instance. Returns nil if EmbedOllamaURL is not set.
+func buildEmbedder(cfg *config.Config) provider.Provider {
+	if cfg.EmbedOllamaURL == "" {
+		return nil
+	}
+	return ollama.NewEmbedder(cfg.EmbedOllamaURL, cfg.EmbedModel)
+}
+
+// tryEmbed attempts to embed text using the dedicated embed client first,
+// falling back to the agent's LLM if the embed client is unavailable.
+func tryEmbed(ctx context.Context, cfg *config.Config, llm provider.Provider, text string) []float32 {
+	if cfg.EmbedOllamaURL != "" {
+		emb := ollama.NewEmbedder(cfg.EmbedOllamaURL, cfg.EmbedModel)
+		if v, err := emb.Embed(ctx, text); err == nil {
+			return v
 		}
 	}
-	return nil, fmt.Errorf("no active provider configured for workspace %s", workspaceID)
+	v, _ := llm.Embed(ctx, text)
+	return v
 }

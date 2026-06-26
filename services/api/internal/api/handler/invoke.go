@@ -456,14 +456,14 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		return
 	}
 
-	contextChunks := []string{}
+	contextChunks := []agentprompt.ContextChunk{}
 
 	if a.ContextRetrievalEnabled {
 		start := time.Now()
 		connIDs, err := h.runs.agentConnectorIDs(ctx, a.ID)
 		var queryEmbedding []float32
 		if err == nil {
-			queryEmbedding, _ = llm.Embed(ctx, input)
+			queryEmbedding = tryEmbed(ctx, h.cfg, llm, input)
 		}
 		chunks := []contextretrieval.Chunk{}
 		if err == nil {
@@ -1778,14 +1778,14 @@ func (h *InvokeHandler) executeSupervisorRun(
 		return
 	}
 
-	contextChunks := []string{}
+	contextChunks := []agentprompt.ContextChunk{}
 
 	if a.ContextRetrievalEnabled {
 		start := time.Now()
 		connIDs, err := h.runs.agentConnectorIDs(ctx, a.ID)
 		var queryEmbedding []float32
 		if err == nil {
-			queryEmbedding, _ = llm.Embed(ctx, input)
+			queryEmbedding = tryEmbed(ctx, h.cfg, llm, input)
 		}
 		chunks := []contextretrieval.Chunk{}
 		if err == nil {
