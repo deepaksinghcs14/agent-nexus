@@ -7,8 +7,13 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /agent-nexus-api ./cmd
 
 # Use debian-slim so Ollama (glibc) works. Alpine uses musl and is incompatible.
 FROM debian:bookworm-slim
+
+# Install Node.js 20 via NodeSource — bookworm-slim ships Node 18 which is
+# too old for Baileys v7 (requires Node 20+).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates tzdata curl nodejs npm git zstd \
+    ca-certificates tzdata curl git zstd \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Ollama
