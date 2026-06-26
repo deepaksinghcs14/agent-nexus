@@ -24,3 +24,4 @@ RUN chmod +x ./start-api.sh
 EXPOSE 8080
 EXPOSE 18901
 CMD ["./start-api.sh"]
+
