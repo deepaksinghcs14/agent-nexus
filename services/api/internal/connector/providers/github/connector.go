@@ -5,9 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/connector"
 )
@@ -26,60 +28,63 @@ var binaryExts = map[string]bool{
 
 const maxFileBytes = 500 * 1024
 
+var httpClient = &http.Client{Timeout: 30 * time.Second}
+
 type Connector struct{}
 
 func New() *Connector { return &Connector{} }
 
-func (c *Connector) Fetch(ctx context.Context, cfg map[string]any) ([]connector.Document, error) {
+// FetchStream implements connector.StreamProvider.
+// Checkpoints by file index so a pod restart can skip already-processed files.
+func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts connector.FetchOpts, emit func(connector.Document) error) error {
 	token, _ := cfg["token"].(string)
 	owner, _ := cfg["owner"].(string)
 	repo, _ := cfg["repo"].(string)
 	branch, _ := cfg["branch"].(string)
 
 	if token == "" || owner == "" || repo == "" {
-		return nil, fmt.Errorf("github connector: token, owner, and repo are required")
+		return fmt.Errorf("github: token, owner, and repo are required")
 	}
 
-	do := func(url string) (*http.Response, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	log := slog.With("connector", "github", "owner", owner, "repo", repo)
+
+	do := func(u string) (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 		if err != nil {
 			return nil, err
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 		req.Header.Set("Accept", "application/vnd.github+json")
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-		return http.DefaultClient.Do(req)
+		return httpClient.Do(req)
 	}
 
 	if branch == "" {
 		res, err := do(fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo))
 		if err != nil {
-			return nil, fmt.Errorf("github connector: failed to fetch repo info: %w", err)
+			return fmt.Errorf("github: fetch repo info: %w", err)
 		}
 		defer res.Body.Close()
-		if res.StatusCode != 200 {
-			return nil, fmt.Errorf("github connector: repo info returned %d", res.StatusCode)
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf("github: repo info returned HTTP %d", res.StatusCode)
 		}
-		var info struct {
-			DefaultBranch string `json:"default_branch"`
-		}
+		var info struct{ DefaultBranch string `json:"default_branch"` }
 		if err := json.NewDecoder(res.Body).Decode(&info); err != nil {
-			return nil, fmt.Errorf("github connector: failed to decode repo info: %w", err)
+			return fmt.Errorf("github: decode repo info: %w", err)
 		}
 		branch = info.DefaultBranch
 	}
 
-	// Get full recursive file tree
+	// Fetch the full recursive file tree (single API call).
 	treeURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1", owner, repo, branch)
 	res, err := do(treeURL)
 	if err != nil {
-		return nil, fmt.Errorf("github connector: failed to fetch tree: %w", err)
+		return fmt.Errorf("github: fetch tree: %w", err)
 	}
 	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("github connector: tree returned %d", res.StatusCode)
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("github: tree returned HTTP %d", res.StatusCode)
 	}
-
 	var tree struct {
 		Tree []struct {
 			Path string `json:"path"`
@@ -88,25 +93,55 @@ func (c *Connector) Fetch(ctx context.Context, cfg map[string]any) ([]connector.
 		} `json:"tree"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&tree); err != nil {
-		return nil, fmt.Errorf("github connector: failed to decode tree: %w", err)
+		return fmt.Errorf("github: decode tree: %w", err)
 	}
 
-	var docs []connector.Document
+	// Filter to text blobs only.
+	type blob struct{ path string; size int }
+	var blobs []blob
 	for _, item := range tree.Tree {
 		if item.Type != "blob" {
 			continue
 		}
-		ext := strings.ToLower(filepath.Ext(item.Path))
-		if binaryExts[ext] {
+		if binaryExts[strings.ToLower(filepath.Ext(item.Path))] {
 			continue
 		}
 		if item.Size > maxFileBytes {
 			continue
 		}
+		blobs = append(blobs, blob{item.Path, item.Size})
+	}
+	log.Info("tree fetched", "total_blobs", len(blobs))
 
-		contentURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s", owner, repo, item.Path, branch)
+	// Load resume offset from checkpoint.
+	var cp struct {
+		ProcessedCount int `json:"processed_count"`
+	}
+	if len(opts.Checkpoint) > 2 {
+		_ = json.Unmarshal(opts.Checkpoint, &cp)
+	}
+	if cp.ProcessedCount > 0 {
+		log.Info("resuming from checkpoint", "skip_files", cp.ProcessedCount)
+	}
+
+	processed := 0
+	for i, b := range blobs {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if i < cp.ProcessedCount {
+			continue
+		}
+
+		contentURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s", owner, repo, b.path, branch)
 		cres, err := do(contentURL)
 		if err != nil {
+			log.Warn("fetch file failed", "path", b.path, "error", err)
+			continue
+		}
+		if cres.StatusCode != http.StatusOK {
+			cres.Body.Close()
+			log.Warn("fetch file non-200", "path", b.path, "status", cres.StatusCode)
 			continue
 		}
 		var fileContent struct {
@@ -130,15 +165,34 @@ func (c *Connector) Fetch(ctx context.Context, cfg map[string]any) ([]connector.
 			text = fileContent.Content
 		}
 
-		docs = append(docs, connector.Document{
+		if err := emit(connector.Document{
 			Source:           "github",
-			SourceDocumentID: item.Path,
-			Title:            filepath.Base(item.Path),
-			URL:              fmt.Sprintf("https://github.com/%s/%s/blob/%s/%s", owner, repo, branch, item.Path),
+			SourceDocumentID: b.path,
+			Title:            filepath.Base(b.path),
+			URL:              fmt.Sprintf("https://github.com/%s/%s/blob/%s/%s", owner, repo, branch, b.path),
 			Author:           owner,
 			Content:          text,
-		})
+		}); err != nil {
+			return err
+		}
+
+		processed++
+		// Checkpoint every 10 files.
+		if opts.SaveCheckpoint != nil && processed%10 == 0 {
+			opts.SaveCheckpoint(map[string]any{"processed_count": i + 1})
+		}
 	}
 
-	return docs, nil
+	log.Info("github sync complete", "files_processed", processed)
+	return nil
+}
+
+// Fetch implements connector.Provider via FetchStream.
+func (c *Connector) Fetch(ctx context.Context, cfg map[string]any) ([]connector.Document, error) {
+	var docs []connector.Document
+	err := c.FetchStream(ctx, cfg, connector.FetchOpts{}, func(doc connector.Document) error {
+		docs = append(docs, doc)
+		return nil
+	})
+	return docs, err
 }

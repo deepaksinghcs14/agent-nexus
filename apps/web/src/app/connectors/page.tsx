@@ -313,23 +313,30 @@ export default function ConnectorsPage() {
   const [selected, setSelected] = useState('')
   const [detailTab, setDetailTab] = useState<'documents' | 'sync-history'>('documents')
   const [actionError, setActionError] = useState('')
+  const [docsPage, setDocsPage] = useState(1)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['connectors'],
     queryFn: () => connectorsAPI.list() as Promise<{ data: Connector[] }>,
+    refetchInterval: (query) => {
+      const connectors = (query.state.data as { data: Connector[] } | undefined)?.data ?? []
+      return connectors.some((c) => c.status === 'syncing') ? 3000 : false
+    },
   })
   const connectors = data?.data ?? []
   const selectedConnector = connectors.find((c) => c.id === selected)
+  const isSyncing = selectedConnector?.status === 'syncing'
 
   const { data: docsData, isLoading: docsLoading } = useQuery({
-    queryKey: ['connector-docs', selected],
-    queryFn: () => connectorsAPI.documents(selected) as Promise<{ data: ConnectorDocument[] }>,
+    queryKey: ['connector-docs', selected, docsPage],
+    queryFn: () => connectorsAPI.documents(selected, docsPage) as Promise<{ data: ConnectorDocument[]; total: number; page: number; page_size: number; total_pages: number }>,
     enabled: !!selected,
   })
   const { data: jobsData } = useQuery({
     queryKey: ['connector-jobs', selected],
     queryFn: () => connectorsAPI.syncJobs(selected) as Promise<{ data: ConnectorSyncJob[] }>,
     enabled: !!selected,
+    refetchInterval: isSyncing ? 2000 : false,
   })
 
   const create = useMutation({
@@ -339,7 +346,11 @@ export default function ConnectorsPage() {
   })
   const sync = useMutation({
     mutationFn: (id: string) => connectorsAPI.sync(id),
-    onSuccess: (_, id) => { queryClient.invalidateQueries({ queryKey: ['connectors'] }); queryClient.invalidateQueries({ queryKey: ['connector-jobs', id] }) },
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['connectors'] })
+      queryClient.invalidateQueries({ queryKey: ['connector-jobs', id] })
+      setDetailTab('sync-history')
+    },
     onError: (err: Error) => setActionError(err.message),
   })
   const remove = useMutation({
@@ -349,7 +360,10 @@ export default function ConnectorsPage() {
   })
 
   const docs = docsData?.data ?? []
+  const docsTotalPages = docsData?.total_pages ?? 1
+  const docsTotal = docsData?.total ?? 0
   const jobs = jobsData?.data ?? []
+  const activeJob = jobs.find((j) => j.status === 'running')
 
   return (
     <div className="p-6 max-w-4xl">
@@ -451,7 +465,7 @@ export default function ConnectorsPage() {
             return (
               <div
                 key={connector.id}
-                onClick={() => { setSelected(connector.id === selected ? '' : connector.id); setDetailTab('documents') }}
+                onClick={() => { setSelected(connector.id === selected ? '' : connector.id); setDetailTab('documents'); setDocsPage(1) }}
                 className={`bg-white border rounded-xl p-3.5 cursor-pointer transition-all ${
                   selected === connector.id
                     ? 'border-purple-300 ring-1 ring-purple-100'
@@ -512,6 +526,29 @@ export default function ConnectorsPage() {
             ))}
           </div>
 
+          {/* Live progress banner shown while sync is running */}
+          {isSyncing && activeJob && (
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-blue-50 border-b border-blue-100">
+              <RefreshCw size={12} className="animate-spin text-blue-500 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-medium text-blue-700">Syncing…</span>
+                  <span className="text-[11px] text-blue-600">
+                    {activeJob.documents_indexed} indexed / {activeJob.documents_found} found
+                  </span>
+                </div>
+                {activeJob.documents_found > 0 && (
+                  <div className="h-1 bg-blue-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.round((activeJob.documents_indexed / activeJob.documents_found) * 100)}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {detailTab === 'documents' && (
             <div>
               {docsLoading && <div className="py-8 text-center text-sm text-gray-400">Loading documents…</div>}
@@ -523,30 +560,58 @@ export default function ConnectorsPage() {
                 </div>
               )}
               {docs.length > 0 && (
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-50">
-                      <th className="text-left text-[10px] font-medium text-gray-400 px-4 py-2">Title</th>
-                      <th className="text-left text-[10px] font-medium text-gray-400 px-4 py-2">Source</th>
-                      <th className="text-left text-[10px] font-medium text-gray-400 px-4 py-2">Indexed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {docs.map((doc) => (
-                      <tr key={doc.id} className="border-b last:border-b-0 border-gray-50 hover:bg-gray-50/50">
-                        <td className="px-4 py-2.5">
-                          <p className="text-[12px] font-medium text-gray-800 truncate max-w-xs">{doc.title || '(untitled)'}</p>
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <p className="text-[11px] font-mono text-gray-400 truncate max-w-xs">{doc.source}</p>
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <p className="text-[11px] text-gray-400">{doc.indexed_at ? relativeTime(doc.indexed_at) : 'not indexed'}</p>
-                        </td>
+                <>
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-50">
+                        <th className="text-left text-[10px] font-medium text-gray-400 px-4 py-2">Title</th>
+                        <th className="text-left text-[10px] font-medium text-gray-400 px-4 py-2">Source</th>
+                        <th className="text-left text-[10px] font-medium text-gray-400 px-4 py-2">Indexed</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {docs.map((doc) => (
+                        <tr key={doc.id} className="border-b last:border-b-0 border-gray-50 hover:bg-gray-50/50">
+                          <td className="px-4 py-2.5">
+                            {doc.url ? (
+                              <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-[12px] font-medium text-purple-700 hover:underline truncate block max-w-xs">{doc.title || '(untitled)'}</a>
+                            ) : (
+                              <p className="text-[12px] font-medium text-gray-800 truncate max-w-xs">{doc.title || '(untitled)'}</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <p className="text-[11px] font-mono text-gray-400 truncate max-w-xs">{doc.source}</p>
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <p className="text-[11px] text-gray-400">{doc.indexed_at ? relativeTime(doc.indexed_at) : 'not indexed'}</p>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {docsTotalPages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-50">
+                      <p className="text-[11px] text-gray-400">{docsTotal} documents total</p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setDocsPage((p) => Math.max(1, p - 1))}
+                          disabled={docsPage <= 1}
+                          className="px-2 py-1 text-[11px] border border-gray-200 rounded disabled:opacity-40 hover:bg-gray-50"
+                        >
+                          ←
+                        </button>
+                        <span className="text-[11px] text-gray-500 px-2">{docsPage} / {docsTotalPages}</span>
+                        <button
+                          onClick={() => setDocsPage((p) => Math.min(docsTotalPages, p + 1))}
+                          disabled={docsPage >= docsTotalPages}
+                          className="px-2 py-1 text-[11px] border border-gray-200 rounded disabled:opacity-40 hover:bg-gray-50"
+                        >
+                          →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -560,17 +625,46 @@ export default function ConnectorsPage() {
                 </div>
               )}
               {jobs.map((job) => (
-                <div key={job.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-b-0 border-gray-50">
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor(job.status === 'completed' ? 'connected' : job.status)}`}>
-                    {job.status}
-                  </span>
-                  <p className="text-[12px] text-gray-600">
-                    {job.documents_indexed} of {job.documents_found} documents indexed
-                  </p>
-                  {job.error_message && (
-                    <p className="text-[11px] text-red-500 truncate flex-1">{job.error_message}</p>
+                <div key={job.id} className="px-4 py-3 border-b last:border-b-0 border-gray-50">
+                  <div className="flex items-center gap-3">
+                    {job.status === 'running'
+                      ? <RefreshCw size={11} className="animate-spin text-blue-500 flex-shrink-0" />
+                      : null}
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ${
+                      job.status === 'completed' ? statusColor('connected')
+                      : job.status === 'running' ? 'bg-blue-50 text-blue-700'
+                      : job.status === 'interrupted' ? 'bg-amber-50 text-amber-700'
+                      : statusColor(job.status)
+                    }`}>
+                      {job.status}
+                    </span>
+                    <p className="text-[12px] text-gray-700 font-medium">
+                      {job.documents_indexed.toLocaleString()} indexed
+                      {job.documents_found > 0 ? ` of ${job.documents_found.toLocaleString()} found` : ''}
+                    </p>
+                    {job.error_message && (
+                      <p className="text-[11px] text-red-500 truncate flex-1">{job.error_message}</p>
+                    )}
+                    <p className="text-[11px] text-gray-400 ml-auto flex-shrink-0">{relativeTime(job.created_at)}</p>
+                  </div>
+                  {job.status === 'running' && job.documents_found > 0 && (
+                    <div className="mt-2 ml-5">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[10px] text-blue-600">
+                          {Math.round((job.documents_indexed / job.documents_found) * 100)}% complete
+                        </span>
+                        <span className="text-[10px] text-gray-400">
+                          {(job.documents_found - job.documents_indexed).toLocaleString()} remaining
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.round((job.documents_indexed / job.documents_found) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
                   )}
-                  <p className="text-[11px] text-gray-400 ml-auto flex-shrink-0">{relativeTime(job.created_at)}</p>
                 </div>
               ))}
             </div>
