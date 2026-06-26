@@ -536,7 +536,12 @@ async function route(req, res) {
     if (!active.socket || active.status !== 'connected') {
       return json(res, 409, { error: 'account is not connected', status: active.status })
     }
-    const sent = await active.socket.sendMessage(peerToJid(body.peer), { text: body.text || '' })
+    const toJid = peerToJid(body.peer)
+    try { await active.socket.sendPresenceUpdate('composing', toJid) } catch (_) {}
+    const typingMs = Math.min(4000, Math.max(800, (body.text || '').length * 40))
+    await new Promise(r => setTimeout(r, typingMs))
+    try { await active.socket.sendPresenceUpdate('paused', toJid) } catch (_) {}
+    const sent = await active.socket.sendMessage(toJid, { text: body.text || '' })
     const messageId = sent?.key?.id || ''
     if (messageId) {
       active.sentMessageIds.add(messageId)
