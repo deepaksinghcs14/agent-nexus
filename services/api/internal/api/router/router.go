@@ -178,6 +178,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 				r.Get("/channels/{id}/adapter/status", h.Gateway.AdapterStatus)
 				r.Post("/channels/{id}/adapter/login/start", h.Gateway.AdapterLoginStart)
 				r.Get("/channels/{id}/adapter/login/qr", h.Gateway.AdapterQR)
+				r.Post("/channels/{id}/adapter/login/pairing-code", h.Gateway.AdapterPairingCode)
 				r.Post("/channels/{id}/adapter/logout", h.Gateway.AdapterLogout)
 				r.Get("/sessions", h.Gateway.ListSessions)
 				r.Delete("/sessions/{id}", h.Gateway.DeleteSession)

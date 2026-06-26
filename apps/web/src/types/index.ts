@@ -207,6 +207,7 @@ export interface GatewayChannelConfig {
   assistant_enabled?: boolean
   bot_mode_enabled?: boolean
   chat_approvals_enabled?: boolean
+  browser_name?: string
 }
 
 export interface GatewayChannel {

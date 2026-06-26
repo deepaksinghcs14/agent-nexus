@@ -54,6 +54,10 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const [testResponse, setTestResponse] = useState<string | null>(null)
   const [testLoading, setTestLoading] = useState(false)
 
+  const [pairingPhone, setPairingPhone] = useState('')
+  const [pairingCode, setPairingCode] = useState('')
+  const [pairingLoading, setPairingLoading] = useState(false)
+
   const [editMode, setEditMode] = useState(false)
   const [editName, setEditName] = useState('')
   const [editDesc, setEditDesc] = useState('')
@@ -64,6 +68,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const [editHistoryLimit, setEditHistoryLimit] = useState('')
   const [editChatApprovals, setEditChatApprovals] = useState(false)
   const [editAdapterUrl, setEditAdapterUrl] = useState('')
+  const [editBrowserName, setEditBrowserName] = useState('')
   const [editSaving, setEditSaving] = useState(false)
 
   const openEdit = () => {
@@ -77,6 +82,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
     setEditHistoryLimit(channel.config?.history_limit != null ? String(channel.config.history_limit) : '')
     setEditChatApprovals(!!channel.config?.chat_approvals_enabled)
     setEditAdapterUrl(channel.config?.adapter_url || '')
+    setEditBrowserName(channel.config?.browser_name || '')
     setEditMode(true)
   }
 
@@ -90,6 +96,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
     if (editHistoryLimit) configPatch.history_limit = parseInt(editHistoryLimit)
     configPatch.chat_approvals_enabled = editChatApprovals
     if (editAdapterUrl) configPatch.adapter_url = editAdapterUrl
+    if (editBrowserName) configPatch.browser_name = editBrowserName
     const body: Record<string, unknown> = {
       name: editName,
       description: editDesc,
@@ -151,6 +158,23 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
       setError((e as Error).message)
     } finally {
       setLoginLoading(false)
+    }
+  }
+
+  const getPairingCode = async () => {
+    if (!pairingPhone.trim()) return
+    setPairingLoading(true)
+    setPairingCode('')
+    setError('')
+    try {
+      await gatewayAPI.startLogin(params.id)
+      await new Promise((res) => setTimeout(res, 1500))
+      const r = await gatewayAPI.requestPairingCode(params.id, pairingPhone.trim())
+      setPairingCode((r as { code?: string }).code ?? '')
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setPairingLoading(false)
     }
   }
 
@@ -381,9 +405,14 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${editChatApprovals ? 'translate-x-4' : 'translate-x-1'}`} />
                   </button>
                 </div>
-                <div className="col-span-2">
+                <div>
                   <label className="block text-[11px] font-medium text-gray-600 mb-1">Adapter URL</label>
                   <input value={editAdapterUrl} onChange={e => setEditAdapterUrl(e.target.value)} placeholder="http://localhost:3001" className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">Device name</label>
+                  <input value={editBrowserName} onChange={e => setEditBrowserName(e.target.value)} placeholder="Agent Nexus" className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-white" />
+                  <p className="text-[10px] text-gray-400 mt-0.5">Shown in WhatsApp → Linked Devices. Re-link to apply.</p>
                 </div>
               </>
             )}
@@ -408,6 +437,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
           <Info label="Status" value={channel.is_active ? 'active' : 'disabled'} />
           <Info label="Agent" value={channel.agent_name || channel.agent_id} />
           <Info label="Account" value={channel.config?.account_id || 'default'} />
+          <Info label="Device name" value={channel.config?.browser_name || 'Agent Nexus'} />
           <ToggleCard
             title="Assistant replies"
             description="Controls whether inbound messages can run the agent. The webhook still stays online for chat commands."
@@ -536,6 +566,32 @@ Content-Type: application/json
             </button>
           </div>
           <QRPanel value={qr} loading={loginLoading && !qr} />
+          <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+            <p className="text-sm font-medium text-gray-800">Link via phone number (no QR)</p>
+            <p className="text-xs text-gray-500">Instead of scanning a QR code, get an 8-digit code and enter it on your phone: WhatsApp → Linked Devices → Link a Device → Link with phone number instead.</p>
+            <div className="flex gap-2 items-center">
+              <input
+                value={pairingPhone}
+                onChange={(e) => setPairingPhone(e.target.value)}
+                placeholder="e.g. 917599223966 (no + or spaces)"
+                className="flex-1 text-sm border border-gray-200 rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
+              />
+              <button
+                onClick={getPairingCode}
+                disabled={pairingLoading || !pairingPhone.trim()}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-purple-600 text-sm text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {pairingLoading ? <Spinner /> : null}
+                {pairingLoading ? 'Getting code…' : 'Get code'}
+              </button>
+            </div>
+            {pairingCode && (
+              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+                <span className="font-mono text-lg font-semibold tracking-widest text-purple-700">{pairingCode}</span>
+                <CopyButton text={pairingCode} />
+              </div>
+            )}
+          </div>
           <div className="rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-800">Self-chat replies</p>

@@ -99,6 +99,7 @@ function accountState(accountId) {
       lastError: '',
       callbackUrl: '',
       selfChatEnabled: false,
+      browserName: '',
       sentMessageIds: new Set(),
       messageStore: new Map(),  // id → proto message, for retry requests
       lidToPhone: new Map(),
@@ -201,6 +202,7 @@ async function startAccount(accountId, opts = {}) {
   if (Array.isArray(opts.contact_phones) && opts.contact_phones.length > 0) {
     state.pendingPhones = opts.contact_phones
   }
+  if (opts.browser_name) state.browserName = opts.browser_name
   if (state.socket) {
     // Socket already exists. selfChatEnabled is managed via POST /accounts/{id}/config —
     // don't overwrite it here so concurrent reconnect timers can't undo a /config update.
@@ -225,16 +227,16 @@ async function startAccount(accountId, opts = {}) {
     auth: authState,
     printQRInTerminal: false,
     logger: logger.child({ accountId }),
+    // Browser tuple controls the device name shown in WhatsApp Linked Devices.
+    // Format: [OS, DeviceName, OSVersion] — DeviceName is what the user sees.
+    browser: ['Mac OS', state.browserName || 'Agent Nexus', '14.4.1'],
     // Skip full chat history sync on link — avoids "Couldn't finish syncing"
     // caused by Baileys 6.x failing to decode WhatsApp's critical_block patches.
     syncFullHistory: false,
-    // Required so Baileys can respond to WhatsApp retry requests.
-    // Without this, failed decryptions show "Waiting for this message" permanently.
-    getMessage: async (key) => {
-      const stored = state.messageStore.get(key.id)
-      if (stored) return stored
-      return { conversation: '' }
-    }
+    // Return undefined (not a fake message) when not in cache so Baileys v7's
+    // retry/resend mechanism can request the message from the sender's device.
+    // Returning truthy here suppresses the retry and causes permanent message loss.
+    getMessage: async (key) => state.messageStore.get(key.id)
   })
   state.socket = socket
 
@@ -301,11 +303,27 @@ async function startAccount(accountId, opts = {}) {
       if (statusCode !== DisconnectReason.loggedOut) {
         setTimeout(() => startAccount(accountId, {
           callback_url: state.callbackUrl,
-          self_chat_enabled: state.selfChatEnabled
+          self_chat_enabled: state.selfChatEnabled,
+          browser_name: state.browserName
         }).catch((err) => {
           state.lastError = err.message
           logger.error({ err, accountId }, 'whatsapp reconnect failed')
         }), 3000)
+      }
+    }
+  })
+
+  // Auto-reject incoming calls — the bot can't take calls and should decline immediately
+  // so the caller's phone doesn't ring indefinitely.
+  socket.ev.on('call', async (calls) => {
+    for (const call of calls) {
+      if (call.status === 'offer') {
+        try {
+          await socket.rejectCall(call.id, call.from)
+          logger.info({ accountId, callId: call.id, from: call.from }, 'rejected incoming call')
+        } catch (err) {
+          logger.warn({ err, accountId, callId: call.id }, 'failed to reject call')
+        }
       }
     }
   })
@@ -325,6 +343,11 @@ async function startAccount(accountId, opts = {}) {
         const sentID = msg.key.id || ''
         if (sentID && state.sentMessageIds.has(sentID)) {
           state.sentMessageIds.delete(sentID)
+          // Prune stale IDs to prevent unbounded Set growth on missed echoes.
+          if (state.sentMessageIds.size > 1000) {
+            const oldest = state.sentMessageIds.values().next().value
+            state.sentMessageIds.delete(oldest)
+          }
           logger.info({ accountId, messageId: sentID }, 'ignored adapter-sent whatsapp message')
           continue
         }
@@ -403,6 +426,10 @@ async function forwardMessage(accountId, state, msg) {
     }, 'forwarding whatsapp message')
     await postJSON(state.callbackUrl, payload)
     state.lastMessageAt = Date.now()
+    // Mark the message as read (blue ticks) now that the agent will process it.
+    if (state.socket && !msg.key.fromMe) {
+      state.socket.readMessages([msg.key]).catch(() => {})
+    }
   } catch (err) {
     state.lastError = err.message
     logger.error({ err, accountId }, 'failed to forward whatsapp message')
@@ -415,17 +442,29 @@ function jidPhone(jid) {
 }
 
 function messageText(message) {
-  return message.conversation ||
-    message.extendedTextMessage?.text ||
-    message.imageMessage?.caption ||
-    message.videoMessage?.caption ||
-    ''
+  if (message.conversation) return message.conversation
+  if (message.extendedTextMessage?.text) return message.extendedTextMessage.text
+  if (message.imageMessage) return message.imageMessage.caption || '[Image]'
+  if (message.videoMessage) return message.videoMessage.caption || '[Video]'
+  if (message.audioMessage) return message.audioMessage.ptt ? '[Voice note]' : '[Audio]'
+  if (message.documentMessage) return `[Document: ${message.documentMessage.fileName || 'file'}]`
+  if (message.stickerMessage) return '[Sticker]'
+  if (message.locationMessage) {
+    const { degreesLatitude: lat, degreesLongitude: lng, name } = message.locationMessage
+    return name ? `[Location: ${name}]` : `[Location: ${lat?.toFixed(5)},${lng?.toFixed(5)}]`
+  }
+  if (message.contactMessage) return `[Contact: ${message.contactMessage.displayName || 'unknown'}]`
+  if (message.reactionMessage) return ''  // reactions handled separately, don't forward
+  return ''
 }
 
 function peerToJid(peer) {
   const id = peer?.id || ''
-  if (id.includes('@')) return id
-  return id.replace(/\D/g, '') + '@s.whatsapp.net'
+  if (!id.includes('@')) return id.replace(/\D/g, '') + '@s.whatsapp.net'
+  // Strip device suffix (e.g. "9170000001:51@s.whatsapp.net" → "9170000001@s.whatsapp.net")
+  // WhatsApp requires bare number JIDs for sending; device suffixes cause silent send failures.
+  const [user, server] = id.split('@')
+  return user.split(':')[0] + '@' + server
 }
 
 async function postJSON(target, body) {
@@ -477,7 +516,7 @@ async function route(req, res) {
       state.socket = null
       state.status = 'disconnected'
     }
-    await startAccount(accountId, { callback_url: callbackUrl, self_chat_enabled: selfChatEnabled })
+    await startAccount(accountId, { callback_url: callbackUrl, self_chat_enabled: selfChatEnabled, browser_name: state.browserName })
     return json(res, 200, { account_id: accountId, status: state.status })
   }
 
@@ -485,6 +524,18 @@ async function route(req, res) {
     const body = await readJSON(req)
     const started = await startAccount(accountId, body)
     return json(res, 200, { account_id: accountId, status: started.status, has_qr: !!started.qr })
+  }
+
+  if (req.method === 'POST' && parts[2] === 'login' && parts[3] === 'pairing-code') {
+    const body = await readJSON(req)
+    const phone = String(body.phone || '').replace(/\D/g, '')
+    if (!phone) return json(res, 400, { error: 'phone number is required (digits only, with country code)' })
+    // Start the socket first (without registered credentials it will show QR; we'll use pairing code instead).
+    const s = state.socket ? state : await startAccount(accountId, { callback_url: body.callback_url || state.callbackUrl })
+    if (!s.socket) return json(res, 409, { error: 'account failed to start' })
+    const code = await s.socket.requestPairingCode(phone)
+    logger.info({ accountId, phone }, 'pairing code requested')
+    return json(res, 200, { code, account_id: accountId })
   }
 
   if (req.method === 'POST' && parts[2] === 'config') {

@@ -422,6 +422,7 @@ func (h *GatewayHandler) AdapterLoginStart(w http.ResponseWriter, r *http.Reques
 		"callback_url":      strings.TrimRight(h.cfg.PublicAPIURL, "/") + "/gateway/whatsapp/" + c.ID,
 		"self_chat_enabled": cfg.SelfChatEnabled,
 		"contact_phones":    phones,
+		"browser_name":      cfg.BrowserName,
 	})
 	if err != nil {
 		errs.Write(w, errs.BadRequest("adapter login failed: "+err.Error()))
@@ -475,6 +476,7 @@ func (h *GatewayHandler) SyncAllAdapters(ctx context.Context) {
 			"callback_url":      strings.TrimRight(h.cfg.PublicAPIURL, "/") + "/gateway/whatsapp/" + c.ID,
 			"self_chat_enabled": cfg.SelfChatEnabled,
 			"contact_phones":    phones,
+			"browser_name":      cfg.BrowserName,
 		})
 		if err != nil {
 			slog.Warn("adapter startup sync: login/start failed", "channel", c.ID, "error", err)
@@ -515,6 +517,37 @@ func (h *GatewayHandler) AdapterLogout(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(body) //nolint:errcheck
+}
+
+func (h *GatewayHandler) AdapterPairingCode(w http.ResponseWriter, r *http.Request) {
+	_, cfg, ok := h.loadWhatsAppChannel(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Phone string `json:"phone"`
+	}
+	if json.NewDecoder(r.Body).Decode(&body) != nil || strings.TrimSpace(body.Phone) == "" {
+		errs.Write(w, errs.BadRequest("phone number is required"))
+		return
+	}
+	// Strip non-digits; caller may pass "+91..." or "91..."
+	var digits strings.Builder
+	for _, ch := range body.Phone {
+		if ch >= '0' && ch <= '9' {
+			digits.WriteRune(ch)
+		}
+	}
+	result, err := adapterPost(r.Context(), cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/login/pairing-code", map[string]any{
+		"phone": digits.String(),
+	})
+	if err != nil {
+		errs.Write(w, errs.BadRequest("pairing code request failed: "+err.Error()))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(result) //nolint:errcheck
 }
 
 // WhatsAppReceive accepts normalized events from the WhatsApp Web adapter.
