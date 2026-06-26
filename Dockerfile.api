@@ -1,3 +1,4 @@
+# Build: golang builder stage
 FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY services/api/go.mod services/api/go.sum ./
