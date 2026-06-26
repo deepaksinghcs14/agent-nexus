@@ -14,7 +14,7 @@ jobs:
         with:
           node-version: 20
       - run: npm install -g @railway/cli
-      - run: railway up --service api --detach
+      - run: railway up ./services/api --path-as-root --service api --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: b11bee08-7115-4026-b73d-1ebe49976792
