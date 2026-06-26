@@ -12,6 +12,13 @@ const (
 	maxContextChunkChars = 500
 )
 
+// ContextChunk holds a retrieved connector snippet with its source reference separated
+// from the content so the reference link is never truncated by the content length cap.
+type ContextChunk struct {
+	Ref     string // formatted as "[Title](URL)" or just "Title" when no URL
+	Content string
+}
+
 // Builder assembles the messages slice from agent config, memories, context chunks, and history.
 type Builder struct{}
 
@@ -42,6 +49,7 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 	if req.LazyToolLoading {
 		stable += "\n\nLazy tool loading is ON. You start with only a small set of meta-tools visible. To use any other tool: if you know the exact name, call native_request_tool(name) directly; if you don't know the name, call native_list_tools with an optional query (e.g. query=\"email\") to filter by keyword, or call it with no arguments to see all available tools. The requested tool is active from the next turn. Never invent or guess tool names."
 	}
+	stable += "\n\nWhen your answer draws on Relevant context, cite the source inline as a markdown link, e.g. ([Page Title](https://...))."
 	stable += "\n\nMemory: use native_list_memories to inspect, native_request_memory to load, and native_save_memory to store only durable, non-sensitive facts."
 	stable += "\n\nFor any question about the user's identity, preferences, goals, projects, or prior decisions, first call native_list_memories before answering."
 	if req.MemoryEnabled {
@@ -65,11 +73,15 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 	if len(req.ContextChunks) > 0 {
 		dynamic += "\n\nRelevant context:\n"
 		for _, c := range req.ContextChunks {
-			if c != "" {
-				if len(c) > maxContextChunkChars {
-					c = c[:maxContextChunkChars] + "…"
-				}
-				dynamic += "- " + c + "\n"
+			content := c.Content
+			if len([]rune(content)) > maxContextChunkChars {
+				runes := []rune(content)
+				content = string(runes[:maxContextChunkChars]) + "…"
+			}
+			if c.Ref != "" {
+				dynamic += "- " + c.Ref + ": " + content + "\n"
+			} else {
+				dynamic += "- " + content + "\n"
 			}
 		}
 	}
@@ -100,7 +112,7 @@ type BuildRequest struct {
 	SystemInstructions string
 	Skills             []string
 	MemorySummaries    []string
-	ContextChunks      []string
+	ContextChunks      []ContextChunk
 	History            []provider.Message
 	UserMessage        string
 	MemoryEnabled      bool

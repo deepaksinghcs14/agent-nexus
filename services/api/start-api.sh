@@ -8,15 +8,27 @@ API_PORT="${PORT:-8080}"
 API_INTERNAL_URL="${API_INTERNAL_URL:-http://127.0.0.1:${API_PORT}}"
 export API_INTERNAL_URL
 
+# Start Ollama in background (used for embeddings).
+ollama serve &
+OLLAMA_PID="$!"
+
+# Wait up to 30s for Ollama to become ready.
+for i in $(seq 1 30); do
+  if curl -sf http://localhost:11434/ > /dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
 /app/agent-nexus-api &
 API_PID="$!"
 
-PORT="${WHATSAPP_ADAPTER_PORT:-18901}" AUTH_ROOT="${WHATSAPP_AUTH_ROOT:-/data/whatsapp-auth}" node /app/whatsapp-adapter/server.js &
+PORT="${WHATSAPP_ADAPTER_PORT:-18901}" AUTH_ROOT="${WHATSAPP_AUTH_ROOT:-/data/whatsapp-auth}" NODE_OPTIONS=--experimental-global-webcrypto node /app/whatsapp-adapter/server.js &
 ADAPTER_PID="$!"
 
 shutdown() {
-  kill "$ADAPTER_PID" "$API_PID" 2>/dev/null || true
-  wait "$ADAPTER_PID" "$API_PID" 2>/dev/null || true
+  kill "$ADAPTER_PID" "$API_PID" "$OLLAMA_PID" 2>/dev/null || true
+  wait "$ADAPTER_PID" "$API_PID" "$OLLAMA_PID" 2>/dev/null || true
 }
 
 trap shutdown INT TERM

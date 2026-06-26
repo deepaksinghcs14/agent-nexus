@@ -162,7 +162,7 @@ func (h *ConnectorsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	embedder, _ := buildAnyProvider(r.Context(), h.pool, h.cfg, ws)
+	embedder := buildEmbedder(h.cfg)
 	rep := syncstate.New(h.pool, jobID, id)
 
 	go func() {
@@ -256,7 +256,7 @@ func (h *ConnectorsHandler) launchSync(ctx context.Context, connID, wsID string,
 	}
 	h.pool.Exec(ctx, `UPDATE connectors SET status='syncing', updated_at=NOW() WHERE id=$1::uuid`, connID) //nolint:errcheck
 
-	embedder, _ := buildAnyProvider(ctx, h.pool, h.cfg, wsID)
+	embedder := buildEmbedder(h.cfg)
 	rep := syncstate.New(h.pool, jobID, connID)
 
 	go func() {

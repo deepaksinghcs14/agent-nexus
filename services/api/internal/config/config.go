@@ -21,6 +21,8 @@ type Config struct {
 	WhatsAppAdapterURL      string // internal URL for the WhatsApp Web adapter service
 	LogStreamIngestToken    string // shared secret for local process log forwarding
 	DemoMode                bool   // when true, restricts dangerous capabilities for public hosted instances
+	EmbedOllamaURL          string // Ollama base URL used for embeddings (e.g. http://localhost:11434)
+	EmbedModel              string // embedding model name (default: nomic-embed-text)
 }
 
 func Load() (*Config, error) {
@@ -38,6 +40,8 @@ func Load() (*Config, error) {
 		WhatsAppAdapterURL:      getEnv("WHATSAPP_ADAPTER_URL", "http://127.0.0.1:18901"),
 		LogStreamIngestToken:    getEnv("LOG_STREAM_INGEST_TOKEN", ""),
 		DemoMode:                getEnvBool("DEMO_MODE", false),
+		EmbedOllamaURL:          getEnv("EMBED_OLLAMA_URL", "http://localhost:11434"),
+		EmbedModel:              getEnv("EMBED_MODEL", "nomic-embed-text"),
 	}
 
 	origins := getEnv("CORS_ORIGINS", "http://localhost:3000")
