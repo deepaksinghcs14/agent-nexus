@@ -422,6 +422,7 @@ func (h *GatewayHandler) AdapterLoginStart(w http.ResponseWriter, r *http.Reques
 		"callback_url":      strings.TrimRight(h.cfg.PublicAPIURL, "/") + "/gateway/whatsapp/" + c.ID,
 		"self_chat_enabled": cfg.SelfChatEnabled,
 		"contact_phones":    phones,
+		"browser_name":      cfg.BrowserName,
 	})
 	if err != nil {
 		errs.Write(w, errs.BadRequest("adapter login failed: "+err.Error()))
@@ -475,6 +476,7 @@ func (h *GatewayHandler) SyncAllAdapters(ctx context.Context) {
 			"callback_url":      strings.TrimRight(h.cfg.PublicAPIURL, "/") + "/gateway/whatsapp/" + c.ID,
 			"self_chat_enabled": cfg.SelfChatEnabled,
 			"contact_phones":    phones,
+			"browser_name":      cfg.BrowserName,
 		})
 		if err != nil {
 			slog.Warn("adapter startup sync: login/start failed", "channel", c.ID, "error", err)

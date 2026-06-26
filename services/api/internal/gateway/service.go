@@ -46,6 +46,9 @@ func ParseConfig(raw json.RawMessage, defaultAdapterURL string) domain.GatewayCh
 	if cfg.HistoryLimit == 0 {
 		cfg.HistoryLimit = 50
 	}
+	if cfg.BrowserName == "" {
+		cfg.BrowserName = "Agent Nexus"
+	}
 	return cfg
 }
 

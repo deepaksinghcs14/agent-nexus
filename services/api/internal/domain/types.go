@@ -274,6 +274,7 @@ type GatewayChannelConfig struct {
 	AssistantEnabled     bool     `json:"assistant_enabled,omitempty"`
 	BotModeEnabled       bool     `json:"bot_mode_enabled,omitempty"`
 	ChatApprovalsEnabled bool     `json:"chat_approvals_enabled,omitempty"`
+	BrowserName          string   `json:"browser_name,omitempty"`
 }
 
 type GatewayChannelAccount struct {

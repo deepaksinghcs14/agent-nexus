@@ -99,6 +99,7 @@ function accountState(accountId) {
       lastError: '',
       callbackUrl: '',
       selfChatEnabled: false,
+      browserName: '',
       sentMessageIds: new Set(),
       messageStore: new Map(),  // id → proto message, for retry requests
       lidToPhone: new Map(),
@@ -201,6 +202,7 @@ async function startAccount(accountId, opts = {}) {
   if (Array.isArray(opts.contact_phones) && opts.contact_phones.length > 0) {
     state.pendingPhones = opts.contact_phones
   }
+  if (opts.browser_name) state.browserName = opts.browser_name
   if (state.socket) {
     // Socket already exists. selfChatEnabled is managed via POST /accounts/{id}/config —
     // don't overwrite it here so concurrent reconnect timers can't undo a /config update.
@@ -225,6 +227,9 @@ async function startAccount(accountId, opts = {}) {
     auth: authState,
     printQRInTerminal: false,
     logger: logger.child({ accountId }),
+    // Browser tuple controls the device name shown in WhatsApp Linked Devices.
+    // Format: [OS, DeviceName, OSVersion] — DeviceName is what the user sees.
+    browser: ['Mac OS', state.browserName || 'Agent Nexus', '14.4.1'],
     // Skip full chat history sync on link — avoids "Couldn't finish syncing"
     // caused by Baileys 6.x failing to decode WhatsApp's critical_block patches.
     syncFullHistory: false,
@@ -298,7 +303,8 @@ async function startAccount(accountId, opts = {}) {
       if (statusCode !== DisconnectReason.loggedOut) {
         setTimeout(() => startAccount(accountId, {
           callback_url: state.callbackUrl,
-          self_chat_enabled: state.selfChatEnabled
+          self_chat_enabled: state.selfChatEnabled,
+          browser_name: state.browserName
         }).catch((err) => {
           state.lastError = err.message
           logger.error({ err, accountId }, 'whatsapp reconnect failed')
@@ -510,7 +516,7 @@ async function route(req, res) {
       state.socket = null
       state.status = 'disconnected'
     }
-    await startAccount(accountId, { callback_url: callbackUrl, self_chat_enabled: selfChatEnabled })
+    await startAccount(accountId, { callback_url: callbackUrl, self_chat_enabled: selfChatEnabled, browser_name: state.browserName })
     return json(res, 200, { account_id: accountId, status: state.status })
   }
 
