@@ -289,7 +289,10 @@ export const gatewayAPI = {
   listEscalations: (params?: string) => api.get(`/gateway/escalations${params ? '?' + params : ''}`),
   approveEscalation: (id: string) => api.post(`/gateway/escalations/${id}/approve`),
   rejectEscalation: (id: string) => api.post(`/gateway/escalations/${id}/reject`),
-  listContacts: (params?: string) => api.get(`/gateway/contacts${params ? '?' + params : ''}`),
+  listContacts: (params?: string | Record<string, string | number>) => {
+    const qs = typeof params === 'string' ? params : params ? new URLSearchParams(params as Record<string, string>).toString() : ''
+    return api.get(`/gateway/contacts${qs ? '?' + qs : ''}`)
+  },
   createContact: (body: unknown) => api.post('/gateway/contacts', body),
   updateContact: (id: string, body: unknown) => api.put(`/gateway/contacts/${id}`, body),
   deleteContact: (id: string) => api.delete(`/gateway/contacts/${id}`),

@@ -339,23 +339,50 @@ func (r *GatewayRepository) MarkOutbound(ctx context.Context, id, status, errMsg
 	return err
 }
 
-func (r *GatewayRepository) ListContacts(ctx context.Context, workspaceID, channelID string) ([]domain.GatewayContact, error) {
+func (r *GatewayRepository) ListContacts(ctx context.Context, workspaceID, channelID, q string, page, perPage int) ([]domain.GatewayContact, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+	offset := (page - 1) * perPage
+	qLower := strings.ToLower(strings.TrimSpace(q))
+	var total int
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM gateway_contacts
+		WHERE workspace_id=$1::uuid AND (NULLIF($2,'') IS NULL OR channel_id=NULLIF($2,'')::uuid)
+		  AND ($3='' OR lower(display_name) LIKE '%'||$3||'%'
+		              OR lower(alias) LIKE '%'||$3||'%'
+		              OR phone_number LIKE '%'||$3||'%'
+		              OR lower(whatsapp_jid) LIKE '%'||$3||'%'
+		              OR lower(whatsapp_lid) LIKE '%'||$3||'%')`,
+		workspaceID, channelID, qLower).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
 	rows, err := r.pool.Query(ctx, gatewayContactSelect+`
 		WHERE workspace_id=$1::uuid AND (NULLIF($2,'') IS NULL OR channel_id=NULLIF($2,'')::uuid)
-		ORDER BY role ASC, display_name ASC`, workspaceID, channelID)
+		  AND ($3='' OR lower(display_name) LIKE '%'||$3||'%'
+		              OR lower(alias) LIKE '%'||$3||'%'
+		              OR phone_number LIKE '%'||$3||'%'
+		              OR lower(whatsapp_jid) LIKE '%'||$3||'%'
+		              OR lower(whatsapp_lid) LIKE '%'||$3||'%')
+		ORDER BY role ASC, display_name ASC
+		LIMIT $4 OFFSET $5`, workspaceID, channelID, qLower, perPage, offset)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	out := []domain.GatewayContact{}
 	for rows.Next() {
 		c, err := scanGatewayContact(rows)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, c)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
 }
 
 func (r *GatewayRepository) GetContact(ctx context.Context, id, workspaceID string) (domain.GatewayContact, error) {

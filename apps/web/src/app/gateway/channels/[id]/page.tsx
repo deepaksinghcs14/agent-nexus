@@ -29,6 +29,10 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const [pairings, setPairings] = useState<GatewayPairingRequest[]>([])
   const [outbox, setOutbox] = useState<GatewayOutboundMessage[]>([])
   const [contacts, setContacts] = useState<GatewayContact[]>([])
+  const [contactTotal, setContactTotal] = useState(0)
+  const [contactPage, setContactPage] = useState(1)
+  const [contactSearch, setContactSearch] = useState('')
+  const [contactSearchInput, setContactSearchInput] = useState('')
   const [reminders, setReminders] = useState<GatewayReminder[]>([])
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>([])
   const [escalations, setEscalations] = useState<GatewayEscalation[]>([])
@@ -116,6 +120,15 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
 
   const ingressURL = useMemo(() => channel ? `${API_URL}/gateway/${channel.channel_type}/${channel.id}` : '', [channel])
 
+  const loadContacts = useCallback((page: number, q: string) => {
+    gatewayAPI.listContacts({ channel_id: params.id, page, per_page: 20, ...(q ? { q } : {}) })
+      .then((r) => {
+        const res = r as { data?: GatewayContact[]; total?: number }
+        setContacts(res.data ?? [])
+        setContactTotal(res.total ?? 0)
+      }).catch(() => {})
+  }, [params.id])
+
   const load = useCallback(() => {
     const q = `channel_id=${params.id}`
     gatewayAPI.getChannel(params.id).then((c) => {
@@ -123,7 +136,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
       setChannel(ch)
       if (ch.channel_type === 'whatsapp') {
         gatewayAPI.listPairings(q).then((r) => setPairings(((r as { data?: GatewayPairingRequest[] }).data) ?? [])).catch(() => {})
-        gatewayAPI.listContacts(q).then((r) => setContacts(((r as { data?: GatewayContact[] }).data) ?? [])).catch(() => {})
+        loadContacts(1, '')
       }
     }).catch((e: Error) => setError(e.message))
     gatewayAPI.listSessions(q).then((r) => setSessions(((r as { data?: ChannelSession[] }).data) ?? [])).catch(() => {})
@@ -136,6 +149,15 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   }, [params.id])
 
   useEffect(() => { load() }, [load])
+
+  // Reload contacts when page or search term changes
+  useEffect(() => { loadContacts(contactPage, contactSearch) }, [contactPage, contactSearch, loadContacts])
+
+  // Debounce search input → contactSearch
+  useEffect(() => {
+    const t = setTimeout(() => { setContactSearch(contactSearchInput); setContactPage(1) }, 300)
+    return () => clearTimeout(t)
+  }, [contactSearchInput])
 
   const refreshAdapter = useCallback(async () => {
     const r = await gatewayAPI.adapterStatus(params.id).catch(() => null)
@@ -219,7 +241,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
     try {
       const r = await gatewayAPI.syncContacts(params.id) as { created?: number; updated?: number }
       setSyncContactsResult(`${r.created ?? 0} created, ${r.updated ?? 0} LIDs updated`)
-      load()
+      loadContacts(contactPage, contactSearch)
     } catch (e) {
       setSyncContactsResult('Sync failed: ' + (e as Error).message)
     } finally {
@@ -282,13 +304,13 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
     setContactPhone('')
     setContactRole('trusted')
     setContactAgentId('')
-    load()
+    loadContacts(contactPage, contactSearch)
   }
 
   const deleteContact = async (id: string) => {
     if (!confirm('Delete this gateway contact?')) return
     await gatewayAPI.deleteContact(id).catch(() => {})
-    load()
+    loadContacts(contactPage, contactSearch)
   }
 
   const scheduleMessage = async () => {
@@ -779,8 +801,20 @@ Content-Type: application/json
               {syncContactsLoading ? 'Syncing…' : 'Sync Contacts'}
             </button>
           </div>
+          <div className="flex items-center gap-2">
+            <input
+              value={contactSearchInput}
+              onChange={(e) => setContactSearchInput(e.target.value)}
+              placeholder="Search by name, phone, or alias…"
+              className="flex-1 text-[13px] px-3 py-2 border border-gray-200 rounded-lg"
+            />
+            {contactSearchInput && (
+              <button onClick={() => { setContactSearchInput(''); setContactSearch(''); setContactPage(1) }} className="px-3 py-2 text-[12px] text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">Clear</button>
+            )}
+            <span className="text-[12px] text-gray-400 shrink-0">{contactTotal} contact{contactTotal !== 1 ? 's' : ''}</span>
+          </div>
           <div className="rounded-lg border border-gray-200 overflow-hidden bg-white">
-            {contacts.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">No contacts yet</div> : contacts.map((c) => (
+            {contacts.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">{contactSearch ? 'No contacts match your search' : 'No contacts yet'}</div> : contacts.map((c) => (
               <div key={c.id} className="px-4 py-3 border-b border-gray-100 last:border-b-0 flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -823,6 +857,23 @@ Content-Type: application/json
               </div>
             ))}
           </div>
+          {contactTotal > 20 && (
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setContactPage((p) => Math.max(1, p - 1))}
+                disabled={contactPage === 1}
+                className="px-3 py-1.5 text-[12px] border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >← Prev</button>
+              <span className="text-[12px] text-gray-400">
+                Page {contactPage} of {Math.ceil(contactTotal / 20)}
+              </span>
+              <button
+                onClick={() => setContactPage((p) => p + 1)}
+                disabled={contactPage >= Math.ceil(contactTotal / 20)}
+                className="px-3 py-1.5 text-[12px] border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >Next →</button>
+            </div>
+          )}
         </div>
       )}
       {tab === 'Pairing' && (

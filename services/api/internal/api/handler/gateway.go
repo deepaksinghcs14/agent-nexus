@@ -249,12 +249,20 @@ func (h *GatewayHandler) ListOutbox(w http.ResponseWriter, r *http.Request) {
 
 func (h *GatewayHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
-	list, err := h.repo.ListContacts(r.Context(), ws, r.URL.Query().Get("channel_id"))
+	q := r.URL.Query().Get("q")
+	page := intParam(r, "page", 1)
+	perPage := intParam(r, "per_page", 20)
+	list, total, err := h.repo.ListContacts(r.Context(), ws, r.URL.Query().Get("channel_id"), q, page, perPage)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to list gateway contacts"))
 		return
 	}
-	errs.WriteJSON(w, http.StatusOK, map[string]any{"data": list})
+	errs.WriteJSON(w, http.StatusOK, map[string]any{
+		"data":     list,
+		"total":    total,
+		"page":     page,
+		"per_page": perPage,
+	})
 }
 
 func (h *GatewayHandler) ListReminders(w http.ResponseWriter, r *http.Request) {
