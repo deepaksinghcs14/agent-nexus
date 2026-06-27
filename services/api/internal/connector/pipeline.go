@@ -85,6 +85,12 @@ func (p *Pipeline) Sync(
 			docID = uuid.NewString()
 		}
 		now := time.Now()
+		meta := json.RawMessage(`{}`)
+		if len(doc.Metadata) > 0 {
+			if m, err := json.Marshal(doc.Metadata); err == nil {
+				meta = m
+			}
+		}
 		docRecord := &domain.ConnectorDocument{
 			ID:               docID,
 			ConnectorID:      connectorID,
@@ -96,7 +102,7 @@ func (p *Pipeline) Sync(
 			Author:           doc.Author,
 			ContentHash:      hash,
 			IndexedAt:        &now,
-			Metadata:         json.RawMessage(`{}`),
+			Metadata:         meta,
 		}
 		if err := repo.UpsertDocument(ctx, docRecord); err != nil {
 			log.Warn("document upsert failed", "source_doc_id", doc.SourceDocumentID, "error", err)

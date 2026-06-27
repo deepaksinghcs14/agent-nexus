@@ -1,15 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  BookOpen, ChevronRight, Database, FileText, FolderOpen, Github,
+  BookOpen, ChevronRight, Database, ExternalLink, FileText, FolderOpen, Github,
   HardDrive, MessageSquare, Plus, RefreshCw, Trash2, Trello, X,
 } from 'lucide-react'
 import { connectorsAPI, filesystemAPI } from '@/lib/api'
 import { relativeTime, statusColor } from '@/lib/utils'
 import { useDemoMode } from '@/context/demo-mode'
-import type { Connector, ConnectorDocument, ConnectorSyncJob } from '@/types'
+import type { Connector, ConnectorBrowseResult, ConnectorDocument, ConnectorDocumentGroup, ConnectorSyncJob } from '@/types'
 
 // ─── provider definitions ─────────────────────────────────────────────────────
 
@@ -119,10 +119,12 @@ function CreatePanel({
       onCreate({ name: form.name.trim(), provider: 'filesystem', type: 'native', auth_type: 'none', config: { path: form.path.trim() } })
     } else if (provider === 'github') {
       if (!form.token.trim()) { setFormError('Personal access token is required'); return }
-      if (!form.owner.trim()) { setFormError('Owner (org or user) is required'); return }
-      if (!form.repo.trim()) { setFormError('Repository name is required'); return }
       setFormError('')
-      onCreate({ name: form.name.trim(), provider: 'github', type: 'native', auth_type: 'api_key', config: { token: form.token.trim(), owner: form.owner.trim(), repo: form.repo.trim(), branch: form.branch.trim() } })
+      const cfg: Record<string, string> = { token: form.token.trim() }
+      if (form.owner.trim()) cfg.owner = form.owner.trim()
+      if (form.repo.trim()) cfg.repo = form.repo.trim()
+      if (form.branch.trim()) cfg.branch = form.branch.trim()
+      onCreate({ name: form.name.trim(), provider: 'github', type: 'native', auth_type: 'api_key', config: cfg })
     } else if (provider === 'confluence') {
       if (!form.url.trim()) { setFormError('Confluence URL is required'); return }
       if (!form.username.trim()) { setFormError('Username (email) is required'); return }
@@ -237,11 +239,11 @@ function CreatePanel({
                 <input type="password" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value })} placeholder="ghp_..." className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg font-mono" />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">Owner *</label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Owner <span className="text-gray-400">(optional — leave blank to use token owner)</span></label>
                 <input value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} placeholder="org or username" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-gray-600 mb-1">Repository *</label>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Repository <span className="text-gray-400">(optional — leave blank to index all repos)</span></label>
                 <input value={form.repo} onChange={(e) => setForm({ ...form, repo: e.target.value })} placeholder="repo-name" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
               </div>
               <div className="col-span-2">
@@ -314,6 +316,22 @@ export default function ConnectorsPage() {
   const [detailTab, setDetailTab] = useState<'documents' | 'sync-history'>('documents')
   const [actionError, setActionError] = useState('')
   const [docsPage, setDocsPage] = useState(1)
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
+  const [browsePath, setBrowsePath] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+
+  // Debounce search input by 300ms.
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput), 300)
+    return () => clearTimeout(t)
+  }, [searchInput])
+
+  // Clear search when navigating to a different level.
+  useEffect(() => {
+    setSearchInput('')
+    setSearchQuery('')
+  }, [browsePath])
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['connectors'],
@@ -328,8 +346,8 @@ export default function ConnectorsPage() {
   const isSyncing = selectedConnector?.status === 'syncing'
 
   const { data: docsData, isLoading: docsLoading } = useQuery({
-    queryKey: ['connector-docs', selected, docsPage],
-    queryFn: () => connectorsAPI.documents(selected, docsPage) as Promise<{ data: ConnectorDocument[]; total: number; page: number; page_size: number; total_pages: number }>,
+    queryKey: ['connector-docs', selected, docsPage, selectedGroup],
+    queryFn: () => connectorsAPI.documents(selected, docsPage, selectedGroup ?? undefined) as Promise<{ data: ConnectorDocument[]; total: number; page: number; page_size: number; total_pages: number }>,
     enabled: !!selected,
   })
   const { data: jobsData } = useQuery({
@@ -337,6 +355,18 @@ export default function ConnectorsPage() {
     queryFn: () => connectorsAPI.syncJobs(selected) as Promise<{ data: ConnectorSyncJob[] }>,
     enabled: !!selected,
     refetchInterval: isSyncing ? 2000 : false,
+  })
+  const { data: groupsData } = useQuery({
+    queryKey: ['connector-doc-groups', selected],
+    queryFn: () => connectorsAPI.documentGroups(selected) as Promise<{ data: ConnectorDocumentGroup[] }>,
+    enabled: !!selected && (selectedConnector?.provider === 'github' || selectedConnector?.provider === 'confluence'),
+    refetchInterval: isSyncing ? 3000 : false,
+  })
+  const { data: browseData, isLoading: browseLoading } = useQuery({
+    queryKey: ['connector-browse', selected, browsePath, searchQuery],
+    queryFn: () => connectorsAPI.browse(selected, browsePath, searchQuery) as Promise<ConnectorBrowseResult>,
+    enabled: !!selected && (selectedConnector?.provider === 'github' || selectedConnector?.provider === 'confluence'),
+    refetchInterval: isSyncing ? 3000 : false,
   })
 
   const create = useMutation({
@@ -359,6 +389,7 @@ export default function ConnectorsPage() {
     onError: (err: Error) => setActionError(err.message),
   })
 
+  const docGroups = groupsData?.data ?? []
   const docs = docsData?.data ?? []
   const docsTotalPages = docsData?.total_pages ?? 1
   const docsTotal = docsData?.total ?? 0
@@ -465,7 +496,7 @@ export default function ConnectorsPage() {
             return (
               <div
                 key={connector.id}
-                onClick={() => { setSelected(connector.id === selected ? '' : connector.id); setDetailTab('documents'); setDocsPage(1) }}
+                onClick={() => { setSelected(connector.id === selected ? '' : connector.id); setDetailTab('documents'); setDocsPage(1); setSelectedGroup(null); setBrowsePath(''); setSearchInput(''); setSearchQuery('') }}
                 className={`bg-white border rounded-xl p-3.5 cursor-pointer transition-all ${
                   selected === connector.id
                     ? 'border-purple-300 ring-1 ring-purple-100'
@@ -549,7 +580,105 @@ export default function ConnectorsPage() {
             </div>
           )}
 
-          {detailTab === 'documents' && (
+          {detailTab === 'documents' && (selectedConnector?.provider === 'github' || selectedConnector?.provider === 'confluence') && (
+            <div>
+              {/* Breadcrumb + search */}
+              <div className="flex items-center gap-1 px-4 py-2 border-b border-gray-50 bg-gray-50/50">
+                <button
+                  onClick={() => setBrowsePath('')}
+                  className={`text-[12px] flex-shrink-0 ${browsePath === '' ? 'text-gray-700 font-medium' : 'text-purple-600 hover:underline'}`}
+                >
+                  All
+                </button>
+                {(browseData?.breadcrumb ?? []).map((crumb, i) => {
+                  const isLast = i === (browseData?.breadcrumb.length ?? 0) - 1
+                  return (
+                    <span key={crumb.path} className="flex items-center gap-1 flex-shrink-0">
+                      <ChevronRight size={11} className="text-gray-300" />
+                      <button
+                        onClick={() => setBrowsePath(crumb.path)}
+                        className={`text-[12px] ${isLast ? 'text-gray-700 font-medium' : 'text-purple-600 hover:underline'}`}
+                      >
+                        {crumb.name}
+                      </button>
+                    </span>
+                  )
+                })}
+                <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
+                  {searchInput && (
+                    <button onClick={() => setSearchInput('')} className="text-gray-300 hover:text-gray-500">
+                      <X size={12} />
+                    </button>
+                  )}
+                  <input
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    placeholder="Search…"
+                    className="text-[12px] px-2.5 py-1 border border-gray-200 rounded-lg w-36 focus:outline-none focus:border-purple-300 bg-white"
+                  />
+                </div>
+              </div>
+              {searchQuery && !browseLoading && (
+                <div className="px-4 py-1.5 border-b border-gray-50 bg-purple-50/50">
+                  <span className="text-[11px] text-purple-600">
+                    {(browseData?.dirs.length ?? 0) + (browseData?.files.length ?? 0)} result{((browseData?.dirs.length ?? 0) + (browseData?.files.length ?? 0)) !== 1 ? 's' : ''} for &ldquo;{searchQuery}&rdquo;
+                  </span>
+                </div>
+              )}
+
+              {/* Browser entries */}
+              {browseLoading && <div className="py-8 text-center text-sm text-gray-400">Loading…</div>}
+              {!browseLoading && browseData && browseData.dirs.length === 0 && browseData.files.length === 0 && (
+                <div className="py-10 text-center">
+                  <FileText size={20} className="text-gray-300 mx-auto mb-2" />
+                  <p className="text-[12px] text-gray-400">No documents indexed yet.</p>
+                  <p className="text-[11px] text-gray-400 mt-1">Click Sync on the connector card to start indexing.</p>
+                </div>
+              )}
+              {!browseLoading && browseData && (browseData.dirs.length > 0 || browseData.files.length > 0) && (
+                <div>
+                  {browseData.dirs.map((dir) => (
+                    <button
+                      key={dir.path}
+                      onClick={() => setBrowsePath(dir.path)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 hover:bg-amber-50/40 text-left group transition-colors"
+                    >
+                      <FolderOpen size={14} className="text-amber-400 flex-shrink-0" />
+                      <span className="text-[12px] font-medium text-gray-800 flex-1 truncate group-hover:text-amber-700">{dir.label}</span>
+                      {(dir.count ?? 0) > 0 && (
+                        <span className="text-[11px] text-gray-400 flex-shrink-0">{dir.count!.toLocaleString()} files</span>
+                      )}
+                      <ChevronRight size={12} className="text-gray-300 flex-shrink-0 group-hover:text-amber-400" />
+                    </button>
+                  ))}
+                  {browseData.files.map((file) => (
+                    <div key={file.id} className="flex items-center gap-3 px-4 py-2.5 border-b last:border-b-0 border-gray-50 hover:bg-gray-50/60 group">
+                      <FileText size={13} className="text-gray-300 flex-shrink-0" />
+                      <span className="text-[12px] text-gray-800 flex-1 truncate min-w-0" title={file.source_document_id}>
+                        {file.title || file.source_document_id}
+                      </span>
+                      {file.indexed_at && (
+                        <span className="text-[11px] text-gray-400 flex-shrink-0">{relativeTime(file.indexed_at)}</span>
+                      )}
+                      {file.url && (
+                        <a
+                          href={file.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-gray-300 hover:text-purple-500 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <ExternalLink size={12} />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {detailTab === 'documents' && selectedConnector?.provider !== 'github' && selectedConnector?.provider !== 'confluence' && (
             <div>
               {docsLoading && <div className="py-8 text-center text-sm text-gray-400">Loading documents…</div>}
               {!docsLoading && docs.length === 0 && (
@@ -593,21 +722,9 @@ export default function ConnectorsPage() {
                     <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-50">
                       <p className="text-[11px] text-gray-400">{docsTotal} documents total</p>
                       <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => setDocsPage((p) => Math.max(1, p - 1))}
-                          disabled={docsPage <= 1}
-                          className="px-2 py-1 text-[11px] border border-gray-200 rounded disabled:opacity-40 hover:bg-gray-50"
-                        >
-                          ←
-                        </button>
+                        <button onClick={() => setDocsPage((p) => Math.max(1, p - 1))} disabled={docsPage <= 1} className="px-2 py-1 text-[11px] border border-gray-200 rounded disabled:opacity-40 hover:bg-gray-50">←</button>
                         <span className="text-[11px] text-gray-500 px-2">{docsPage} / {docsTotalPages}</span>
-                        <button
-                          onClick={() => setDocsPage((p) => Math.min(docsTotalPages, p + 1))}
-                          disabled={docsPage >= docsTotalPages}
-                          className="px-2 py-1 text-[11px] border border-gray-200 rounded disabled:opacity-40 hover:bg-gray-50"
-                        >
-                          →
-                        </button>
+                        <button onClick={() => setDocsPage((p) => Math.min(docsTotalPages, p + 1))} disabled={docsPage >= docsTotalPages} className="px-2 py-1 text-[11px] border border-gray-200 rounded disabled:opacity-40 hover:bg-gray-50">→</button>
                       </div>
                     </div>
                   )}

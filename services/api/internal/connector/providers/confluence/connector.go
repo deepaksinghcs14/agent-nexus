@@ -67,13 +67,32 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 		completedSet[s] = true
 	}
 
-	// Resolve which spaces to sync.
-	var spaces []string
+	// Resolve which spaces to sync, collecting names for metadata.
+	type spaceInfo struct{ key, name string }
+	var spaceList []spaceInfo
+	spaceNames := map[string]string{}
+
 	if spaceKeys != "" {
 		for _, k := range strings.Split(spaceKeys, ",") {
-			if k = strings.TrimSpace(k); k != "" {
-				spaces = append(spaces, k)
+			k = strings.TrimSpace(k)
+			if k == "" {
+				continue
 			}
+			// Fetch the space name so it can be stored in document metadata.
+			name := k
+			res, err := do(fmt.Sprintf("%s/wiki/rest/api/space/%s", baseURL, url.PathEscape(k)))
+			if err == nil && res.StatusCode == http.StatusOK {
+				var s struct{ Name string `json:"name"` }
+				_ = json.NewDecoder(res.Body).Decode(&s)
+				res.Body.Close()
+				if s.Name != "" {
+					name = s.Name
+				}
+			} else if res != nil {
+				res.Body.Close()
+			}
+			spaceList = append(spaceList, spaceInfo{k, name})
+			spaceNames[k] = name
 		}
 	} else {
 		start := 0
@@ -88,14 +107,18 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 				return fmt.Errorf("confluence: list spaces returned HTTP %d (check credentials)", res.StatusCode)
 			}
 			var page struct {
-				Results []struct{ Key string `json:"key"` } `json:"results"`
-				Size    int                                  `json:"size"`
-				Limit   int                                  `json:"limit"`
+				Results []struct {
+					Key  string `json:"key"`
+					Name string `json:"name"`
+				} `json:"results"`
+				Size  int `json:"size"`
+				Limit int `json:"limit"`
 			}
 			_ = json.NewDecoder(res.Body).Decode(&page)
 			res.Body.Close()
 			for _, s := range page.Results {
-				spaces = append(spaces, s.Key)
+				spaceList = append(spaceList, spaceInfo{s.Key, s.Name})
+				spaceNames[s.Key] = s.Name
 			}
 			log.Debug("discovered spaces", "page_start", start, "page_count", len(page.Results))
 			if page.Size < page.Limit {
@@ -103,6 +126,12 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 			}
 			start += page.Limit
 		}
+	}
+
+	// Build legacy spaces []string for checkpoint compatibility.
+	spaces := make([]string, len(spaceList))
+	for i, s := range spaceList {
+		spaces[i] = s.key
 	}
 
 	log.Info("syncing spaces", "total", len(spaces), "already_completed", len(completedSet))
@@ -169,6 +198,7 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 					URL:              baseURL + "/wiki" + r.Links.WebUI,
 					Author:           r.History.CreatedBy.DisplayName,
 					Content:          text,
+					Metadata:         map[string]any{"space_key": spaceKey, "space_name": spaceNames[spaceKey]},
 				}); err != nil {
 					return err // context cancelled or caller abort
 				}
