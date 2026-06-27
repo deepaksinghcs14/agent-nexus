@@ -301,6 +301,14 @@ async function startAccount(accountId, opts = {}) {
       state.socket = null
       state.lastError = lastDisconnect?.error?.message || ''
       if (statusCode !== DisconnectReason.loggedOut) {
+        // Conflict means another session took over the same account (e.g. WhatsApp Web open
+        // in a browser, or a previous container still alive during a rolling deploy).
+        // Reconnecting immediately causes a tight conflict loop — back off 30s to let the
+        // competing session stabilise or the old container terminate.
+        const isConflict = statusCode === DisconnectReason.conflict
+        if (isConflict) {
+          logger.warn({ accountId, statusCode }, 'whatsapp conflict — another session active, backing off 30s')
+        }
         setTimeout(() => startAccount(accountId, {
           callback_url: state.callbackUrl,
           self_chat_enabled: state.selfChatEnabled,
@@ -308,7 +316,7 @@ async function startAccount(accountId, opts = {}) {
         }).catch((err) => {
           state.lastError = err.message
           logger.error({ err, accountId }, 'whatsapp reconnect failed')
-        }), 3000)
+        }), isConflict ? 30000 : 3000)
       }
     }
   })
