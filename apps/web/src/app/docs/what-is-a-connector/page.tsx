@@ -6,7 +6,7 @@ export default function WhatIsAConnectorDoc() {
   return (
     <DocPage
       title="What is a Connector?"
-      subtitle="Connectors bring external knowledge into Agent Nexus — documents from your filesystem, Slack, Jira, GitHub, and more — so agents can retrieve relevant context automatically."
+      subtitle="Connectors bring external knowledge into Agent Nexus — documents from your filesystem, GitHub repositories, Confluence spaces, and more — so agents can retrieve relevant context automatically."
     >
       <p>
         Agents are only as useful as the context they have access to. A <strong>connector</strong> is a
@@ -25,32 +25,32 @@ export default function WhatIsAConnectorDoc() {
         <tbody>
           <tr>
             <td><strong>Filesystem</strong></td>
-            <td><Badge label="v0.1" color="green" /></td>
+            <td><Badge label="Available" color="green" /></td>
             <td>Text files from a directory on the server&apos;s storage path</td>
           </tr>
           <tr>
+            <td><strong>GitHub</strong></td>
+            <td><Badge label="Available" color="green" /></td>
+            <td>All text files across one repo or every repo accessible to a token</td>
+          </tr>
+          <tr>
+            <td><strong>Confluence</strong></td>
+            <td><Badge label="Available" color="green" /></td>
+            <td>Pages from one or more Confluence Cloud spaces</td>
+          </tr>
+          <tr>
             <td><strong>Slack</strong></td>
-            <td><Badge label="v0.2" color="gray" /></td>
+            <td><Badge label="Coming soon" color="gray" /></td>
             <td>Channel messages and threads from a Slack workspace</td>
           </tr>
           <tr>
             <td><strong>Jira</strong></td>
-            <td><Badge label="v0.2" color="gray" /></td>
+            <td><Badge label="Coming soon" color="gray" /></td>
             <td>Issues, comments, and descriptions from a Jira project</td>
           </tr>
           <tr>
-            <td><strong>Confluence</strong></td>
-            <td><Badge label="v0.2" color="gray" /></td>
-            <td>Pages and comments from a Confluence space</td>
-          </tr>
-          <tr>
-            <td><strong>GitHub</strong></td>
-            <td><Badge label="v0.2" color="gray" /></td>
-            <td>Repository files, issues, and pull request descriptions</td>
-          </tr>
-          <tr>
             <td><strong>Google Drive</strong></td>
-            <td><Badge label="v0.2" color="gray" /></td>
+            <td><Badge label="Coming soon" color="gray" /></td>
             <td>Docs, Sheets, and Slides from a Drive folder</td>
           </tr>
         </tbody>
@@ -82,17 +82,77 @@ LIMIT $max_chunks`}</code></pre>
         on the Agent Nexus server.
       </p>
       <ol>
-        <li>Go to <a href="/connectors">Connectors</a> and click <strong>Add Connector</strong>.</li>
+        <li>Go to <a href="/connectors">Connectors</a> and click <strong>Connect source</strong>.</li>
         <li>Select <strong>Filesystem</strong>.</li>
         <li>Enter a directory path (must be within the server&apos;s <code>STORAGE_PATH</code>).</li>
-        <li>Click <strong>Sync</strong>. The connector fetches files, chunks them into 512-token pieces with 64-token overlap, embeds each chunk, and stores them in the index.</li>
+        <li>Click <strong>Sync</strong>. The connector fetches files, chunks them, embeds each chunk, and stores them in the index.</li>
         <li>In the Agent Builder → <strong>Context tab</strong>, enable context retrieval and select this connector.</li>
       </ol>
 
+      <h2>Setting Up the GitHub Connector</h2>
+      <p>
+        The GitHub connector indexes all text files from one repository or every repository accessible
+        to a personal access token — with no additional configuration required.
+      </p>
+      <ol>
+        <li>Go to <a href="/connectors">Connectors</a> and click <strong>Connect source</strong>.</li>
+        <li>Select <strong>GitHub</strong>.</li>
+        <li>Enter a <strong>Personal access token</strong> (PAT) with <code>repo</code> read scope.</li>
+        <li>
+          <strong>Owner</strong> and <strong>Repository</strong> are both optional:
+          <ul>
+            <li>Leave both blank — every repo accessible to the token is auto-discovered and indexed.</li>
+            <li>Fill in Owner only — indexes all repos under that org or user.</li>
+            <li>Fill in both — indexes a single specific repository.</li>
+          </ul>
+        </li>
+        <li>Optionally specify a branch; defaults to the repo&apos;s default branch.</li>
+        <li>Click <strong>Connect</strong>, then <strong>Sync</strong>.</li>
+      </ol>
+
       <Callout type="tip">
-        Re-sync a connector any time your source files change. Agent Nexus uses content hashes to skip
-        unchanged documents — only modified files are re-embedded.
+        Binary files (images, archives, compiled assets) and files larger than 500 KB are skipped
+        automatically. Only text content is indexed.
       </Callout>
+
+      <p>
+        After syncing, the <strong>Documents tab</strong> shows a repository browser — click into a
+        repo to navigate its folder tree and see which files are indexed, exactly like a file explorer.
+        Use the search box to find any file by name across the whole tree.
+      </p>
+
+      <h2>Setting Up the Confluence Connector</h2>
+      <p>
+        The Confluence connector indexes pages from your Confluence Cloud workspace.
+      </p>
+      <ol>
+        <li>Go to <a href="/connectors">Connectors</a> and click <strong>Connect source</strong>.</li>
+        <li>Select <strong>Confluence</strong>.</li>
+        <li>Enter your Confluence <strong>URL</strong> (e.g. <code>https://yourorg.atlassian.net</code>).</li>
+        <li>Enter your Atlassian account <strong>email</strong> and an <strong>API token</strong> (create one at <code>id.atlassian.com → Security → API tokens</code>).</li>
+        <li>
+          <strong>Space keys</strong> is optional — leave blank to index all spaces, or enter a
+          comma-separated list (e.g. <code>ENG,OPS,HR</code>) to limit the scope.
+        </li>
+        <li>Click <strong>Connect</strong>, then <strong>Sync</strong>.</li>
+      </ol>
+
+      <p>
+        After syncing, the <strong>Documents tab</strong> shows a space browser — click into a space to
+        see all indexed pages. Use the search box to filter pages by title within any space.
+      </p>
+
+      <h2>Browsing Indexed Documents</h2>
+      <p>
+        The <strong>Documents tab</strong> on any connector card provides a filesystem-style browser for
+        GitHub and Confluence connectors:
+      </p>
+      <ul>
+        <li><strong>GitHub</strong> — root shows all indexed repositories with file counts. Click a repo to navigate its folder tree. Click a folder to go deeper. Files show an external link icon on hover to open them on GitHub.</li>
+        <li><strong>Confluence</strong> — root shows all indexed spaces with page counts. Click a space to list its pages.</li>
+        <li><strong>Search</strong> — type in the search box at any level to filter by filename or title. Results are shown as a flat list; navigating to a folder clears the search automatically.</li>
+        <li><strong>Breadcrumb</strong> — click any segment in the breadcrumb to jump back up the tree.</li>
+      </ul>
 
       <h2>Connector Sync Pipeline</h2>
       <p>
@@ -109,6 +169,12 @@ LIMIT $max_chunks`}</code></pre>
           <tr><td>6. Log</td><td>A sync job record is written with counts, duration, and status</td></tr>
         </tbody>
       </table>
+
+      <Callout type="tip">
+        Re-sync a connector any time your source changes. Agent Nexus uses content hashes to skip
+        unchanged documents — only new or modified content is re-embedded. GitHub and Confluence syncs
+        also checkpoint their progress, so a pod restart resumes from where it left off.
+      </Callout>
 
       <h2>Configuring Context Retrieval on an Agent</h2>
       <p>

@@ -133,7 +133,7 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Layered memory** — conversation, agent, and workspace scopes; each run stores a memory summary with pgvector embeddings for similarity retrieval in future runs
 - **Memory review policy** — set per-agent to `agent_review`; new memories are stored as `pending_review` and are not retrieved until approved via the Memory browser or agent tools (`native_approve_memory` / `native_reject_memory`)
 - **Importance scoring** — each memory carries an importance score used to prioritise retrieval and deduplication; configurable min-importance and dedupe thresholds per agent
-- **Connector RAG** — index external files via the filesystem connector; chunks are embedded with pgvector and retrieved at query time to ground agent responses in your documents
+- **Connector RAG** — index external documents and retrieve them at query time to ground agent responses; supported connectors: **Filesystem** (server-side files), **GitHub** (one repo or all repos accessible to a token, with multi-repo auto-discovery), **Confluence** (one or all spaces); the Documents tab provides a filesystem-style browser — navigate repos → folders → files (GitHub) or spaces → pages (Confluence) with live search and breadcrumb navigation; syncs are checkpoint-based so a pod restart resumes from where it left off
 - **Vector search** — pgvector cosine similarity with configurable score thresholds and chunk counts per agent
 
 ### Observability
@@ -404,7 +404,9 @@ What's working today vs. what's coming next:
 | Gateway: Discord channel | 🔜 Planned |
 | Gateway: Microsoft Teams channel | 🔜 Planned |
 | Gateway: Email channel (SMTP/IMAP) | 🔜 Planned |
-| Additional connectors (Slack, Jira, Confluence, GitHub, Google Drive) | 🔜 Planned |
+| GitHub connector (RAG — multi-repo auto-discovery, filesystem-style browser) | ✅ Done |
+| Confluence connector (RAG — space-wise indexing, page browser) | ✅ Done |
+| Additional connectors (Slack, Jira, Google Drive) | 🔜 Planned |
 | Agent versioning and snapshot rollback | 🔜 Planned |
 | API rate limiting per workspace | 🔜 Planned |
 | Run failure notifications (email, webhook) | 🔜 Planned |
