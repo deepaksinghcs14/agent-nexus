@@ -11,5 +11,3 @@ restartPolicyMaxRetries = 5
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 
-[deploy.environmentVariables]
-EMBED_OLLAMA_URL = "http://ollama.railway.internal:11434"
