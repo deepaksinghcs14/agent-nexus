@@ -474,6 +474,36 @@ export interface ConnectorDocument {
   metadata: Record<string, unknown>
 }
 
+export interface ConnectorBrowseDir {
+  name: string
+  label: string
+  path: string
+  count?: number
+}
+export interface ConnectorBrowseFile {
+  id: string
+  title: string
+  url: string
+  source_document_id: string
+  indexed_at?: string
+}
+export interface ConnectorBrowseCrumb {
+  name: string
+  path: string
+}
+export interface ConnectorBrowseResult {
+  path: string
+  breadcrumb: ConnectorBrowseCrumb[]
+  dirs: ConnectorBrowseDir[]
+  files: ConnectorBrowseFile[]
+}
+
+export interface ConnectorDocumentGroup {
+  key: string
+  label: string
+  count: number
+}
+
 export interface Policy {
   id: string
   workspace_id?: string

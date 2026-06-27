@@ -133,6 +133,8 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Delete("/connectors/{id}", h.Connectors.Delete)
 			r.Post("/connectors/{id}/sync", h.Connectors.Sync)
 			r.Get("/connectors/{id}/documents", h.Connectors.ListDocuments)
+			r.Get("/connectors/{id}/browse", h.Connectors.BrowseDocuments)
+			r.Get("/connectors/{id}/document-groups", h.Connectors.ListDocumentGroups)
 			r.Get("/connectors/{id}/sync-jobs", h.Connectors.ListSyncJobs)
 			r.Get("/filesystem/browse", h.Connectors.BrowseFilesystem)
 

@@ -34,19 +34,30 @@ type Connector struct{}
 
 func New() *Connector { return &Connector{} }
 
+// multiCheckpoint is the resume state for multi-repo mode.
+type multiCheckpoint struct {
+	CompletedRepos []string `json:"completed_repos"`
+	CurrentRepo    string   `json:"current_repo"`
+	ProcessedCount int      `json:"processed_count"`
+}
+
+// singleCheckpoint is the resume state for single-repo mode.
+type singleCheckpoint struct {
+	ProcessedCount int `json:"processed_count"`
+}
+
 // FetchStream implements connector.StreamProvider.
-// Checkpoints by file index so a pod restart can skip already-processed files.
+// When repo is empty, all repos accessible to the token are auto-discovered.
+// SourceDocumentID format: "{owner}/{repo}/{path}" in all modes for uniqueness.
 func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts connector.FetchOpts, emit func(connector.Document) error) error {
 	token, _ := cfg["token"].(string)
 	owner, _ := cfg["owner"].(string)
 	repo, _ := cfg["repo"].(string)
 	branch, _ := cfg["branch"].(string)
 
-	if token == "" || owner == "" || repo == "" {
-		return fmt.Errorf("github: token, owner, and repo are required")
+	if token == "" {
+		return fmt.Errorf("github: token is required")
 	}
-
-	log := slog.With("connector", "github", "owner", owner, "repo", repo)
 
 	do := func(u string) (*http.Response, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
@@ -58,6 +69,140 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 		return httpClient.Do(req)
 	}
+
+	// Resolve owner from token if not provided.
+	if owner == "" {
+		res, err := do("https://api.github.com/user")
+		if err != nil {
+			return fmt.Errorf("github: resolve token owner: %w", err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf("github: resolve token owner returned HTTP %d", res.StatusCode)
+		}
+		var u struct{ Login string `json:"login"` }
+		if err := json.NewDecoder(res.Body).Decode(&u); err != nil {
+			return fmt.Errorf("github: decode user info: %w", err)
+		}
+		owner = u.Login
+	}
+
+	if repo != "" {
+		// Single-repo mode.
+		return c.syncRepo(ctx, do, owner, repo, branch, opts, emit)
+	}
+
+	// Multi-repo mode: discover all repos accessible to the token.
+	log := slog.With("connector", "github", "owner", owner)
+
+	var cp multiCheckpoint
+	if len(opts.Checkpoint) > 2 {
+		_ = json.Unmarshal(opts.Checkpoint, &cp)
+	}
+	completedSet := make(map[string]bool, len(cp.CompletedRepos))
+	for _, r := range cp.CompletedRepos {
+		completedSet[r] = true
+	}
+
+	// Paginate all accessible repos.
+	var repos []string
+	page := 1
+	for {
+		u := fmt.Sprintf("https://api.github.com/user/repos?per_page=100&page=%d&sort=full_name", page)
+		res, err := do(u)
+		if err != nil {
+			return fmt.Errorf("github: list repos: %w", err)
+		}
+		if res.StatusCode != http.StatusOK {
+			res.Body.Close()
+			return fmt.Errorf("github: list repos returned HTTP %d", res.StatusCode)
+		}
+		var batch []struct {
+			FullName string `json:"full_name"`
+		}
+		_ = json.NewDecoder(res.Body).Decode(&batch)
+		res.Body.Close()
+		for _, r := range batch {
+			repos = append(repos, r.FullName)
+		}
+		if len(batch) < 100 {
+			break
+		}
+		page++
+	}
+	log.Info("discovered repos", "count", len(repos), "already_completed", len(completedSet))
+
+	for _, fullName := range repos {
+		if completedSet[fullName] {
+			log.Info("skipping completed repo", "repo", fullName)
+			continue
+		}
+
+		parts := strings.SplitN(fullName, "/", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		repoOwner, repoName := parts[0], parts[1]
+
+		// Within a resumed repo, pass the per-repo processed_count.
+		repoOpts := connector.FetchOpts{}
+		if fullName == cp.CurrentRepo && cp.ProcessedCount > 0 {
+			b, _ := json.Marshal(singleCheckpoint{ProcessedCount: cp.ProcessedCount})
+			repoOpts.Checkpoint = b
+			log.Info("resuming repo from checkpoint", "repo", fullName, "offset", cp.ProcessedCount)
+		}
+		savedCP := cp // capture for closure
+		savedFull := fullName
+		repoOpts.SaveCheckpoint = func(v any) {
+			if opts.SaveCheckpoint == nil {
+				return
+			}
+			sc, ok := v.(map[string]any)
+			if !ok {
+				return
+			}
+			pc, _ := sc["processed_count"].(int)
+			opts.SaveCheckpoint(multiCheckpoint{
+				CompletedRepos: savedCP.CompletedRepos,
+				CurrentRepo:    savedFull,
+				ProcessedCount: pc,
+			})
+		}
+
+		if err := c.syncRepo(ctx, do, repoOwner, repoName, branch, repoOpts, emit); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			log.Warn("repo sync failed, continuing", "repo", fullName, "error", err)
+		}
+
+		// Mark repo as completed.
+		cp.CompletedRepos = append(cp.CompletedRepos, fullName)
+		completedSet[fullName] = true
+		cp.CurrentRepo = ""
+		cp.ProcessedCount = 0
+		if opts.SaveCheckpoint != nil {
+			opts.SaveCheckpoint(multiCheckpoint{
+				CompletedRepos: cp.CompletedRepos,
+			})
+		}
+	}
+
+	log.Info("multi-repo sync complete", "repos", len(repos))
+	return nil
+}
+
+// syncRepo fetches and emits all text files from a single repository.
+// SourceDocumentID = "{owner}/{repo}/{path}" for uniqueness across multi-repo syncs.
+func (c *Connector) syncRepo(
+	ctx context.Context,
+	do func(string) (*http.Response, error),
+	owner, repo, branch string,
+	opts connector.FetchOpts,
+	emit func(connector.Document) error,
+) error {
+	fullName := owner + "/" + repo
+	log := slog.With("connector", "github", "repo", fullName)
 
 	if branch == "" {
 		res, err := do(fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo))
@@ -75,7 +220,6 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 		branch = info.DefaultBranch
 	}
 
-	// Fetch the full recursive file tree (single API call).
 	treeURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1", owner, repo, branch)
 	res, err := do(treeURL)
 	if err != nil {
@@ -96,8 +240,10 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 		return fmt.Errorf("github: decode tree: %w", err)
 	}
 
-	// Filter to text blobs only.
-	type blob struct{ path string; size int }
+	type blob struct {
+		path string
+		size int
+	}
 	var blobs []blob
 	for _, item := range tree.Tree {
 		if item.Type != "blob" {
@@ -113,10 +259,8 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 	}
 	log.Info("tree fetched", "total_blobs", len(blobs))
 
-	// Load resume offset from checkpoint.
-	var cp struct {
-		ProcessedCount int `json:"processed_count"`
-	}
+	// Load resume offset.
+	var cp singleCheckpoint
 	if len(opts.Checkpoint) > 2 {
 		_ = json.Unmarshal(opts.Checkpoint, &cp)
 	}
@@ -167,23 +311,23 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 
 		if err := emit(connector.Document{
 			Source:           "github",
-			SourceDocumentID: b.path,
+			SourceDocumentID: fullName + "/" + b.path,
 			Title:            filepath.Base(b.path),
 			URL:              fmt.Sprintf("https://github.com/%s/%s/blob/%s/%s", owner, repo, branch, b.path),
 			Author:           owner,
 			Content:          text,
+			Metadata:         map[string]any{"repo": fullName},
 		}); err != nil {
 			return err
 		}
 
 		processed++
-		// Checkpoint every 10 files.
 		if opts.SaveCheckpoint != nil && processed%10 == 0 {
 			opts.SaveCheckpoint(map[string]any{"processed_count": i + 1})
 		}
 	}
 
-	log.Info("github sync complete", "files_processed", processed)
+	log.Info("repo sync complete", "repo", fullName, "files_processed", processed)
 	return nil
 }
 

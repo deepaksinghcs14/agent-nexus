@@ -175,7 +175,9 @@ export const connectorsAPI = {
   list: () => api.get('/connectors'),
   create: (body: unknown) => api.post('/connectors', body),
   sync: (id: string) => api.post(`/connectors/${id}/sync`),
-  documents: (id: string, page = 1) => api.get(`/connectors/${id}/documents?page=${page}`),
+  documents: (id: string, page = 1, group?: string) => api.get(`/connectors/${id}/documents?page=${page}${group ? `&group=${encodeURIComponent(group)}` : ''}`),
+  documentGroups: (id: string) => api.get(`/connectors/${id}/document-groups`),
+  browse: (id: string, path = '', search = '') => api.get(`/connectors/${id}/browse?path=${encodeURIComponent(path)}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
   syncJobs: (id: string) => api.get(`/connectors/${id}/sync-jobs`),
   delete: (id: string) => api.delete(`/connectors/${id}`),
 }
