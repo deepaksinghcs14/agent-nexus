@@ -44,6 +44,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 	r.Get("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Get)
 	r.Put("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Put)
 	r.Delete("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Delete)
+	r.Put("/internal/whatsapp/{accountId}/lid-map", h.WhatsAppCreds.PutLIDMap)
 
 	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC secret)
 	r.Post("/webhook/{webhookId}", h.WebhookIngress.Receive)
@@ -182,6 +183,8 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 				r.Get("/channels/{id}/adapter/login/qr", h.Gateway.AdapterQR)
 				r.Post("/channels/{id}/adapter/login/pairing-code", h.Gateway.AdapterPairingCode)
 				r.Post("/channels/{id}/adapter/logout", h.Gateway.AdapterLogout)
+				r.Post("/channels/{id}/adapter/sync-lids", h.Gateway.AdapterSyncLIDs)
+				r.Post("/channels/{id}/adapter/sync-contacts", h.Gateway.AdapterSyncContacts)
 				r.Get("/sessions", h.Gateway.ListSessions)
 				r.Delete("/sessions/{id}", h.Gateway.DeleteSession)
 				r.Get("/events", h.Gateway.ListEvents)

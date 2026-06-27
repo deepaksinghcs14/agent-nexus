@@ -80,3 +80,31 @@ func (h *WhatsAppCredsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	h.pool.Exec(r.Context(), `DELETE FROM whatsapp_credentials WHERE account_id=$1`, accountID) //nolint:errcheck
 	errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
+
+// PutLIDMap receives a batch of {jid, lid} pairs from the WhatsApp adapter and
+// updates gateway_contacts.whatsapp_lid so the pairing policy can match @lid senders.
+func (h *WhatsAppCredsHandler) PutLIDMap(w http.ResponseWriter, r *http.Request) {
+	accountID := chi.URLParam(r, "accountId")
+	var body struct {
+		Contacts []struct {
+			JID string `json:"jid"`
+			LID string `json:"lid"`
+		} `json:"contacts"`
+	}
+	if json.NewDecoder(r.Body).Decode(&body) != nil {
+		errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "updated": 0})
+		return
+	}
+	var updated int64
+	for _, c := range body.Contacts {
+		if c.JID == "" || c.LID == "" {
+			continue
+		}
+		tag, _ := h.pool.Exec(r.Context(),
+			`UPDATE gateway_contacts SET whatsapp_lid=$1, updated_at=NOW()
+			 WHERE account_id=$2 AND whatsapp_jid=$3 AND (whatsapp_lid='' OR whatsapp_lid=$1)`,
+			c.LID, accountID, c.JID)
+		updated += tag.RowsAffected()
+	}
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "updated": updated})
+}

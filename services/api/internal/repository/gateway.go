@@ -19,14 +19,14 @@ func NewGatewayRepository(pool *pgxpool.Pool) *GatewayRepository {
 
 const gatewayContactSelect = `
 SELECT id::text, workspace_id::text, channel_id::text, account_id, display_name, alias,
-       phone_number, whatsapp_jid, role, COALESCE(agent_id::text,''), auto_reply_enabled,
+       phone_number, whatsapp_jid, whatsapp_lid, role, COALESCE(agent_id::text,''), auto_reply_enabled,
        last_matched_at, created_at, updated_at
 FROM gateway_contacts`
 
 func scanGatewayContact(row interface{ Scan(...any) error }) (domain.GatewayContact, error) {
 	var c domain.GatewayContact
 	err := row.Scan(&c.ID, &c.WorkspaceID, &c.ChannelID, &c.AccountID, &c.DisplayName, &c.Alias,
-		&c.PhoneNumber, &c.WhatsAppJID, &c.Role, &c.AgentID, &c.AutoReplyEnabled,
+		&c.PhoneNumber, &c.WhatsAppJID, &c.WhatsAppLID, &c.Role, &c.AgentID, &c.AutoReplyEnabled,
 		&c.LastMatchedAt, &c.CreatedAt, &c.UpdatedAt)
 	return c, err
 }
@@ -364,11 +364,11 @@ func (r *GatewayRepository) GetContact(ctx context.Context, id, workspaceID stri
 
 func (r *GatewayRepository) CreateContact(ctx context.Context, c *domain.GatewayContact) error {
 	return r.pool.QueryRow(ctx, `
-		INSERT INTO gateway_contacts(workspace_id,channel_id,account_id,display_name,alias,phone_number,whatsapp_jid,role,agent_id,auto_reply_enabled)
-		VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9::uuid,$10)
+		INSERT INTO gateway_contacts(workspace_id,channel_id,account_id,display_name,alias,phone_number,whatsapp_jid,whatsapp_lid,role,agent_id,auto_reply_enabled)
+		VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10::uuid,$11)
 		RETURNING id::text, created_at, updated_at`,
 		c.WorkspaceID, c.ChannelID, c.AccountID, c.DisplayName, c.Alias, normalizePhone(c.PhoneNumber),
-		c.WhatsAppJID, c.Role, nullableString(c.AgentID), c.AutoReplyEnabled,
+		c.WhatsAppJID, c.WhatsAppLID, c.Role, nullableString(c.AgentID), c.AutoReplyEnabled,
 	).Scan(&c.ID, &c.CreatedAt, &c.UpdatedAt)
 }
 
@@ -395,6 +395,7 @@ func (r *GatewayRepository) MatchContact(ctx context.Context, channelID, account
 		  AND account_id=$2
 		  AND (
 		    (whatsapp_jid <> '' AND whatsapp_jid=$3)
+		    OR (whatsapp_lid <> '' AND whatsapp_lid=$3)
 		    OR (phone_number <> '' AND phone_number=$4)
 		  )
 		ORDER BY CASE role WHEN 'owner' THEN 0 WHEN 'trusted' THEN 1 ELSE 2 END

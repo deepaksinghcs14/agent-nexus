@@ -393,6 +393,71 @@ func (h *GatewayHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *GatewayHandler) AdapterSyncLIDs(w http.ResponseWriter, r *http.Request) {
+	_, cfg, ok := h.loadWhatsAppChannel(w, r)
+	if !ok {
+		return
+	}
+	body, err := adapterPost(r.Context(), cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/sync-lids", nil)
+	if err != nil {
+		errs.Write(w, errs.BadRequest("lid sync failed: "+err.Error()))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(body) //nolint:errcheck
+}
+
+func (h *GatewayHandler) AdapterSyncContacts(w http.ResponseWriter, r *http.Request) {
+	c, cfg, ok := h.loadWhatsAppChannel(w, r)
+	if !ok {
+		return
+	}
+	body, err := adapterGet(r.Context(), cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/contacts")
+	if err != nil {
+		errs.Write(w, errs.BadRequest("adapter contacts failed: "+err.Error()))
+		return
+	}
+	var resp struct {
+		Contacts []struct {
+			Phone string `json:"phone"`
+			JID   string `json:"jid"`
+			LID   string `json:"lid"`
+			Name  string `json:"name"`
+		} `json:"contacts"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		errs.Write(w, errs.BadRequest("invalid adapter response"))
+		return
+	}
+	var created, updated int
+	for _, ac := range resp.Contacts {
+		phone := normalizeGatewayPhone(ac.Phone)
+		if phone == "" {
+			continue
+		}
+		existing, _ := h.repo.MatchContact(r.Context(), c.ID, cfg.AccountID, ac.JID, phone)
+		if existing == nil {
+			name := defaultString(ac.Name, phone)
+			gc := &domain.GatewayContact{
+				WorkspaceID: c.WorkspaceID, ChannelID: c.ID, AccountID: cfg.AccountID,
+				DisplayName: name, Alias: aliasFromName(name),
+				PhoneNumber: phone, WhatsAppJID: ac.JID, WhatsAppLID: ac.LID,
+				Role: "trusted", AutoReplyEnabled: false,
+			}
+			if err := h.repo.CreateContact(r.Context(), gc); err == nil {
+				created++
+			}
+		} else if existing.WhatsAppLID == "" && ac.LID != "" {
+			_, _ = h.pool.Exec(r.Context(),
+				`UPDATE gateway_contacts SET whatsapp_lid=$1, updated_at=NOW() WHERE id=$2::uuid`,
+				ac.LID, existing.ID)
+			updated++
+		}
+	}
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"created": created, "updated": updated})
+}
+
 func (h *GatewayHandler) AdapterStatus(w http.ResponseWriter, r *http.Request) {
 	c, cfg, ok := h.loadWhatsAppChannel(w, r)
 	if !ok {
@@ -768,6 +833,17 @@ func (h *GatewayHandler) handleOwnerCommand(ctx context.Context, c domain.Gatewa
 		_ = h.repo.UpdateChannel(ctx, &c)
 		_ = h.logEvent(ctx, c, "", "", "chat_approvals_enabled", "", map[string]any{"by": msg.SenderID})
 		return "Chat approvals are now enabled for this WhatsApp channel.", true
+	case body == "sync" || body == "sync contacts" || body == "!sync":
+		accountID := defaultString(msg.AccountID, cfg.AccountID)
+		result, err := adapterPost(ctx, cfg.AdapterURL, "/accounts/"+url.PathEscape(accountID)+"/sync-lids", nil)
+		if err != nil {
+			return "Contact sync failed: " + err.Error(), true
+		}
+		var syncRes struct {
+			Synced int `json:"synced"`
+		}
+		_ = json.Unmarshal(result, &syncRes)
+		return fmt.Sprintf("Synced %d contact LID mappings to the database.", syncRes.Synced), true
 	case body == "list approvals" || body == "pending approvals":
 		if !cfg.ChatApprovalsEnabled {
 			return "Chat approvals are disabled. Enable them with: enable approvals", true

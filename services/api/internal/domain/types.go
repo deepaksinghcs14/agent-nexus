@@ -360,6 +360,7 @@ type GatewayContact struct {
 	Alias            string     `json:"alias"`
 	PhoneNumber      string     `json:"phone_number"`
 	WhatsAppJID      string     `json:"whatsapp_jid"`
+	WhatsAppLID      string     `json:"whatsapp_lid,omitempty"`
 	Role             string     `json:"role"`
 	AgentID          string     `json:"agent_id,omitempty"`
 	AutoReplyEnabled bool       `json:"auto_reply_enabled"`

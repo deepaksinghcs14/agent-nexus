@@ -54,6 +54,11 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const [testResponse, setTestResponse] = useState<string | null>(null)
   const [testLoading, setTestLoading] = useState(false)
 
+  const [syncLIDsLoading, setSyncLIDsLoading] = useState(false)
+  const [syncLIDsResult, setSyncLIDsResult] = useState<string | null>(null)
+  const [syncContactsLoading, setSyncContactsLoading] = useState(false)
+  const [syncContactsResult, setSyncContactsResult] = useState<string | null>(null)
+
   const [pairingPhone, setPairingPhone] = useState('')
   const [pairingCode, setPairingCode] = useState('')
   const [pairingLoading, setPairingLoading] = useState(false)
@@ -194,6 +199,33 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
     }, 3000)
     return () => clearInterval(interval)
   }, [adapter?.status, refreshAdapter]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const syncLIDs = async () => {
+    setSyncLIDsLoading(true)
+    setSyncLIDsResult(null)
+    try {
+      const r = await gatewayAPI.syncLIDs(params.id) as { synced?: number }
+      setSyncLIDsResult(`${r.synced ?? 0} LID mappings synced to database`)
+    } catch (e) {
+      setSyncLIDsResult('Sync failed: ' + (e as Error).message)
+    } finally {
+      setSyncLIDsLoading(false)
+    }
+  }
+
+  const syncContacts = async () => {
+    setSyncContactsLoading(true)
+    setSyncContactsResult(null)
+    try {
+      const r = await gatewayAPI.syncContacts(params.id) as { created?: number; updated?: number }
+      setSyncContactsResult(`${r.created ?? 0} created, ${r.updated ?? 0} LIDs updated`)
+      load()
+    } catch (e) {
+      setSyncContactsResult('Sync failed: ' + (e as Error).message)
+    } finally {
+      setSyncContactsLoading(false)
+    }
+  }
 
   const updateSelfChat = async (enabled: boolean) => {
     await updateChannelConfig({ self_chat_enabled: enabled }, true)
@@ -455,6 +487,16 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
             <div className="flex items-center gap-1">
               <code className="text-xs text-gray-500 font-mono bg-gray-50 px-2 py-1 rounded truncate">{ingressURL}</code>
               <CopyButton text={ingressURL} />
+            </div>
+          </div>
+          <div className="col-span-2 rounded-lg border border-gray-200 p-4 bg-white">
+            <p className="text-[12px] font-medium text-gray-700 mb-1">Contact LID Sync</p>
+            <p className="text-[11px] text-gray-400 mb-3">Push in-memory LID→phone mappings to the database so the pairing policy can match @lid senders to existing contacts.</p>
+            <div className="flex items-center gap-3">
+              <button onClick={syncLIDs} disabled={syncLIDsLoading} className="px-3 py-1.5 bg-purple-600 text-white text-[12px] font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50">
+                {syncLIDsLoading ? 'Syncing…' : 'Sync LIDs'}
+              </button>
+              {syncLIDsResult && <span className="text-[11px] text-gray-500">{syncLIDsResult}</span>}
             </div>
           </div>
         </div>
@@ -727,6 +769,16 @@ Content-Type: application/json
               <button onClick={addContact} className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium">Add</button>
             </div>
           </div>
+          <div className="rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[12px] font-medium text-gray-700">Sync contacts from WhatsApp</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">Import all phone contacts from the connected device. New contacts are added with auto-reply off; existing contacts get their LID updated.</p>
+              {syncContactsResult && <p className="text-[11px] text-emerald-600 mt-1">{syncContactsResult}</p>}
+            </div>
+            <button onClick={syncContacts} disabled={syncContactsLoading} className="shrink-0 px-3 py-1.5 bg-purple-600 text-white text-[12px] font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50">
+              {syncContactsLoading ? 'Syncing…' : 'Sync Contacts'}
+            </button>
+          </div>
           <div className="rounded-lg border border-gray-200 overflow-hidden bg-white">
             {contacts.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">No contacts yet</div> : contacts.map((c) => (
               <div key={c.id} className="px-4 py-3 border-b border-gray-100 last:border-b-0 flex items-center justify-between gap-4">
@@ -738,6 +790,7 @@ Content-Type: application/json
                   </div>
                   <div className="flex items-center gap-3 mt-1">
                     <span className="text-xs text-gray-400">{c.phone_number || c.whatsapp_jid} · {c.alias || 'no alias'} · last matched {c.last_matched_at ? new Date(c.last_matched_at).toLocaleString() : 'never'}</span>
+                  {c.whatsapp_lid && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-50 text-gray-400 border border-gray-100" title="WhatsApp LID (Linked Device ID)">{c.whatsapp_lid.split('@')[0]}</span>}
                     <select
                       value={c.agent_id ?? ''}
                       onChange={async (e) => {

@@ -294,6 +294,7 @@ export interface GatewayContact {
   alias: string
   phone_number: string
   whatsapp_jid: string
+  whatsapp_lid?: string
   role: 'owner' | 'trusted' | 'blocked'
   agent_id?: string
   auto_reply_enabled: boolean

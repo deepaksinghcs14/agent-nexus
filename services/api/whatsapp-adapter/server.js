@@ -103,6 +103,7 @@ function accountState(accountId) {
       sentMessageIds: new Set(),
       messageStore: new Map(),  // id → proto message, for retry requests
       lidToPhone: new Map(),
+      contactMap: new Map(),    // phoneBare → { name, lid }
       pendingPhones: [],
       connectedAt: 0,           // epoch ms when last connection.open fired
       lastMessageAt: 0          // epoch ms of last forwarded inbound message
@@ -244,18 +245,37 @@ async function startAccount(accountId, opts = {}) {
 
   // Build LID→phone map so we can resolve @lid JIDs to real phone numbers for contact matching.
   // WhatsApp migrated to LID-based JIDs; contact.id has the phone JID, contact.lid has the LID.
+  // Also persist the map to the Go DB so pairing policy can match @lid senders across restarts.
   const updateLidMap = (contacts) => {
+    const pairs = []
     for (const contact of contacts) {
       const cid = contact.id || ''
       const clid = contact.lid || ''
-      if (cid && clid && !cid.endsWith('@lid')) {
-        const phoneBare = cid.split('@')[0].split(':')[0]
+      if (!cid || cid.endsWith('@lid') || cid.endsWith('@g.us')) continue
+      const phoneBare = cid.split('@')[0].split(':')[0]
+      if (!phoneBare) continue
+      const name = contact.name || contact.notify || ''
+      if (clid) {
         const lidBare = clid.split('@')[0].split(':')[0]
-        if (phoneBare && lidBare) {
+        if (lidBare) {
           state.lidToPhone.set(lidBare, phoneBare)
+          pairs.push({ jid: `${phoneBare}@s.whatsapp.net`, lid: `${lidBare}@lid` })
+          state.contactMap.set(phoneBare, { name, lid: lidBare })
           logger.info({ accountId, lid: clid, phone: cid }, 'LID mapped')
         }
+      } else {
+        // No LID yet — store the contact name so it shows in the sync endpoint
+        if (!state.contactMap.has(phoneBare)) {
+          state.contactMap.set(phoneBare, { name, lid: '' })
+        }
       }
+    }
+    if (pairs.length > 0) {
+      fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/lid-map`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contacts: pairs })
+      }).catch(err => logger.warn({ err, accountId }, 'lid-map DB sync failed'))
     }
   }
   socket.ev.on('contacts.upsert', updateLidMap)
@@ -403,8 +423,20 @@ async function forwardMessage(accountId, state, msg) {
     return phoneBare ? `${phoneBare}@s.whatsapp.net` : jid
   }
 
-  const resolvedParticipant = resolveJid(participant)
-  const resolvedRemoteJid = resolveJid(remoteJid)
+  let resolvedRemoteJid = resolveJid(remoteJid)
+  let resolvedParticipant = resolveJid(participant)
+
+  // If remoteJid is still an @lid (not in the map yet), wait briefly for the
+  // contacts.upsert event that WhatsApp sends right after the message — it carries
+  // the LID→phone mapping and should populate lidToPhone within ~1-2 seconds.
+  if (resolvedRemoteJid.endsWith('@lid')) {
+    await new Promise(r => setTimeout(r, 2000))
+    resolvedRemoteJid = resolveJid(remoteJid)
+    resolvedParticipant = resolveJid(participant)
+    if (resolvedRemoteJid.endsWith('@lid')) {
+      logger.warn({ accountId, remoteJid, resolvedRemoteJid }, 'could not resolve @lid JID — forwarding as-is')
+    }
+  }
 
   const payload = {
     type: 'message.received',
@@ -587,6 +619,38 @@ async function route(req, res) {
     await fs.rm(authDir, { recursive: true, force: true })
     await deleteAuthStateFromDB(accountId)
     return json(res, 200, { account_id: accountId, status: state.status })
+  }
+
+  // Return all known contacts (phone + name + lid) from the in-memory contact map.
+  // Used by the Go API to create gateway_contacts from the adapter's contact list.
+  if (req.method === 'GET' && parts[2] === 'contacts') {
+    const contacts = []
+    for (const [phoneBare, info] of (state.contactMap?.entries() || [])) {
+      contacts.push({
+        phone: phoneBare,
+        jid: `${phoneBare}@s.whatsapp.net`,
+        lid: info.lid ? `${info.lid}@lid` : '',
+        name: info.name || ''
+      })
+    }
+    return json(res, 200, { contacts })
+  }
+
+  // Dump the current in-memory lidToPhone map to the Go DB so pairing policy
+  // can match @lid senders. Triggered by the owner "sync" chat command.
+  if (req.method === 'POST' && parts[2] === 'sync-lids') {
+    const pairs = []
+    for (const [lidBare, phoneBare] of (state.lidToPhone?.entries() || [])) {
+      pairs.push({ jid: `${phoneBare}@s.whatsapp.net`, lid: `${lidBare}@lid` })
+    }
+    if (pairs.length > 0) {
+      await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/lid-map`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contacts: pairs })
+      })
+    }
+    return json(res, 200, { ok: true, synced: pairs.length })
   }
 
   if (req.method === 'POST' && parts[2] === 'send') {
