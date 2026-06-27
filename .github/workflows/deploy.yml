@@ -41,7 +41,7 @@ jobs:
         with:
           node-version: 20
       - run: npm install -g @railway/cli
-      - run: railway redeploy --service ollama --yes --detach
+      - run: railway redeploy --service ollama --yes
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: b11bee08-7115-4026-b73d-1ebe49976792
