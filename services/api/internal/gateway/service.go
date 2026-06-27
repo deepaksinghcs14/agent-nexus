@@ -93,7 +93,22 @@ func (s *Service) SendWhatsApp(ctx context.Context, req SendRequest) (*domain.Ga
 		return nil, fmt.Errorf("gateway: create outbound record: %w", err)
 	}
 	payload := map[string]any{"peer": map[string]string{"kind": peerKind, "id": req.PeerID}, "text": req.Body}
-	_, err := adapterPost(ctx, req.Config.AdapterURL, "/accounts/"+url.PathEscape(accountID)+"/send", payload)
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				err = ctx.Err()
+				goto sendDone
+			case <-time.After(5 * time.Second):
+			}
+		}
+		_, err = adapterPost(ctx, req.Config.AdapterURL, "/accounts/"+url.PathEscape(accountID)+"/send", payload)
+		if err == nil || !strings.Contains(err.Error(), `"connecting"`) {
+			break
+		}
+	}
+sendDone:
 	if err != nil {
 		_ = s.repo.MarkOutbound(ctx, out.ID, "failed", err.Error())
 		_ = s.LogEvent(ctx, req.Channel, req.SessionID, req.RunID, "delivery_failed", "", map[string]any{"error": err.Error(), "peer_id": req.PeerID})
