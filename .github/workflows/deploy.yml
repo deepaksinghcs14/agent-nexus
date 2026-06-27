@@ -37,12 +37,11 @@ jobs:
     name: Deploy Ollama
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       - run: npm install -g @railway/cli
-      - run: railway up ./services/ollama --service ollama --detach
+      - run: railway redeploy --service ollama --yes --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: b11bee08-7115-4026-b73d-1ebe49976792
