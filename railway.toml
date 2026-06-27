@@ -11,7 +11,3 @@ restartPolicyMaxRetries = 5
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 
-[deploy.environmentVariables]
-API_CPU_LIMIT = "300"
-ADAPTER_CPU_LIMIT = "100"
-OLLAMA_CPU_LIMIT = "200"
