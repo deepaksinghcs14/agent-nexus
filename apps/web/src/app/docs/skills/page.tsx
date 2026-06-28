@@ -43,6 +43,7 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
       </Callout>
 
       <h2>Skill sources</h2>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Source</th><th>Description</th></tr>
@@ -61,6 +62,7 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
           </tr>
         </tbody>
       </table>
+      </div>
 
       <h2>Required tools</h2>
       <p>
@@ -103,6 +105,7 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
         These skills are provided by Agent Nexus and are available in every workspace. They are
         read-only — attach them to any agent directly from the Skills tab.
       </p>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Skill</th><th>Auto-attaches tools</th><th>Purpose</th></tr>
@@ -180,6 +183,7 @@ Always respond in a friendly, concise tone. ...`}</code></pre>
           </tr>
         </tbody>
       </table>
+      </div>
 
       <Callout type="tip">
         For WhatsApp agents, a good starting stack is: <strong>WhatsApp Formatter</strong> +{' '}

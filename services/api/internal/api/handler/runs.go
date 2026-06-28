@@ -109,23 +109,24 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	contextChunks := []agentprompt.ContextChunk{}
+	var runConnSettings connectorSettings
 	if a.ContextRetrievalEnabled {
+		runConnSettings, _ = h.agentConnectorSettings(r.Context(), a.ID)
+	}
+
+	if a.ContextRetrievalEnabled && !a.AgenticRAG {
 		start := time.Now()
-		connectorIDs, err := h.agentConnectorIDs(r.Context(), a.ID)
 		var queryEmbedding []float32
-		if err == nil {
+		if len(runConnSettings.IDs) > 0 {
 			queryEmbedding = tryEmbed(r.Context(), h.cfg, llm, q.Input)
 		}
-		chunks := []contextretrieval.Chunk{}
-		if err == nil {
-			chunks, err = contextretrieval.NewRetriever(h.pool).Retrieve(r.Context(), ws, connectorIDs, queryEmbedding, 8)
-		}
+		chunks, err := contextretrieval.NewRetriever(h.pool).Retrieve(r.Context(), ws, runConnSettings.IDs, queryEmbedding, runConnSettings.MaxChunks, runConnSettings.MinScore, q.Input)
 		if err == nil {
 			for _, chunk := range chunks {
 				contextChunks = append(contextChunks, formatChunk(chunk))
 			}
 		}
-		_ = h.createStep(r.Context(), id, domain.StepContextRetrieval, map[string]any{"connector_ids": connectorIDs}, map[string]any{"count": len(contextChunks)}, start, 0, "", errString(err))
+		_ = h.createStep(r.Context(), id, domain.StepContextRetrieval, map[string]any{"connector_ids": runConnSettings.IDs}, map[string]any{"count": len(contextChunks)}, start, 0, "", errString(err))
 	}
 
 	var convCompaction string
@@ -170,6 +171,13 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	// Load tool definitions for this agent (before building prompt so we can inject hints)
 	allToolDefs, dbTools, _ := loadAgentToolDefs(r.Context(), h.pool, a.ID)
 	allToolDefs, dbTools = ensureMemoryToolDefs(allToolDefs, dbTools)
+	if a.ContextRetrievalEnabled && a.AgenticRAG {
+		if rt, err := h.registry.Get("native_retrieve_context"); err == nil {
+			def := rt.Definition()
+			allToolDefs = append(allToolDefs, provider.ToolDefinition{Name: def.Name, Description: def.Description, InputSchema: def.InputSchema})
+			dbTools[def.Name] = def
+		}
+	}
 
 	hasCallAgent := false
 	for _, td := range allToolDefs {
@@ -181,6 +189,9 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 
 	skills, _ := loadAgentSkills(r.Context(), h.pool, a.ID)
 	instructions := a.Instructions + onDemandSkillsInstructions(skills.OnDemand)
+	if a.ContextRetrievalEnabled && a.AgenticRAG {
+		instructions += "\n\nTo look up information from your connected knowledge sources, use the `native_retrieve_context` tool. Always call it before answering questions that require specific knowledge from your documents, codebase, or indexed files. Do NOT call any tool named \"search\" — use `native_retrieve_context` instead."
+	}
 	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: instructions,
 		Skills:             skills.Always,
@@ -222,6 +233,9 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	requestedTools := map[string]bool{}
+	if a.ContextRetrievalEnabled && a.AgenticRAG {
+		requestedTools["native_retrieve_context"] = true
+	}
 	activeSkills := map[string]bool{}
 	activeSkillTools := map[string]bool{}
 	visibleToolDefs := func() []provider.ToolDefinition {
@@ -243,6 +257,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		UserID:            uid,
 		RunID:             id,
 		ConversationID:    c.ID,
+		ConnectorIDs:      runConnSettings.IDs,
 		ToolSummaries:     toolSummaries,
 		AlwaysActiveTools: metaToolNameSet(),
 		SkillSummaries:    skillSummaries,
@@ -250,6 +265,10 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		InvokeDepth:       0,
 		RootRunID:         id,
 		CallAgent:         callAgentFn,
+		Embed: func(ctx context.Context, text string) ([]float32, error) {
+			v := tryEmbed(ctx, h.cfg, llm, text)
+			return v, nil
+		},
 		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
 			if h.invokeH == nil {
 				return "", fmt.Errorf("workflow execution not available")
@@ -589,6 +608,13 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		// Reload tool definitions to pick up tools created or attached mid-run.
 		if freshDefs, freshDB, err := loadAgentToolDefs(r.Context(), h.pool, a.ID); err == nil {
 			freshDefs, freshDB = ensureMemoryToolDefs(freshDefs, freshDB)
+			if a.ContextRetrievalEnabled && a.AgenticRAG {
+				if rt, err := h.registry.Get("native_retrieve_context"); err == nil {
+					def := rt.Definition()
+					freshDefs = append(freshDefs, provider.ToolDefinition{Name: def.Name, Description: def.Description, InputSchema: def.InputSchema})
+					freshDB[def.Name] = def
+				}
+			}
 			allToolDefs, dbTools = freshDefs, freshDB
 			for name := range toolSummaries {
 				delete(toolSummaries, name)
@@ -655,21 +681,37 @@ func (h *RunsHandler) failRun(ctx context.Context, runID, message string) error 
 	return err
 }
 
-func (h *RunsHandler) agentConnectorIDs(ctx context.Context, agentID string) ([]string, error) {
-	rows, err := h.pool.Query(ctx, `SELECT connector_id::text FROM agent_connectors WHERE agent_id=$1::uuid AND enabled=true ORDER BY created_at DESC`, agentID)
+type connectorSettings struct {
+	IDs       []string
+	MaxChunks int
+	MinScore  float64
+}
+
+func (h *RunsHandler) agentConnectorSettings(ctx context.Context, agentID string) (connectorSettings, error) {
+	rows, err := h.pool.Query(ctx,
+		`SELECT connector_id::text, max_chunks, min_score FROM agent_connectors WHERE agent_id=$1::uuid AND enabled=true ORDER BY created_at DESC`,
+		agentID)
 	if err != nil {
-		return nil, err
+		return connectorSettings{}, err
 	}
 	defer rows.Close()
-	ids := []string{}
+	s := connectorSettings{MaxChunks: 8, MinScore: 0.75}
 	for rows.Next() {
 		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
+		var maxChunks int
+		var minScore float64
+		if err := rows.Scan(&id, &maxChunks, &minScore); err != nil {
+			return connectorSettings{}, err
 		}
-		ids = append(ids, id)
+		s.IDs = append(s.IDs, id)
+		if maxChunks > s.MaxChunks {
+			s.MaxChunks = maxChunks
+		}
+		if minScore < s.MinScore {
+			s.MinScore = minScore
+		}
 	}
-	return ids, rows.Err()
+	return s, rows.Err()
 }
 
 func formatChunk(chunk contextretrieval.Chunk) agentprompt.ContextChunk {

@@ -20,6 +20,7 @@ export default function GatewayDoc() {
       </p>
 
       <h2>Supported channel types</h2>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Type</th><th>Transport</th><th>Notes</th></tr>
@@ -37,6 +38,7 @@ export default function GatewayDoc() {
           </tr>
         </tbody>
       </table>
+      </div>
 
       <h2>How it works — HTTP channel</h2>
       <p>
@@ -115,6 +117,7 @@ export default function GatewayDoc() {
       </Callout>
 
       <h2>Channel configuration options</h2>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Option</th><th>Description</th></tr>
@@ -154,8 +157,10 @@ export default function GatewayDoc() {
           </tr>
         </tbody>
       </table>
+      </div>
 
       <h2>Contact roles</h2>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Role</th><th>Behaviour</th></tr>
@@ -178,12 +183,14 @@ export default function GatewayDoc() {
           </tr>
         </tbody>
       </table>
+      </div>
 
       <h2>Owner commands</h2>
       <p>
         Any contact with the <strong>owner</strong> role can send WhatsApp messages to control the
         gateway without touching the dashboard:
       </p>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Command</th><th>Effect</th></tr>
@@ -202,12 +209,14 @@ export default function GatewayDoc() {
           <tr><td><code>pending approvals</code></td><td>List outstanding escalation codes</td></tr>
         </tbody>
       </table>
+      </div>
 
       <h2>DM policy</h2>
       <p>
         The <strong>DM Policy</strong> controls which senders can reach the agent when they are{' '}
         <em>not</em> in the contacts list:
       </p>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Policy</th><th>Behaviour</th></tr>
@@ -218,6 +227,7 @@ export default function GatewayDoc() {
           <tr><td><strong>allowlist</strong></td><td>Only phone numbers / JIDs in the explicit allow list are accepted.</td></tr>
         </tbody>
       </table>
+      </div>
 
       <h2>Escalation and approval</h2>
       <p>
@@ -238,6 +248,7 @@ export default function GatewayDoc() {
       </Callout>
 
       <h2>Environment variables</h2>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Variable</th><th>Description</th></tr>
@@ -253,6 +264,7 @@ export default function GatewayDoc() {
           </tr>
         </tbody>
       </table>
+      </div>
     </DocPage>
   )
 }

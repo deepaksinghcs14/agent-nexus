@@ -560,7 +560,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
                   <Bot size={13} className="text-purple-600" />
                 </div>
               )}
-              <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+              <div className={`max-w-[90%] sm:max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
                 isUser
                   ? 'bg-purple-600 text-white rounded-br-sm'
                   : 'bg-gray-50 border border-gray-100 text-gray-800 rounded-bl-sm'
@@ -603,7 +603,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0 mt-0.5">
               <Bot size={13} className="text-purple-600" />
             </div>
-            <div className="max-w-[80%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm leading-relaxed bg-gray-50 border border-gray-100 text-gray-800">
+            <div className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm leading-relaxed bg-gray-50 border border-gray-100 text-gray-800">
               <MarkdownMessage content={streamBuffer} isStreaming />
               <span className="inline-block w-1.5 h-3.5 bg-gray-400 ml-0.5 animate-pulse rounded-sm" />
             </div>
@@ -616,7 +616,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
               <Bot size={13} className="text-amber-600" />
             </div>
-            <div className="max-w-[80%] rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div className="max-w-[90%] sm:max-w-[80%] rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-xs font-semibold text-amber-800 mb-1">Approval required</p>
               <p className="text-[12px] text-amber-700 mb-2">
                 Tool <code className="font-mono bg-amber-100 px-1 rounded">{approvalState.tool}</code> wants to run with:
@@ -642,7 +642,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
               <Bot size={13} className="text-blue-600" />
             </div>
-            <div className="max-w-[80%] rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 w-80">
+            <div className="max-w-[90%] sm:max-w-[80%] rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 w-full sm:w-80">
               <p className="text-xs font-semibold text-blue-800 mb-2">Agent is asking</p>
               <p className="text-[13px] text-blue-900 mb-3">{userInputState.question}</p>
               <textarea

@@ -84,7 +84,7 @@ Guidelines:
 - Always call list_connectors before create_agent if the user mentions documents, knowledge base, or context retrieval.
 - Use sensible defaults: temperature=0.7, max_tokens=4096, max_steps=10, max_tool_calls=20, status="active".
 - Enable memory (memory_enabled=true, memory_scope="agent") for agents that need to remember past interactions.
-- Enable context retrieval (context_retrieval_enabled=true) for agents that need to search documents.
+- Enable context retrieval (context_retrieval_enabled=true) for agents that need to search documents. Use agentic_rag=true when the agent should decide when/what to retrieve dynamically rather than getting a fixed pre-run injection.
 - For workflows, always include a start node (node_type="start") and an end node (node_type="end").
 - Use condition nodes for branching (yes/no edges), parallel+join nodes for concurrent execution, loop nodes for retry patterns.
 - For supervisor workflows: use node_type="supervisor" for the coordinating agent (not "agent"). Connect start→supervisor→end with normal edges. Connect supervisor→each team agent node with edges labelled "delegate" — these agents become callable tools the supervisor uses at runtime. The supervisor's LLM decides when and how to call each team agent. Always assign a real agent to the supervisor node via agent_id. IMPORTANT: when writing the supervisor agent's instructions, do NOT include tool names like "delegate_researcher" — the runtime discovers connected team agents and injects their exact names automatically. Write the supervisor's instructions to describe coordination strategy, task sequencing rationale, expected output format, and quality criteria only. When creating team agents for a supervisor workflow, always populate the description field with one sentence stating the agent's specialty (e.g. "Fact-checks claims for accuracy and flags unverified assertions") — this description is shown to the supervisor LLM as the team agent's tool description at runtime.
@@ -135,11 +135,12 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"memory_enabled":{"type":"boolean","description":"Enable memory so the agent remembers past interactions"},
 				"memory_scope":{"type":"string","enum":["conversation","agent","workspace"],"description":"Memory scope: conversation (per-chat), agent (across all chats with this agent), workspace (shared across all agents). Default: agent"},
 				"context_retrieval_enabled":{"type":"boolean","description":"Enable retrieval-augmented context from connected data sources (connectors)"},
+				"agentic_rag":{"type":"boolean","description":"Let the agent decide when/what to retrieve via native_retrieve_context tool instead of pre-run injection. Only used when context_retrieval_enabled=true."},
 				"tool_ids":{"type":"array","items":{"type":"string"},"description":"List of tool UUIDs to attach. Get these from list_tools."},
 				"tool_names":{"type":"array","items":{"type":"string"},"description":"List of tool names to attach (alternative to tool_ids, e.g. ['native_web_search','native_read_file']). Resolved by name."},
 				"connector_ids":{"type":"array","items":{"type":"string"},"description":"List of connector UUIDs to enable for context retrieval. Requires context_retrieval_enabled=true. Get IDs from list_connectors."},
-				"max_chunks":{"type":"integer","description":"Max context chunks to retrieve per run (default 8, only used when context_retrieval_enabled=true)"},
-				"min_score":{"type":"number","description":"Minimum similarity score for context retrieval, 0-1 (default 0.5, only used when context_retrieval_enabled=true)"},
+				"max_chunks":{"type":"integer","description":"Max context chunks to retrieve per run (default 8, only used when context_retrieval_enabled=true and agentic_rag=false)"},
+				"min_score":{"type":"number","description":"Minimum similarity score for context retrieval, 0-1 (default 0.5, only used when context_retrieval_enabled=true and agentic_rag=false)"},
 				"status":{"type":"string","enum":["active","paused","archived"],"description":"Agent status, default active"}
 			},
 			"required":["name","instructions","provider","model"]
@@ -280,6 +281,8 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"description":{"type":"string","description":"New one-sentence description."},
 				"instructions":{"type":"string","description":"New system prompt / instructions."},
 				"model":{"type":"string","description":"New model ID, e.g. claude-sonnet-4-6. Use list_available_models to verify it exists."},
+				"context_retrieval_enabled":{"type":"boolean","description":"Enable or disable retrieval-augmented context from connected data sources."},
+				"agentic_rag":{"type":"boolean","description":"Let the agent decide when/what to retrieve via native_retrieve_context instead of pre-run injection. Requires context_retrieval_enabled=true."},
 				"status":{"type":"string","enum":["active","paused","archived"],"description":"New agent status."}
 			},
 			"required":["agent_id"]
@@ -760,6 +763,7 @@ func (h *NexusAIHandler) toolCreateAgent(ctx context.Context, ws, uid string, in
 		MemoryEnabled           bool     `json:"memory_enabled"`
 		MemoryScope             string   `json:"memory_scope"`
 		ContextRetrievalEnabled bool     `json:"context_retrieval_enabled"`
+		AgenticRAG              bool     `json:"agentic_rag"`
 		ToolIDs                 []string `json:"tool_ids"`
 		ToolNames               []string `json:"tool_names"`
 		ConnectorIDs            []string `json:"connector_ids"`
@@ -815,6 +819,7 @@ func (h *NexusAIHandler) toolCreateAgent(ctx context.Context, ws, uid string, in
 		MemoryEnabled:           args.MemoryEnabled,
 		MemoryScope:             args.MemoryScope,
 		ContextRetrievalEnabled: args.ContextRetrievalEnabled,
+		AgenticRAG:              args.AgenticRAG,
 		MaxSteps:                args.MaxSteps,
 		MaxToolCalls:            args.MaxToolCalls,
 		MaxDurationSecs:         args.MaxDurationSecs,
@@ -1324,11 +1329,13 @@ func (h *NexusAIHandler) toolAttachSkills(ctx context.Context, ws string, input 
 func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input json.RawMessage) (*toolResult, error) {
 	var args struct {
 		AgentID      string `json:"agent_id"`
-		Name         string `json:"name"`
-		Description  string `json:"description"`
-		Instructions string `json:"instructions"`
-		Model        string `json:"model"`
-		Status       string `json:"status"`
+		Name                    string `json:"name"`
+		Description             string `json:"description"`
+		Instructions            string `json:"instructions"`
+		Model                   string `json:"model"`
+		Status                  string `json:"status"`
+		ContextRetrievalEnabled *bool  `json:"context_retrieval_enabled"`
+		AgenticRAG              *bool  `json:"agentic_rag"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
 		return nil, fmt.Errorf("invalid update_agent input: %w", err)
@@ -1369,6 +1376,12 @@ func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input j
 	}
 	if args.Status != "" {
 		clauses = append(clauses, setClause{"status", args.Status})
+	}
+	if args.ContextRetrievalEnabled != nil {
+		clauses = append(clauses, setClause{"context_retrieval_enabled", *args.ContextRetrievalEnabled})
+	}
+	if args.AgenticRAG != nil {
+		clauses = append(clauses, setClause{"agentic_rag", *args.AgenticRAG})
 	}
 	if len(clauses) == 0 {
 		return nil, fmt.Errorf("update_agent: no fields to update")

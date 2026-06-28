@@ -21,6 +21,7 @@ export default function WhatIsAToolDoc() {
 
       <h2>Native Tools</h2>
       <p>Agent Nexus ships these built-in tools:</p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Tool</th><th>Risk</th><th>What it does</th></tr></thead>
         <tbody>
@@ -46,6 +47,7 @@ export default function WhatIsAToolDoc() {
           </tr>
         </tbody>
       </table>
+      </div>
 
       <h2>Risk Levels and Approval Gates</h2>
       <p>
@@ -53,6 +55,7 @@ export default function WhatIsAToolDoc() {
         tool call before it executes. This lets you give agents powerful capabilities while keeping
         destructive or external actions under control.
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Risk Level</th><th>Default Behaviour</th><th>Example Tools</th></tr></thead>
         <tbody>
@@ -78,6 +81,7 @@ export default function WhatIsAToolDoc() {
           </tr>
         </tbody>
       </table>
+      </div>
 
       <Callout type="warning">
         Shell execution (<code>bash</code>, <code>exec</code>) is globally blocked and never exposed

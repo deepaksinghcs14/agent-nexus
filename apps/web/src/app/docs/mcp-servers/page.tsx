@@ -21,6 +21,7 @@ export default function MCPServersDoc() {
       </p>
 
       <h2>Supported Transports</h2>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Transport</th><th>When to use</th><th>Status</th></tr></thead>
         <tbody>
@@ -36,6 +37,7 @@ export default function MCPServersDoc() {
           </tr>
         </tbody>
       </table>
+      </div>
 
       <h2>HTTP Transport</h2>
       <p>
@@ -95,6 +97,7 @@ export default function MCPServersDoc() {
         Newly discovered MCP tools default to <Badge label="medium" color="amber" /> risk.
         You can override the risk level per tool in the tool registry.
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Risk Level</th><th>Default Behaviour</th></tr></thead>
         <tbody>
@@ -116,6 +119,7 @@ export default function MCPServersDoc() {
           </tr>
         </tbody>
       </table>
+      </div>
 
       <h2>REST API</h2>
       <pre><code>{`# Add an HTTP server

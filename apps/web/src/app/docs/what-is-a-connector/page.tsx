@@ -20,6 +20,7 @@ export default function WhatIsAConnectorDoc() {
       </p>
 
       <h2>Available Connectors</h2>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Connector</th><th>Availability</th><th>What it indexes</th></tr></thead>
         <tbody>
@@ -55,26 +56,48 @@ export default function WhatIsAConnectorDoc() {
           </tr>
         </tbody>
       </table>
+      </div>
 
       <h2>How Context Retrieval Works</h2>
       <p>
-        When an agent has context retrieval enabled and runs a query:
+        There are two retrieval modes. Both use the same pgvector similarity search under the hood — they differ in <em>when</em> retrieval happens and <em>who decides</em>.
+      </p>
+
+      <h3>Standard RAG (default)</h3>
+      <p>
+        When <code>context_retrieval_enabled=true</code> and <code>agentic_rag=false</code>:
       </p>
       <ol>
         <li>The user&apos;s message is <strong>embedded</strong> into a vector using the agent&apos;s provider.</li>
-        <li>The runtime queries <code>connector_chunks</code> using <strong>pgvector similarity search</strong> — finding the chunks whose embeddings are closest to the query embedding.</li>
-        <li>The top-N chunks (configured per agent) are included in the <strong>system prompt</strong> as context, along with the source document title, URL, and author.</li>
+        <li>The runtime queries <code>connector_chunks</code> using <strong>pgvector cosine similarity</strong> and filters by <code>min_score</code>.</li>
+        <li>The top <code>max_chunks</code> results are injected into the <strong>system prompt</strong> before the first LLM turn.</li>
         <li>A <code>context_retrieval</code> RunStep is logged showing which chunks were used.</li>
       </ol>
-
-      <pre><code>{`-- The actual SQL run during context retrieval:
-SELECT cc.content, cc.metadata, cd.title, cd.url, cd.source
+      <pre><code>{`SELECT cc.content, cd.title, cd.url, cd.source,
+       1 - (cc.embedding <=> $query_embedding) AS score
 FROM connector_chunks cc
 JOIN connector_documents cd ON cd.id = cc.document_id
-WHERE cd.connector_id = ANY($allowed_connectors)
-  AND cd.workspace_id = $workspace_id
+WHERE cd.workspace_id = $workspace_id
+  AND c.id = ANY($connector_ids)
+  AND 1 - (cc.embedding <=> $query_embedding) >= $min_score
 ORDER BY cc.embedding <=> $query_embedding
 LIMIT $max_chunks`}</code></pre>
+
+      <h3>Agentic RAG</h3>
+      <p>
+        When <code>agentic_rag=true</code>, pre-run retrieval is <strong>skipped entirely</strong>. Instead, the agent receives a <code>native_retrieve_context</code> tool it can call at any point during a run:
+      </p>
+      <pre><code>{`native_retrieve_context({
+  query: "authentication flow for the payments service",
+  max_chunks: 20,   // optional, default 8, max 50
+  min_score: 0.4    // optional, default 0.5
+})`}</code></pre>
+      <p>
+        This gives the agent full control: it can issue <strong>multiple targeted retrievals</strong> with different queries, request more chunks when it needs broader coverage, or skip retrieval entirely if the answer is already known. The trade-off is one extra LLM turn before the agent has context.
+      </p>
+      <p>
+        <strong>When to use Agentic RAG:</strong> multi-step research tasks, large knowledge bases where a single query would miss relevant chunks, or agents that need to retrieve context mid-task rather than upfront.
+      </p>
 
       <h2>Setting Up the Filesystem Connector</h2>
       <p>
@@ -158,6 +181,7 @@ LIMIT $max_chunks`}</code></pre>
       <p>
         Every connector follows the same pipeline internally:
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Step</th><th>What happens</th></tr></thead>
         <tbody>
@@ -169,6 +193,7 @@ LIMIT $max_chunks`}</code></pre>
           <tr><td>6. Log</td><td>A sync job record is written with counts, duration, and status</td></tr>
         </tbody>
       </table>
+      </div>
 
       <Callout type="tip">
         Re-sync a connector any time your source changes. Agent Nexus uses content hashes to skip

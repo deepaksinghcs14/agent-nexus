@@ -77,6 +77,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   const [enabledConnectors, setEnabledConnectors] = useState<Record<string, boolean>>({})
   const [maxChunks, setMaxChunks] = useState(8)
   const [minScore, setMinScore] = useState(0.5)
+  const [agenticRAG, setAgenticRAG] = useState(false)
   const [saveError, setSaveError] = useState('')
 
   // Search & collapse state for Tools and Skills tabs
@@ -98,7 +99,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   })
   const { data: agentConnectorsData } = useQuery({
     queryKey: ['agent-connectors', params?.id],
-    queryFn: () => agentsAPI.getConnectors(params!.id!) as Promise<{ data: Connector[] }>,
+    queryFn: () => agentsAPI.getConnectors(params!.id!) as Promise<{ data: Connector[]; max_chunks: number; min_score: number }>,
     enabled: isEdit,
   })
   const { data: agentSkillsData } = useQuery({
@@ -186,6 +187,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
     setMemoryMinImportance(existing.memory_min_importance ?? 0.70)
     setMemoryDedupeThreshold(existing.memory_dedupe_threshold ?? 0.88)
     setContextEnabled(existing.context_retrieval_enabled)
+    setAgenticRAG(existing.agentic_rag ?? false)
     setMaxSteps(existing.max_steps)
     setMaxToolCalls(existing.max_tool_calls)
     setMaxDurationSecs(existing.max_duration_secs ?? 300)
@@ -204,6 +206,8 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   useEffect(() => {
     if (agentConnectorsData?.data) {
       setEnabledConnectors(Object.fromEntries(agentConnectorsData.data.map((c) => [c.id, true])))
+      if (agentConnectorsData.max_chunks > 0) setMaxChunks(agentConnectorsData.max_chunks)
+      if (agentConnectorsData.min_score > 0) setMinScore(agentConnectorsData.min_score)
     }
   }, [agentConnectorsData])
 
@@ -238,6 +242,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
         memory_min_importance: memoryMinImportance,
         memory_dedupe_threshold: memoryDedupeThreshold,
         context_retrieval_enabled: contextEnabled,
+        agentic_rag: agenticRAG,
         max_steps: maxSteps,
         max_tool_calls: maxToolCalls,
         max_duration_secs: maxDurationSecs,
@@ -319,10 +324,10 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   }
 
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-4 sm:p-6 max-w-3xl">
       {isEdit && isLoadingAgent && <div className="text-sm text-gray-400 py-8 text-center">Loading agent…</div>}
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div className="flex items-center gap-2 text-[12px] text-gray-400">
           <span className="hover:text-gray-600 cursor-pointer" onClick={() => router.push('/agents')}>Agents</span>
           <ChevronRight className="w-3 h-3" />
@@ -343,7 +348,8 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-gray-100 mb-5 bg-gray-50 rounded-t-lg overflow-hidden">
+      <div className="flex border-b border-gray-100 mb-5 bg-gray-50 rounded-t-lg overflow-x-auto"
+        style={{ scrollbarWidth: 'none' }}>
         {TABS.map(t => {
           const badge = t === 'Tools' && enabledToolCount > 0 ? enabledToolCount
             : t === 'Skills' && enabledSkillCount > 0 ? enabledSkillCount
@@ -367,7 +373,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
           {saveError && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</div>
           )}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Agent name" hint="Shown in the sidebar and run history">
               <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Backend Architect"
                 className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-purple-400" />
@@ -388,7 +394,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
       {/* ── MODEL ── */}
       {tab === 'Model' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Provider">
               <select value={provider} onChange={e => { setProvider(e.target.value); setModel('') }}
                 className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none">
@@ -407,7 +413,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
               </select>
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label={`Temperature — ${temperature.toFixed(1)}`} hint="Lower = more deterministic">
               <input type="range" min="0" max="2" step="0.1" value={temperature}
                 onChange={e => setTemperature(parseFloat(e.target.value))}
@@ -448,7 +454,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
           <p className="text-[12px] text-gray-500">Attach reusable prompt instructions injected after the system prompt. <span className="text-gray-400">Always-on skills inject their content every run; on-demand skills are listed as callable tools the model can invoke when relevant.</span></p>
 
           {/* Search + summary + bulk action */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
               <input
@@ -635,14 +641,27 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
                 ))}
                 {availableConnectors.length === 0 && <div className="p-8 text-center text-[12px] text-gray-400">No connectors configured.</div>}
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Max chunks per run">
-                  <input type="number" defaultValue={8} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
-                </Field>
-                <Field label="Min relevance score">
-                  <input type="number" defaultValue={0.75} step={0.05} min={0} max={1} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
-                </Field>
+              <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-100 rounded-lg">
+                <div>
+                  <p className="text-[13px] font-medium text-gray-900">Agentic RAG</p>
+                  <p className="text-[11px] text-gray-500">Let the agent decide when and what to retrieve — uses <code className="bg-gray-100 px-1 rounded">native_retrieve_context</code> tool instead of pre-run injection</p>
+                </div>
+                <Toggle on={agenticRAG} onToggle={() => setAgenticRAG(v => !v)} />
               </div>
+              {!agenticRAG && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Max chunks per run">
+                    <input type="number" value={maxChunks} min={1} max={100}
+                      onChange={e => setMaxChunks(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
+                  </Field>
+                  <Field label="Min relevance score">
+                    <input type="number" value={minScore} step={0.05} min={0} max={1}
+                      onChange={e => setMinScore(Math.min(1, Math.max(0, parseFloat(e.target.value) || 0)))}
+                      className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
+                  </Field>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -674,7 +693,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
                   <option>Summary only</option>
                 </select>
               </Field>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Save mode">
                   <select value={memorySaveMode} onChange={e => setMemorySaveMode(e.target.value as 'tool' | 'extractor' | 'hybrid')} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none">
                     <option value="hybrid">Hybrid</option>
@@ -690,7 +709,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
                   </select>
                 </Field>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Max memories per run">
                   <input type="number" value={maxMemories} onChange={e => setMaxMemories(Number(e.target.value))} min={1} max={50} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
                 </Field>
@@ -712,7 +731,7 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
       {/* ── GUARDRAILS ── */}
       {tab === 'Guardrails' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Max steps">
               <input type="number" value={maxSteps} onChange={e => setMaxSteps(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none" />
             </Field>

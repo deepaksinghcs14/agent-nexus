@@ -110,13 +110,13 @@ export default function RunsPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="p-4 sm:p-6">
+      <div className="flex flex-wrap items-center gap-3 justify-between mb-4">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Runs</h1>
           <p className="text-sm text-gray-500 mt-0.5">Monitor all agent and workflow runs</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <select value={agent} onChange={(e) => setAgent(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white">
             <option value="">All agents</option>
             {agents.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -128,7 +128,7 @@ export default function RunsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         {[
           { label: 'Loaded runs', value: runs.length + (hasMore ? '+' : '') },
           { label: 'Success rate', value: completed.length ? `${Math.round(successCount / completed.length * 100)}%` : '—' },
@@ -148,6 +148,7 @@ export default function RunsPage() {
 
       {runs.length > 0 && (
         <div className="bg-white border border-gray-100 rounded-xl overflow-x-auto">
+          <div className="min-w-[600px]">
           <table className="w-full text-[12px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
@@ -209,6 +210,7 @@ export default function RunsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

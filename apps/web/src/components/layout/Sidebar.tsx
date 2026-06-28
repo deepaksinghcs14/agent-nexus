@@ -9,7 +9,7 @@ import {
   Activity, Brain, BarChart2, Timer,
   Key, Settings, BookOpen,
   LayoutDashboard, Users, Building2, Shield, ClipboardList,
-  Hexagon, ShieldCheck, PanelLeftClose, PanelLeftOpen, SquareTerminal,
+  Hexagon, ShieldCheck, PanelLeftClose, PanelLeftOpen, SquareTerminal, X,
 } from 'lucide-react'
 import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import { cn } from '@/lib/utils'
@@ -134,7 +134,7 @@ function NavGroupSection({ group, pathname, collapsed }: { group: NavGroup; path
   )
 }
 
-export function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
+export function Sidebar({ isAdmin = false, onClose }: { isAdmin?: boolean; onClose?: () => void }) {
   const pathname = usePathname()
   const user = useAuthStore((s) => s.user)
   const userIsAdmin = user?.is_admin ?? false
@@ -162,28 +162,40 @@ export function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
         )}
       >
         {/* Logo */}
-        <Link
-          href="/dashboard"
-          className={cn(
-            'flex items-center gap-2 border-b border-white/[0.06] transition-colors hover:bg-white/[0.04] flex-shrink-0',
-            collapsed ? 'justify-center py-3 px-0' : 'px-4 py-3'
+        <div className={cn(
+          'flex items-center border-b border-white/[0.06] flex-shrink-0',
+          collapsed ? 'justify-center py-3 px-0' : 'px-4 py-3 gap-2'
+        )}>
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2 flex-1 min-w-0 hover:opacity-80 transition-opacity"
+            aria-label="Open dashboard"
+          >
+            <div className="w-6 h-6 bg-accent rounded-md flex items-center justify-center flex-shrink-0">
+              <Hexagon className="w-3.5 h-3.5 text-white" />
+            </div>
+            {!collapsed && (
+              <>
+                <span className="text-sm font-medium text-white truncate">Agent Nexus</span>
+                {isAdmin && (
+                  <span className="ml-auto text-[9px] bg-accent/30 text-accent-muted px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+                    ADMIN
+                  </span>
+                )}
+              </>
+            )}
+          </Link>
+          {/* Close button — mobile drawer only */}
+          {onClose && !collapsed && (
+            <button
+              onClick={onClose}
+              className="ml-auto p-1 rounded text-white/30 hover:text-white/70 flex-shrink-0"
+              aria-label="Close navigation"
+            >
+              <X className="w-4 h-4" />
+            </button>
           )}
-          aria-label="Open dashboard"
-        >
-          <div className="w-6 h-6 bg-accent rounded-md flex items-center justify-center flex-shrink-0">
-            <Hexagon className="w-3.5 h-3.5 text-white" />
-          </div>
-          {!collapsed && (
-            <>
-              <span className="text-sm font-medium text-white truncate">Agent Nexus</span>
-              {isAdmin && (
-                <span className="ml-auto text-[9px] bg-accent/30 text-accent-muted px-1.5 py-0.5 rounded font-medium flex-shrink-0">
-                  ADMIN
-                </span>
-              )}
-            </>
-          )}
-        </Link>
+        </div>
 
         {/* Workspace switcher */}
         {!isAdmin && <WorkspaceSwitcher collapsed={collapsed} />}

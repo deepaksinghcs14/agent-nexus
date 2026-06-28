@@ -80,6 +80,7 @@ export interface Agent {
   memory_min_importance: number
   memory_dedupe_threshold: number
   context_retrieval_enabled: boolean
+  agentic_rag: boolean
   max_steps: number
   max_tool_calls: number
   max_duration_secs: number

@@ -134,6 +134,8 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Memory review policy** — set per-agent to `agent_review`; new memories are stored as `pending_review` and are not retrieved until approved via the Memory browser or agent tools (`native_approve_memory` / `native_reject_memory`)
 - **Importance scoring** — each memory carries an importance score used to prioritise retrieval and deduplication; configurable min-importance and dedupe thresholds per agent
 - **Connector RAG** — index external documents and retrieve them at query time to ground agent responses; supported connectors: **Filesystem** (server-side files), **GitHub** (one repo or all repos accessible to a token, with multi-repo auto-discovery), **Confluence** (one or all spaces); the Documents tab provides a filesystem-style browser — navigate repos → folders → files (GitHub) or spaces → pages (Confluence) with live search and breadcrumb navigation; syncs are checkpoint-based so a pod restart resumes from where it left off
+- **Standard RAG** — automatic pre-run retrieval: the user's message is embedded, the top-N chunks above a configurable similarity threshold are injected into the system prompt before the first LLM turn; `max_chunks` and `min_score` are configured per agent
+- **Agentic RAG** — toggle `agentic_rag=true` on any agent to give it a `native_retrieve_context(query, max_chunks, min_score)` tool instead of pre-run injection; the agent decides *when* to retrieve, *what* to search for, and *how many* chunks to fetch — enabling multi-step research, mid-task retrieval, and targeted queries that outperform a single upfront embedding match
 - **Vector search** — pgvector cosine similarity with configurable score thresholds and chunk counts per agent
 
 ### Observability
@@ -406,6 +408,7 @@ What's working today vs. what's coming next:
 | Gateway: Email channel (SMTP/IMAP) | 🔜 Planned |
 | GitHub connector (RAG — multi-repo auto-discovery, filesystem-style browser) | ✅ Done |
 | Confluence connector (RAG — space-wise indexing, page browser) | ✅ Done |
+| Agentic RAG — `native_retrieve_context` tool, per-agent `max_chunks` / `min_score`, configurable via UI and Nexus AI | ✅ Done |
 | Additional connectors (Slack, Jira, Google Drive) | 🔜 Planned |
 | Agent versioning and snapshot rollback | 🔜 Planned |
 | API rate limiting per workspace | 🔜 Planned |

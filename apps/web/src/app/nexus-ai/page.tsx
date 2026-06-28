@@ -84,7 +84,7 @@ function MessageBubble({ msg, isStreaming }: { msg: NexusMessage; isStreaming: b
   if (msg.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[72%] px-4 py-2.5 rounded-2xl rounded-tr-sm bg-purple-600 text-white text-sm leading-relaxed whitespace-pre-wrap">
+        <div className="max-w-[90%] sm:max-w-[72%] px-4 py-2.5 rounded-2xl rounded-tr-sm bg-purple-600 text-white text-sm leading-relaxed whitespace-pre-wrap">
           {msg.content}
         </div>
       </div>
@@ -336,7 +336,7 @@ export default function NexusAIPage() {
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto">
       {/* Header */}
-      <div className="px-6 py-3.5 border-b border-gray-100 flex items-center gap-4 flex-shrink-0">
+      <div className="px-4 sm:px-6 py-3.5 border-b border-gray-100 flex flex-wrap items-center gap-3 flex-shrink-0">
         <div className="flex items-center gap-2 flex-shrink-0">
           <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center">
             <Sparkles size={14} className="text-purple-600" />
@@ -346,7 +346,7 @@ export default function NexusAIPage() {
 
         {/* Provider + model selectors */}
         {hasProvider && (
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
             {/* Provider selector */}
             <div className="relative">
               <select
@@ -373,7 +373,7 @@ export default function NexusAIPage() {
                 value={selectedModel}
                 onChange={e => setSelectedModel(e.target.value)}
                 disabled={isRunning || modelsLoading || availableModels.length === 0}
-                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 cursor-pointer min-w-[160px]"
+                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 cursor-pointer min-w-0 w-full sm:min-w-[160px] sm:w-auto"
               >
                 {modelsLoading && <option value="">Loading models…</option>}
                 {!modelsLoading && availableModels.length === 0 && (
@@ -391,7 +391,7 @@ export default function NexusAIPage() {
 
       {/* No-provider banner */}
       {!hasProvider && (
-        <div className="mx-6 mt-4 flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 flex-shrink-0">
+        <div className="mx-4 sm:mx-6 mt-4 flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 flex-shrink-0">
           <AlertCircle size={15} className="text-amber-500 shrink-0" />
           <p className="text-sm text-amber-800">
             Nexus AI uses your own LLM provider. Add one in{' '}
@@ -404,7 +404,7 @@ export default function NexusAIPage() {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4">
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
             <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center mb-4">
@@ -412,7 +412,7 @@ export default function NexusAIPage() {
             </div>
             <h2 className="text-lg font-semibold text-gray-900 mb-1">Nexus AI</h2>
             <p className="text-sm text-gray-500 mb-8 text-center">Ask me to build agents, create workflows, or manage your workspace</p>
-            <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
               {[
                 { label: 'Create a research agent', desc: 'With web search and report generation' },
                 { label: 'Build a support workflow', desc: 'Classify → route → respond pipeline' },
@@ -443,7 +443,7 @@ export default function NexusAIPage() {
 
       {/* Template cards + suggestion chips — only on first greeting */}
       {messages.length === 1 && hasProvider && (
-        <div className="px-6 pb-3 flex-shrink-0 space-y-3">
+        <div className="px-4 sm:px-6 pb-3 flex-shrink-0 space-y-3">
           {/* Template cards */}
           <div className="flex gap-2">
             {TEMPLATES.map(t => (
@@ -479,7 +479,7 @@ export default function NexusAIPage() {
       )}
 
       {/* Input bar */}
-      <div className="px-6 pb-5 pt-1 flex-shrink-0">
+      <div className="px-4 sm:px-6 pb-5 pt-1 flex-shrink-0">
         <div className={`flex items-end gap-2.5 border rounded-xl bg-white transition-colors
           ${isRunning ? 'border-gray-200' : 'border-gray-200 focus-within:border-purple-300 focus-within:ring-2 focus-within:ring-purple-100'}`}
         >

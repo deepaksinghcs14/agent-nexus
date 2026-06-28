@@ -32,12 +32,12 @@ export default function UsagePage() {
   const byAgent = data?.by_agent ?? []
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-4 sm:p-6 max-w-4xl">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Usage</h1>
         <p className="text-sm text-gray-500 mt-0.5">Token consumption and cost across all runs</p>
       </div>
-      <div className="grid grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {[
           ['Total tokens', formatTokens(totalTokens)],
           ['Estimated cost', formatCost(totalCost)],

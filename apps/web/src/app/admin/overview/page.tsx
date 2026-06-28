@@ -20,7 +20,7 @@ export default function AdminOverviewPage() {
   const errors = [users.error, workspaces.error, audit.error, usage.error].filter(Boolean) as Error[]
 
   return (
-    <div className="p-6 max-w-5xl space-y-6">
+    <div className="p-4 sm:p-6 max-w-5xl space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Admin Overview</h1>
         <p className="text-sm text-gray-500 mt-0.5">Platform-wide stats and recent activity</p>
@@ -35,7 +35,7 @@ export default function AdminOverviewPage() {
       {/* Platform stats */}
       <div>
         <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-3">Platform</p>
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {[
             { label: 'Users', value: users.data?.data?.length ?? '—', icon: Users, href: '/admin/users' },
             { label: 'Workspaces', value: workspaces.data?.data?.length ?? '—', icon: Building2, href: '/admin/workspaces' },
@@ -56,7 +56,7 @@ export default function AdminOverviewPage() {
       {/* Usage stats */}
       <div>
         <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-3">Usage (all time)</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
             { label: 'Agent runs', value: u ? u.runs.toLocaleString() : '—', icon: Zap, color: 'text-amber-500' },
             { label: 'Tokens used', value: u ? u.tokens.toLocaleString() : '—', icon: BarChart2, color: 'text-blue-500' },

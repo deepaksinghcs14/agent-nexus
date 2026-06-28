@@ -143,7 +143,7 @@ function CreatePanel({
 
       <div className="p-4">
         <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-3">Choose a source type</p>
-        <div className="grid grid-cols-3 gap-2 mb-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-5">
           {PROVIDERS.map(({ id, label, Icon, description, available }) => {
             const active = provider === id
             return (
@@ -176,7 +176,7 @@ function CreatePanel({
             {formError && (
               <p className="text-[12px] text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2 mb-3">{formError}</p>
             )}
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="block text-[11px] font-medium text-gray-600 mb-1">Connector name *</label>
                 <input
@@ -229,7 +229,7 @@ function CreatePanel({
             {formError && (
               <p className="text-[12px] text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2 mb-3">{formError}</p>
             )}
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="block text-[11px] font-medium text-gray-600 mb-1">Connector name *</label>
                 <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. agent-nexus repo" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
@@ -265,7 +265,7 @@ function CreatePanel({
             {formError && (
               <p className="text-[12px] text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2 mb-3">{formError}</p>
             )}
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
               <div>
                 <label className="block text-[11px] font-medium text-gray-600 mb-1">Connector name *</label>
                 <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Engineering Confluence" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
@@ -397,9 +397,9 @@ export default function ConnectorsPage() {
   const activeJob = jobs.find((j) => j.status === 'running')
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-4 sm:p-6 max-w-4xl">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Connectors</h1>
           <p className="text-[12px] text-gray-400 mt-0.5">
@@ -436,7 +436,7 @@ export default function ConnectorsPage() {
 
       {/* Empty state */}
       {!isLoading && !error && connectors.length === 0 && !showCreate && (
-        <div className="grid grid-cols-2 gap-8 border border-dashed border-gray-200 rounded-xl p-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 border border-dashed border-gray-200 rounded-xl p-8">
           <div>
             <Database size={22} className="text-purple-300 mb-3" />
             <p className="text-sm font-medium text-gray-800 mb-1">What are connectors?</p>
@@ -461,7 +461,7 @@ export default function ConnectorsPage() {
               ))}
             </div>
           </div>
-          <div className="flex flex-col items-center justify-center border-l border-dashed border-gray-200 pl-8">
+          <div className="flex flex-col items-center justify-center sm:border-l border-t sm:border-t-0 border-dashed border-gray-200 pt-8 sm:pt-0 sm:pl-8">
             <FolderOpen size={28} className="text-gray-300 mb-3" />
             <p className="text-sm font-medium text-gray-600 mb-1">Connect your first source</p>
             <p className="text-[11px] text-gray-400 mb-5 text-center">
@@ -481,7 +481,7 @@ export default function ConnectorsPage() {
 
       {/* Connector cards */}
       {connectors.length > 0 && (
-        <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
           {connectors.map((connector) => {
             const cfg = connector.config as { path?: string; owner?: string; repo?: string; url?: string; space_keys?: string } | undefined
             const isSyncing = sync.isPending && (sync.variables as string) === connector.id
@@ -541,7 +541,7 @@ export default function ConnectorsPage() {
       {/* Detail panel */}
       {selectedConnector && (
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-          <div className="flex items-center border-b border-gray-100 px-1">
+          <div className="flex items-center border-b border-gray-100 px-1 overflow-x-auto">
             {(['documents', 'sync-history'] as const).map((tab) => (
               <button
                 key={tab}
@@ -583,7 +583,7 @@ export default function ConnectorsPage() {
           {detailTab === 'documents' && (selectedConnector?.provider === 'github' || selectedConnector?.provider === 'confluence') && (
             <div>
               {/* Breadcrumb + search */}
-              <div className="flex items-center gap-1 px-4 py-2 border-b border-gray-50 bg-gray-50/50">
+              <div className="flex flex-wrap items-center gap-1 px-4 py-2 border-b border-gray-50 bg-gray-50/50">
                 <button
                   onClick={() => setBrowsePath('')}
                   className={`text-[12px] flex-shrink-0 ${browsePath === '' ? 'text-gray-700 font-medium' : 'text-purple-600 hover:underline'}`}
@@ -690,7 +690,7 @@ export default function ConnectorsPage() {
               )}
               {docs.length > 0 && (
                 <>
-                  <table className="w-full">
+                  <div className="overflow-x-auto"><table className="w-full min-w-[480px]">
                     <thead>
                       <tr className="border-b border-gray-50">
                         <th className="text-left text-[10px] font-medium text-gray-400 px-4 py-2">Title</th>
@@ -717,7 +717,7 @@ export default function ConnectorsPage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></div>
                   {docsTotalPages > 1 && (
                     <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-50">
                       <p className="text-[11px] text-gray-400">{docsTotal} documents total</p>

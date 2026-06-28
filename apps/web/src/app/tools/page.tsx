@@ -145,8 +145,8 @@ function ToolRow({ tool, onToggle, onDelete }: { tool: Tool; onToggle: () => voi
             <p className="text-[11px] text-gray-400 mt-0.5 truncate">{tool.description || '—'}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border ${ti.cls}`}>
+        <div className="flex items-center gap-2 flex-shrink-0 ml-2 overflow-x-auto">
+          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border flex-shrink-0 ${ti.cls}`}>
             {ti.icon}{ti.label}
           </span>
           <span className={`text-[10px] px-2 py-0.5 rounded-full border ${riskColor(tool.risk_level)}`}>
@@ -245,7 +245,7 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
       {error && <p className="text-[12px] text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2 mb-3">{error}</p>}
 
       {/* Name + description */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         <div>
           <label className="block text-[11px] font-medium text-gray-600 mb-1">Tool name *</label>
           <input value={form.name} onChange={(e) => set('name', e.target.value)}
@@ -336,7 +336,7 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
       )}
 
       {/* Risk + approval + timeout */}
-      <div className="flex items-end gap-3 mb-4">
+      <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
           <label className="block text-[11px] font-medium text-gray-600 mb-1">Risk level</label>
           <select value={form.riskLevel} onChange={(e) => set('riskLevel', e.target.value)}
@@ -431,13 +431,13 @@ export default function ToolsPage() {
   const http   = tools.filter((t) => t.type === 'http')
 
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-4 sm:p-6 max-w-3xl">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Tools</h1>
         <p className="text-[12px] text-gray-400 mt-0.5">
           Tools let agents take actions beyond text — read files, call APIs, search the web.
         </p>
-        <div className="flex items-center gap-3 text-[11px] mt-3">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] mt-3">
           <span className="text-gray-400">Risk levels:</span>
           {([
             { level: 'low',      cls: 'bg-blue-50 text-blue-700 border-blue-100' },

@@ -21,6 +21,7 @@ export default function RunStatesDoc() {
       subtitle="Every agent run moves through a well-defined lifecycle. Understanding run states lets you build robust integrations that handle all outcomes."
     >
       <h2>State Reference</h2>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>State</th><th>Description</th></tr></thead>
         <tbody>
@@ -32,6 +33,7 @@ export default function RunStatesDoc() {
           ))}
         </tbody>
       </table>
+      </div>
 
       <h2>Recommended Polling Pattern</h2>
       <pre><code>{`const TERMINAL = new Set(['success', 'failed', 'cancelled'])

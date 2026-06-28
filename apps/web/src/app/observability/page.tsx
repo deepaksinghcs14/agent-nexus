@@ -47,9 +47,9 @@ export default function ObservabilityPage() {
   const maxP95 = Math.max(...trend.map((d) => d.p95_secs), 1)
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="p-4 sm:p-6 max-w-5xl">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center gap-3 justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Observability</h1>
           <p className="text-sm text-gray-500 mt-0.5">Latency and performance metrics for your agents</p>
@@ -93,7 +93,8 @@ export default function ObservabilityPage() {
           {/* By Agent */}
           <section>
             <h2 className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">By Agent</h2>
-            <div className="border border-gray-100 rounded-xl overflow-hidden">
+            <div className="border border-gray-100 rounded-xl overflow-x-auto">
+              <div className="min-w-[600px]">
               <table className="w-full text-[13px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
@@ -133,6 +134,7 @@ export default function ObservabilityPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           </section>
 
@@ -140,7 +142,8 @@ export default function ObservabilityPage() {
           {byModel.length > 0 && (
             <section>
               <h2 className="text-[11px] font-medium text-gray-400 uppercase tracking-wider mb-3">By Model</h2>
-              <div className="border border-gray-100 rounded-xl overflow-hidden">
+              <div className="border border-gray-100 rounded-xl overflow-x-auto">
+                <div className="min-w-[480px]">
                 <table className="w-full text-[13px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
@@ -169,6 +172,7 @@ export default function ObservabilityPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </section>
           )}

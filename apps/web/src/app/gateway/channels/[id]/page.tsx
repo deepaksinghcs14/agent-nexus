@@ -373,13 +373,13 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const tabs = isHTTP ? HTTP_TABS : WA_TABS
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="flex items-center gap-2 text-[12px] text-gray-400 mb-5">
         <Link href="/gateway/channels" className="hover:text-gray-600">Gateway</Link>
         <ChevronRight className="w-3 h-3" />
         <span className="text-gray-700 font-medium">{channel.name}</span>
       </div>
-      <div className="flex items-start justify-between mb-5">
+      <div className="flex flex-wrap items-start gap-3 justify-between mb-5">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">{channel.name}</h1>
           <p className="text-sm text-gray-500 mt-1">{channel.description || 'Channel runtime and delivery controls.'}</p>
@@ -401,7 +401,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
             <p className="text-sm font-semibold text-purple-900">Edit Channel Settings</p>
             <button onClick={() => setEditMode(false)} className="p-1 rounded hover:bg-purple-100 text-purple-400"><X className="w-4 h-4" /></button>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-medium text-gray-600 mb-1">Name</label>
               <input value={editName} onChange={e => setEditName(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-gray-200 rounded-lg bg-white" />
@@ -479,19 +479,19 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
           </div>
         </div>
       )}
-      <div className="flex border-b border-gray-100 mb-5 bg-gray-50 rounded-t-lg overflow-hidden">
+      <div className="flex border-b border-gray-100 mb-5 bg-gray-50 rounded-t-lg overflow-x-auto">
         {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t as Tab)} className={`px-4 py-2 text-[12px] whitespace-nowrap ${tab === t ? 'bg-white text-purple-600 font-medium border-b-2 border-purple-500' : 'text-gray-500 hover:text-gray-700'}`}>{t}</button>
         ))}
       </div>
 
       {tab === 'Overview' && !isHTTP && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Info label="Type" value={channel.channel_type} />
           <Info label="Status" value={channel.is_active ? 'active' : 'disabled'} />
           <Info label="Agent" value={channel.agent_name || channel.agent_id} />
           <Info label="Account" value={channel.config?.account_id || 'default'} />
-          <Info label="Device name" value={channel.config?.browser_name || 'Agent Nexus'} />
+          <div className="sm:col-span-1"><Info label="Device name" value={channel.config?.browser_name || 'Agent Nexus'} /></div>
           <ToggleCard
             title="Assistant replies"
             description="Controls whether inbound messages can run the agent. The webhook still stays online for chat commands."
@@ -504,14 +504,14 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
             checked={!!channel.config?.bot_mode_enabled}
             onChange={(checked) => updateChannelConfig({ bot_mode_enabled: checked })}
           />
-          <div className="col-span-2 rounded-lg border border-gray-200 p-4 bg-white">
+          <div className="col-span-1 sm:col-span-2 rounded-lg border border-gray-200 p-4 bg-white">
             <p className="text-[12px] font-medium text-gray-700 mb-2">Ingress URL</p>
             <div className="flex items-center gap-1">
               <code className="text-xs text-gray-500 font-mono bg-gray-50 px-2 py-1 rounded truncate">{ingressURL}</code>
               <CopyButton text={ingressURL} />
             </div>
           </div>
-          <div className="col-span-2 rounded-lg border border-gray-200 p-4 bg-white">
+          <div className="col-span-1 sm:col-span-2 rounded-lg border border-gray-200 p-4 bg-white">
             <p className="text-[12px] font-medium text-gray-700 mb-1">Contact LID Sync</p>
             <p className="text-[11px] text-gray-400 mb-3">Push in-memory LID→phone mappings to the database so the pairing policy can match @lid senders to existing contacts.</p>
             <div className="flex items-center gap-3">
@@ -526,12 +526,12 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
 
       {tab === 'Overview' && isHTTP && (
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Info label="Type" value="HTTP" />
             <Info label="Status" value={channel.is_active ? 'active' : 'disabled'} />
             <Info label="Agent" value={channel.agent_name || channel.agent_id} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <ToggleCard
               title="Assistant replies"
               description="Controls whether inbound POST requests trigger an agent run."
@@ -575,19 +575,19 @@ Content-Type: application/json
           </div>
           <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
             <p className="text-[12px] font-medium text-gray-700">Send a test message</p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <input
                 value={testInput}
                 onChange={(e) => setTestInput(e.target.value)}
                 placeholder="Message to send…"
-                className="flex-1 text-[13px] px-3 py-2 border border-gray-200 rounded-lg"
+                className="flex-1 min-w-[160px] text-[13px] px-3 py-2 border border-gray-200 rounded-lg"
                 onKeyDown={(e) => { if (e.key === 'Enter') sendTestMessage() }}
               />
               <input
                 value={testSessionId}
                 onChange={(e) => setTestSessionId(e.target.value)}
                 placeholder="session_id (optional)"
-                className="w-44 text-[13px] px-3 py-2 border border-gray-200 rounded-lg"
+                className="w-full sm:w-44 text-[13px] px-3 py-2 border border-gray-200 rounded-lg"
               />
               <button
                 onClick={sendTestMessage}
@@ -607,7 +607,7 @@ Content-Type: application/json
       {tab === 'QR Login' && (
         <div className="space-y-4 max-w-2xl">
           <AdapterStatusCard adapter={adapter} />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={startLogin}
               disabled={loginLoading}
@@ -633,12 +633,12 @@ Content-Type: application/json
           <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
             <p className="text-sm font-medium text-gray-800">Link via phone number (no QR)</p>
             <p className="text-xs text-gray-500">Instead of scanning a QR code, get an 8-digit code and enter it on your phone: WhatsApp → Linked Devices → Link a Device → Link with phone number instead.</p>
-            <div className="flex gap-2 items-center">
+            <div className="flex flex-wrap gap-2 items-center">
               <input
                 value={pairingPhone}
                 onChange={(e) => setPairingPhone(e.target.value)}
                 placeholder="e.g. 917599223966 (no + or spaces)"
-                className="flex-1 text-sm border border-gray-200 rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="flex-1 min-w-[200px] text-sm border border-gray-200 rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
               />
               <button
                 onClick={getPairingCode}
@@ -704,7 +704,7 @@ Content-Type: application/json
           </div>
           <div className="rounded-lg border border-gray-200 overflow-hidden bg-white">
             {scheduledMessages.length === 0 ? <div className="p-8 text-center text-sm text-gray-400">No scheduled messages yet</div> : (
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto"><table className="w-full text-sm min-w-[640px]">
                 <thead><tr className="border-b border-gray-100 bg-gray-50 text-left text-[11px] text-gray-500 uppercase tracking-wide">
                   <th className="px-4 py-2">Contact / Recipient</th>
                   <th className="px-4 py-2">Message</th>
@@ -739,7 +739,7 @@ Content-Type: application/json
                     )
                   })}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         </div>
@@ -776,7 +776,7 @@ Content-Type: application/json
         <div className="space-y-4">
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             <p className="text-[12px] font-medium text-gray-700 mb-3">Add WhatsApp contact</p>
-            <div className="grid grid-cols-[1fr_1fr_130px_160px_auto] gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_130px_160px_auto] gap-3">
               <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Aayushi" className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg" />
               <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+91..." className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg" />
               <select value={contactRole} onChange={(e) => setContactRole(e.target.value as 'owner' | 'trusted' | 'blocked')} className="text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white">
@@ -791,7 +791,7 @@ Content-Type: application/json
               <button onClick={addContact} className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium">Add</button>
             </div>
           </div>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between gap-4">
+          <div className="rounded-lg border border-gray-200 bg-white p-4 flex flex-wrap items-center justify-between gap-4">
             <div>
               <p className="text-[12px] font-medium text-gray-700">Sync contacts from WhatsApp</p>
               <p className="text-[11px] text-gray-400 mt-0.5">Import all phone contacts from the connected device. New contacts are added with auto-reply off; existing contacts get their LID updated.</p>

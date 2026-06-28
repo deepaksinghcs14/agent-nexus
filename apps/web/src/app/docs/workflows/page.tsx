@@ -31,12 +31,14 @@ export default function WhatIsAnAgentGroupDoc() {
         input is passed as <code>lastOutput</code> into the Start node, which immediately forwards
         it to all connected downstream nodes.
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Config</th><th>Description</th></tr></thead>
         <tbody>
           <tr><td>None</td><td>No configuration required</td></tr>
         </tbody>
       </table>
+      </div>
       <p><strong>Connections:</strong> One outgoing edge to the first processing node.</p>
 
       {/* END */}
@@ -46,12 +48,14 @@ export default function WhatIsAnAgentGroupDoc() {
         of the node that fed into <code>end</code> and stores it as the group run&apos;s result.
         Every workflow must reach an End node.
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Config</th><th>Description</th></tr></thead>
         <tbody>
           <tr><td>None</td><td>No configuration required</td></tr>
         </tbody>
       </table>
+      </div>
 
       {/* AGENT */}
       <h3>🟣 Agent</h3>
@@ -64,6 +68,7 @@ export default function WhatIsAnAgentGroupDoc() {
         Each Agent node creates its own sub-conversation and sub-run record, so you can trace
         exactly what each agent produced in the Runs page.
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Config</th><th>Description</th></tr></thead>
         <tbody>
@@ -71,6 +76,7 @@ export default function WhatIsAnAgentGroupDoc() {
           <tr><td><strong>Label</strong></td><td>Display name shown on the canvas node.</td></tr>
         </tbody>
       </table>
+      </div>
       <Callout type="tip">
         Give each agent a tight system prompt scoped to its specific role. Avoid general-purpose
         agents in pipelines — specialist agents produce better outputs at lower cost.
@@ -95,6 +101,7 @@ export default function WhatIsAnAgentGroupDoc() {
         The supervisor loops until it produces a final answer with no more tool calls, or until
         <code>max_steps</code> is reached.
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Config</th><th>Description</th></tr></thead>
         <tbody>
@@ -102,6 +109,7 @@ export default function WhatIsAnAgentGroupDoc() {
           <tr><td><strong>Label</strong></td><td>Display name on the canvas.</td></tr>
         </tbody>
       </table>
+      </div>
       <p><strong>Edges from a Supervisor node:</strong></p>
       <ul>
         <li>
@@ -126,13 +134,16 @@ export default function WhatIsAnAgentGroupDoc() {
         <Badge label="yes" color="green" /> edge for the branch to take when the condition is true,
         and a <Badge label="no" color="red" /> edge for the false branch.
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Config</th><th>Description</th></tr></thead>
         <tbody>
           <tr><td><strong>Expression</strong></td><td>Evaluated against the current output text (case-insensitive)</td></tr>
         </tbody>
       </table>
+      </div>
       <p><strong>Supported expression syntax:</strong></p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Expression</th><th>Matches when output…</th></tr></thead>
         <tbody>
@@ -143,6 +154,7 @@ export default function WhatIsAnAgentGroupDoc() {
           <tr><td><code>*</code> or empty</td><td>Always true (wildcard / default)</td></tr>
         </tbody>
       </table>
+      </div>
       <Callout type="tip">
         Design your agent prompts to output a known keyword as the last word (e.g. <code>APPROVED</code>,{' '}
         <code>ESCALATE</code>, <code>QUALITY_PASS</code>). This makes condition routing reliable and
@@ -156,12 +168,14 @@ export default function WhatIsAnAgentGroupDoc() {
         nodes run concurrently. Use a <strong>Join</strong> node to collect their outputs once all
         branches complete.
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Config</th><th>Description</th></tr></thead>
         <tbody>
           <tr><td>None</td><td>Draw up to 3 outgoing edges (one per source handle)</td></tr>
         </tbody>
       </table>
+      </div>
       <p>
         Each branch receives the same <code>lastOutput</code> as input. The Parallel node has
         three source handles (top 25%, middle 50%, bottom 75%) — drag from each to create separate
@@ -178,12 +192,14 @@ export default function WhatIsAnAgentGroupDoc() {
         Barrier node that waits for all incoming parallel branches to complete, then concatenates their
         outputs (separated by <code>---</code>) and forwards the combined result to the next node.
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Config</th><th>Description</th></tr></thead>
         <tbody>
           <tr><td>None</td><td>Up to 3 target handles (top, middle, bottom). Connect each branch to a separate handle.</td></tr>
         </tbody>
       </table>
+      </div>
 
       {/* LOOP */}
       <h3>↩ Loop</h3>
@@ -193,6 +209,7 @@ export default function WhatIsAnAgentGroupDoc() {
         <strong>exit →</strong> handle. Otherwise it re-queues the node connected to the{' '}
         <strong>↩ cont</strong> handle for another iteration.
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Config</th><th>Description</th></tr></thead>
         <tbody>
@@ -200,6 +217,7 @@ export default function WhatIsAnAgentGroupDoc() {
           <tr><td><strong>Max Iterations</strong></td><td>Hard cap on retries (default 5). Prevents infinite loops.</td></tr>
         </tbody>
       </table>
+      </div>
       <p><strong>Drawing the loop edges:</strong></p>
       <ul>
         <li>Drag from the <strong>↩ cont</strong> handle (left) to the node to re-run (e.g. an Agent or Supervisor node). The edge is auto-labeled <code>loop</code>.</li>
@@ -212,6 +230,7 @@ export default function WhatIsAnAgentGroupDoc() {
       </Callout>
 
       <h2>Edge Types</h2>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Label</th><th>Color</th><th>When to use</th></tr></thead>
         <tbody>
@@ -223,6 +242,7 @@ export default function WhatIsAnAgentGroupDoc() {
           <tr><td><code>delegate</code></td><td>Amber (dashed)</td><td>Supervisor → team agent. Makes the agent a callable tool.</td></tr>
         </tbody>
       </table>
+      </div>
 
       <h2>Execution Model</h2>
       <p>
@@ -239,6 +259,7 @@ export default function WhatIsAnAgentGroupDoc() {
       </p>
 
       <h2>Example Workflow Patterns</h2>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Pattern</th><th>Nodes used</th><th>Use case</th></tr></thead>
         <tbody>
@@ -250,6 +271,7 @@ export default function WhatIsAnAgentGroupDoc() {
           <tr><td>Full intelligence pipeline</td><td>All node types</td><td>Enterprise research with quality loop</td></tr>
         </tbody>
       </table>
+      </div>
 
       <h2>Tips for Building Effective Workflows</h2>
       <ul>

@@ -56,8 +56,8 @@ export default function TriggersPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 sm:p-6">
+      <div className="flex flex-wrap items-center gap-3 justify-between mb-8">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Triggers</h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -95,8 +95,8 @@ export default function TriggersPage() {
           {triggers.map((t) => {
             const url = webhookURL(t.id)
             return (
-              <div key={t.id} className="bg-white px-5 py-4">
-                <div className="flex items-start justify-between gap-4">
+              <div key={t.id} className="bg-white px-4 sm:px-5 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="text-sm font-medium text-gray-900">{t.name}</span>
@@ -111,12 +111,12 @@ export default function TriggersPage() {
                       <p className="text-xs text-gray-400 mb-1">{t.description}</p>
                     )}
                     <div className="flex items-center gap-1 mt-1.5">
-                      <code className="text-xs text-gray-500 font-mono bg-gray-50 px-2 py-0.5 rounded truncate max-w-xs">
+                      <code className="text-xs text-gray-500 font-mono bg-gray-50 px-2 py-0.5 rounded truncate max-w-[180px] sm:max-w-xs">
                         {url}
                       </code>
                       <CopyButton text={url} />
                     </div>
-                    <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400">
+                    <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-gray-400">
                       <Link
                         href={`/triggers/${t.id}?tab=runs`}
                         className="hover:text-purple-600 transition-colors"

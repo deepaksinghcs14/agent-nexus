@@ -67,8 +67,8 @@ export default function NewGatewayChannelPage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl">
-      <div className="flex items-center justify-between mb-5">
+    <div className="p-4 sm:p-6 max-w-3xl">
+      <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div className="flex items-center gap-2 text-[12px] text-gray-400">
           <span onClick={() => router.push('/gateway/channels')} className="hover:text-gray-600 cursor-pointer">Gateway</span>
           <ChevronRight className="w-3 h-3" />
@@ -85,7 +85,7 @@ export default function NewGatewayChannelPage() {
       </div>
       {error && <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
       <div className="space-y-5">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(['whatsapp', 'http'] as const).map((t) => (
             <button key={t} onClick={() => setChannelType(t)} className={`text-left border rounded-lg p-4 ${channelType === t ? 'border-purple-400 bg-purple-50' : 'border-gray-200 bg-white'}`}>
               <div className="text-sm font-medium text-gray-900">{t === 'whatsapp' ? 'WhatsApp' : 'HTTP'}</div>
@@ -102,7 +102,7 @@ export default function NewGatewayChannelPage() {
         </Field>
         {channelType === 'whatsapp' && (
           <>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Account ID" hint="Unique per WhatsApp number — different channels sharing the same number use the same ID">
                 <input
                   value={accountIdTouched ? accountId : derivedAccountId}
@@ -113,7 +113,7 @@ export default function NewGatewayChannelPage() {
               </Field>
               <Field label="Internal adapter URL"><input value={adapterURL} onChange={(e) => setAdapterURL(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg" /></Field>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="DM policy"><select value={dmPolicy} onChange={(e) => setDMPolicy(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white"><option value="pairing">Pairing</option><option value="allowlist">Allowlist</option><option value="open">Open</option><option value="disabled">Disabled</option></select></Field>
               <Field label="Group policy"><select value={groupPolicy} onChange={(e) => setGroupPolicy(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 rounded-lg bg-white"><option value="disabled">Disabled</option><option value="allowlist">Allowlist</option><option value="open">Open</option></select></Field>
             </div>

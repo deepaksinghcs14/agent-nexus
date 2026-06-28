@@ -1,0 +1,20 @@
+{
+  "name": "Agent Nexus",
+  "short_name": "Nexus",
+  "description": "Self-hosted AI agent orchestration platform",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "developer-tools"],
+  "lang": "en"
+}

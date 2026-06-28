@@ -90,7 +90,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         {stats.map((s, i) => {
           const { icon: Icon, color } = statIcons[i]
           return (
@@ -111,7 +111,7 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <div className="mb-8">
         <h2 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">Quick Actions</h2>
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
           {quickActions.map((a) => (
             <Link
               key={a.label}

@@ -15,8 +15,8 @@ export default function WorkflowsPage() {
   const remove = useMutation({ mutationFn: (id: string) => workflowsAPI.delete(id), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workflows'] }) })
   const workflows = data?.data ?? []
 
-  return <div className="p-6">
-    <div className="flex items-center justify-between mb-5">
+  return <div className="p-4 sm:p-6">
+    <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Workflows</h1>
         <p className="text-sm text-gray-500 mt-0.5">Pipeline and supervisor multi-agent workflows</p>
@@ -33,7 +33,7 @@ export default function WorkflowsPage() {
         <p className="text-sm text-gray-500">No workflows yet.</p>
       </div>
     )}
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {workflows.map((wf) => (
         <div key={wf.id} className="bg-white border border-gray-100 rounded-xl p-4">
           <div className="flex items-start justify-between">

@@ -92,7 +92,7 @@ function AddServerPanel({
         </div>
 
         {/* Fields */}
-        <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
           <div>
             <label className="block text-[11px] font-medium text-gray-600 mb-1">Server name *</label>
             <input
@@ -254,9 +254,9 @@ export default function MCPServersPage() {
   const tools = toolsData?.data ?? []
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-4 sm:p-6 max-w-4xl">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">MCP Servers</h1>
           <p className="text-[12px] text-gray-400 mt-0.5">
@@ -293,7 +293,7 @@ export default function MCPServersPage() {
 
       {/* Empty state */}
       {!isLoading && !error && servers.length === 0 && !showAdd && (
-        <div className="grid grid-cols-2 gap-8 border border-dashed border-gray-200 rounded-xl p-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 border border-dashed border-gray-200 rounded-xl p-8">
           <div>
             <Plug size={22} className="text-purple-300 mb-3" />
             <p className="text-sm font-medium text-gray-800 mb-1">What are MCP servers?</p>
@@ -318,7 +318,7 @@ export default function MCPServersPage() {
               ))}
             </div>
           </div>
-          <div className="flex flex-col items-center justify-center border-l border-dashed border-gray-200 pl-8">
+          <div className="flex flex-col items-center justify-center sm:border-l border-dashed border-gray-200 sm:pl-8 pt-4 sm:pt-0 border-t sm:border-t-0">
             <Wrench size={28} className="text-gray-300 mb-3" />
             <p className="text-sm font-medium text-gray-600 mb-1">Connect your first server</p>
             <p className="text-[11px] text-gray-400 mb-5 text-center">
@@ -338,7 +338,7 @@ export default function MCPServersPage() {
 
       {/* Server cards */}
       {servers.length > 0 && (
-        <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
           {servers.map((server) => {
             const isSyncing = sync.isPending && (sync.variables as string) === server.id
             const TransportIcon = server.transport === 'stdio' ? Terminal : Globe
@@ -406,7 +406,7 @@ export default function MCPServersPage() {
       {/* Tools panel */}
       {selectedServer && (
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-gray-100">
             <div className="flex items-center gap-2">
               <Wrench size={13} className="text-gray-400" />
               <p className="text-[12px] font-medium text-gray-700">
@@ -441,7 +441,8 @@ export default function MCPServersPage() {
           )}
 
           {tools.length > 0 && (
-            <table className="w-full">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[480px]">
               <thead>
                 <tr className="border-b border-gray-50">
                   <th className="text-left text-[10px] font-medium text-gray-400 px-4 py-2">Tool name</th>
@@ -460,6 +461,7 @@ export default function MCPServersPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}

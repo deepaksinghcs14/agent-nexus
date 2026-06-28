@@ -10,6 +10,20 @@ export const metadata: Metadata = {
   icons: {
     icon: '/icon.svg',
   },
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Agent Nexus',
+  },
+}
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#0f1117',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

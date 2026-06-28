@@ -24,7 +24,7 @@ type Retriever struct {
 
 func NewRetriever(pool *pgxpool.Pool) *Retriever { return &Retriever{pool: pool} }
 
-func (r *Retriever) Retrieve(ctx context.Context, workspaceID string, connectorIDs []string, embedding []float32, limit int) ([]Chunk, error) {
+func (r *Retriever) Retrieve(ctx context.Context, workspaceID string, connectorIDs []string, embedding []float32, limit int, minScore float64, query string) ([]Chunk, error) {
 	if limit <= 0 {
 		limit = 8
 	}
@@ -49,22 +49,53 @@ func (r *Retriever) Retrieve(ctx context.Context, workspaceID string, connectorI
 			   AND c.status IN ('connected', 'syncing')
 			   AND ($2::uuid[] IS NULL OR c.id = ANY($2::uuid[]))
 			   AND cc.embedding IS NOT NULL
+			   AND 1 - (cc.embedding <=> $4::vector) >= $5
 			 ORDER BY cc.embedding <=> $4::vector
 			 LIMIT $3`,
-			workspaceID, uuidArray(connectorIDs), limit, vecStr)
-	} else {
-		rows, err = r.pool.Query(ctx,
-			`SELECT cc.content, cd.title, cd.url, cd.source, 0::float
-			 FROM connector_chunks cc
-			 JOIN connector_documents cd ON cd.id = cc.document_id
-			 JOIN connectors c ON c.id = cd.connector_id
-			 WHERE cd.workspace_id = $1::uuid
-			   AND c.status IN ('connected', 'syncing')
-			   AND ($2::uuid[] IS NULL OR c.id = ANY($2::uuid[]))
-			 ORDER BY cc.created_at DESC
-			 LIMIT $3`,
-			workspaceID, uuidArray(connectorIDs), limit)
+			workspaceID, uuidArray(connectorIDs), limit, vecStr, minScore)
+		// If semantic search returned 0 results (e.g. embeddings not yet populated),
+		// fall through to keyword search below.
+		if err == nil {
+			var semanticChunks []Chunk
+			for rows.Next() {
+				var c Chunk
+				if scanErr := rows.Scan(&c.Content, &c.Title, &c.URL, &c.Source, &c.Score); scanErr != nil {
+					rows.Close()
+					return nil, scanErr
+				}
+				semanticChunks = append(semanticChunks, c)
+			}
+			rows.Close()
+			if rowErr := rows.Err(); rowErr != nil {
+				return nil, rowErr
+			}
+			if len(semanticChunks) > 0 {
+				return semanticChunks, nil
+			}
+			// Zero semantic results — fall through to keyword search.
+		}
 	}
+
+	// No embedding or semantic search returned nothing — use full-text + ILIKE keyword search.
+	rows, err = r.pool.Query(ctx,
+		`SELECT cc.content, cd.title, cd.url, cd.source,
+		        COALESCE(ts_rank_cd(
+		            to_tsvector('english', cc.content || ' ' || cd.title),
+		            plainto_tsquery('english', $4)
+		        ), 0)::float AS score
+		 FROM connector_chunks cc
+		 JOIN connector_documents cd ON cd.id = cc.document_id
+		 JOIN connectors c ON c.id = cd.connector_id
+		 WHERE cd.workspace_id = $1::uuid
+		   AND c.status IN ('connected', 'syncing')
+		   AND ($2::uuid[] IS NULL OR c.id = ANY($2::uuid[]))
+		   AND (
+		       to_tsvector('english', cc.content || ' ' || cd.title) @@ plainto_tsquery('english', $4)
+		       OR cd.title ILIKE '%' || $4 || '%'
+		   )
+		 ORDER BY score DESC, cd.title
+		 LIMIT $3`,
+		workspaceID, uuidArray(connectorIDs), limit, query)
 	if err != nil {
 		return nil, err
 	}

@@ -70,8 +70,8 @@ export default function APITokensPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 sm:p-6">
+      <div className="flex flex-wrap items-center gap-3 justify-between mb-8">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">API Tokens</h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -98,8 +98,8 @@ export default function APITokensPage() {
               <p className="text-sm font-medium text-green-800 mb-2">
                 Token created — copy it now. You won&apos;t see it again.
               </p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 px-3 py-1.5 rounded bg-white border border-green-200 text-sm font-mono text-gray-800 truncate">
+              <div className="flex items-center gap-2 min-w-0">
+                <code className="flex-1 min-w-0 px-3 py-1.5 rounded bg-white border border-green-200 text-sm font-mono text-gray-800 truncate">
                   {newToken.token}
                 </code>
                 <button

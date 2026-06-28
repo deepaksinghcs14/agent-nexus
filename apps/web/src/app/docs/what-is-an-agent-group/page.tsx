@@ -42,6 +42,7 @@ export default function WhatIsAnAgentGroupDoc() {
       <p>
         Go to <a href="/workflows/new">Workflows → New Workflow</a>. You configure:
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Field</th><th>Description</th></tr></thead>
         <tbody>
@@ -51,6 +52,7 @@ export default function WhatIsAnAgentGroupDoc() {
           <tr><td><strong>Agents</strong></td><td>Ordered list of existing agents. Drag to reorder.</td></tr>
         </tbody>
       </table>
+      </div>
 
       <Callout type="tip">
         Each agent in a workflow should be configured for its specific role. Give it a tight system prompt,
@@ -70,6 +72,7 @@ export default function WhatIsAnAgentGroupDoc() {
       </ol>
 
       <h2>Workflow Runs vs. Agent Runs</h2>
+      <div className="table-scroll">
       <table>
         <thead><tr><th></th><th>Single Agent Run</th><th>Workflow Run</th></tr></thead>
         <tbody>
@@ -80,6 +83,7 @@ export default function WhatIsAnAgentGroupDoc() {
           <tr><td><strong>Tracing</strong></td><td>Steps for one agent</td><td>Steps for all agents, nested by agent</td></tr>
         </tbody>
       </table>
+      </div>
 
       <h2>Next Steps</h2>
       <ul>

@@ -37,6 +37,7 @@ export default function WhatIsAnAgentDoc() {
         Agents are created through the <a href="/agents/new">Agent Builder</a>, which has seven tabs:
       </p>
 
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Tab</th><th>What you configure</th></tr></thead>
         <tbody>
@@ -76,12 +77,14 @@ export default function WhatIsAnAgentDoc() {
           </tr>
         </tbody>
       </table>
+      </div>
 
       <h2>Providers and Models</h2>
       <p>
         Agent Nexus is model-agnostic. You bring your own API keys — one per provider per workspace —
         and each agent picks its provider and model independently.
       </p>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Provider</th><th>Example Models</th></tr></thead>
         <tbody>
@@ -91,6 +94,7 @@ export default function WhatIsAnAgentDoc() {
           <tr><td>Ollama</td><td>Any locally-hosted model (llama3.2, mistral, etc.)</td></tr>
         </tbody>
       </table>
+      </div>
 
       <h2>System Prompt Tips</h2>
       <p>

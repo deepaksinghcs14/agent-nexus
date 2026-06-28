@@ -57,6 +57,7 @@ export default function WebhookTriggersDoc() {
         The default template <code>{'{{.RawBody}}'}</code> passes the full JSON body verbatim.
       </p>
 
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Variable</th><th>Type</th><th>Description</th></tr>
@@ -84,6 +85,7 @@ export default function WebhookTriggersDoc() {
           </tr>
         </tbody>
       </table>
+      </div>
 
       <h3>Example templates</h3>
       <pre><code>{`# Pass the entire JSON body as the agent input (default):
@@ -137,6 +139,7 @@ Content-Type: application/json
 }`}</code></pre>
 
       <h2>Error Responses</h2>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Status</th><th>Condition</th></tr>
@@ -148,12 +151,14 @@ Content-Type: application/json
           <tr><td><code>500 Internal Server Error</code></td><td>Failed to create the run record or start execution</td></tr>
         </tbody>
       </table>
+      </div>
 
       <h2>Management API</h2>
       <p>
         All trigger CRUD operations require an{' '}
         <a href="/docs/api-tokens">API token</a> in the <code>Authorization</code> header.
       </p>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Method</th><th>Path</th><th>Description</th></tr>
@@ -167,8 +172,10 @@ Content-Type: application/json
           <tr><td><code>POST</code></td><td><code>/webhook/:id</code></td><td>Inbound trigger endpoint (public, no auth)</td></tr>
         </tbody>
       </table>
+      </div>
 
       <h3>Create trigger request body</h3>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
@@ -183,6 +190,7 @@ Content-Type: application/json
           <tr><td><code>is_active</code></td><td>boolean</td><td>No</td><td>Whether the trigger accepts requests (default: <code>true</code>)</td></tr>
         </tbody>
       </table>
+      </div>
 
       <Callout type="info">
         After a run is created, track it with{' '}

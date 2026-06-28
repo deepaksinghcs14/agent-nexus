@@ -38,18 +38,18 @@ export default function MemoryPage() {
   const agents = agentData?.data ?? []
   const names = Object.fromEntries(agents.map((item) => [item.id, item.name]))
 
-  return <div className="p-6">
+  return <div className="p-4 sm:p-6">
     <div className="mb-6">
       <h1 className="text-xl font-semibold text-gray-900">Memory</h1>
       <p className="text-sm text-gray-500 mt-0.5">Stored facts your agents can recall across conversations</p>
     </div>
-    <div className="flex items-center justify-between gap-3 mb-4">
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap items-start gap-3 mb-4">
+      <div className="flex flex-wrap gap-2 flex-1">
         <div className="inline-flex border border-gray-200 rounded-lg overflow-hidden bg-white">
           <button onClick={() => setTab('active')} className={`px-3 py-1.5 text-[12px] ${tab === 'active' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Active</button>
           <button onClick={() => setTab('pending')} className={`px-3 py-1.5 text-[12px] ${tab === 'pending' ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>Pending</button>
         </div>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search memories…" className="text-[12px] px-3 py-1.5 border border-gray-200 rounded-lg w-52" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search memories…" className="text-[12px] px-3 py-1.5 border border-gray-200 rounded-lg w-full sm:w-52" />
         <select value={agent} onChange={(e) => setAgent(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white"><option value="">All agents</option>{agents.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
         <select value={scope} onChange={(e) => setScope(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white"><option value="">All scopes</option><option>agent</option><option>workspace</option><option>conversation</option></select>
         <select value={source} onChange={(e) => setSource(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white"><option value="">All sources</option><option value="tool">tool</option><option value="extractor">extractor</option></select>

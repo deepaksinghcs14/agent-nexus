@@ -1205,7 +1205,7 @@ function TemplateGalleryModal({
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div style={{
-        background: '#fff', borderRadius: 16, width: '90vw', maxWidth: 900, height: '80vh',
+        background: '#fff', borderRadius: 16, width: '95vw', maxWidth: 900, height: '85vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
       }}>
@@ -1225,10 +1225,10 @@ function TemplateGalleryModal({
         </div>
 
         {/* Body: card grid + detail panel */}
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', flexWrap: 'wrap' }}>
           {/* Left: template cards */}
           <div style={{
-            width: 260, flexShrink: 0, borderRight: '1px solid #e5e7eb',
+            width: 220, minWidth: 180, flexShrink: 0, borderRight: '1px solid #e5e7eb',
             padding: '12px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8,
           }}>
             {TEMPLATES.map((tpl) => {
@@ -1740,9 +1740,9 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 
       {/* Top bar */}
       <div style={{
-        height: 48, borderBottom: '1px solid #e5e7eb', background: '#fff',
-        display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px',
-        flexShrink: 0,
+        minHeight: 48, borderBottom: '1px solid #e5e7eb', background: '#fff',
+        display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px',
+        flexShrink: 0, overflowX: 'auto',
       }}>
         <button
           onClick={() => router.push('/workflows')}
@@ -2159,9 +2159,10 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
       {/* Run panel */}
       {runPanelOpen && (
         <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0, height: 320,
+          position: 'fixed', bottom: 0, left: 0, right: 0,
           background: '#13111f', borderTop: '1px solid #2d2b3d',
           display: 'flex', flexDirection: 'column', zIndex: 50,
+          maxHeight: '50vh', minHeight: 240,
         }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
@@ -2178,9 +2179,9 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             </button>
           </div>
 
-          <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden', flexWrap: 'wrap' }}>
             {/* Input area */}
-            <div style={{ width: 320, flexShrink: 0, padding: '12px', display: 'flex', flexDirection: 'column', gap: 8, borderRight: '1px solid #2d2b3d' }}>
+            <div style={{ minWidth: 200, width: '40%', flexShrink: 0, padding: '12px', display: 'flex', flexDirection: 'column', gap: 8, borderRight: '1px solid #2d2b3d' }}>
               <textarea
                 value={runInput}
                 onChange={(e) => setRunInput(e.target.value)}

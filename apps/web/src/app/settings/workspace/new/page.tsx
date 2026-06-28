@@ -48,7 +48,7 @@ export default function NewWorkspacePage() {
   }
 
   return (
-    <div className="max-w-xl mx-auto p-8">
+    <div className="max-w-xl mx-auto p-4 sm:p-8">
       <div className="mb-8">
         <h1 className="text-xl font-semibold text-gray-900">New workspace</h1>
         <p className="text-sm text-gray-500 mt-1">
@@ -71,7 +71,7 @@ export default function NewWorkspacePage() {
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={!canCreate || loading}
-            className="w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
           />
         </div>
 

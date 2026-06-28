@@ -50,7 +50,7 @@ export function TriggerRunsTab({ triggerId }: Props) {
 
   return (
     <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-      <table className="w-full text-[12px]">
+      <div className="overflow-x-auto"><table className="w-full text-[12px] min-w-[540px]">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-100">
             {['Run ID', 'Status', 'Duration', 'Tokens', 'Cost', 'Started', ''].map((h) => (
@@ -82,7 +82,7 @@ export function TriggerRunsTab({ triggerId }: Props) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
 
       <div className="px-4 py-2.5 border-t border-gray-50 flex items-center gap-1.5 text-[11px] text-gray-400">
         <Activity className="w-3 h-3" />

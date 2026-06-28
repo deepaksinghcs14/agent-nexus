@@ -60,6 +60,7 @@ func (h *AgentsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		MemoryMinImportance      float64 `json:"memory_min_importance"`
 		MemoryDedupeThreshold    float64 `json:"memory_dedupe_threshold"`
 		ContextRetrievalEnabled  bool    `json:"context_retrieval_enabled"`
+		AgenticRAG               bool    `json:"agentic_rag"`
 		MaxSteps                 int     `json:"max_steps"`
 		MaxToolCalls             int     `json:"max_tool_calls"`
 		MaxDurationSecs          int     `json:"max_duration_secs"`
@@ -130,6 +131,7 @@ func (h *AgentsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		MemoryMinImportance:      req.MemoryMinImportance,
 		MemoryDedupeThreshold:    req.MemoryDedupeThreshold,
 		ContextRetrievalEnabled:  req.ContextRetrievalEnabled,
+		AgenticRAG:               req.AgenticRAG,
 		MaxSteps:                 req.MaxSteps,
 		MaxToolCalls:             req.MaxToolCalls,
 		MaxDurationSecs:          req.MaxDurationSecs,
@@ -295,7 +297,15 @@ func (h *AgentsHandler) ListConnectors(w http.ResponseWriter, r *http.Request) {
 	if connectors == nil {
 		connectors = []domain.Connector{}
 	}
-	errs.WriteJSON(w, http.StatusOK, map[string]any{"data": connectors})
+	var maxChunks int
+	var minScore float64
+	_ = h.pool.QueryRow(r.Context(),
+		`SELECT COALESCE(MAX(max_chunks), 8), COALESCE(MIN(min_score), 0.75) FROM agent_connectors WHERE agent_id=$1::uuid AND enabled=true`,
+		agentID).Scan(&maxChunks, &minScore)
+	if maxChunks <= 0 {
+		maxChunks = 8
+	}
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"data": connectors, "max_chunks": maxChunks, "min_score": minScore})
 }
 
 func (h *AgentsHandler) SetConnectors(w http.ResponseWriter, r *http.Request) {
@@ -346,6 +356,7 @@ type agentExport struct {
 	MemoryMinImportance      float64         `json:"memory_min_importance"`
 	MemoryDedupeThreshold    float64         `json:"memory_dedupe_threshold"`
 	ContextRetrievalEnabled  bool            `json:"context_retrieval_enabled"`
+	AgenticRAG               bool            `json:"agentic_rag"`
 	MaxSteps                 int             `json:"max_steps"`
 	MaxToolCalls             int             `json:"max_tool_calls"`
 	MaxDurationSecs          int             `json:"max_duration_secs"`
@@ -441,6 +452,7 @@ func (h *AgentsHandler) Export(w http.ResponseWriter, r *http.Request) {
 		MemoryMinImportance:      a.MemoryMinImportance,
 		MemoryDedupeThreshold:    a.MemoryDedupeThreshold,
 		ContextRetrievalEnabled:  a.ContextRetrievalEnabled,
+		AgenticRAG:               a.AgenticRAG,
 		MaxSteps:                 a.MaxSteps,
 		MaxToolCalls:             a.MaxToolCalls,
 		MaxDurationSecs:          a.MaxDurationSecs,
@@ -533,6 +545,7 @@ func (h *AgentsHandler) Import(w http.ResponseWriter, r *http.Request) {
 		MemoryMinImportance:      imp.MemoryMinImportance,
 		MemoryDedupeThreshold:    imp.MemoryDedupeThreshold,
 		ContextRetrievalEnabled:  imp.ContextRetrievalEnabled,
+		AgenticRAG:               imp.AgenticRAG,
 		MaxSteps:                 imp.MaxSteps,
 		MaxToolCalls:             imp.MaxToolCalls,
 		MaxDurationSecs:          imp.MaxDurationSecs,

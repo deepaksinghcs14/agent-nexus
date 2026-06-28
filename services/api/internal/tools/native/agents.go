@@ -288,9 +288,11 @@ func (t *UpdateAgentTool) Definition() domain.Tool {
 			"temperature":    map[string]any{"type": "number", "description": "Sampling temperature."},
 			"max_tokens":     map[string]any{"type": "integer", "description": "Maximum tokens per response."},
 			"max_steps":      map[string]any{"type": "integer", "description": "Maximum tool-call steps per run."},
-			"memory_enabled": map[string]any{"type": "boolean", "description": "Enable or disable memory for this agent."},
-			"memory_scope":   map[string]any{"type": "string", "enum": []string{"conversation", "agent", "workspace"}, "description": "Memory scope: conversation, agent, or workspace."},
-			"status":         map[string]any{"type": "string", "enum": []string{"active", "paused"}, "description": "Agent status: active or paused."},
+			"memory_enabled":           map[string]any{"type": "boolean", "description": "Enable or disable memory for this agent."},
+			"memory_scope":             map[string]any{"type": "string", "enum": []string{"conversation", "agent", "workspace"}, "description": "Memory scope: conversation, agent, or workspace."},
+			"context_retrieval_enabled": map[string]any{"type": "boolean", "description": "Enable retrieval-augmented context from connected data sources."},
+			"agentic_rag":              map[string]any{"type": "boolean", "description": "Let the agent decide when/what to retrieve via native_retrieve_context tool instead of pre-run injection. Requires context_retrieval_enabled=true."},
+			"status":                   map[string]any{"type": "string", "enum": []string{"active", "paused"}, "description": "Agent status: active or paused."},
 		},
 		"required": []string{"agent_id"},
 	})
@@ -371,6 +373,12 @@ func (t *UpdateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 	}
 	if v, ok := input["memory_scope"].(string); ok && v != "" {
 		addField("memory_scope", v)
+	}
+	if v, ok := input["context_retrieval_enabled"].(bool); ok {
+		addField("context_retrieval_enabled", v)
+	}
+	if v, ok := input["agentic_rag"].(bool); ok {
+		addField("agentic_rag", v)
 	}
 	if v, ok := input["status"].(string); ok && v != "" {
 		addField("status", v)

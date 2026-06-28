@@ -36,16 +36,16 @@ export default function DocsTokenSelector() {
     : null
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
       <Key className="w-3.5 h-3.5 shrink-0" style={{ color: 'rgba(255,255,255,0.3)' }} />
 
-      <div className="relative flex items-center">
+      <div className="relative flex items-center min-w-0 flex-1 sm:flex-none">
         <input
           type="text"
           value={value}
           onChange={(e) => handleChange(e.target.value)}
           placeholder="Paste API token (anx_...)"
-          className="w-64 pl-3 pr-7 py-1 text-xs font-mono rounded border bg-black/20 placeholder-white/20 focus:outline-none focus:border-[#7c3aed]"
+          className="w-full sm:w-52 md:w-64 pl-3 pr-7 py-1 text-xs font-mono rounded border bg-black/20 placeholder-white/20 focus:outline-none focus:border-[#7c3aed]"
           style={{
             borderColor: selectedTokenRaw ? '#7c3aed' : 'rgba(255,255,255,0.12)',
             color: 'rgba(255,255,255,0.75)',
@@ -62,7 +62,7 @@ export default function DocsTokenSelector() {
       </div>
 
       {selectedTokenRaw && (
-        <span className="flex items-center gap-1.5 text-xs text-green-400 shrink-0">
+        <span className="hidden sm:flex items-center gap-1.5 text-xs text-green-400 shrink-0">
           <CheckCircle2 className="w-3.5 h-3.5" />
           {matched ? matched.name : 'Ready'}
         </span>
@@ -71,7 +71,7 @@ export default function DocsTokenSelector() {
       {!selectedTokenRaw && (
         <a
           href="/settings/api-tokens"
-          className="text-xs shrink-0"
+          className="hidden sm:block text-xs shrink-0"
           style={{ color: 'rgba(255,255,255,0.25)' }}
         >
           Get a token →

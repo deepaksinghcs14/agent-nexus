@@ -120,6 +120,7 @@ func main() {
 	reg.Register(native.NewRunWorkflowTool(pool))
 	reg.Register(native.NewDeleteWorkflowTool(pool))
 	reg.Register(native.NewPromoteResourceTool(pool))
+	reg.Register(native.NewRetrieveContextTool(pool))
 	for _, t := range native.NewWhatsAppTools(pool, cfg) {
 		reg.Register(t)
 	}

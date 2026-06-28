@@ -78,6 +78,7 @@ type Agent struct {
 	MemoryMinImportance      float64   `json:"memory_min_importance"`
 	MemoryDedupeThreshold    float64   `json:"memory_dedupe_threshold"`
 	ContextRetrievalEnabled  bool      `json:"context_retrieval_enabled"`
+	AgenticRAG               bool      `json:"agentic_rag"`
 	MaxSteps                 int       `json:"max_steps"`
 	MaxToolCalls             int       `json:"max_tool_calls"`
 	MaxDurationSecs          int       `json:"max_duration_secs"`

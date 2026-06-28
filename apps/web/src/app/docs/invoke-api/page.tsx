@@ -72,6 +72,7 @@ POST /api/v1/invoke/agents/AGENT_ID
       <h2>Request Reference</h2>
 
       <h3>Invoke Agent</h3>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
         <tbody>
@@ -80,8 +81,10 @@ POST /api/v1/invoke/agents/AGENT_ID
           <tr><td><code>stream</code></td><td>boolean</td><td>No</td><td>Return SSE stream instead of polling response (default: false)</td></tr>
         </tbody>
       </table>
+      </div>
 
       <h3>Invoke Group</h3>
+      <div className="table-scroll">
       <table>
         <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
         <tbody>
@@ -89,6 +92,7 @@ POST /api/v1/invoke/agents/AGENT_ID
           <tr><td><code>stream</code></td><td>boolean</td><td>No</td><td>Return SSE stream (default: false)</td></tr>
         </tbody>
       </table>
+      </div>
     </DocPage>
   )
 }

@@ -103,13 +103,13 @@ export default function AdminServiceLogsPage() {
   }
 
   return (
-    <div className="p-6 h-full flex flex-col min-h-0">
-      <div className="flex items-center justify-between mb-4">
+    <div className="p-4 sm:p-6 h-full flex flex-col min-h-0">
+      <div className="flex flex-wrap items-start gap-3 justify-between mb-4">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Service logs</h1>
           <p className="text-[11px] text-gray-400 mt-0.5">{filtered.length.toLocaleString()} visible / {logs.length.toLocaleString()} captured</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setAutoScroll((v) => !v)}
             className={`inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border ${
@@ -146,8 +146,8 @@ export default function AdminServiceLogsPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mb-3">
-        <div className="relative w-80">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="relative w-full sm:w-80">
           <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             value={query}

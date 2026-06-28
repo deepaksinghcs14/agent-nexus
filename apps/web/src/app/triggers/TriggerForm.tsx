@@ -152,7 +152,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
         <p className="mt-1.5 text-xs text-gray-400 space-y-0.5">
           Go template evaluated against the inbound request. Available variables:
         </p>
-        <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-500">
+        <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-500">
           <span><code className="font-mono text-purple-600">{'{{.RawBody}}'}</code> — full JSON body as string</span>
           <span><code className="font-mono text-purple-600">{'{{.Body.field}}'}</code> — parsed JSON field</span>
           <span><code className="font-mono text-purple-600">{'{{.Headers.X-Name}}'}</code> — request header</span>

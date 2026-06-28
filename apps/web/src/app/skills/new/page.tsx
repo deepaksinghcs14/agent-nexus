@@ -25,8 +25,8 @@ export default function NewSkillPage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl">
-      <div className="flex items-center justify-between mb-5">
+    <div className="p-4 sm:p-6 max-w-3xl">
+      <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div className="flex items-center gap-2 text-[12px] text-gray-400">
           <span onClick={() => router.push('/skills')} className="hover:text-gray-600 cursor-pointer">Skills</span>
           <ChevronRight className="w-3 h-3" />

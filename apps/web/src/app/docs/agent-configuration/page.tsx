@@ -14,7 +14,8 @@ const FIELDS = [
   { field: 'memory_scope', type: 'conversation | agent | workspace', desc: 'Scope of memories retrieved and stored. conversation = not persisted across runs; agent = private to this agent; workspace = shared across all agents in the workspace.' },
   { field: 'max_memories', type: 'integer (default 5)', desc: 'Maximum number of past memories injected into the prompt per run. Higher values give more context but use more tokens.' },
   { field: 'min_relevance_score', type: 'float 0–1 (default 0.70)', desc: 'Only memories with a relevance score at or above this threshold are injected. Set to 0 to disable filtering.' },
-  { field: 'context_retrieval_enabled', type: 'boolean', desc: 'Whether to retrieve relevant document chunks from connected connectors (RAG).' },
+  { field: 'context_retrieval_enabled', type: 'boolean', desc: 'Whether to retrieve relevant document chunks from connected connectors (RAG). Must be true for agentic_rag to have any effect.' },
+  { field: 'agentic_rag', type: 'boolean', desc: 'Agentic RAG mode. When true, pre-run retrieval is skipped and the agent receives a native_retrieve_context tool it can call on-demand — choosing when to retrieve, with what query, and how many chunks to fetch. When false (default), retrieval happens automatically before every run using the configured max_chunks and min_score.' },
   { field: 'max_steps', type: 'integer (default 10)', desc: 'Maximum number of model+tool call cycles per run. Prevents infinite loops.' },
   { field: 'max_tool_calls', type: 'integer (default 20)', desc: 'Maximum tool calls per run across all steps.' },
   { field: 'max_duration_secs', type: 'integer (default 300)', desc: 'Hard timeout for the run in seconds. Run is cancelled when exceeded.' },
@@ -35,6 +36,7 @@ POST /api/v1/agents
 PUT /api/v1/agents/:id`}</code></pre>
 
       <h2>Field Reference</h2>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr>
@@ -53,6 +55,7 @@ PUT /api/v1/agents/:id`}</code></pre>
           ))}
         </tbody>
       </table>
+      </div>
 
       <h2>Example Request</h2>
       <pre><code>{`POST /api/v1/agents
@@ -86,6 +89,7 @@ PUT /api/v1/agents/:id`}</code></pre>
         orchestrate other agents, create resources at runtime, and clean up after itself — without
         a pre-configured workflow canvas.
       </p>
+      <div className="table-scroll">
       <table>
         <thead>
           <tr><th>Tool</th><th>What it does</th></tr>
@@ -115,6 +119,7 @@ PUT /api/v1/agents/:id`}</code></pre>
           <tr><td><code>native_delete_workflow</code></td><td>Delete a workflow created by the current run.</td></tr>
         </tbody>
       </table>
+      </div>
       <Callout type="info">
         Code tools (<code>native_create_code_tool</code>) execute in an isolated JavaScript sandbox
         with a <strong>5-second timeout</strong>. They have no access to the network, filesystem, or

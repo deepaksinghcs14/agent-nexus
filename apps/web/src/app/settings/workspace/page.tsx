@@ -89,7 +89,7 @@ export default function WorkspaceSettingsPage() {
   })
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-4 sm:p-6 max-w-4xl">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Workspace</h1>
         <p className="text-sm text-gray-500 mt-0.5">Manage your workspace settings and members</p>
@@ -133,7 +133,7 @@ export default function WorkspaceSettingsPage() {
               </button>
             ))}
           </div>
-          <div className="flex items-center justify-between mt-3">
+          <div className="flex flex-wrap items-center gap-3 justify-between mt-3">
             <p className="text-[11px] text-gray-400">{activeWorkspace?.name}</p>
             <button
               onClick={() => updateWorkspace.mutate()}

@@ -50,6 +50,10 @@ type ExecutionContext struct {
 	// Used by native_request_tool to auto-activate the right skill when the model
 	// requests a tool that is not yet visible (i.e. belongs to an inactive skill).
 	SkillToolMap map[string]string
+	// ConnectorIDs is the list of enabled connector IDs for the current agent (used by agentic RAG).
+	ConnectorIDs []string
+	// Embed, if non-nil, returns a vector embedding for the given text.
+	Embed func(ctx context.Context, text string) ([]float32, error)
 	// CallAgent, if non-nil, invokes another workspace agent as a sub-run and returns its output.
 	CallAgent func(ctx context.Context, agentID, task string) (string, error)
 	// RunWorkflow, if non-nil, triggers a workflow run in the background and returns the run_id.

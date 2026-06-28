@@ -32,13 +32,13 @@ export default function ConversationsPage() {
   const conversations = data?.data ?? []
 
   return (
-    <div className="p-6 max-w-4xl">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 max-w-4xl">
+      <div className="flex flex-wrap items-center gap-3 justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Conversations</h1>
           <p className="text-sm text-gray-500 mt-0.5">{conversations.length} conversation{conversations.length !== 1 ? 's' : ''}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {conversations.length > 0 && (
             <button
               onClick={() => { if (confirm(`Clear all ${conversations.length} conversations? This cannot be undone.`)) deleteAllMutation.mutate() }}

@@ -95,8 +95,8 @@ export default function ProvidersPage() {
   const providers = data?.data ?? []
 
   return (
-    <div className="p-6 max-w-2xl">
-      <div className="flex items-center justify-between mb-5">
+    <div className="p-4 sm:p-6 max-w-2xl">
+      <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Providers</h1>
           <p className="text-sm text-gray-500 mt-0.5">API keys are encrypted at rest with AES-256-GCM</p>
@@ -128,7 +128,7 @@ export default function ProvidersPage() {
 
       {/* Google OAuth quick-connect for Gemini */}
       {!providers.find((p) => p.provider === 'gemini') && (
-        <div className="flex items-center justify-between border border-blue-100 bg-blue-50 rounded-xl px-4 py-3 mb-4">
+        <div className="flex flex-wrap items-center gap-3 justify-between border border-blue-100 bg-blue-50 rounded-xl px-4 py-3 mb-4">
           <div className="flex items-center gap-2.5">
             <Chrome size={16} className="text-blue-600" />
             <div>
@@ -151,7 +151,7 @@ export default function ProvidersPage() {
           {formError && (
             <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">{formError}</div>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-gray-500 mb-1">Provider</label>
               <select
@@ -252,7 +252,7 @@ export default function ProvidersPage() {
 
       <div className="space-y-2">
         {providers.map((p) => (
-          <div key={p.id} className="flex items-center justify-between border border-gray-100 rounded-xl p-4 bg-white">
+          <div key={p.id} className="flex flex-wrap items-center gap-3 justify-between border border-gray-100 rounded-xl p-4 bg-white">
             <div className="flex items-center gap-3">
               <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${providerColor(p.provider)}`}>
                 {p.provider}

@@ -138,8 +138,8 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
   const agentNames = Object.fromEntries((agentData?.data ?? []).map((a: Agent) => [a.id, a.name]))
 
   return (
-    <div className="p-6 max-w-6xl">
-      <div className="flex items-center justify-between mb-5">
+    <div className="p-4 sm:p-6 max-w-6xl">
+      <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <Link href="/runs" className="text-[12px] text-gray-500 hover:text-gray-700 inline-flex items-center gap-1">
           <ArrowLeft className="w-3 h-3" /> Runs
         </Link>
@@ -163,7 +163,7 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
       {detail && (
         <>
           {/* Metrics */}
-          <div className="grid grid-cols-6 gap-3 mb-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
             {[
               ['Status', detail.status],
               ['Input tokens', formatTokens(detail.total_input_tokens)],
@@ -184,7 +184,7 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
           </div>
 
           {/* Input / Output */}
-          <div className="grid grid-cols-2 gap-4 mb-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
             <div>
               <p className="text-[12px] font-medium text-gray-700 mb-1.5">Input</p>
               <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-[12px] text-gray-600 whitespace-pre-wrap max-h-32 overflow-y-auto">
@@ -231,7 +231,8 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
                   {children.length} run{children.length !== 1 ? 's' : ''} — expand to see output and steps
                 </span>
               </p>
-              <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+              <div className="bg-white border border-gray-100 rounded-xl overflow-x-auto">
+                <div className="min-w-[480px]">
                 <div className={`${ROW_GRID} ${GRID_COLS} py-1.5 bg-gray-50 border-b border-gray-100`}>
                   <span />
                   <span className="text-[10px] font-medium text-gray-400 uppercase">Agent</span>
@@ -243,6 +244,7 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
                 {children.map((child) => (
                   <SubRunRow key={child.id} subRun={child} agentName={child.agent_id ? agentNames[child.agent_id] : undefined} />
                 ))}
+                </div>
               </div>
             </div>
           )}

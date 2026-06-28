@@ -458,24 +458,25 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 	contextChunks := []agentprompt.ContextChunk{}
 
+	var connSettings connectorSettings
 	if a.ContextRetrievalEnabled {
+		connSettings, _ = h.runs.agentConnectorSettings(ctx, a.ID)
+	}
+
+	if a.ContextRetrievalEnabled && !a.AgenticRAG {
 		start := time.Now()
-		connIDs, err := h.runs.agentConnectorIDs(ctx, a.ID)
 		var queryEmbedding []float32
-		if err == nil {
+		if len(connSettings.IDs) > 0 {
 			queryEmbedding = tryEmbed(ctx, h.cfg, llm, input)
 		}
-		chunks := []contextretrieval.Chunk{}
-		if err == nil {
-			chunks, err = contextretrieval.NewRetriever(h.pool).Retrieve(ctx, ws, connIDs, queryEmbedding, 8)
-		}
+		chunks, err := contextretrieval.NewRetriever(h.pool).Retrieve(ctx, ws, connSettings.IDs, queryEmbedding, connSettings.MaxChunks, connSettings.MinScore, input)
 		if err == nil {
 			for _, c := range chunks {
 				contextChunks = append(contextChunks, formatChunk(c))
 			}
 		}
 		h.runs.createStep(ctx, runID, domain.StepContextRetrieval, //nolint:errcheck
-			map[string]any{"connector_ids": connIDs},
+			map[string]any{"connector_ids": connSettings.IDs},
 			map[string]any{"count": len(contextChunks)},
 			start, 0, "", errString(err))
 	}
@@ -521,6 +522,13 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 	allToolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
 	allToolDefs, dbTools = ensureMemoryToolDefs(allToolDefs, dbTools)
+	if a.ContextRetrievalEnabled && a.AgenticRAG {
+		if rt, err := h.registry.Get("native_retrieve_context"); err == nil {
+			def := rt.Definition()
+			allToolDefs = append(allToolDefs, provider.ToolDefinition{Name: def.Name, Description: def.Description, InputSchema: def.InputSchema})
+			dbTools[def.Name] = def
+		}
+	}
 
 	// Build tool summary map for lazy loading and native meta-tools.
 	toolSummaries := make(map[string]string, len(allToolDefs))
@@ -541,6 +549,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	instructions := a.Instructions + onDemandSkillsInstructions(skills.OnDemand)
+	if a.ContextRetrievalEnabled && a.AgenticRAG {
+		instructions += "\n\nTo look up information from your connected knowledge sources, use the `native_retrieve_context` tool. Always call it before answering questions that require specific knowledge from your documents, codebase, or indexed files. Do NOT call any tool named \"search\" — use `native_retrieve_context` instead."
+	}
 	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
 		SystemInstructions: instructions,
 		Skills:             skills.Always,
@@ -556,6 +567,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 	// requestedTools grows when native_request_tool is called (lazy loading mode).
 	requestedTools := map[string]bool{}
+	if a.ContextRetrievalEnabled && a.AgenticRAG {
+		requestedTools["native_retrieve_context"] = true
+	}
 	skillSummaries := map[string]string{}
 	skillToolMap := map[string]string{}
 	for name, skill := range skills.OnDemand {
@@ -593,6 +607,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		UserID:            uid,
 		RunID:             runID,
 		ConversationID:    convID,
+		ConnectorIDs:      connSettings.IDs,
 		ToolSummaries:     toolSummaries,
 		AlwaysActiveTools: metaToolNameSet(),
 		SkillSummaries:    skillSummaries,
@@ -600,6 +615,10 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		InvokeDepth:       opts.invokeDepth,
 		RootRunID:         rootTraceID,
 		CallAgent:         callAgentFn,
+		Embed: func(ctx context.Context, text string) ([]float32, error) {
+			v := tryEmbed(ctx, h.cfg, llm, text)
+			return v, nil
+		},
 		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
 			return h.runWorkflowInline(ctx, ws, uid, workflowID, input, runID)
 		},
@@ -1050,6 +1069,13 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		// Reload tool definitions to pick up tools created or attached mid-run.
 		if freshAll, freshDB, err := loadAgentToolDefs(ctx, h.pool, a.ID); err == nil {
 			freshAll, freshDB = ensureMemoryToolDefs(freshAll, freshDB)
+			if a.ContextRetrievalEnabled && a.AgenticRAG {
+				if rt, err := h.registry.Get("native_retrieve_context"); err == nil {
+					def := rt.Definition()
+					freshAll = append(freshAll, provider.ToolDefinition{Name: def.Name, Description: def.Description, InputSchema: def.InputSchema})
+					freshDB[def.Name] = def
+				}
+			}
 			allToolDefs, dbTools = freshAll, freshDB
 			for _, td := range freshAll {
 				toolSummaries[td.Name] = td.Description
@@ -1780,24 +1806,25 @@ func (h *InvokeHandler) executeSupervisorRun(
 
 	contextChunks := []agentprompt.ContextChunk{}
 
+	var supConnSettings connectorSettings
 	if a.ContextRetrievalEnabled {
+		supConnSettings, _ = h.runs.agentConnectorSettings(ctx, a.ID)
+	}
+
+	if a.ContextRetrievalEnabled && !a.AgenticRAG {
 		start := time.Now()
-		connIDs, err := h.runs.agentConnectorIDs(ctx, a.ID)
 		var queryEmbedding []float32
-		if err == nil {
+		if len(supConnSettings.IDs) > 0 {
 			queryEmbedding = tryEmbed(ctx, h.cfg, llm, input)
 		}
-		chunks := []contextretrieval.Chunk{}
-		if err == nil {
-			chunks, err = contextretrieval.NewRetriever(h.pool).Retrieve(ctx, ws, connIDs, queryEmbedding, 8)
-		}
+		chunks, err := contextretrieval.NewRetriever(h.pool).Retrieve(ctx, ws, supConnSettings.IDs, queryEmbedding, supConnSettings.MaxChunks, supConnSettings.MinScore, input)
 		if err == nil {
 			for _, c := range chunks {
 				contextChunks = append(contextChunks, formatChunk(c))
 			}
 		}
 		h.runs.createStep(ctx, runID, domain.StepContextRetrieval, //nolint:errcheck
-			map[string]any{"connector_ids": connIDs},
+			map[string]any{"connector_ids": supConnSettings.IDs},
 			map[string]any{"count": len(contextChunks)},
 			start, 0, "", errString(err))
 	}
@@ -1862,6 +1889,9 @@ func (h *InvokeHandler) executeSupervisorRun(
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	supervisorInstructions += onDemandSkillsInstructions(skills.OnDemand)
+	if a.ContextRetrievalEnabled && a.AgenticRAG {
+		supervisorInstructions += "\n\nTo look up information from your connected knowledge sources, use the `native_retrieve_context` tool. Always call it before answering questions that require specific knowledge from your documents, codebase, or indexed files. Do NOT call any tool named \"search\" — use `native_retrieve_context` instead."
+	}
 	supSkillSummaries := map[string]string{}
 	supSkillToolMap := map[string]string{}
 	for name, skill := range skills.OnDemand {
@@ -1893,6 +1923,13 @@ func (h *InvokeHandler) executeSupervisorRun(
 		ConvCompaction:     supConvCompaction,
 	})
 	regularToolDefs, dbTools = ensureMemoryToolDefs(regularToolDefs, dbTools)
+	if a.ContextRetrievalEnabled && a.AgenticRAG {
+		if rt, err := h.registry.Get("native_retrieve_context"); err == nil {
+			def := rt.Definition()
+			regularToolDefs = append(regularToolDefs, provider.ToolDefinition{Name: def.Name, Description: def.Description, InputSchema: def.InputSchema})
+			dbTools[def.Name] = def
+		}
+	}
 	toolDefs := append(regularToolDefs, delegateToolDefs...)
 
 	supRootTraceID := runID
@@ -1913,10 +1950,15 @@ func (h *InvokeHandler) executeSupervisorRun(
 		UserID:            uid,
 		RunID:             runID,
 		ConversationID:    convID,
+		ConnectorIDs:      supConnSettings.IDs,
 		AlwaysActiveTools: metaToolNameSet(),
 		InvokeDepth:       0,
 		RootRunID:         supRootTraceID,
 		CallAgent:         supCallAgentFn,
+		Embed: func(ctx context.Context, text string) ([]float32, error) {
+			v := tryEmbed(ctx, h.cfg, llm, text)
+			return v, nil
+		},
 		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
 			return h.runWorkflowInline(ctx, ws, uid, workflowID, input, runID)
 		},
@@ -2259,6 +2301,13 @@ func (h *InvokeHandler) executeSupervisorRun(
 		// Reload tool definitions to pick up tools created or attached mid-run.
 		if freshAll, freshDB, err := loadAgentToolDefs(ctx, h.pool, a.ID); err == nil {
 			freshAll, freshDB = ensureMemoryToolDefs(freshAll, freshDB)
+			if a.ContextRetrievalEnabled && a.AgenticRAG {
+				if rt, err := h.registry.Get("native_retrieve_context"); err == nil {
+					def := rt.Definition()
+					freshAll = append(freshAll, provider.ToolDefinition{Name: def.Name, Description: def.Description, InputSchema: def.InputSchema})
+					freshDB[def.Name] = def
+				}
+			}
 			regularToolDefs, dbTools = freshAll, freshDB
 			toolDefs = append(regularToolDefs, delegateToolDefs...)
 		}
