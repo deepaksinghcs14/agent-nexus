@@ -585,15 +585,20 @@ Knowledge bases (connectors): %s
 === TASK ===
 Generate %d diverse test cases. Cover: core use cases, edge cases, multi-step requests, and error handling.
 
-Return ONLY a valid JSON array, no other text:
-[{"input":"user message to send","expected_output":"key content the response should contain (empty string if grading via criteria only)","grading_criteria":"what makes a good response — be specific"}]`,
+Rules:
+- "input": the user message to send (realistic, varied length)
+- "expected_output": ONE short phrase or keyword the response must contain — or empty string "" if you are using grading_criteria instead. Do NOT write full responses here.
+- "grading_criteria": what the LLM judge should check for (be specific, 1-2 sentences)
+
+Return ONLY a valid JSON array with no markdown fences, no commentary, nothing else:
+[{"input":"...","expected_output":"...","grading_criteria":"..."}]`,
 		req.Count, agent.Name, agent.Description, agent.Instructions,
 		toolsText, skillsText, connectorsText, req.Count)
 
 	ch, err := llm.Complete(r.Context(), provider.CompletionRequest{
 		Model:       modelName,
 		Temperature: 0.4,
-		MaxTokens:   3000,
+		MaxTokens:   6000,
 		Messages:    []provider.Message{{Role: "user", Content: prompt}},
 	})
 	if err != nil {
