@@ -80,7 +80,7 @@ export default function DashboardPage() {
   const recentRuns = runs.slice(0, 6)
 
   return (
-    <div className="p-6 max-w-6xl">
+    <div className="p-4 sm:p-6 max-w-6xl">
       {/* Hero greeting */}
       <div className="mb-8">
         <h1 className="text-xl font-semibold text-gray-900">
