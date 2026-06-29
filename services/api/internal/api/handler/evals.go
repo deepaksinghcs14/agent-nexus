@@ -467,7 +467,9 @@ func (h *EvalHandler) GenerateCases(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	suiteID := chi.URLParam(r, "id")
 	var req struct {
-		Count int `json:"count"`
+		Count    int    `json:"count"`
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
 	}
 	json.NewDecoder(r.Body).Decode(&req) //nolint:errcheck
 	if req.Count <= 0 {
@@ -550,10 +552,18 @@ func (h *EvalHandler) GenerateCases(w http.ResponseWriter, r *http.Request) {
 		connectorsText = strings.Join(connectorNames, ", ")
 	}
 
-	// Get LLM provider
-	llm, err := h.runsH.providerFor(r.Context(), ws, agent.Provider)
+	// Resolve LLM provider — use request override if supplied, fall back to agent's provider
+	providerName := agent.Provider
+	modelName := agent.Model
+	if req.Provider != "" {
+		providerName = req.Provider
+	}
+	if req.Model != "" {
+		modelName = req.Model
+	}
+	llm, err := h.runsH.providerFor(r.Context(), ws, providerName)
 	if err != nil || llm == nil {
-		errs.Write(w, errs.Internal("no LLM provider configured for this agent"))
+		errs.Write(w, errs.Internal("provider not available: "+providerName))
 		return
 	}
 
@@ -581,7 +591,7 @@ Return ONLY a valid JSON array, no other text:
 		toolsText, skillsText, connectorsText, req.Count)
 
 	ch, err := llm.Complete(r.Context(), provider.CompletionRequest{
-		Model:       agent.Model,
+		Model:       modelName,
 		Temperature: 0.4,
 		MaxTokens:   3000,
 		Messages:    []provider.Message{{Role: "user", Content: prompt}},

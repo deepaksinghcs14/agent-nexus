@@ -587,19 +587,21 @@ type Policy struct {
 }
 
 type EvalSuite struct {
-	ID          string     `json:"id"`
-	WorkspaceID string     `json:"workspace_id"`
-	AgentID     string     `json:"agent_id"`
-	AgentName   string     `json:"agent_name,omitempty"`
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	GradingMode string     `json:"grading_mode"`
-	AutoRun     bool       `json:"auto_run"`
-	CaseCount   int        `json:"case_count,omitempty"`
-	LastRunAt   *time.Time `json:"last_run_at,omitempty"`
-	LastScore   *float64   `json:"last_score,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID            string     `json:"id"`
+	WorkspaceID   string     `json:"workspace_id"`
+	AgentID       string     `json:"agent_id"`
+	AgentName     string     `json:"agent_name,omitempty"`
+	AgentProvider string     `json:"agent_provider,omitempty"`
+	AgentModel    string     `json:"agent_model,omitempty"`
+	Name          string     `json:"name"`
+	Description   string     `json:"description"`
+	GradingMode   string     `json:"grading_mode"`
+	AutoRun       bool       `json:"auto_run"`
+	CaseCount     int        `json:"case_count,omitempty"`
+	LastRunAt     *time.Time `json:"last_run_at,omitempty"`
+	LastScore     *float64   `json:"last_score,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 type EvalCase struct {

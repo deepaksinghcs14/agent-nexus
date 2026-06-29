@@ -703,6 +703,8 @@ export interface EvalSuite {
   workspace_id: string
   agent_id: string
   agent_name?: string
+  agent_provider?: string
+  agent_model?: string
   name: string
   description: string
   grading_mode: 'exact' | 'contains' | 'llm_judge'

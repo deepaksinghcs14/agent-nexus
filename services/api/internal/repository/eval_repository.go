@@ -61,13 +61,14 @@ func (r *EvalRepository) GetSuite(ctx context.Context, id, ws string) (*domain.E
 	err := r.pool.QueryRow(ctx, `
 		SELECT
 			es.id::text, es.workspace_id::text, es.agent_id::text,
-			COALESCE(a.name, ''), es.name, es.description, es.grading_mode, es.auto_run,
+			COALESCE(a.name, ''), COALESCE(a.provider, ''), COALESCE(a.model, ''),
+			es.name, es.description, es.grading_mode, es.auto_run,
 			es.created_at, es.updated_at
 		FROM eval_suites es
 		LEFT JOIN agents a ON a.id = es.agent_id
 		WHERE es.id = $1::uuid AND es.workspace_id = $2::uuid
-	`, id, ws).Scan(&s.ID, &s.WorkspaceID, &s.AgentID, &s.AgentName, &s.Name, &s.Description, &s.GradingMode, &s.AutoRun,
-		&s.CreatedAt, &s.UpdatedAt)
+	`, id, ws).Scan(&s.ID, &s.WorkspaceID, &s.AgentID, &s.AgentName, &s.AgentProvider, &s.AgentModel,
+		&s.Name, &s.Description, &s.GradingMode, &s.AutoRun, &s.CreatedAt, &s.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("eval suite not found")
 	}

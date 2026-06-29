@@ -381,8 +381,8 @@ export const evalsAPI = {
   updateCase: (suiteId: string, caseId: string, body: { input: string; expected_output?: string; grading_criteria?: string }) =>
     api.put(`/evals/suites/${suiteId}/cases/${caseId}`, body),
   deleteCase: (suiteId: string, caseId: string) => api.delete(`/evals/suites/${suiteId}/cases/${caseId}`),
-  generateCases: (suiteId: string, count: number) =>
-    api.post<{ cases: import('@/types').EvalCase[]; count: number }>(`/evals/suites/${suiteId}/generate-cases`, { count }),
+  generateCases: (suiteId: string, count: number, provider?: string, model?: string) =>
+    api.post<{ cases: import('@/types').EvalCase[]; count: number }>(`/evals/suites/${suiteId}/generate-cases`, { count, provider, model }),
   exportCases: (suiteId: string) => api.get<{ url: string } | unknown>(`/evals/suites/${suiteId}/cases/export`),
   importCases: (suiteId: string, cases: { input: string; expected_output?: string; grading_criteria?: string }[]) =>
     api.post<{ imported: number }>(`/evals/suites/${suiteId}/cases/import`, { cases }),

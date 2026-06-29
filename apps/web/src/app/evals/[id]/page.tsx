@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { evalsAPI } from '@/lib/api'
-import type { EvalCase, EvalRun, EvalSuite } from '@/types'
+import { evalsAPI, providersAPI } from '@/lib/api'
+import type { EvalCase, EvalRun, EvalSuite, ModelInfo, ProviderCredential } from '@/types'
 import { Plus, Trash2, Play, ChevronRight, Pencil, X, Check, Sparkles, Download, Upload, ToggleLeft, ToggleRight } from 'lucide-react'
 
 function RunStatusBadge({ status }: { status: EvalRun['status'] }) {
@@ -141,25 +141,61 @@ function AddCaseForm({ suiteId, onCreated }: { suiteId: string; onCreated: () =>
   )
 }
 
-function GenerateCasesModal({ suiteId, suiteName, onDone }: { suiteId: string; suiteName: string; onDone: () => void }) {
+function GenerateCasesModal({ suiteId, agentProvider, agentModel, onDone }: {
+  suiteId: string
+  agentProvider: string
+  agentModel: string
+  onDone: () => void
+}) {
   const [count, setCount] = useState(10)
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState<EvalCase[] | null>(null)
   const [error, setError] = useState('')
+
+  // Provider/model overrides
+  const [providers, setProviders] = useState<ProviderCredential[]>([])
+  const [selectedProvider, setSelectedProvider] = useState(agentProvider)
+  const [selectedModel, setSelectedModel] = useState(agentModel)
+  const [models, setModels] = useState<ModelInfo[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
+
+  useEffect(() => {
+    providersAPI.list().then((r: unknown) => {
+      const creds = ((r as { data?: ProviderCredential[] }).data) ?? []
+      setProviders(creds.filter(p => p.is_active))
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const cred = providers.find(p => p.provider === selectedProvider)
+    if (!cred) { setModels([]); return }
+    setLoadingModels(true)
+    providersAPI.models(cred.id).then((r: unknown) => {
+      setModels(((r as { data?: ModelInfo[] }).data) ?? [])
+    }).catch(() => setModels([])).finally(() => setLoadingModels(false))
+  }, [selectedProvider, providers])
+
+  // Keep model in sync when provider changes
+  const handleProviderChange = (p: string) => {
+    setSelectedProvider(p)
+    setSelectedModel('')
+  }
 
   const generate = async () => {
     setLoading(true)
     setError('')
     setGenerated(null)
     try {
-      const res = await evalsAPI.generateCases(suiteId, count) as { cases: EvalCase[]; count: number }
+      const res = await evalsAPI.generateCases(suiteId, count, selectedProvider || undefined, selectedModel || undefined) as { cases: EvalCase[]; count: number }
       setGenerated(res.cases ?? [])
     } catch (e) {
-      setError((e instanceof Error ? e.message : null) || 'Generation failed — check that this agent has an LLM provider configured.')
+      setError((e instanceof Error ? e.message : null) || 'Generation failed — check that this provider has valid credentials.')
     } finally {
       setLoading(false)
     }
   }
+
+  const uniqueProviders = Array.from(new Set(providers.map(p => p.provider)))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -176,8 +212,45 @@ function GenerateCasesModal({ suiteId, suiteName, onDone }: { suiteId: string; s
           {!generated ? (
             <>
               <p className="text-sm text-gray-500">
-                The AI will analyse <strong>{suiteName}</strong>&apos;s system prompt, tools, skills, and knowledge bases to suggest realistic test cases.
+                The AI will analyse the agent&apos;s system prompt, tools, skills, and knowledge bases to suggest realistic test cases.
               </p>
+
+              {/* Provider + model row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Provider</label>
+                  <select
+                    className="w-full border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    value={selectedProvider}
+                    onChange={e => handleProviderChange(e.target.value)}
+                  >
+                    {uniqueProviders.length === 0 && <option value={agentProvider}>{agentProvider} (agent default)</option>}
+                    {uniqueProviders.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Model</label>
+                  <select
+                    className="w-full border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    value={selectedModel}
+                    onChange={e => setSelectedModel(e.target.value)}
+                    disabled={loadingModels}
+                  >
+                    {selectedModel === '' && <option value="">— use agent default —</option>}
+                    {loadingModels && <option>Loading…</option>}
+                    {models.map(m => (
+                      <option key={m.id} value={m.id}>{m.name || m.id}</option>
+                    ))}
+                    {!loadingModels && models.length === 0 && agentModel && (
+                      <option value={agentModel}>{agentModel}</option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Count selector */}
               <div>
                 <label className="text-xs font-medium text-gray-600 block mb-2">Number of cases to generate</label>
                 <div className="flex gap-2">
@@ -192,6 +265,7 @@ function GenerateCasesModal({ suiteId, suiteName, onDone }: { suiteId: string; s
                   ))}
                 </div>
               </div>
+
               {error && <p className="text-sm text-red-600">{error}</p>}
             </>
           ) : (
@@ -260,8 +334,8 @@ function ImportModal({ suiteId, onDone }: { suiteId: string; onDone: () => void 
     try {
       const res = await evalsAPI.importCases(suiteId, parsed) as { imported: number }
       setResult(res)
-    } catch {
-      setError('Import failed. Please try again.')
+    } catch (e) {
+      setError((e instanceof Error ? e.message : null) || 'Import failed. Please try again.')
     } finally {
       setImporting(false)
     }
@@ -330,6 +404,86 @@ function ImportModal({ suiteId, onDone }: { suiteId: string; onDone: () => void 
   )
 }
 
+function EditSuiteModal({ suite, onSaved, onClose }: {
+  suite: EvalSuite
+  onSaved: () => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState(suite.name)
+  const [desc, setDesc] = useState(suite.description ?? '')
+  const [mode, setMode] = useState(suite.grading_mode)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const submit = async () => {
+    if (!name.trim()) return
+    setSaving(true)
+    setError('')
+    try {
+      await evalsAPI.updateSuite(suite.id, { name: name.trim(), description: desc, grading_mode: mode, auto_run: suite.auto_run })
+      onSaved()
+      onClose()
+    } catch (e) {
+      setError((e instanceof Error ? e.message : null) || 'Failed to save.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="font-semibold text-gray-900 text-sm">Edit eval suite</h2>
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Name</label>
+            <input
+              className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              value={name}
+              onChange={e => setName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Grading mode</label>
+            <select
+              className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              value={mode}
+              onChange={e => setMode(e.target.value as EvalSuite['grading_mode'])}
+            >
+              <option value="llm_judge">LLM Judge — model grades each response</option>
+              <option value="contains">Contains — output must include expected text</option>
+              <option value="exact">Exact Match — output must match exactly</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Description (optional)</label>
+            <textarea
+              className="w-full border rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+              rows={2}
+              value={desc}
+              onChange={e => setDesc(e.target.value)}
+            />
+          </div>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+        </div>
+        <div className="px-4 pb-4 flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors">Cancel</button>
+          <button
+            onClick={submit}
+            disabled={saving || !name.trim()}
+            className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function SuitePage({ params }: { params: { id: string } }) {
   const { id } = params
   const [suite, setSuite] = useState<EvalSuite | null>(null)
@@ -340,6 +494,7 @@ export default function SuitePage({ params }: { params: { id: string } }) {
   const [triggering, setTriggering] = useState(false)
   const [showGenerate, setShowGenerate] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showEdit, setShowEdit] = useState(false)
   const [togglingAutoRun, setTogglingAutoRun] = useState(false)
   const [exporting, setExporting] = useState(false)
 
@@ -357,7 +512,6 @@ export default function SuitePage({ params }: { params: { id: string } }) {
     Promise.all([loadSuite(), loadRuns()]).finally(() => setLoading(false))
   }, [id])
 
-  // Poll while any run is active
   useEffect(() => {
     const active = runs.some(r => r.status === 'pending' || r.status === 'running')
     if (!active) return
@@ -422,7 +576,8 @@ export default function SuitePage({ params }: { params: { id: string } }) {
       {showGenerate && (
         <GenerateCasesModal
           suiteId={id}
-          suiteName={suite.agent_name ?? suite.name}
+          agentProvider={suite.agent_provider ?? ''}
+          agentModel={suite.agent_model ?? ''}
           onDone={() => { setShowGenerate(false); loadSuite() }}
         />
       )}
@@ -430,6 +585,13 @@ export default function SuitePage({ params }: { params: { id: string } }) {
         <ImportModal
           suiteId={id}
           onDone={() => { setShowImport(false); loadSuite() }}
+        />
+      )}
+      {showEdit && (
+        <EditSuiteModal
+          suite={suite}
+          onSaved={loadSuite}
+          onClose={() => setShowEdit(false)}
         />
       )}
 
@@ -440,14 +602,23 @@ export default function SuitePage({ params }: { params: { id: string } }) {
             <span>/</span>
             <span className="text-gray-600">{suite.name}</span>
           </div>
-          <h1 className="text-xl font-semibold text-gray-900">{suite.name}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold text-gray-900">{suite.name}</h1>
+            <button
+              onClick={() => setShowEdit(true)}
+              className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+              title="Edit suite"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+          </div>
           <p className="text-sm text-gray-500 mt-0.5">{suite.agent_name} · {suite.grading_mode === 'llm_judge' ? 'LLM Judge' : suite.grading_mode === 'contains' ? 'Contains' : 'Exact Match'}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleToggleAutoRun}
             disabled={togglingAutoRun}
-            title={suite.auto_run ? 'Auto-run on agent save (on — click to disable)' : 'Auto-run on agent save (off — click to enable)'}
+            title={suite.auto_run ? 'Auto-run on agent save (on)' : 'Auto-run on agent save (off)'}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border transition-colors disabled:opacity-50 ${suite.auto_run ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}
           >
             {suite.auto_run ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
@@ -479,7 +650,6 @@ export default function SuitePage({ params }: { params: { id: string } }) {
 
       {tab === 'cases' && (
         <div className="max-w-3xl space-y-4">
-          {/* Cases toolbar */}
           <div className="flex flex-wrap items-center gap-2 justify-between">
             <span className="text-xs text-gray-400">{cases.length} case{cases.length === 1 ? '' : 's'}</span>
             <div className="flex flex-wrap items-center gap-2">
