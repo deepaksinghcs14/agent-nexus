@@ -442,7 +442,7 @@ Respond with JSON only (no other text):
 	ch, err := llm.Complete(ctx, provider.CompletionRequest{
 		Model:       model,
 		Temperature: 0.1,
-		MaxTokens:   300,
+		MaxTokens:   4000,
 		Messages:    []provider.Message{{Role: "user", Content: judgePrompt}},
 	})
 	if err != nil {
