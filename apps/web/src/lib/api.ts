@@ -390,4 +390,8 @@ export const evalsAPI = {
   listRuns: (suiteId: string) => api.get(`/evals/suites/${suiteId}/runs`),
   getRun: (runId: string) => api.get(`/evals/runs/${runId}`),
   analyzeRun: (runId: string) => api.post<{ analysis: import('@/types').EvalAnalysis | null }>(`/evals/runs/${runId}/analyze`, {}),
+  overrideResult: (runId: string, resultId: string, overridePassed: boolean | null) =>
+    api.patch(`/evals/runs/${runId}/results/${resultId}`, { override_passed: overridePassed }),
+  fixCase: (runId: string, resultId: string) =>
+    api.post<{ expected_output: string; grading_criteria: string }>(`/evals/runs/${runId}/results/${resultId}/fix-case`, {}),
 }

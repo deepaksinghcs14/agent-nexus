@@ -810,6 +810,151 @@ func (h *EvalHandler) ImportCases(w http.ResponseWriter, r *http.Request) {
 	errs.WriteJSON(w, http.StatusCreated, map[string]any{"imported": imported})
 }
 
+// OverrideResult handles PATCH /evals/runs/{runId}/results/{resultId} — manual pass/fail override.
+func (h *EvalHandler) OverrideResult(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	runID := chi.URLParam(r, "runId")
+	resultID := chi.URLParam(r, "resultId")
+
+	// Verify run belongs to workspace
+	repo := repository.NewEvalRepository(h.pool)
+	run, err := repo.GetRun(r.Context(), runID, ws)
+	if err != nil {
+		errs.Write(w, errs.NotFound("eval run not found"))
+		return
+	}
+	_ = run
+
+	var body struct {
+		OverridePassed *bool `json:"override_passed"` // null clears the override
+	}
+	json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
+
+	if err := repo.OverrideResult(r.Context(), resultID, runID, body.OverridePassed); err != nil {
+		errs.Write(w, errs.Internal("failed to update result"))
+		return
+	}
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// FixCase handles POST /evals/runs/{runId}/results/{resultId}/fix-case — AI-refines the test case.
+func (h *EvalHandler) FixCase(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	runID := chi.URLParam(r, "runId")
+	resultID := chi.URLParam(r, "resultId")
+
+	repo := repository.NewEvalRepository(h.pool)
+	run, err := repo.GetRun(r.Context(), runID, ws)
+	if err != nil {
+		errs.Write(w, errs.NotFound("eval run not found"))
+		return
+	}
+
+	result, err := repo.GetResult(r.Context(), resultID, runID)
+	if err != nil {
+		errs.Write(w, errs.NotFound("eval result not found"))
+		return
+	}
+
+	agentRepo := repository.NewAgentRepository(h.pool)
+	agent, err := agentRepo.Get(r.Context(), run.AgentID, ws)
+	if err != nil {
+		errs.Write(w, errs.Internal("agent not found"))
+		return
+	}
+
+	llm, err := h.runsH.providerFor(r.Context(), ws, agent.Provider)
+	if err != nil || llm == nil {
+		errs.Write(w, errs.Internal("LLM provider not available"))
+		return
+	}
+
+	humanVerdict := "INCORRECT (false positive — agent actually failed but was graded as passed)"
+	if result.OverridePassed != nil && *result.OverridePassed {
+		humanVerdict = "CORRECT (false negative — agent succeeded but was graded as failed)"
+	}
+
+	prompt := fmt.Sprintf(`A test case for an AI agent was manually reviewed and marked as %s.
+
+Agent: %s
+
+Test case:
+  Input: %s
+  Expected output: %s
+  Grading criteria: %s
+
+Agent's actual response:
+%s
+
+Update the expected_output and grading_criteria to make this test case accurate going forward.
+- If the response was CORRECT: update criteria to accept this style of valid response
+- If the response was INCORRECT: tighten criteria to clearly reject this type of bad response
+
+Output ONLY raw JSON (no markdown, no preamble):
+{"expected_output":"updated expected output or phrase","grading_criteria":"updated grading criteria, 1-2 clear sentences"}`,
+		humanVerdict, agent.Name,
+		result.Input, result.ExpectedOutput, result.GradingCriteria, result.ActualOutput)
+
+	ch, err := llm.Complete(r.Context(), provider.CompletionRequest{
+		Model:       agent.Model,
+		Temperature: 0.1,
+		MaxTokens:   800,
+		Messages:    []provider.Message{{Role: "user", Content: prompt}},
+	})
+	if err != nil {
+		errs.Write(w, errs.Internal("LLM call failed"))
+		return
+	}
+
+	var reply strings.Builder
+	for event := range ch {
+		if event.Type == provider.EventError {
+			errs.Write(w, errs.Internal("LLM error: "+event.Error.Error()))
+			return
+		}
+		if event.Type == provider.EventDelta {
+			reply.WriteString(event.Delta)
+		}
+	}
+
+	raw := strings.TrimSpace(reply.String())
+	start := strings.Index(raw, "{")
+	end := strings.LastIndex(raw, "}")
+	if start == -1 || end <= start {
+		errs.Write(w, errs.Internal("LLM returned invalid JSON"))
+		return
+	}
+	raw = raw[start : end+1]
+
+	var suggestion struct {
+		ExpectedOutput  string `json:"expected_output"`
+		GradingCriteria string `json:"grading_criteria"`
+	}
+	if err := json.Unmarshal([]byte(raw), &suggestion); err != nil {
+		errs.Write(w, errs.Internal("failed to parse LLM suggestion"))
+		return
+	}
+
+	// Apply the fix to the eval case
+	caseRepo := repository.NewEvalRepository(h.pool)
+	updatedCase := &domain.EvalCase{
+		ID:              result.CaseID,
+		SuiteID:         run.SuiteID,
+		Input:           result.Input,
+		ExpectedOutput:  suggestion.ExpectedOutput,
+		GradingCriteria: suggestion.GradingCriteria,
+	}
+	if err := caseRepo.UpdateCase(r.Context(), updatedCase); err != nil {
+		errs.Write(w, errs.Internal("failed to update case"))
+		return
+	}
+
+	errs.WriteJSON(w, http.StatusOK, map[string]any{
+		"expected_output":  suggestion.ExpectedOutput,
+		"grading_criteria": suggestion.GradingCriteria,
+	})
+}
+
 // doAnalysis runs an LLM over the failed cases for a completed run and stores the result.
 // Called asynchronously from executeEvalRun, and synchronously from AnalyzeRun.
 func (h *EvalHandler) doAnalysis(ctx context.Context, runID string, agent *domain.Agent, failedResults []domain.EvalResult) {

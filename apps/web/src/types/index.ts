@@ -768,6 +768,7 @@ export interface EvalResult {
   judge_reasoning: string
   error: string
   latency_ms: number
+  override_passed?: boolean | null
   created_at: string
 }
 

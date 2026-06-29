@@ -249,6 +249,8 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 				r.Get("/suites/{id}/runs", h.Evals.ListRuns)
 				r.Get("/runs/{runId}", h.Evals.GetRun)
 				r.Post("/runs/{runId}/analyze", h.Evals.AnalyzeRun)
+				r.Patch("/runs/{runId}/results/{resultId}", h.Evals.OverrideResult)
+				r.Post("/runs/{runId}/results/{resultId}/fix-case", h.Evals.FixCase)
 			})
 
 			// Admin (requires is_admin flag)

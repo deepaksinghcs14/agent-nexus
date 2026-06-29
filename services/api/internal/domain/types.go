@@ -645,5 +645,6 @@ type EvalResult struct {
 	JudgeReasoning  string    `json:"judge_reasoning"`
 	Error           string    `json:"error"`
 	LatencyMs       int       `json:"latency_ms"`
+	OverridePassed  *bool     `json:"override_passed"`
 	CreatedAt       time.Time `json:"created_at"`
 }

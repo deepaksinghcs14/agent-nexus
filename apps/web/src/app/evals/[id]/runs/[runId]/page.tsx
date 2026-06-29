@@ -6,13 +6,21 @@ import { evalsAPI, agentsAPI } from '@/lib/api'
 import type { EvalAnalysis, EvalAnalysisFix, EvalResult, EvalRun } from '@/types'
 import {
   CheckCircle2, XCircle, AlertCircle, ExternalLink,
-  Sparkles, Wrench, GraduationCap, FileText, Copy, Check, Loader2,
+  Sparkles, Wrench, GraduationCap, FileText, Copy, Check, Loader2, ThumbsUp, ThumbsDown,
 } from 'lucide-react'
 
-function StatusIcon({ passed, error }: { passed?: boolean; error?: string }) {
-  if (error) return <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0" />
-  if (passed === true) return <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-  if (passed === false) return <XCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+// Effective pass/fail — override takes precedence over auto-grade
+function effectivePassed(res: EvalResult): boolean | undefined {
+  if (res.override_passed !== null && res.override_passed !== undefined) return res.override_passed
+  return res.passed
+}
+
+function StatusIcon({ res }: { res: EvalResult }) {
+  const ep = effectivePassed(res)
+  const isOverridden = res.override_passed !== null && res.override_passed !== undefined
+  if (res.error && ep === undefined) return <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+  if (ep === true) return <CheckCircle2 className={`w-4 h-4 flex-shrink-0 ${isOverridden ? 'text-green-400' : 'text-green-500'}`} />
+  if (ep === false) return <XCircle className={`w-4 h-4 flex-shrink-0 ${isOverridden ? 'text-red-300' : 'text-red-400'}`} />
   return <span className="w-4 h-4 flex-shrink-0" />
 }
 
@@ -163,6 +171,162 @@ function AnalysisCard({ analysis, agentId }: { analysis: EvalAnalysis; agentId?:
   )
 }
 
+function ResultCard({
+  res, index, runId, expanded, onToggle, onResultUpdate,
+}: {
+  res: EvalResult
+  index: number
+  runId: string
+  expanded: boolean
+  onToggle: () => void
+  onResultUpdate: (r: EvalResult) => void
+}) {
+  const [overriding, setOverriding] = useState(false)
+  const [fixing, setFixing] = useState(false)
+  const [fixResult, setFixResult] = useState<{ expected_output: string; grading_criteria: string } | null>(null)
+
+  const ep = effectivePassed(res)
+  const isOverridden = res.override_passed !== null && res.override_passed !== undefined
+  const borderCls = ep === true ? 'border-green-100' : res.error && ep === undefined ? 'border-amber-100' : 'border-red-100'
+
+  const handleOverride = async (val: boolean | null) => {
+    setOverriding(true)
+    try {
+      await evalsAPI.overrideResult(runId, res.id, val)
+      onResultUpdate({ ...res, override_passed: val })
+    } catch { /* ignore */ } finally {
+      setOverriding(false)
+    }
+  }
+
+  const handleFixCase = async () => {
+    setFixing(true)
+    setFixResult(null)
+    try {
+      const r = await evalsAPI.fixCase(runId, res.id) as { expected_output: string; grading_criteria: string }
+      setFixResult(r)
+      // Optimistically update displayed case fields
+      onResultUpdate({ ...res, expected_output: r.expected_output, grading_criteria: r.grading_criteria })
+    } catch { /* ignore */ } finally {
+      setFixing(false)
+    }
+  }
+
+  return (
+    <div className={`border rounded-lg overflow-hidden transition-colors ${borderCls}`}>
+      {/* Header row */}
+      <button
+        className="w-full flex items-start gap-3 p-4 text-left hover:bg-gray-50 transition-colors"
+        onClick={onToggle}
+      >
+        <StatusIcon res={res} />
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <span className="text-xs font-medium text-gray-400">Case {index + 1}</span>
+            {res.score > 0 && <span className="text-xs text-gray-500">Score: {res.score.toFixed(2)}</span>}
+            <span className="text-xs text-gray-400">{res.latency_ms}ms</span>
+            {isOverridden && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-50 text-yellow-700 border border-yellow-200">
+                manually {res.override_passed ? 'correct' : 'incorrect'}
+              </span>
+            )}
+            {res.run_id && (
+              <Link
+                href={`/runs?id=${res.run_id}`}
+                onClick={e => e.stopPropagation()}
+                className="text-xs text-purple-600 hover:underline flex items-center gap-0.5"
+              >
+                View run <ExternalLink className="w-3 h-3" />
+              </Link>
+            )}
+          </div>
+          <p className="text-sm text-gray-900 line-clamp-2">{res.input}</p>
+        </div>
+        {/* Override buttons — always visible, stop propagation so they don't toggle expand */}
+        <div className="flex items-center gap-1 flex-shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+          {overriding ? (
+            <Loader2 className="w-3.5 h-3.5 text-gray-400 animate-spin" />
+          ) : (
+            <>
+              <button
+                title="Mark as correct"
+                onClick={() => handleOverride(res.override_passed === true ? null : true)}
+                className={`p-1 rounded transition-colors ${res.override_passed === true ? 'bg-green-100 text-green-600' : 'text-gray-300 hover:text-green-500 hover:bg-green-50'}`}
+              >
+                <ThumbsUp className="w-3.5 h-3.5" />
+              </button>
+              <button
+                title="Mark as incorrect"
+                onClick={() => handleOverride(res.override_passed === false ? null : false)}
+                className={`p-1 rounded transition-colors ${res.override_passed === false ? 'bg-red-100 text-red-500' : 'text-gray-300 hover:text-red-400 hover:bg-red-50'}`}
+              >
+                <ThumbsDown className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+        </div>
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="px-4 pb-4 pt-0 border-t border-gray-100 space-y-3">
+          {res.actual_output && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Actual output</p>
+              <p className="text-sm text-gray-800 whitespace-pre-wrap bg-gray-50 rounded p-3">{res.actual_output}</p>
+            </div>
+          )}
+          {res.expected_output && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Expected output</p>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap bg-green-50 rounded p-3">{res.expected_output}</p>
+            </div>
+          )}
+          {res.grading_criteria && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Grading criteria</p>
+              <p className="text-sm text-gray-700 italic">{res.grading_criteria}</p>
+            </div>
+          )}
+          {res.judge_reasoning && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Judge reasoning</p>
+              <p className="text-sm text-gray-700 bg-blue-50 rounded p-3">{res.judge_reasoning}</p>
+            </div>
+          )}
+          {res.error && (
+            <div>
+              <p className="text-xs font-medium text-amber-600 mb-1">Error</p>
+              <p className="text-sm text-amber-700 bg-amber-50 rounded p-3">{res.error}</p>
+            </div>
+          )}
+
+          {/* AI fix case — shown when manually overridden */}
+          {isOverridden && (
+            <div className="pt-1 border-t border-gray-100">
+              {fixResult ? (
+                <div className="flex items-center gap-2 text-xs text-green-600">
+                  <Check className="w-3.5 h-3.5" />
+                  Case updated — expected output and grading criteria refined.
+                </div>
+              ) : (
+                <button
+                  onClick={handleFixCase}
+                  disabled={fixing}
+                  className="flex items-center gap-1.5 text-xs text-purple-700 border border-purple-200 rounded px-2.5 py-1.5 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                >
+                  {fixing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  {fixing ? 'AI is refining the case…' : 'Fix case with AI'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function RunDetailPage({ params }: { params: { id: string; runId: string } }) {
   const { id, runId } = params
   const [run, setRun] = useState<EvalRun | null>(null)
@@ -304,71 +468,15 @@ export default function RunDetailPage({ params }: { params: { id: string; runId:
       ) : (
         <div className="space-y-3">
           {results.map((res, i) => (
-            <div
+            <ResultCard
               key={res.id}
-              className={`border rounded-lg overflow-hidden transition-colors ${res.passed === true ? 'border-green-100' : res.error ? 'border-amber-100' : 'border-red-100'}`}
-            >
-              {/* Header row */}
-              <button
-                className="w-full flex items-start gap-3 p-4 text-left hover:bg-gray-50 transition-colors"
-                onClick={() => setExpanded(expanded === res.id ? null : res.id)}
-              >
-                <StatusIcon passed={res.passed} error={res.error} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 mb-1">
-                    <span className="text-xs font-medium text-gray-400">Case {i + 1}</span>
-                    {res.score > 0 && <span className="text-xs text-gray-500">Score: {res.score.toFixed(2)}</span>}
-                    <span className="text-xs text-gray-400">{res.latency_ms}ms</span>
-                    {res.run_id && (
-                      <Link
-                        href={`/runs?id=${res.run_id}`}
-                        onClick={e => e.stopPropagation()}
-                        className="text-xs text-purple-600 hover:underline flex items-center gap-0.5"
-                      >
-                        View run <ExternalLink className="w-3 h-3" />
-                      </Link>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-900 line-clamp-2">{res.input}</p>
-                </div>
-              </button>
-
-              {/* Expanded detail */}
-              {expanded === res.id && (
-                <div className="px-4 pb-4 pt-0 border-t border-gray-100 space-y-3">
-                  {res.actual_output && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 mb-1">Actual output</p>
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap bg-gray-50 rounded p-3">{res.actual_output}</p>
-                    </div>
-                  )}
-                  {res.expected_output && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 mb-1">Expected output</p>
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap bg-green-50 rounded p-3">{res.expected_output}</p>
-                    </div>
-                  )}
-                  {res.grading_criteria && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 mb-1">Grading criteria</p>
-                      <p className="text-sm text-gray-700 italic">{res.grading_criteria}</p>
-                    </div>
-                  )}
-                  {res.judge_reasoning && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 mb-1">Judge reasoning</p>
-                      <p className="text-sm text-gray-700 bg-blue-50 rounded p-3">{res.judge_reasoning}</p>
-                    </div>
-                  )}
-                  {res.error && (
-                    <div>
-                      <p className="text-xs font-medium text-amber-600 mb-1">Error</p>
-                      <p className="text-sm text-amber-700 bg-amber-50 rounded p-3">{res.error}</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+              res={res}
+              index={i}
+              runId={runId}
+              expanded={expanded === res.id}
+              onToggle={() => setExpanded(expanded === res.id ? null : res.id)}
+              onResultUpdate={(updated) => setResults(prev => prev.map(r => r.id === updated.id ? updated : r))}
+            />
           ))}
         </div>
       )}

@@ -227,7 +227,8 @@ func (r *EvalRepository) ListResults(ctx context.Context, runID string) ([]domai
 		SELECT
 			er.id::text, er.eval_run_id::text, er.case_id::text, er.run_id::text,
 			ec.input, ec.expected_output, ec.grading_criteria,
-			er.actual_output, er.passed, er.score, er.judge_reasoning, er.error, er.latency_ms, er.created_at
+			er.actual_output, er.passed, er.score, er.judge_reasoning, er.error, er.latency_ms,
+			er.override_passed, er.created_at
 		FROM eval_results er
 		JOIN eval_cases ec ON ec.id = er.case_id
 		WHERE er.eval_run_id = $1::uuid
@@ -242,10 +243,40 @@ func (r *EvalRepository) ListResults(ctx context.Context, runID string) ([]domai
 		var res domain.EvalResult
 		if err := rows.Scan(&res.ID, &res.EvalRunID, &res.CaseID, &res.RunID,
 			&res.Input, &res.ExpectedOutput, &res.GradingCriteria,
-			&res.ActualOutput, &res.Passed, &res.Score, &res.JudgeReasoning, &res.Error, &res.LatencyMs, &res.CreatedAt); err != nil {
+			&res.ActualOutput, &res.Passed, &res.Score, &res.JudgeReasoning, &res.Error, &res.LatencyMs,
+			&res.OverridePassed, &res.CreatedAt); err != nil {
 			return nil, err
 		}
 		results = append(results, res)
 	}
 	return results, rows.Err()
+}
+
+func (r *EvalRepository) OverrideResult(ctx context.Context, resultID, runID string, overridePassed *bool) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE eval_results SET override_passed=$3 WHERE id=$1::uuid AND eval_run_id=$2::uuid`,
+		resultID, runID, overridePassed)
+	return err
+}
+
+func (r *EvalRepository) GetResult(ctx context.Context, resultID, runID string) (*domain.EvalResult, error) {
+	var res domain.EvalResult
+	err := r.pool.QueryRow(ctx, `
+		SELECT
+			er.id::text, er.eval_run_id::text, er.case_id::text, er.run_id::text,
+			ec.input, ec.expected_output, ec.grading_criteria,
+			er.actual_output, er.passed, er.score, er.judge_reasoning, er.error, er.latency_ms,
+			er.override_passed, er.created_at
+		FROM eval_results er
+		JOIN eval_cases ec ON ec.id = er.case_id
+		WHERE er.id = $1::uuid AND er.eval_run_id = $2::uuid`,
+		resultID, runID).Scan(
+		&res.ID, &res.EvalRunID, &res.CaseID, &res.RunID,
+		&res.Input, &res.ExpectedOutput, &res.GradingCriteria,
+		&res.ActualOutput, &res.Passed, &res.Score, &res.JudgeReasoning, &res.Error, &res.LatencyMs,
+		&res.OverridePassed, &res.CreatedAt)
+	if err == pgx.ErrNoRows {
+		return nil, fmt.Errorf("eval result not found")
+	}
+	return &res, err
 }
