@@ -366,3 +366,21 @@ export const configAPI = {
 export const observabilityAPI = {
   latency: (days = 7) => api.get(`/observability/latency?days=${days}`),
 }
+
+export const evalsAPI = {
+  listSuites: () => api.get('/evals/suites'),
+  createSuite: (body: { agent_id: string; name: string; description?: string; grading_mode?: string }) =>
+    api.post('/evals/suites', body),
+  getSuite: (id: string) => api.get(`/evals/suites/${id}`),
+  updateSuite: (id: string, body: { name: string; description?: string; grading_mode?: string }) =>
+    api.put(`/evals/suites/${id}`, body),
+  deleteSuite: (id: string) => api.delete(`/evals/suites/${id}`),
+  createCase: (suiteId: string, body: { input: string; expected_output?: string; grading_criteria?: string }) =>
+    api.post(`/evals/suites/${suiteId}/cases`, body),
+  updateCase: (suiteId: string, caseId: string, body: { input: string; expected_output?: string; grading_criteria?: string }) =>
+    api.put(`/evals/suites/${suiteId}/cases/${caseId}`, body),
+  deleteCase: (suiteId: string, caseId: string) => api.delete(`/evals/suites/${suiteId}/cases/${caseId}`),
+  triggerRun: (suiteId: string) => api.post(`/evals/suites/${suiteId}/runs`, {}),
+  listRuns: (suiteId: string) => api.get(`/evals/suites/${suiteId}/runs`),
+  getRun: (runId: string) => api.get(`/evals/runs/${runId}`),
+}

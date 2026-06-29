@@ -172,6 +172,7 @@ func main() {
 		NexusAI:         nexusAI,
 		Observability:   handler.NewObservabilityHandler(pool),
 		WhatsAppCreds:   handler.NewWhatsAppCredsHandler(pool, cfg),
+		Evals:           handler.NewEvalHandler(pool, cfg, invoke, runs),
 	}
 
 	// HTTP server

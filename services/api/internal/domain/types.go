@@ -585,3 +585,60 @@ type Policy struct {
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 }
+
+type EvalSuite struct {
+	ID          string     `json:"id"`
+	WorkspaceID string     `json:"workspace_id"`
+	AgentID     string     `json:"agent_id"`
+	AgentName   string     `json:"agent_name,omitempty"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	GradingMode string     `json:"grading_mode"`
+	CaseCount   int        `json:"case_count,omitempty"`
+	LastRunAt   *time.Time `json:"last_run_at,omitempty"`
+	LastScore   *float64   `json:"last_score,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type EvalCase struct {
+	ID              string    `json:"id"`
+	SuiteID         string    `json:"suite_id"`
+	Input           string    `json:"input"`
+	ExpectedOutput  string    `json:"expected_output"`
+	GradingCriteria string    `json:"grading_criteria"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type EvalRun struct {
+	ID          string     `json:"id"`
+	SuiteID     string     `json:"suite_id"`
+	WorkspaceID string     `json:"workspace_id"`
+	Status      string     `json:"status"`
+	TotalCases  int        `json:"total_cases"`
+	Passed      int        `json:"passed"`
+	Failed      int        `json:"failed"`
+	ErrorCount  int        `json:"error_count"`
+	Score       float64    `json:"score"`
+	StartedAt   *time.Time `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type EvalResult struct {
+	ID              string    `json:"id"`
+	EvalRunID       string    `json:"eval_run_id"`
+	CaseID          string    `json:"case_id"`
+	RunID           *string   `json:"run_id"`
+	Input           string    `json:"input,omitempty"`
+	ExpectedOutput  string    `json:"expected_output,omitempty"`
+	GradingCriteria string    `json:"grading_criteria,omitempty"`
+	ActualOutput    string    `json:"actual_output"`
+	Passed          *bool     `json:"passed"`
+	Score           float64   `json:"score"`
+	JudgeReasoning  string    `json:"judge_reasoning"`
+	Error           string    `json:"error"`
+	LatencyMs       int       `json:"latency_ms"`
+	CreatedAt       time.Time `json:"created_at"`
+}

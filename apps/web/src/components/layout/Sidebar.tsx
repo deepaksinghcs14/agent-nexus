@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import {
   Bot, GitBranch, Wrench, Plug, Link2, Zap, Sparkles, Radio, BookMarked,
   MessageSquare, History,
-  Activity, Brain, BarChart2, Timer,
+  Activity, Brain, BarChart2, Timer, FlaskConical,
   Key, Settings, BookOpen,
   LayoutDashboard, Users, Building2, Shield, ClipboardList,
   Hexagon, ShieldCheck, PanelLeftClose, PanelLeftOpen, SquareTerminal, X,
@@ -46,6 +46,7 @@ const userNav: NavGroup[] = [
     items: [
       { label: 'Runs & Traces', href: '/runs',          icon: Activity },
       { label: 'Memory',        href: '/memory',        icon: Brain },
+      { label: 'Evals',         href: '/evals',         icon: FlaskConical },
       { label: 'Usage',         href: '/usage',         icon: BarChart2 },
       { label: 'Latency',       href: '/observability', icon: Timer },
     ],

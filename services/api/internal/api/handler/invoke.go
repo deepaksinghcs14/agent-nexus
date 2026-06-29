@@ -202,6 +202,27 @@ func (h *InvokeHandler) ensureConversation(ctx context.Context, convID, ws, uid,
 
 const maxInvokeDepth = 3
 
+// RunAgentSync runs an agent to completion and returns the output. Used by the eval framework.
+// The caller is responsible for creating the conversation and inserting the user message before calling this.
+func (h *InvokeHandler) RunAgentSync(ctx context.Context, a *domain.Agent, ws, uid, convID, input string) (output string, runID string, err error) {
+	runID = uuid.NewString()
+	if _, err = h.pool.Exec(ctx,
+		`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running')`,
+		runID, ws, a.ID, convID, uid, input); err != nil {
+		return "", "", fmt.Errorf("failed to create run: %w", err)
+	}
+	h.executeRun(ctx, a, ws, uid, runID, convID, input, nil, nil, invokeOpts{})
+	var status string
+	if scanErr := h.pool.QueryRow(context.Background(),
+		`SELECT COALESCE(output,''), status FROM runs WHERE id=$1::uuid`, runID).Scan(&output, &status); scanErr != nil {
+		return "", runID, scanErr
+	}
+	if status == "failed" {
+		return "", runID, fmt.Errorf("agent run failed")
+	}
+	return output, runID, nil
+}
+
 // invokeOpts carries optional parameters for executeRun that are set when an agent
 // is called as a sub-task by another agent (via native_call_agent).
 type invokeOpts struct {

@@ -25,4 +25,5 @@ type Handlers struct {
 	NexusAI         *NexusAIHandler
 	Observability   *ObservabilityHandler
 	WhatsAppCreds   *WhatsAppCredsHandler
+	Evals           *EvalHandler
 }

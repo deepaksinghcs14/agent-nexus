@@ -231,6 +231,21 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			// Nexus AI meta-agent
 			r.Post("/nexus-ai/chat", h.NexusAI.Chat)
 
+			// Eval framework
+			r.Route("/evals", func(r chi.Router) {
+				r.Get("/suites", h.Evals.ListSuites)
+				r.Post("/suites", h.Evals.CreateSuite)
+				r.Get("/suites/{id}", h.Evals.GetSuite)
+				r.Put("/suites/{id}", h.Evals.UpdateSuite)
+				r.Delete("/suites/{id}", h.Evals.DeleteSuite)
+				r.Post("/suites/{id}/cases", h.Evals.CreateCase)
+				r.Put("/suites/{id}/cases/{caseId}", h.Evals.UpdateCase)
+				r.Delete("/suites/{id}/cases/{caseId}", h.Evals.DeleteCase)
+				r.Post("/suites/{id}/runs", h.Evals.TriggerRun)
+				r.Get("/suites/{id}/runs", h.Evals.ListRuns)
+				r.Get("/runs/{runId}", h.Evals.GetRun)
+			})
+
 			// Admin (requires is_admin flag)
 			r.Group(func(r chi.Router) {
 				r.Use(mw.RequireAdmin)

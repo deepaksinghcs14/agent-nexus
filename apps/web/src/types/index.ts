@@ -697,6 +697,64 @@ export interface LatencyData {
   days: number
 }
 
+// Eval framework
+export interface EvalSuite {
+  id: string
+  workspace_id: string
+  agent_id: string
+  agent_name?: string
+  name: string
+  description: string
+  grading_mode: 'exact' | 'contains' | 'llm_judge'
+  case_count?: number
+  last_run_at?: string
+  last_score?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface EvalCase {
+  id: string
+  suite_id: string
+  input: string
+  expected_output: string
+  grading_criteria: string
+  created_at: string
+  updated_at: string
+}
+
+export interface EvalRun {
+  id: string
+  suite_id: string
+  workspace_id: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  total_cases: number
+  passed: number
+  failed: number
+  error_count: number
+  score: number
+  started_at?: string
+  completed_at?: string
+  created_at: string
+}
+
+export interface EvalResult {
+  id: string
+  eval_run_id: string
+  case_id: string
+  run_id?: string
+  input?: string
+  expected_output?: string
+  grading_criteria?: string
+  actual_output: string
+  passed?: boolean
+  score: number
+  judge_reasoning: string
+  error: string
+  latency_ms: number
+  created_at: string
+}
+
 // Invoke API
 export interface InvokeRunResponse {
   run_id: string
