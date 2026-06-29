@@ -373,7 +373,7 @@ export const evalsAPI = {
   createSuite: (body: { agent_id: string; name: string; description?: string; grading_mode?: string }) =>
     api.post('/evals/suites', body),
   getSuite: (id: string) => api.get(`/evals/suites/${id}`),
-  updateSuite: (id: string, body: { name: string; description?: string; grading_mode?: string }) =>
+  updateSuite: (id: string, body: { name: string; description?: string; grading_mode?: string; auto_run?: boolean }) =>
     api.put(`/evals/suites/${id}`, body),
   deleteSuite: (id: string) => api.delete(`/evals/suites/${id}`),
   createCase: (suiteId: string, body: { input: string; expected_output?: string; grading_criteria?: string }) =>
@@ -381,6 +381,11 @@ export const evalsAPI = {
   updateCase: (suiteId: string, caseId: string, body: { input: string; expected_output?: string; grading_criteria?: string }) =>
     api.put(`/evals/suites/${suiteId}/cases/${caseId}`, body),
   deleteCase: (suiteId: string, caseId: string) => api.delete(`/evals/suites/${suiteId}/cases/${caseId}`),
+  generateCases: (suiteId: string, count: number) =>
+    api.post<{ cases: import('@/types').EvalCase[]; count: number }>(`/evals/suites/${suiteId}/generate-cases`, { count }),
+  exportCases: (suiteId: string) => api.get<{ url: string } | unknown>(`/evals/suites/${suiteId}/cases/export`),
+  importCases: (suiteId: string, cases: { input: string; expected_output?: string; grading_criteria?: string }[]) =>
+    api.post<{ imported: number }>(`/evals/suites/${suiteId}/cases/import`, { cases }),
   triggerRun: (suiteId: string) => api.post(`/evals/suites/${suiteId}/runs`, {}),
   listRuns: (suiteId: string) => api.get(`/evals/suites/${suiteId}/runs`),
   getRun: (runId: string) => api.get(`/evals/runs/${runId}`),

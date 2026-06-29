@@ -104,6 +104,7 @@ func (h *EvalHandler) UpdateSuite(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		GradingMode string `json:"grading_mode"`
+		AutoRun     bool   `json:"auto_run"`
 	}
 	if json.NewDecoder(r.Body).Decode(&req) != nil || req.Name == "" {
 		errs.Write(w, errs.BadRequest("name is required"))
@@ -117,6 +118,7 @@ func (h *EvalHandler) UpdateSuite(w http.ResponseWriter, r *http.Request) {
 	}
 	suite.Name = req.Name
 	suite.Description = req.Description
+	suite.AutoRun = req.AutoRun
 	if req.GradingMode != "" {
 		suite.GradingMode = req.GradingMode
 	}
@@ -459,3 +461,289 @@ Respond with JSON only (no other text):
 	}
 	return result.Passed, result.Score, result.Reasoning
 }
+
+// GenerateCases handles POST /evals/suites/{id}/generate-cases
+func (h *EvalHandler) GenerateCases(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	suiteID := chi.URLParam(r, "id")
+	var req struct {
+		Count int `json:"count"`
+	}
+	json.NewDecoder(r.Body).Decode(&req) //nolint:errcheck
+	if req.Count <= 0 {
+		req.Count = 10
+	}
+	if req.Count > 20 {
+		req.Count = 20
+	}
+
+	repo := repository.NewEvalRepository(h.pool)
+	suite, err := repo.GetSuite(r.Context(), suiteID, ws)
+	if err != nil {
+		errs.Write(w, errs.NotFound("eval suite not found"))
+		return
+	}
+
+	// Fetch the agent
+	agentRepo := repository.NewAgentRepository(h.pool)
+	agent, err := agentRepo.Get(r.Context(), suite.AgentID, ws)
+	if err != nil {
+		errs.Write(w, errs.Internal("agent not found"))
+		return
+	}
+
+	// Fetch tools
+	var toolLines []string
+	toolRows, _ := h.pool.Query(r.Context(),
+		`SELECT t.name, t.description FROM agent_tools at JOIN tools t ON t.id=at.tool_id WHERE at.agent_id=$1::uuid ORDER BY t.name`,
+		agent.ID)
+	if toolRows != nil {
+		defer toolRows.Close()
+		for toolRows.Next() {
+			var name, desc string
+			toolRows.Scan(&name, &desc) //nolint:errcheck
+			if desc != "" {
+				toolLines = append(toolLines, name+" — "+desc)
+			} else {
+				toolLines = append(toolLines, name)
+			}
+		}
+	}
+	toolsText := "None"
+	if len(toolLines) > 0 {
+		toolsText = strings.Join(toolLines, "\n")
+	}
+
+	// Fetch skills
+	var skillNames []string
+	skillRows, _ := h.pool.Query(r.Context(),
+		`SELECT s.name FROM agent_skills ask JOIN skills s ON s.id=ask.skill_id WHERE ask.agent_id=$1::uuid ORDER BY ask.order_index`,
+		agent.ID)
+	if skillRows != nil {
+		defer skillRows.Close()
+		for skillRows.Next() {
+			var name string
+			skillRows.Scan(&name) //nolint:errcheck
+			skillNames = append(skillNames, name)
+		}
+	}
+	skillsText := "None"
+	if len(skillNames) > 0 {
+		skillsText = strings.Join(skillNames, ", ")
+	}
+
+	// Fetch connectors
+	var connectorNames []string
+	connRows, _ := h.pool.Query(r.Context(),
+		`SELECT c.name FROM agent_connectors ac JOIN connectors c ON c.id=ac.connector_id WHERE ac.agent_id=$1::uuid AND ac.enabled=true ORDER BY c.name`,
+		agent.ID)
+	if connRows != nil {
+		defer connRows.Close()
+		for connRows.Next() {
+			var name string
+			connRows.Scan(&name) //nolint:errcheck
+			connectorNames = append(connectorNames, name)
+		}
+	}
+	connectorsText := "None"
+	if len(connectorNames) > 0 {
+		connectorsText = strings.Join(connectorNames, ", ")
+	}
+
+	// Get LLM provider
+	llm, err := h.runsH.providerFor(r.Context(), ws, agent.Provider)
+	if err != nil || llm == nil {
+		errs.Write(w, errs.Internal("no LLM provider configured for this agent"))
+		return
+	}
+
+	prompt := fmt.Sprintf(`You are a QA engineer testing an AI agent. Generate %d test cases that thoroughly cover its capabilities.
+
+=== AGENT ===
+Name: %s
+Description: %s
+
+System prompt:
+%s
+
+Tools:
+%s
+
+Skills: %s
+Knowledge bases (connectors): %s
+
+=== TASK ===
+Generate %d diverse test cases. Cover: core use cases, edge cases, multi-step requests, and error handling.
+
+Return ONLY a valid JSON array, no other text:
+[{"input":"user message to send","expected_output":"key content the response should contain (empty string if grading via criteria only)","grading_criteria":"what makes a good response — be specific"}]`,
+		req.Count, agent.Name, agent.Description, agent.Instructions,
+		toolsText, skillsText, connectorsText, req.Count)
+
+	ch, err := llm.Complete(r.Context(), provider.CompletionRequest{
+		Model:       agent.Model,
+		Temperature: 0.4,
+		MaxTokens:   3000,
+		Messages:    []provider.Message{{Role: "user", Content: prompt}},
+	})
+	if err != nil {
+		errs.Write(w, errs.Internal("LLM call failed: "+err.Error()))
+		return
+	}
+
+	var reply strings.Builder
+	for event := range ch {
+		if event.Type == provider.EventDelta {
+			reply.WriteString(event.Delta)
+		}
+	}
+
+	raw := strings.TrimSpace(reply.String())
+	if strings.HasPrefix(raw, "```") {
+		raw = strings.TrimPrefix(raw, "```json")
+		raw = strings.TrimPrefix(raw, "```")
+		raw = strings.TrimSuffix(raw, "```")
+		raw = strings.TrimSpace(raw)
+	}
+
+	var generated []struct {
+		Input           string `json:"input"`
+		ExpectedOutput  string `json:"expected_output"`
+		GradingCriteria string `json:"grading_criteria"`
+	}
+	if err := json.Unmarshal([]byte(raw), &generated); err != nil {
+		errs.Write(w, errs.Internal("failed to parse generated cases: "+err.Error()))
+		return
+	}
+
+	var cases []domain.EvalCase
+	for _, g := range generated {
+		if g.Input == "" {
+			continue
+		}
+		c := domain.EvalCase{
+			ID:              uuid.NewString(),
+			SuiteID:         suiteID,
+			Input:           g.Input,
+			ExpectedOutput:  g.ExpectedOutput,
+			GradingCriteria: g.GradingCriteria,
+		}
+		if err := repo.CreateCase(r.Context(), &c); err == nil {
+			cases = append(cases, c)
+		}
+	}
+
+	errs.WriteJSON(w, http.StatusCreated, map[string]any{"cases": cases, "count": len(cases)})
+}
+
+// ExportCases handles GET /evals/suites/{id}/cases/export
+func (h *EvalHandler) ExportCases(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	suiteID := chi.URLParam(r, "id")
+	repo := repository.NewEvalRepository(h.pool)
+	suite, err := repo.GetSuite(r.Context(), suiteID, ws)
+	if err != nil {
+		errs.Write(w, errs.NotFound("eval suite not found"))
+		return
+	}
+	cases, err := repo.ListCases(r.Context(), suiteID)
+	if err != nil {
+		errs.Write(w, errs.Internal("failed to list cases"))
+		return
+	}
+
+	type exportCase struct {
+		Input           string `json:"input"`
+		ExpectedOutput  string `json:"expected_output"`
+		GradingCriteria string `json:"grading_criteria"`
+	}
+	out := make([]exportCase, len(cases))
+	for i, c := range cases {
+		out[i] = exportCase{Input: c.Input, ExpectedOutput: c.ExpectedOutput, GradingCriteria: c.GradingCriteria}
+	}
+
+	filename := strings.ReplaceAll(strings.ToLower(suite.Name), " ", "-") + "-cases.json"
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out) //nolint:errcheck
+}
+
+// ImportCases handles POST /evals/suites/{id}/cases/import
+func (h *EvalHandler) ImportCases(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	suiteID := chi.URLParam(r, "id")
+	var req struct {
+		Cases []struct {
+			Input           string `json:"input"`
+			ExpectedOutput  string `json:"expected_output"`
+			GradingCriteria string `json:"grading_criteria"`
+		} `json:"cases"`
+	}
+	if json.NewDecoder(r.Body).Decode(&req) != nil {
+		errs.Write(w, errs.BadRequest("invalid request body"))
+		return
+	}
+	if len(req.Cases) == 0 {
+		errs.Write(w, errs.BadRequest("cases array is empty"))
+		return
+	}
+	if len(req.Cases) > 200 {
+		errs.Write(w, errs.BadRequest("too many cases — maximum 200 per import"))
+		return
+	}
+
+	repo := repository.NewEvalRepository(h.pool)
+	if _, err := repo.GetSuite(r.Context(), suiteID, ws); err != nil {
+		errs.Write(w, errs.NotFound("eval suite not found"))
+		return
+	}
+
+	imported := 0
+	for _, item := range req.Cases {
+		if item.Input == "" {
+			continue
+		}
+		c := &domain.EvalCase{
+			ID:              uuid.NewString(),
+			SuiteID:         suiteID,
+			Input:           item.Input,
+			ExpectedOutput:  item.ExpectedOutput,
+			GradingCriteria: item.GradingCriteria,
+		}
+		if err := repo.CreateCase(r.Context(), c); err == nil {
+			imported++
+		}
+	}
+
+	errs.WriteJSON(w, http.StatusCreated, map[string]any{"imported": imported})
+}
+
+// TriggerAutoRunsForAgent fires eval runs for all auto_run suites of a given agent.
+// Called from AgentsHandler.Update — runs async, never blocks the HTTP response.
+func (h *EvalHandler) TriggerAutoRunsForAgent(wsID, agentID, uid string) {
+	ctx := context.Background()
+	repo := repository.NewEvalRepository(h.pool)
+	suites, err := repo.ListAutoRunSuitesForAgent(ctx, agentID)
+	if err != nil || len(suites) == 0 {
+		return
+	}
+	for _, suite := range suites {
+		suite := suite
+		cases, err := repo.ListCases(ctx, suite.ID)
+		if err != nil || len(cases) == 0 {
+			continue
+		}
+		run := &domain.EvalRun{
+			ID:          uuid.NewString(),
+			SuiteID:     suite.ID,
+			WorkspaceID: wsID,
+			Status:      "pending",
+			TotalCases:  len(cases),
+		}
+		if err := repo.CreateRun(ctx, run); err != nil {
+			continue
+		}
+		go h.executeEvalRun(ctx, &suite, cases, run, uid)
+	}
+}
+

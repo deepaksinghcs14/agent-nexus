@@ -1,0 +1,1 @@
+ALTER TABLE eval_suites ADD COLUMN auto_run BOOLEAN NOT NULL DEFAULT false;

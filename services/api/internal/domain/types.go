@@ -594,6 +594,7 @@ type EvalSuite struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
 	GradingMode string     `json:"grading_mode"`
+	AutoRun     bool       `json:"auto_run"`
 	CaseCount   int        `json:"case_count,omitempty"`
 	LastRunAt   *time.Time `json:"last_run_at,omitempty"`
 	LastScore   *float64   `json:"last_score,omitempty"`

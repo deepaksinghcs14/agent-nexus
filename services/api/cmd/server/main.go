@@ -149,6 +149,7 @@ func main() {
 	runs.SetInvokeHandler(invoke)
 	nexusAI := handler.NewNexusAIHandler(pool, cfg, runs)
 	nexusAI.SetInvokeHandler(invoke)
+	evals := handler.NewEvalHandler(pool, cfg, invoke, runs)
 	h := &handler.Handlers{
 		Auth:            handler.NewAuthHandler(pool, cfg),
 		Providers:       handler.NewProvidersHandler(pool, cfg),
@@ -172,8 +173,9 @@ func main() {
 		NexusAI:         nexusAI,
 		Observability:   handler.NewObservabilityHandler(pool),
 		WhatsAppCreds:   handler.NewWhatsAppCredsHandler(pool, cfg),
-		Evals:           handler.NewEvalHandler(pool, cfg, invoke, runs),
+		Evals:           evals,
 	}
+	h.Agents.SetEvalHandler(evals)
 
 	// HTTP server
 	srv := &http.Server{

@@ -23,7 +23,7 @@ func (r *EvalRepository) ListSuites(ctx context.Context, ws string) ([]domain.Ev
 	rows, err := r.pool.Query(ctx, `
 		SELECT
 			es.id::text, es.workspace_id::text, es.agent_id::text,
-			COALESCE(a.name, ''), es.name, es.description, es.grading_mode,
+			COALESCE(a.name, ''), es.name, es.description, es.grading_mode, es.auto_run,
 			COUNT(ec.id)::int AS case_count,
 			MAX(er.created_at) AS last_run_at,
 			(SELECT score FROM eval_runs WHERE suite_id=es.id ORDER BY created_at DESC LIMIT 1) AS last_score,
@@ -45,7 +45,7 @@ func (r *EvalRepository) ListSuites(ctx context.Context, ws string) ([]domain.Ev
 		var s domain.EvalSuite
 		var lastRunAt *time.Time
 		var lastScore *float64
-		if err := rows.Scan(&s.ID, &s.WorkspaceID, &s.AgentID, &s.AgentName, &s.Name, &s.Description, &s.GradingMode,
+		if err := rows.Scan(&s.ID, &s.WorkspaceID, &s.AgentID, &s.AgentName, &s.Name, &s.Description, &s.GradingMode, &s.AutoRun,
 			&s.CaseCount, &lastRunAt, &lastScore, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -61,12 +61,12 @@ func (r *EvalRepository) GetSuite(ctx context.Context, id, ws string) (*domain.E
 	err := r.pool.QueryRow(ctx, `
 		SELECT
 			es.id::text, es.workspace_id::text, es.agent_id::text,
-			COALESCE(a.name, ''), es.name, es.description, es.grading_mode,
+			COALESCE(a.name, ''), es.name, es.description, es.grading_mode, es.auto_run,
 			es.created_at, es.updated_at
 		FROM eval_suites es
 		LEFT JOIN agents a ON a.id = es.agent_id
 		WHERE es.id = $1::uuid AND es.workspace_id = $2::uuid
-	`, id, ws).Scan(&s.ID, &s.WorkspaceID, &s.AgentID, &s.AgentName, &s.Name, &s.Description, &s.GradingMode,
+	`, id, ws).Scan(&s.ID, &s.WorkspaceID, &s.AgentID, &s.AgentName, &s.Name, &s.Description, &s.GradingMode, &s.AutoRun,
 		&s.CreatedAt, &s.UpdatedAt)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("eval suite not found")
@@ -76,16 +76,35 @@ func (r *EvalRepository) GetSuite(ctx context.Context, id, ws string) (*domain.E
 
 func (r *EvalRepository) CreateSuite(ctx context.Context, s *domain.EvalSuite) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO eval_suites(id, workspace_id, agent_id, name, description, grading_mode) VALUES($1::uuid, $2::uuid, $3::uuid, $4, $5, $6)`,
-		s.ID, s.WorkspaceID, s.AgentID, s.Name, s.Description, s.GradingMode)
+		`INSERT INTO eval_suites(id, workspace_id, agent_id, name, description, grading_mode, auto_run) VALUES($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7)`,
+		s.ID, s.WorkspaceID, s.AgentID, s.Name, s.Description, s.GradingMode, s.AutoRun)
 	return err
 }
 
 func (r *EvalRepository) UpdateSuite(ctx context.Context, s *domain.EvalSuite) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE eval_suites SET name=$3, description=$4, grading_mode=$5, updated_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid`,
-		s.ID, s.WorkspaceID, s.Name, s.Description, s.GradingMode)
+		`UPDATE eval_suites SET name=$3, description=$4, grading_mode=$5, auto_run=$6, updated_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+		s.ID, s.WorkspaceID, s.Name, s.Description, s.GradingMode, s.AutoRun)
 	return err
+}
+
+func (r *EvalRepository) ListAutoRunSuitesForAgent(ctx context.Context, agentID string) ([]domain.EvalSuite, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id::text, workspace_id::text, agent_id::text, name, grading_mode FROM eval_suites WHERE agent_id=$1::uuid AND auto_run=true`,
+		agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var suites []domain.EvalSuite
+	for rows.Next() {
+		var s domain.EvalSuite
+		if err := rows.Scan(&s.ID, &s.WorkspaceID, &s.AgentID, &s.Name, &s.GradingMode); err != nil {
+			return nil, err
+		}
+		suites = append(suites, s)
+	}
+	return suites, rows.Err()
 }
 
 func (r *EvalRepository) DeleteSuite(ctx context.Context, id, ws string) error {

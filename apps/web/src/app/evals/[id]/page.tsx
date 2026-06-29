@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { evalsAPI } from '@/lib/api'
 import type { EvalCase, EvalRun, EvalSuite } from '@/types'
-import { Plus, Trash2, Play, ChevronRight, Pencil, X, Check } from 'lucide-react'
+import { Plus, Trash2, Play, ChevronRight, Pencil, X, Check, Sparkles, Download, Upload, ToggleLeft, ToggleRight } from 'lucide-react'
 
 function RunStatusBadge({ status }: { status: EvalRun['status'] }) {
   const cls = {
@@ -141,6 +141,195 @@ function AddCaseForm({ suiteId, onCreated }: { suiteId: string; onCreated: () =>
   )
 }
 
+function GenerateCasesModal({ suiteId, suiteName, onDone }: { suiteId: string; suiteName: string; onDone: () => void }) {
+  const [count, setCount] = useState(10)
+  const [loading, setLoading] = useState(false)
+  const [generated, setGenerated] = useState<EvalCase[] | null>(null)
+  const [error, setError] = useState('')
+
+  const generate = async () => {
+    setLoading(true)
+    setError('')
+    setGenerated(null)
+    try {
+      const res = await evalsAPI.generateCases(suiteId, count) as { cases: EvalCase[]; count: number }
+      setGenerated(res.cases ?? [])
+    } catch {
+      setError('Generation failed. Make sure the agent has a configured LLM provider.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-purple-500" />
+            <h2 className="font-semibold text-gray-900 text-sm">Generate test cases</h2>
+          </div>
+          <button onClick={onDone} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="p-4 space-y-4 overflow-y-auto flex-1">
+          {!generated ? (
+            <>
+              <p className="text-sm text-gray-500">
+                The AI will analyse <strong>{suiteName}</strong>&apos;s system prompt, tools, skills, and knowledge bases to suggest realistic test cases.
+              </p>
+              <div>
+                <label className="text-xs font-medium text-gray-600 block mb-2">Number of cases to generate</label>
+                <div className="flex gap-2">
+                  {[5, 10, 15, 20].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setCount(n)}
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${count === n ? 'bg-purple-600 text-white border-purple-600' : 'border-gray-200 text-gray-600 hover:border-purple-300'}`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {error && <p className="text-sm text-red-600">{error}</p>}
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-green-600 font-medium">{generated.length} cases generated</p>
+              <div className="space-y-2">
+                {generated.map((c, i) => (
+                  <div key={i} className="border border-gray-100 rounded-lg p-3 text-xs space-y-1">
+                    <p className="text-gray-900 font-medium line-clamp-2">{c.input}</p>
+                    {c.grading_criteria && <p className="text-gray-400 line-clamp-1"><span className="font-medium">Criteria:</span> {c.grading_criteria}</p>}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="p-4 border-t flex justify-end gap-2">
+          <button onClick={onDone} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+            {generated ? 'Done' : 'Cancel'}
+          </button>
+          {!generated && (
+            <button
+              onClick={generate}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              {loading ? `Generating ${count} cases…` : 'Generate'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ImportModal({ suiteId, onDone }: { suiteId: string; onDone: () => void }) {
+  const [text, setText] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [result, setResult] = useState<{ imported: number } | null>(null)
+  const [error, setError] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  let parsed: { input: string; expected_output?: string; grading_criteria?: string }[] | null = null
+  let parseError = ''
+  if (text.trim()) {
+    try {
+      parsed = JSON.parse(text)
+      if (!Array.isArray(parsed)) { parsed = null; parseError = 'Must be a JSON array' }
+    } catch { parseError = 'Invalid JSON' }
+  }
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    const reader = new FileReader()
+    reader.onload = ev => setText(ev.target?.result as string ?? '')
+    reader.readAsText(f)
+  }
+
+  const doImport = async () => {
+    if (!parsed) return
+    setImporting(true)
+    setError('')
+    try {
+      const res = await evalsAPI.importCases(suiteId, parsed) as { imported: number }
+      setResult(res)
+    } catch {
+      setError('Import failed. Please try again.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center gap-2">
+            <Upload className="w-4 h-4 text-gray-500" />
+            <h2 className="font-semibold text-gray-900 text-sm">Import test cases</h2>
+          </div>
+          <button onClick={onDone} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="p-4 space-y-3 overflow-y-auto flex-1">
+          {result ? (
+            <p className="text-sm text-green-600 font-medium">{result.imported} cases imported successfully.</p>
+          ) : (
+            <>
+              <p className="text-xs text-gray-500">Paste a JSON array or upload a file exported from this page.</p>
+              <p className="text-xs text-gray-400 font-mono">{`[{"input":"...","expected_output":"...","grading_criteria":"..."}]`}</p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="text-xs px-3 py-1.5 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors text-gray-600"
+                >
+                  Choose file…
+                </button>
+                <span className="text-xs text-gray-400">or paste below</span>
+                <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleFile} />
+              </div>
+              <textarea
+                className="w-full border rounded px-3 py-2 text-xs font-mono resize-y focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[120px]"
+                placeholder='[{"input": "What is ...?", "grading_criteria": "Should mention ..."}]'
+                value={text}
+                onChange={e => setText(e.target.value)}
+              />
+              {text.trim() && (
+                parseError
+                  ? <p className="text-xs text-red-500">{parseError}</p>
+                  : <p className="text-xs text-green-600">{parsed?.length} case{parsed?.length === 1 ? '' : 's'} ready to import</p>
+              )}
+              {error && <p className="text-xs text-red-600">{error}</p>}
+            </>
+          )}
+        </div>
+
+        <div className="p-4 border-t flex justify-end gap-2">
+          <button onClick={onDone} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+            {result ? 'Done' : 'Cancel'}
+          </button>
+          {!result && (
+            <button
+              onClick={doImport}
+              disabled={!parsed || parsed.length === 0 || importing}
+              className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+            >
+              {importing ? 'Importing…' : 'Import'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function SuitePage({ params }: { params: { id: string } }) {
   const { id } = params
   const [suite, setSuite] = useState<EvalSuite | null>(null)
@@ -149,6 +338,10 @@ export default function SuitePage({ params }: { params: { id: string } }) {
   const [tab, setTab] = useState<'cases' | 'runs'>('cases')
   const [loading, setLoading] = useState(true)
   const [triggering, setTriggering] = useState(false)
+  const [showGenerate, setShowGenerate] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [togglingAutoRun, setTogglingAutoRun] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const loadSuite = () =>
     evalsAPI.getSuite(id).then((r: unknown) => {
@@ -186,11 +379,60 @@ export default function SuitePage({ params }: { params: { id: string } }) {
     loadRuns()
   }
 
+  const handleToggleAutoRun = async () => {
+    if (!suite) return
+    setTogglingAutoRun(true)
+    await evalsAPI.updateSuite(id, {
+      name: suite.name,
+      description: suite.description,
+      grading_mode: suite.grading_mode,
+      auto_run: !suite.auto_run,
+    }).catch(() => {})
+    setTogglingAutoRun(false)
+    loadSuite()
+  }
+
+  const handleExport = async () => {
+    if (!suite) return
+    setExporting(true)
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ''
+      const res = await fetch(`${apiUrl}/api/v1/evals/suites/${id}/cases/export`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) throw new Error('Export failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${suite.name.toLowerCase().replace(/\s+/g, '-')}-cases.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { /* silent */ } finally {
+      setExporting(false)
+    }
+  }
+
   if (loading) return <div className="p-6 text-sm text-gray-400">Loading…</div>
   if (!suite) return <div className="p-6 text-sm text-gray-500">Suite not found.</div>
 
   return (
     <div className="p-4 sm:p-6">
+      {showGenerate && (
+        <GenerateCasesModal
+          suiteId={id}
+          suiteName={suite.agent_name ?? suite.name}
+          onDone={() => { setShowGenerate(false); loadSuite() }}
+        />
+      )}
+      {showImport && (
+        <ImportModal
+          suiteId={id}
+          onDone={() => { setShowImport(false); loadSuite() }}
+        />
+      )}
+
       <div className="flex flex-wrap items-center gap-3 justify-between mb-6">
         <div>
           <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
@@ -201,14 +443,25 @@ export default function SuitePage({ params }: { params: { id: string } }) {
           <h1 className="text-xl font-semibold text-gray-900">{suite.name}</h1>
           <p className="text-sm text-gray-500 mt-0.5">{suite.agent_name} · {suite.grading_mode === 'llm_judge' ? 'LLM Judge' : suite.grading_mode === 'contains' ? 'Contains' : 'Exact Match'}</p>
         </div>
-        <button
-          onClick={handleTriggerRun}
-          disabled={triggering || cases.length === 0}
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
-        >
-          <Play className="w-4 h-4" />
-          {triggering ? 'Starting…' : 'Run eval'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleToggleAutoRun}
+            disabled={togglingAutoRun}
+            title={suite.auto_run ? 'Auto-run on agent save (on — click to disable)' : 'Auto-run on agent save (off — click to enable)'}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border transition-colors disabled:opacity-50 ${suite.auto_run ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}
+          >
+            {suite.auto_run ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+            Auto-run
+          </button>
+          <button
+            onClick={handleTriggerRun}
+            disabled={triggering || cases.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
+          >
+            <Play className="w-4 h-4" />
+            {triggering ? 'Starting…' : 'Run eval'}
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -225,17 +478,45 @@ export default function SuitePage({ params }: { params: { id: string } }) {
       </div>
 
       {tab === 'cases' && (
-        <div className="space-y-3 max-w-3xl">
-          {cases.map(c => (
-            <CaseRow
-              key={c.id}
-              c={c}
-              suiteId={id}
-              onDeleted={() => handleDeleteCase(c.id)}
-              onUpdated={loadSuite}
-            />
-          ))}
-          <AddCaseForm suiteId={id} onCreated={loadSuite} />
+        <div className="max-w-3xl space-y-4">
+          {/* Cases toolbar */}
+          <div className="flex flex-wrap items-center gap-2 justify-between">
+            <span className="text-xs text-gray-400">{cases.length} case{cases.length === 1 ? '' : 's'}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowImport(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 rounded-md hover:bg-gray-50 text-gray-600 transition-colors"
+              >
+                <Upload className="w-3.5 h-3.5" /> Import
+              </button>
+              <button
+                onClick={handleExport}
+                disabled={exporting || cases.length === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 rounded-md hover:bg-gray-50 text-gray-600 transition-colors disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" /> {exporting ? 'Exporting…' : 'Export'}
+              </button>
+              <button
+                onClick={() => setShowGenerate(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-md transition-colors font-medium"
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Generate
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {cases.map(c => (
+              <CaseRow
+                key={c.id}
+                c={c}
+                suiteId={id}
+                onDeleted={() => handleDeleteCase(c.id)}
+                onUpdated={loadSuite}
+              />
+            ))}
+            <AddCaseForm suiteId={id} onCreated={loadSuite} />
+          </div>
         </div>
       )}
 

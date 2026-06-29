@@ -23,11 +23,14 @@ type AgentsHandler struct {
 	cfg      *config.Config
 	agents   *repository.AgentRepository
 	connRepo *repository.ConnectorRepository
+	evalH    *EvalHandler
 }
 
 func NewAgentsHandler(pool *pgxpool.Pool, cfg *config.Config) *AgentsHandler {
 	return &AgentsHandler{pool: pool, cfg: cfg, agents: repository.NewAgentRepository(pool), connRepo: repository.NewConnectorRepository(pool)}
 }
+
+func (h *AgentsHandler) SetEvalHandler(eh *EvalHandler) { h.evalH = eh }
 
 func (h *AgentsHandler) List(w http.ResponseWriter, r *http.Request) {
 	wsID := middleware.WorkspaceIDFromCtx(r.Context())
@@ -183,6 +186,10 @@ func (h *AgentsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeAudit(r, h.pool, "agent.updated", "agent", existing.ID)
+	if h.evalH != nil {
+		uid := middleware.UserIDFromCtx(r.Context())
+		go h.evalH.TriggerAutoRunsForAgent(wsID, existing.ID, uid)
+	}
 	errs.WriteJSON(w, http.StatusOK, existing)
 }
 

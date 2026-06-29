@@ -706,6 +706,7 @@ export interface EvalSuite {
   name: string
   description: string
   grading_mode: 'exact' | 'contains' | 'llm_judge'
+  auto_run: boolean
   case_count?: number
   last_run_at?: string
   last_score?: number
