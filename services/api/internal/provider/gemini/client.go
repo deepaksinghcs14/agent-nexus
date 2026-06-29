@@ -368,6 +368,11 @@ func geminiRequest(req provider.CompletionRequest) map[string]any {
 	if req.MaxTokens > 0 {
 		body["generationConfig"].(map[string]any)["maxOutputTokens"] = req.MaxTokens
 	}
+	// Disable thinking for structured/deterministic tasks (temperature ≤ 0.15) so
+	// thinking tokens don't consume the output token budget.
+	if req.Temperature <= 0.15 {
+		body["generationConfig"].(map[string]any)["thinkingConfig"] = map[string]any{"thinkingBudget": 0}
+	}
 	if system != "" {
 		body["systemInstruction"] = map[string]any{"parts": []map[string]string{{"text": system}}}
 	}

@@ -886,30 +886,29 @@ func (h *EvalHandler) doAnalysis(ctx context.Context, runID string, agent *domai
 	prompt := fmt.Sprintf(`You are a senior AI engineer reviewing failures in an AI agent evaluation.
 
 Agent name: %s
-Agent system prompt:
+Agent system prompt (truncated):
 %s
 
-Tools currently attached: %s
-Skills currently attached: %s
+Tools: %s
+Skills: %s
 
 FAILED test cases (%d):
-
 %s
 
-Identify the root cause pattern(s) and suggest ONE OR MORE specific fixes. Each fix must be one of:
-- type "prompt": add/change something in the system prompt — include the exact text to append
-- type "tool": suggest a specific tool the agent is missing
-- type "skill": suggest enabling/adding a skill
+Output ONLY a raw JSON object with NO markdown fences and NO text before or after the JSON. Keep it SHORT:
+- "issues": max 2 sentences
+- each fix "description": max 1 sentence
+- prompt fix "content": max 3 sentences of text to append
 
-Output ONLY a raw JSON object — no markdown fences, no explanation text before or after:
-{"issues":"2-3 sentences on what the agent consistently fails at and why","fixes":[{"type":"prompt","description":"why this helps","content":"exact text to append to system prompt"},{"type":"tool","description":"what tool and why"},{"type":"skill","description":"what skill and why"}]}
-Only include fix types that are genuinely relevant. The fixes array may have 1-3 items.`,
+{"issues":"one or two sentences on the failure pattern","fixes":[{"type":"prompt","description":"why","content":"exact text to append"},{"type":"tool","description":"what and why"},{"type":"skill","description":"what and why"}]}
+
+Only include fix types genuinely needed. fixes array: 1-3 items max.`,
 		agent.Name, agent.Instructions, toolsText, skillsText, len(failedResults), casesText)
 
 	ch, err := llm.Complete(ctx, provider.CompletionRequest{
 		Model:       agent.Model,
 		Temperature: 0.1,
-		MaxTokens:   2000,
+		MaxTokens:   4000,
 		Messages:    []provider.Message{{Role: "user", Content: prompt}},
 	})
 	if err != nil {
