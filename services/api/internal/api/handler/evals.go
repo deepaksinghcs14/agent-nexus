@@ -567,7 +567,7 @@ func (h *EvalHandler) GenerateCases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	prompt := fmt.Sprintf(`You are a QA engineer testing an AI agent. Generate %d test cases that thoroughly cover its capabilities.
+	systemPrompt := fmt.Sprintf(`You are a QA engineer designing test cases for an AI agent.
 
 === AGENT ===
 Name: %s
@@ -582,81 +582,130 @@ Tools:
 Skills: %s
 Knowledge bases (connectors): %s
 
-=== TASK ===
-Generate %d diverse test cases. Cover: core use cases, edge cases, multi-step requests, and error handling.
-
-Rules:
-- "input": the user message to send (realistic, varied length)
-- "expected_output": ONE short phrase or keyword the response must contain — or empty string "" if you are using grading_criteria instead. Do NOT write full responses here.
-- "grading_criteria": what the LLM judge should check for (be specific, 1-2 sentences)
-
-Return ONLY a valid JSON array with no markdown fences, no commentary, nothing else:
-[{"input":"...","expected_output":"...","grading_criteria":"..."}]`,
-		req.Count, agent.Name, agent.Description, agent.Instructions,
+Call create_test_cases repeatedly in batches of up to 5 until you have created exactly %d test cases total. Vary difficulty: core use cases, edge cases, multi-step requests, ambiguous inputs, error handling. Keep expected_output to a short phrase or keyword (or leave empty and use grading_criteria instead).`,
+		agent.Name, agent.Description, agent.Instructions,
 		toolsText, skillsText, connectorsText, req.Count)
 
-	ch, err := llm.Complete(r.Context(), provider.CompletionRequest{
-		Model:       modelName,
-		Temperature: 0.4,
-		MaxTokens:   6000,
-		Messages:    []provider.Message{{Role: "user", Content: prompt}},
-	})
-	if err != nil {
-		errs.Write(w, errs.Internal("LLM call failed: "+err.Error()))
-		return
-	}
-
-	var reply strings.Builder
-	var streamErr error
-	for event := range ch {
-		switch event.Type {
-		case provider.EventDelta:
-			reply.WriteString(event.Delta)
-		case provider.EventError:
-			streamErr = event.Error
+	// Tool definition for structured batch creation
+	createToolSchema := json.RawMessage(`{
+		"type":"object",
+		"required":["cases"],
+		"properties":{
+			"cases":{
+				"type":"array",
+				"description":"Batch of up to 5 test cases",
+				"minItems":1,
+				"maxItems":5,
+				"items":{
+					"type":"object",
+					"required":["input","grading_criteria"],
+					"properties":{
+						"input":{"type":"string","description":"Realistic user message to send to the agent"},
+						"expected_output":{"type":"string","description":"Short phrase or keyword the response must contain, or empty string"},
+						"grading_criteria":{"type":"string","description":"What makes a good response (1-2 sentences, be specific)"}
+					}
+				}
+			}
 		}
-	}
-	if streamErr != nil {
-		errs.Write(w, errs.Internal("LLM error: "+streamErr.Error()))
-		return
-	}
-
-	raw := strings.TrimSpace(reply.String())
-	if strings.HasPrefix(raw, "```") {
-		raw = strings.TrimPrefix(raw, "```json")
-		raw = strings.TrimPrefix(raw, "```")
-		raw = strings.TrimSuffix(raw, "```")
-		raw = strings.TrimSpace(raw)
-	}
-	if raw == "" {
-		errs.Write(w, errs.Internal("LLM returned an empty response"))
-		return
+	}`)
+	createTool := provider.ToolDefinition{
+		Name:        "create_test_cases",
+		Description: "Save a batch of up to 5 test cases. Call this multiple times until you reach the target count.",
+		InputSchema: createToolSchema,
 	}
 
-	var generated []struct {
-		Input           string `json:"input"`
-		ExpectedOutput  string `json:"expected_output"`
-		GradingCriteria string `json:"grading_criteria"`
-	}
-	if err := json.Unmarshal([]byte(raw), &generated); err != nil {
-		errs.Write(w, errs.Internal("failed to parse LLM response as JSON: "+raw[:min(len(raw), 120)]))
-		return
+	messages := []provider.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: fmt.Sprintf("Generate exactly %d test cases by calling create_test_cases in batches of up to 5.", req.Count)},
 	}
 
 	var cases []domain.EvalCase
-	for _, g := range generated {
-		if g.Input == "" {
-			continue
+	const maxIter = 10
+	for iter := 0; iter < maxIter && len(cases) < req.Count; iter++ {
+		stream, err := llm.Complete(r.Context(), provider.CompletionRequest{
+			Model:       modelName,
+			Temperature: 0.4,
+			MaxTokens:   2000,
+			Tools:       []provider.ToolDefinition{createTool},
+			Messages:    messages,
+		})
+		if err != nil {
+			errs.Write(w, errs.Internal("LLM call failed: "+err.Error()))
+			return
 		}
-		c := domain.EvalCase{
-			ID:              uuid.NewString(),
-			SuiteID:         suiteID,
-			Input:           g.Input,
-			ExpectedOutput:  g.ExpectedOutput,
-			GradingCriteria: g.GradingCriteria,
+
+		completion, err := collectStreamCompletion(r.Context(), stream, nil)
+		if err != nil {
+			errs.Write(w, errs.Internal("LLM error: "+err.Error()))
+			return
 		}
-		if err := repo.CreateCase(r.Context(), &c); err == nil {
-			cases = append(cases, c)
+
+		if len(completion.ToolCalls) == 0 {
+			// Model stopped calling the tool
+			break
+		}
+
+		// Append the assistant turn with its tool calls
+		messages = append(messages, provider.Message{
+			Role:      "assistant",
+			Content:   completion.Reply,
+			ToolCalls: completion.ToolCalls,
+		})
+
+		// Process each tool call in this batch
+		for _, call := range completion.ToolCalls {
+			if call.Name != "create_test_cases" {
+				messages = append(messages, provider.Message{
+					Role: "tool", ToolCallID: call.ID, ToolName: call.Name,
+					Content: `{"error":"unknown tool"}`, IsError: true,
+				})
+				continue
+			}
+
+			var input struct {
+				Cases []struct {
+					Input           string `json:"input"`
+					ExpectedOutput  string `json:"expected_output"`
+					GradingCriteria string `json:"grading_criteria"`
+				} `json:"cases"`
+			}
+			if err := json.Unmarshal(call.Input, &input); err != nil {
+				messages = append(messages, provider.Message{
+					Role: "tool", ToolCallID: call.ID, ToolName: call.Name,
+					Content: `{"error":"invalid input"}`, IsError: true,
+				})
+				continue
+			}
+
+			saved := 0
+			for _, g := range input.Cases {
+				if g.Input == "" || len(cases) >= req.Count {
+					continue
+				}
+				c := domain.EvalCase{
+					ID:              uuid.NewString(),
+					SuiteID:         suiteID,
+					Input:           g.Input,
+					ExpectedOutput:  g.ExpectedOutput,
+					GradingCriteria: g.GradingCriteria,
+				}
+				if err := repo.CreateCase(r.Context(), &c); err == nil {
+					cases = append(cases, c)
+					saved++
+				}
+			}
+
+			remaining := req.Count - len(cases)
+			var resultMsg string
+			if remaining > 0 {
+				resultMsg = fmt.Sprintf(`{"saved":%d,"total_so_far":%d,"remaining":%d}`, saved, len(cases), remaining)
+			} else {
+				resultMsg = fmt.Sprintf(`{"saved":%d,"total_so_far":%d,"done":true}`, saved, len(cases))
+			}
+			messages = append(messages, provider.Message{
+				Role: "tool", ToolCallID: call.ID, ToolName: call.Name,
+				Content: resultMsg,
+			})
 		}
 	}
 
