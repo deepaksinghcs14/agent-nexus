@@ -73,6 +73,7 @@ You have access to these tools:
 - attach_tool_to_agent: Attach a single tool to an agent by tool name. No-op if already attached.
 - detach_tool_from_agent: Remove a tool from an agent by tool name.
 - run_workflow: Start a workflow run in the background and return the run ID immediately.
+- create_code_tool: Create a custom JavaScript tool that runs in a sandboxed JS engine. Receives the tool call args as an 'input' object and must return a value. Permanent by default.
 
 Guidelines:
 - ALWAYS call list_available_models first — before creating any agent, you must know what providers and models are available in this workspace. Never assume a model exists; always verify.
@@ -322,6 +323,20 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"input":{"type":"string","description":"The input text to pass to the workflow."}
 			},
 			"required":["workflow_id","input"]
+		}`),
+	},
+	{
+		Name:        "create_code_tool",
+		Description: "Create a permanent custom JavaScript tool that runs in a sandboxed JS engine. The code receives `input` (the tool call args as an object) and must return a value. No network or filesystem access.",
+		InputSchema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"name":{"type":"string","description":"Tool name (automatically prefixed with 'code_' if not already)"},
+				"description":{"type":"string","description":"What this tool does — shown to the LLM when deciding to call it"},
+				"code":{"type":"string","description":"JavaScript function body. Receives 'input' object with the tool call args. Must return a value."},
+				"input_schema":{"type":"string","description":"JSON string describing the input parameters schema. Defaults to empty object if omitted."}
+			},
+			"required":["name","description","code"]
 		}`),
 	},
 }
@@ -619,6 +634,8 @@ func (h *NexusAIHandler) executeTool(ctx context.Context, ws, uid, name string, 
 		return h.toolDetachToolFromAgent(ctx, ws, input)
 	case "run_workflow":
 		return h.toolRunWorkflow(ctx, ws, uid, input)
+	case "create_code_tool":
+		return h.toolCreateCodeTool(ctx, ws, input)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
@@ -1601,6 +1618,66 @@ func toolStartLabel(toolName string, input json.RawMessage) string {
 			return fmt.Sprintf("Running workflow %s...", id)
 		}
 		return "Running workflow..."
+	case "create_code_tool":
+		if n, ok := m["name"].(string); ok && n != "" {
+			return fmt.Sprintf("Creating code tool \"%s\"...", n)
+		}
+		return "Creating code tool..."
 	}
 	return strings.ReplaceAll(toolName, "_", " ") + "..."
+}
+
+func (h *NexusAIHandler) toolCreateCodeTool(ctx context.Context, ws string, raw json.RawMessage) (*toolResult, error) {
+	var in struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Code        string `json:"code"`
+		InputSchema string `json:"input_schema"`
+	}
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return nil, fmt.Errorf("invalid create_code_tool input: %w", err)
+	}
+	if in.Name == "" || in.Description == "" || in.Code == "" {
+		return nil, fmt.Errorf("create_code_tool requires name, description, code")
+	}
+	if !strings.HasPrefix(in.Name, "code_") {
+		in.Name = "code_" + in.Name
+	}
+	var inputSchemaJSON json.RawMessage
+	if in.InputSchema != "" {
+		var parsed any
+		if err := json.Unmarshal([]byte(in.InputSchema), &parsed); err != nil {
+			return nil, fmt.Errorf("input_schema is not valid JSON: %w", err)
+		}
+		inputSchemaJSON = json.RawMessage(in.InputSchema)
+	} else {
+		inputSchemaJSON = json.RawMessage(`{"type":"object","properties":{}}`)
+	}
+	configJSON, _ := json.Marshal(map[string]any{"language": "javascript", "code": in.Code})
+	toolID := uuid.NewString()
+	_, err := h.pool.Exec(ctx, `
+		INSERT INTO tools(id, workspace_id, name, description, type, input_schema, output_schema, config, risk_level, requires_approval, timeout_ms, enabled, ephemeral)
+		VALUES($1::uuid, $2::uuid, $3, $4, 'code', $5::jsonb, '{"type":"object"}'::jsonb, $6::jsonb, 'medium', false, 30000, true, false)`,
+		toolID, ws, in.Name, in.Description,
+		json.RawMessage(inputSchemaJSON), json.RawMessage(configJSON))
+	if err != nil {
+		if strings.Contains(err.Error(), "unique constraint") || strings.Contains(err.Error(), "duplicate key") {
+			var existingID string
+			_ = h.pool.QueryRow(ctx, `SELECT id::text FROM tools WHERE workspace_id=$1::uuid AND name=$2`, ws, in.Name).Scan(&existingID)
+			return &toolResult{
+				Label:      fmt.Sprintf("Code tool %q already exists", in.Name),
+				ResultID:   existingID,
+				ResultName: in.Name,
+				Data:       map[string]any{"tool_id": existingID, "name": in.Name, "already_existed": true},
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to create code tool: %w", err)
+	}
+	return &toolResult{
+		Label:      fmt.Sprintf("Created code tool %q", in.Name),
+		ResultID:   toolID,
+		ResultName: in.Name,
+		Link:       "/tools",
+		Data:       map[string]any{"tool_id": toolID, "name": in.Name},
+	}, nil
 }

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { use } from 'react'
 import { evalsAPI } from '@/lib/api'
 import type { EvalResult, EvalRun } from '@/types'
 import { CheckCircle2, XCircle, AlertCircle, ExternalLink } from 'lucide-react'
@@ -24,8 +23,8 @@ function RunStatusBadge({ status }: { status: EvalRun['status'] }) {
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{status}</span>
 }
 
-export default function RunDetailPage({ params }: { params: Promise<{ id: string; runId: string }> }) {
-  const { id, runId } = use(params)
+export default function RunDetailPage({ params }: { params: { id: string; runId: string } }) {
+  const { id, runId } = params
   const [run, setRun] = useState<EvalRun | null>(null)
   const [results, setResults] = useState<EvalResult[]>([])
   const [loading, setLoading] = useState(true)

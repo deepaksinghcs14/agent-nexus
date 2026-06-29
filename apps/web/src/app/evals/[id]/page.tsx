@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { use } from 'react'
 import { evalsAPI } from '@/lib/api'
 import type { EvalCase, EvalRun, EvalSuite } from '@/types'
 import { Plus, Trash2, Play, ChevronRight, Pencil, X, Check } from 'lucide-react'
@@ -142,8 +141,8 @@ function AddCaseForm({ suiteId, onCreated }: { suiteId: string; onCreated: () =>
   )
 }
 
-export default function SuitePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function SuitePage({ params }: { params: { id: string } }) {
+  const { id } = params
   const [suite, setSuite] = useState<EvalSuite | null>(null)
   const [cases, setCases] = useState<EvalCase[]>([])
   const [runs, setRuns] = useState<EvalRun[]>([])

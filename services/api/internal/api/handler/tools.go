@@ -11,6 +11,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
 
@@ -115,6 +116,27 @@ func (h *ToolsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeAudit(r, h.pool, "tool.updated", "tool", t.ID)
 	errs.WriteJSON(w, http.StatusOK, t)
 }
+// TestCode handles POST /tools/test-code — executes JS code against a given input and returns the result.
+func (h *ToolsHandler) TestCode(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Code  string          `json:"code"`
+		Input json.RawMessage `json:"input"`
+	}
+	if json.NewDecoder(r.Body).Decode(&req) != nil || req.Code == "" {
+		errs.Write(w, errs.BadRequest("code is required"))
+		return
+	}
+	if len(req.Input) == 0 {
+		req.Input = json.RawMessage(`{}`)
+	}
+	result, err := native.ExecuteCodeTool(r.Context(), req.Code, req.Input)
+	if err != nil {
+		errs.WriteJSON(w, http.StatusOK, map[string]any{"error": err.Error()})
+		return
+	}
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"result": result})
+}
+
 func (h *ToolsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	toolID := chi.URLParam(r, "id")
 	tag, err := h.pool.Exec(r.Context(), `DELETE FROM tools WHERE id=$1::uuid AND workspace_id=$2::uuid`, toolID, middleware.WorkspaceIDFromCtx(r.Context()))

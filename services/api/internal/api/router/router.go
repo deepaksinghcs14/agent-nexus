@@ -114,6 +114,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			// Tools
 			r.Get("/tools", h.Tools.List)
 			r.Post("/tools", h.Tools.Create)
+			r.Post("/tools/test-code", h.Tools.TestCode)
 			r.Get("/tools/{id}", h.Tools.Get)
 			r.Put("/tools/{id}", h.Tools.Update)
 			r.Delete("/tools/{id}", h.Tools.Delete)

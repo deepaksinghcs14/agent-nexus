@@ -169,6 +169,7 @@ export const toolsAPI = {
   create: (body: unknown) => api.post('/tools', body),
   update: (id: string, body: unknown) => api.put(`/tools/${id}`, body),
   delete: (id: string) => api.delete(`/tools/${id}`),
+  testCode: (code: string, input: unknown) => api.post<{ result?: unknown; error?: string }>('/tools/test-code', { code, input }),
 }
 
 export const connectorsAPI = {

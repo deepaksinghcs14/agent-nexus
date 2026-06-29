@@ -100,7 +100,7 @@ export interface Tool {
   workspace_id?: string
   name: string
   description: string
-  type: 'native' | 'mcp' | 'http'
+  type: 'native' | 'mcp' | 'http' | 'code'
   input_schema: Record<string, unknown>
   output_schema: Record<string, unknown>
   config?: Record<string, unknown>

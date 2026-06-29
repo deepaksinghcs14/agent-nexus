@@ -1,12 +1,19 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, ChevronUp, ExternalLink, Globe, Lock, Plus, Server, Trash2, Wrench, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, ExternalLink, Globe, Lock, Pencil, Play, Plus, Server, Terminal, Trash2, Wrench, X } from 'lucide-react'
 import Link from 'next/link'
 import { toolsAPI } from '@/lib/api'
 import { riskColor } from '@/lib/utils'
 import type { Tool } from '@/types'
+
+// ─── CodeMirror (dynamic — client only, avoids SSR window references) ────────
+
+const CodeEditor = dynamic(() => import('@/components/CodeEditor'), { ssr: false, loading: () => (
+  <div className="h-48 bg-gray-900 rounded-lg flex items-center justify-center text-sm text-gray-500">Loading editor…</div>
+)})
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -26,13 +33,37 @@ interface HTTPForm {
   timeoutMs: number
 }
 
+interface CodeForm {
+  name: string
+  description: string
+  code: string
+  inputSchema: string
+  riskLevel: string
+  requiresApproval: boolean
+  timeoutMs: number
+}
+
 const METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
 const RISK_OPTIONS   = ['low', 'medium', 'high', 'critical'] as const
 
-const emptyForm = (): HTTPForm => ({
+const DEFAULT_CODE = `// Receives 'input' (object) — return any JSON-serializable value.
+function main(input) {
+  return { message: "Hello from " + (input.name ?? "agent") };
+}
+
+main(input)
+`
+
+const emptyHTTPForm = (): HTTPForm => ({
   name: '', description: '', url: '', method: 'POST',
   headers: [], queryParams: [],
   bodyMode: 'template', bodyTemplate: '',
+  riskLevel: 'low', requiresApproval: false, timeoutMs: 30000,
+})
+
+const emptyCodeForm = (): CodeForm => ({
+  name: '', description: '', code: DEFAULT_CODE,
+  inputSchema: '{\n  "type": "object",\n  "properties": {\n    "name": { "type": "string" }\n  }\n}',
   riskLevel: 'low', requiresApproval: false, timeoutMs: 30000,
 })
 
@@ -120,18 +151,22 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 }
 
 function typeInfo(type: string) {
-  if (type === 'native') return { label: 'Built-in', icon: <Wrench size={11} />, cls: 'bg-blue-50 text-blue-700 border-blue-100' }
-  if (type === 'mcp')    return { label: 'MCP', icon: <Server size={11} />, cls: 'bg-purple-50 text-purple-700 border-purple-100' }
-  return                        { label: 'HTTP', icon: <Globe size={11} />, cls: 'bg-green-50 text-green-700 border-green-100' }
+  if (type === 'native') return { label: 'Built-in',    icon: <Wrench size={11} />,   cls: 'bg-blue-50 text-blue-700 border-blue-100' }
+  if (type === 'mcp')    return { label: 'MCP',         icon: <Server size={11} />,   cls: 'bg-purple-50 text-purple-700 border-purple-100' }
+  if (type === 'code')   return { label: 'Code',        icon: <Terminal size={11} />, cls: 'bg-orange-50 text-orange-700 border-orange-100' }
+  return                        { label: 'HTTP',        icon: <Globe size={11} />,    cls: 'bg-green-50 text-green-700 border-green-100' }
 }
 
 // ─── tool row ────────────────────────────────────────────────────────────────
 
-function ToolRow({ tool, onToggle, onDelete }: { tool: Tool; onToggle: () => void; onDelete: () => void }) {
+function ToolRow({ tool, onToggle, onDelete, onEdit }: {
+  tool: Tool; onToggle: () => void; onDelete: () => void; onEdit?: () => void
+}) {
   const [open, setOpen] = useState(false)
   const ti = typeInfo(tool.type)
   const isSystem = tool.type === 'native' || tool.type === 'mcp'
   const cfg = tool.config ? (() => { try { return JSON.parse(tool.config as unknown as string) } catch { return null } })() : null
+  const canExpand = (tool.type === 'http' && cfg?.url) || tool.type === 'code'
 
   return (
     <>
@@ -155,8 +190,8 @@ function ToolRow({ tool, onToggle, onDelete }: { tool: Tool; onToggle: () => voi
           {tool.requires_approval && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">approval</span>
           )}
-          {tool.type === 'http' && cfg?.url && (
-            <button onClick={() => setOpen((v) => !v)} className="p-1 text-gray-400 hover:text-gray-600" title="Show config">
+          {canExpand && (
+            <button onClick={() => setOpen((v) => !v)} className="p-1 text-gray-400 hover:text-gray-600" title="Show code">
               {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
           )}
@@ -164,6 +199,11 @@ function ToolRow({ tool, onToggle, onDelete }: { tool: Tool; onToggle: () => voi
             <span title="Managed by system" className="p-1 text-gray-300"><Lock size={13} /></span>
           ) : (
             <>
+              {onEdit && tool.type === 'code' && (
+                <button onClick={onEdit} className="p-1 text-gray-300 hover:text-blue-500" title="Edit code tool">
+                  <Pencil size={13} />
+                </button>
+              )}
               <Toggle on={tool.enabled} onToggle={onToggle} />
               <button onClick={onDelete} className="p-1 text-gray-300 hover:text-red-500" aria-label={`Delete ${tool.name}`}>
                 <Trash2 size={13} />
@@ -172,12 +212,21 @@ function ToolRow({ tool, onToggle, onDelete }: { tool: Tool; onToggle: () => voi
           )}
         </div>
       </div>
-      {open && cfg && (
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 text-[11px] text-gray-600 font-mono space-y-1">
-          <p><span className="text-gray-400">URL</span>  {cfg.method} {cfg.url}</p>
-          {cfg.body_mode && <p><span className="text-gray-400">body</span>  {cfg.body_mode === 'template' ? 'template' : 'free-form (LLM constructs)'}</p>}
-          {cfg.body_template && (
-            <pre className="mt-1 bg-white border border-gray-100 rounded p-2 overflow-x-auto whitespace-pre-wrap text-[10px]">{cfg.body_template}</pre>
+      {open && (
+        <div className="border-b border-gray-100">
+          {tool.type === 'http' && cfg && (
+            <div className="px-4 py-3 bg-gray-50 text-[11px] text-gray-600 font-mono space-y-1">
+              <p><span className="text-gray-400">URL</span>  {cfg.method} {cfg.url}</p>
+              {cfg.body_mode && <p><span className="text-gray-400">body</span>  {cfg.body_mode === 'template' ? 'template' : 'free-form (LLM constructs)'}</p>}
+              {cfg.body_template && (
+                <pre className="mt-1 bg-white border border-gray-100 rounded p-2 overflow-x-auto whitespace-pre-wrap text-[10px]">{cfg.body_template}</pre>
+              )}
+            </div>
+          )}
+          {tool.type === 'code' && cfg?.code && (
+            <pre className="px-4 py-3 bg-gray-900 text-green-300 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">
+              {cfg.code}
+            </pre>
           )}
         </div>
       )}
@@ -188,7 +237,7 @@ function ToolRow({ tool, onToggle, onDelete }: { tool: Tool; onToggle: () => voi
 // ─── http tool form ───────────────────────────────────────────────────────────
 
 function HTTPToolForm({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState<HTTPForm>(emptyForm)
+  const [form, setForm] = useState<HTTPForm>(emptyHTTPForm)
   const [error, setError] = useState('')
   const queryClient = useQueryClient()
 
@@ -244,7 +293,6 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
 
       {error && <p className="text-[12px] text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2 mb-3">{error}</p>}
 
-      {/* Name + description */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         <div>
           <label className="block text-[11px] font-medium text-gray-600 mb-1">Tool name *</label>
@@ -258,7 +306,6 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {/* URL + method */}
       <div className="mb-4">
         <label className="block text-[11px] font-medium text-gray-600 mb-1">Endpoint *</label>
         <div className="flex gap-2">
@@ -272,7 +319,6 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {/* Headers */}
       <div className="mb-4">
         <KVEditor label="Headers" rows={form.headers} onChange={(v) => set('headers', v)} />
         <p className="text-[10px] text-gray-400 mt-1">
@@ -280,12 +326,10 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
         </p>
       </div>
 
-      {/* Query params */}
       <div className="mb-4">
         <KVEditor label="Query parameters" rows={form.queryParams} onChange={(v) => set('queryParams', v)} />
       </div>
 
-      {/* Body mode */}
       {form.method !== 'GET' && form.method !== 'DELETE' && form.method !== 'HEAD' && (
         <div className="mb-4">
           <label className="block text-[11px] font-medium text-gray-600 mb-2">Request body</label>
@@ -305,7 +349,7 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
           {form.bodyMode === 'template' ? (
             <div>
               <p className="text-[11px] text-gray-500 mb-2">
-                Write the JSON body you want to send. Use <code className="font-mono bg-gray-100 px-1 rounded">{`{{variable}}`}</code> for parts the LLM should fill in. The agent only needs to supply the variable values, not the full body.
+                Write the JSON body you want to send. Use <code className="font-mono bg-gray-100 px-1 rounded">{`{{variable}}`}</code> for parts the LLM should fill in.
               </p>
               <textarea
                 value={form.bodyTemplate}
@@ -328,14 +372,13 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
           ) : (
             <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
               <p className="text-[12px] text-gray-600">
-                The LLM constructs the entire body as a JSON object and passes it as <code className="font-mono bg-gray-100 px-1 rounded">body</code>. Use this when the payload is highly variable or hard to template.
+                The LLM constructs the entire body as a JSON object and passes it as <code className="font-mono bg-gray-100 px-1 rounded">body</code>.
               </p>
             </div>
           )}
         </div>
       )}
 
-      {/* Risk + approval + timeout */}
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
           <label className="block text-[11px] font-medium text-gray-600 mb-1">Risk level</label>
@@ -356,7 +399,6 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
         </label>
       </div>
 
-      {/* Actions */}
       <div className="flex gap-2">
         <button
           onClick={() => create.mutate()} disabled={create.isPending}
@@ -369,14 +411,195 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
   )
 }
 
+// ─── code tool form ───────────────────────────────────────────────────────────
+
+function CodeToolPanel({
+  initial, existingId, onClose,
+}: {
+  initial?: Partial<CodeForm>
+  existingId?: string
+  onClose: () => void
+}) {
+  const [form, setForm] = useState<CodeForm>({ ...emptyCodeForm(), ...initial })
+  const [error, setError] = useState('')
+  const [testInput, setTestInput] = useState('{\n  "name": "world"\n}')
+  const [testResult, setTestResult] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
+  const queryClient = useQueryClient()
+
+  const set = <K extends keyof CodeForm>(k: K, v: CodeForm[K]) => setForm((f) => ({ ...f, [k]: v }))
+
+  const parseInputSchema = () => {
+    try { return JSON.parse(form.inputSchema) }
+    catch { return { type: 'object', properties: {} } }
+  }
+
+  const save = useMutation({
+    mutationFn: () => {
+      if (!form.name.trim()) throw new Error('Tool name is required')
+      if (!form.code.trim()) throw new Error('Code is required')
+      const payload = {
+        name: form.name.trim(),
+        description: form.description.trim() || `${form.name.trim()} (JavaScript)`,
+        type: 'code',
+        risk_level: form.riskLevel,
+        requires_approval: form.requiresApproval,
+        timeout_ms: form.timeoutMs,
+        enabled: true,
+        input_schema: parseInputSchema(),
+        output_schema: { type: 'object' },
+        config: { language: 'javascript', code: form.code },
+      }
+      return existingId ? toolsAPI.update(existingId, payload) : toolsAPI.create(payload)
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tools'] }); onClose() },
+    onError: (err: Error) => setError(err.message),
+  })
+
+  const runTest = async () => {
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const inputObj = JSON.parse(testInput)
+      const res = await toolsAPI.testCode(form.code, inputObj)
+      setTestResult(res.error
+        ? `Error: ${res.error}`
+        : JSON.stringify(res.result, null, 2))
+    } catch (e) {
+      setTestResult(`Error: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  return (
+    <div className="border border-gray-200 rounded-xl p-5 mb-6 bg-white shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-sm font-medium text-gray-900">{existingId ? 'Edit code tool' : 'New code tool'}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">
+            Write JavaScript that runs in a sandboxed Goja VM. Receives <code className="font-mono bg-gray-100 px-1 rounded">input</code> and returns any JSON-serializable value.
+          </p>
+        </div>
+        <button onClick={onClose}><X size={15} className="text-gray-400" /></button>
+      </div>
+
+      {error && <p className="text-[12px] text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2 mb-3">{error}</p>}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        <div>
+          <label className="block text-[11px] font-medium text-gray-600 mb-1">Tool name *</label>
+          <input value={form.name} onChange={(e) => set('name', e.target.value)}
+            placeholder="e.g. calculate_discount" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg font-mono" />
+        </div>
+        <div>
+          <label className="block text-[11px] font-medium text-gray-600 mb-1">Description</label>
+          <input value={form.description} onChange={(e) => set('description', e.target.value)}
+            placeholder="What this tool does" className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg" />
+        </div>
+      </div>
+
+      {/* Code editor */}
+      <div className="mb-4">
+        <label className="block text-[11px] font-medium text-gray-600 mb-1">JavaScript code *</label>
+        <div className="rounded-lg overflow-hidden border border-gray-200">
+          <CodeEditor
+            value={form.code}
+            height="220px"
+            theme="dark"
+            onChange={(v) => set('code', v)}
+            basicSetup={{ lineNumbers: true, foldGutter: false }}
+          />
+        </div>
+      </div>
+
+      {/* Input schema */}
+      <div className="mb-4">
+        <label className="block text-[11px] font-medium text-gray-600 mb-1">
+          Input schema <span className="font-normal text-gray-400">(JSON Schema — describes what the LLM must provide)</span>
+        </label>
+        <textarea
+          value={form.inputSchema}
+          onChange={(e) => set('inputSchema', e.target.value)}
+          rows={5}
+          className="w-full text-[12px] font-mono px-3 py-2 border border-gray-200 rounded-lg resize-y bg-white"
+        />
+      </div>
+
+      {/* Risk + settings */}
+      <div className="flex flex-wrap items-end gap-3 mb-5">
+        <div>
+          <label className="block text-[11px] font-medium text-gray-600 mb-1">Risk level</label>
+          <select value={form.riskLevel} onChange={(e) => set('riskLevel', e.target.value)}
+            className="text-sm px-3 py-2 border border-gray-200 rounded-lg bg-white">
+            {RISK_OPTIONS.map((r) => <option key={r}>{r}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[11px] font-medium text-gray-600 mb-1">Timeout (ms)</label>
+          <input type="number" value={form.timeoutMs} onChange={(e) => set('timeoutMs', Number(e.target.value))}
+            className="text-sm px-3 py-2 border border-gray-200 rounded-lg w-28" />
+        </div>
+        <label className="flex items-center gap-2 text-[12px] text-gray-600 cursor-pointer pb-2">
+          <input type="checkbox" checked={form.requiresApproval}
+            onChange={(e) => set('requiresApproval', e.target.checked)} />
+          Require approval before running
+        </label>
+      </div>
+
+      {/* Test panel */}
+      <div className="border border-gray-100 rounded-lg p-4 mb-4 bg-gray-50">
+        <p className="text-[11px] font-medium text-gray-600 mb-2">Test this tool</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] text-gray-500 mb-1">Input (JSON)</label>
+            <textarea
+              value={testInput}
+              onChange={(e) => setTestInput(e.target.value)}
+              rows={4}
+              className="w-full text-[12px] font-mono px-3 py-2 border border-gray-200 rounded-lg bg-white resize-none"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-gray-500 mb-1">Result</label>
+            <pre className={`h-[88px] text-[12px] font-mono px-3 py-2 border rounded-lg overflow-auto whitespace-pre-wrap ${
+              testResult?.startsWith('Error:')
+                ? 'bg-red-50 border-red-100 text-red-700'
+                : 'bg-white border-gray-200 text-gray-800'
+            }`}>
+              {testResult ?? <span className="text-gray-400">— run test to see output —</span>}
+            </pre>
+          </div>
+        </div>
+        <button
+          onClick={runTest}
+          disabled={testing}
+          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-[12px] rounded-lg disabled:opacity-50 transition-colors"
+        >
+          <Play size={11} /> {testing ? 'Running…' : 'Run test'}
+        </button>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => save.mutate()} disabled={save.isPending}
+          className="px-4 py-2 bg-purple-600 text-white text-[12px] rounded-lg disabled:opacity-50 font-medium">
+          {save.isPending ? 'Saving…' : existingId ? 'Save changes' : 'Create tool'}
+        </button>
+        <button onClick={onClose} className="px-3 py-2 text-[12px] text-gray-500 hover:text-gray-800">Cancel</button>
+      </div>
+    </div>
+  )
+}
+
 // ─── section ─────────────────────────────────────────────────────────────────
 
 function Section({
-  title, icon, blurb, emptyBlurb, tools, action, onToggle, onDelete,
+  title, icon, blurb, emptyBlurb, tools, action, onToggle, onDelete, onEdit,
 }: {
   title: string; icon: React.ReactNode; blurb: string; emptyBlurb?: string
   tools: Tool[]; action?: React.ReactNode
-  onToggle: (t: Tool) => void; onDelete: (t: Tool) => void
+  onToggle: (t: Tool) => void; onDelete: (t: Tool) => void; onEdit?: (t: Tool) => void
 }) {
   return (
     <div className="mb-7">
@@ -392,7 +615,13 @@ function Section({
       {tools.length > 0 ? (
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
           {tools.map((t) => (
-            <ToolRow key={t.id} tool={t} onToggle={() => onToggle(t)} onDelete={() => onDelete(t)} />
+            <ToolRow
+              key={t.id}
+              tool={t}
+              onToggle={() => onToggle(t)}
+              onDelete={() => onDelete(t)}
+              onEdit={onEdit ? () => onEdit(t) : undefined}
+            />
           ))}
         </div>
       ) : (
@@ -409,6 +638,8 @@ function Section({
 export default function ToolsPage() {
   const queryClient = useQueryClient()
   const [addingHTTP, setAddingHTTP] = useState(false)
+  const [addingCode, setAddingCode] = useState(false)
+  const [editingTool, setEditingTool] = useState<Tool | null>(null)
   const [actionError, setActionError] = useState('')
 
   const { data, isLoading, error } = useQuery({
@@ -425,17 +656,34 @@ export default function ToolsPage() {
     onSuccess: refresh, onError: (e: Error) => setActionError(e.message),
   })
 
-  const tools = data?.data ?? []
-  const native = tools.filter((t) => t.type === 'native')
-  const mcp    = tools.filter((t) => t.type === 'mcp')
-  const http   = tools.filter((t) => t.type === 'http')
+  const tools   = data?.data ?? []
+  const native  = tools.filter((t) => t.type === 'native')
+  const mcp     = tools.filter((t) => t.type === 'mcp')
+  const http    = tools.filter((t) => t.type === 'http')
+  const code    = tools.filter((t) => t.type === 'code')
+
+  const getCodeFormInitial = (t: Tool): Partial<CodeForm> => {
+    const cfg = t.config ? (() => { try { return JSON.parse(t.config as unknown as string) } catch { return null } })() : null
+    return {
+      name: t.name,
+      description: t.description,
+      code: cfg?.code ?? DEFAULT_CODE,
+      inputSchema: t.input_schema ? JSON.stringify(
+        typeof t.input_schema === 'string' ? JSON.parse(t.input_schema) : t.input_schema,
+        null, 2
+      ) : emptyCodeForm().inputSchema,
+      riskLevel: t.risk_level,
+      requiresApproval: t.requires_approval,
+      timeoutMs: t.timeout_ms,
+    }
+  }
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-gray-900">Tools</h1>
         <p className="text-[12px] text-gray-400 mt-0.5">
-          Tools let agents take actions beyond text — read files, call APIs, search the web.
+          Tools let agents take actions beyond text — run code, call APIs, search the web.
         </p>
         <div className="flex flex-wrap items-center gap-2 text-[11px] mt-3">
           <span className="text-gray-400">Risk levels:</span>
@@ -464,6 +712,16 @@ export default function ToolsPage() {
       {!isLoading && (
         <>
           {addingHTTP && <HTTPToolForm onClose={() => setAddingHTTP(false)} />}
+          {addingCode && !editingTool && (
+            <CodeToolPanel onClose={() => setAddingCode(false)} />
+          )}
+          {editingTool && (
+            <CodeToolPanel
+              existingId={editingTool.id}
+              initial={getCodeFormInitial(editingTool)}
+              onClose={() => setEditingTool(null)}
+            />
+          )}
 
           <Section
             title="Built-in tools"
@@ -491,6 +749,26 @@ export default function ToolsPage() {
           />
 
           <Section
+            title="Code tools"
+            icon={<Terminal size={14} />}
+            blurb="Custom JavaScript that runs in a sandboxed Goja VM. Write any logic — math, data transformation, formatting — without needing an external endpoint."
+            emptyBlurb="No code tools yet. Write one to add custom logic for agents."
+            tools={code}
+            action={
+              !addingCode && !editingTool ? (
+                <button
+                  onClick={() => { setAddingCode(true); setAddingHTTP(false); setActionError('') }}
+                  className="inline-flex items-center gap-1 text-[11px] text-purple-600 hover:underline">
+                  <Plus size={11} /> New code tool
+                </button>
+              ) : undefined
+            }
+            onToggle={(t) => toggle.mutate(t)}
+            onDelete={(t) => { if (confirm(`Delete ${t.name}?`)) remove.mutate(t.id) }}
+            onEdit={(t) => { setEditingTool(t); setAddingCode(false); setAddingHTTP(false) }}
+          />
+
+          <Section
             title="HTTP tools"
             icon={<Globe size={14} />}
             blurb="Call any REST endpoint. Use {{variable}} tokens in headers, query params, or the body — the agent fills them in at runtime."
@@ -499,7 +777,7 @@ export default function ToolsPage() {
             action={
               !addingHTTP ? (
                 <button
-                  onClick={() => { setAddingHTTP(true); setActionError('') }}
+                  onClick={() => { setAddingHTTP(true); setAddingCode(false); setEditingTool(null); setActionError('') }}
                   className="inline-flex items-center gap-1 text-[11px] text-purple-600 hover:underline">
                   <Plus size={11} /> Add HTTP tool
                 </button>
@@ -513,7 +791,7 @@ export default function ToolsPage() {
 
       <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
         <p className="text-sm text-gray-600">
-          Learn about native tools, HTTP tools, risk levels, and approval gates in the{' '}
+          Learn about native tools, HTTP tools, code tools, risk levels, and approval gates in the{' '}
           <Link href="/docs/what-is-a-tool" className="text-purple-600 hover:underline">
             documentation
           </Link>.
