@@ -248,6 +248,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 				r.Post("/suites/{id}/runs", h.Evals.TriggerRun)
 				r.Get("/suites/{id}/runs", h.Evals.ListRuns)
 				r.Get("/runs/{runId}", h.Evals.GetRun)
+				r.Post("/runs/{runId}/analyze", h.Evals.AnalyzeRun)
 			})
 
 			// Admin (requires is_admin flag)

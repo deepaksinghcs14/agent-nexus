@@ -389,4 +389,5 @@ export const evalsAPI = {
   triggerRun: (suiteId: string) => api.post(`/evals/suites/${suiteId}/runs`, {}),
   listRuns: (suiteId: string) => api.get(`/evals/suites/${suiteId}/runs`),
   getRun: (runId: string) => api.get(`/evals/runs/${runId}`),
+  analyzeRun: (runId: string) => api.post<{ analysis: import('@/types').EvalAnalysis | null }>(`/evals/runs/${runId}/analyze`, {}),
 }

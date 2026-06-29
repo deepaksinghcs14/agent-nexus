@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -167,13 +168,27 @@ func (r *EvalRepository) UpdateRun(ctx context.Context, run *domain.EvalRun) err
 
 func (r *EvalRepository) GetRun(ctx context.Context, id, ws string) (*domain.EvalRun, error) {
 	var run domain.EvalRun
-	err := r.pool.QueryRow(ctx,
-		`SELECT id::text, suite_id::text, workspace_id::text, status, total_cases, passed, failed, error_count, score, started_at, completed_at, created_at FROM eval_runs WHERE id=$1::uuid AND workspace_id=$2::uuid`,
-		id, ws).Scan(&run.ID, &run.SuiteID, &run.WorkspaceID, &run.Status, &run.TotalCases, &run.Passed, &run.Failed, &run.ErrorCount, &run.Score, &run.StartedAt, &run.CompletedAt, &run.CreatedAt)
+	err := r.pool.QueryRow(ctx, `
+		SELECT er.id::text, er.suite_id::text, er.workspace_id::text,
+		       es.agent_id::text,
+		       er.status, er.total_cases, er.passed, er.failed, er.error_count,
+		       er.score, er.started_at, er.completed_at, er.created_at, er.analysis
+		FROM eval_runs er
+		JOIN eval_suites es ON es.id = er.suite_id
+		WHERE er.id = $1::uuid AND er.workspace_id = $2::uuid`,
+		id, ws).Scan(
+		&run.ID, &run.SuiteID, &run.WorkspaceID, &run.AgentID,
+		&run.Status, &run.TotalCases, &run.Passed, &run.Failed, &run.ErrorCount,
+		&run.Score, &run.StartedAt, &run.CompletedAt, &run.CreatedAt, &run.Analysis)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("eval run not found")
 	}
 	return &run, err
+}
+
+func (r *EvalRepository) UpdateRunAnalysis(ctx context.Context, runID string, analysis json.RawMessage) error {
+	_, err := r.pool.Exec(ctx, `UPDATE eval_runs SET analysis=$2 WHERE id=$1::uuid`, runID, analysis)
+	return err
 }
 
 func (r *EvalRepository) ListRuns(ctx context.Context, suiteID string) ([]domain.EvalRun, error) {

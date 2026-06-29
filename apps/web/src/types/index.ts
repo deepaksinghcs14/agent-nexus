@@ -726,10 +726,22 @@ export interface EvalCase {
   updated_at: string
 }
 
+export interface EvalAnalysisFix {
+  type: 'prompt' | 'tool' | 'skill'
+  description: string
+  content?: string
+}
+
+export interface EvalAnalysis {
+  issues: string
+  fixes: EvalAnalysisFix[]
+}
+
 export interface EvalRun {
   id: string
   suite_id: string
   workspace_id: string
+  agent_id?: string
   status: 'pending' | 'running' | 'completed' | 'failed'
   total_cases: number
   passed: number
@@ -739,6 +751,7 @@ export interface EvalRun {
   started_at?: string
   completed_at?: string
   created_at: string
+  analysis?: EvalAnalysis
 }
 
 export interface EvalResult {
