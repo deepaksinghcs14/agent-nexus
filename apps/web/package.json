@@ -32,7 +32,7 @@
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.447.0",
     "next": "14.2.35",
-    "react": "^18",
+    "react": "^19",
     "react-dom": "^18",
     "react-markdown": "^9.0.1",
     "remark-gfm": "^4.0.0",
@@ -41,7 +41,7 @@
   },
   "devDependencies": {
     "@types/node": "^20",
-    "@types/react": "^18",
+    "@types/react": "^19",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.4.20",
     "eslint": "^8",
