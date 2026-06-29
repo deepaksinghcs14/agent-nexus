@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -854,9 +855,11 @@ func (h *EvalHandler) doAnalysis(ctx context.Context, runID string, agent *domai
 
 	llm, err := h.runsH.providerFor(ctx, agent.WorkspaceID, agent.Provider)
 	if err != nil || llm == nil {
+		slog.Error("doAnalysis: provider not available", "run_id", runID, "provider", agent.Provider, "err", err)
 		return
 	}
 
+	// Truncate actual output per case to avoid hitting token limits
 	var caseParts []string
 	for i, r := range failedResults {
 		var sb strings.Builder
@@ -864,8 +867,12 @@ func (h *EvalHandler) doAnalysis(ctx context.Context, runID string, agent *domai
 		if r.ExpectedOutput != "" {
 			fmt.Fprintf(&sb, "  Expected: %s\n", r.ExpectedOutput)
 		}
-		if r.ActualOutput != "" {
-			fmt.Fprintf(&sb, "  Actual: %s\n", r.ActualOutput)
+		actual := r.ActualOutput
+		if len(actual) > 300 {
+			actual = actual[:300] + "…"
+		}
+		if actual != "" {
+			fmt.Fprintf(&sb, "  Actual: %s\n", actual)
 		} else if r.Error != "" {
 			fmt.Fprintf(&sb, "  Error: %s\n", r.Error)
 		}
@@ -894,31 +901,26 @@ Identify the root cause pattern(s) and suggest ONE OR MORE specific fixes. Each 
 - type "tool": suggest a specific tool the agent is missing
 - type "skill": suggest enabling/adding a skill
 
-Respond with JSON only — no markdown, no explanation:
-{
-  "issues": "2–3 sentences on what the agent consistently fails at and why",
-  "fixes": [
-    {"type": "prompt", "description": "why this helps", "content": "exact text to append to system prompt"},
-    {"type": "tool",   "description": "what tool and why"},
-    {"type": "skill",  "description": "what skill and why"}
-  ]
-}
-Only include fix types that are genuinely relevant. The "fixes" array may have 1–3 items.`,
+Output ONLY a raw JSON object — no markdown fences, no explanation text before or after:
+{"issues":"2-3 sentences on what the agent consistently fails at and why","fixes":[{"type":"prompt","description":"why this helps","content":"exact text to append to system prompt"},{"type":"tool","description":"what tool and why"},{"type":"skill","description":"what skill and why"}]}
+Only include fix types that are genuinely relevant. The fixes array may have 1-3 items.`,
 		agent.Name, agent.Instructions, toolsText, skillsText, len(failedResults), casesText)
 
 	ch, err := llm.Complete(ctx, provider.CompletionRequest{
 		Model:       agent.Model,
 		Temperature: 0.1,
-		MaxTokens:   1200,
+		MaxTokens:   2000,
 		Messages:    []provider.Message{{Role: "user", Content: prompt}},
 	})
 	if err != nil {
+		slog.Error("doAnalysis: LLM complete failed", "run_id", runID, "err", err)
 		return
 	}
 
 	var reply strings.Builder
 	for event := range ch {
 		if event.Type == provider.EventError {
+			slog.Error("doAnalysis: LLM stream error", "run_id", runID, "err", event.Error)
 			return
 		}
 		if event.Type == provider.EventDelta {
@@ -927,21 +929,39 @@ Only include fix types that are genuinely relevant. The "fixes" array may have 1
 	}
 
 	raw := strings.TrimSpace(reply.String())
-	if strings.HasPrefix(raw, "```") {
+	slog.Info("doAnalysis: LLM raw response", "run_id", runID, "raw", raw)
+
+	// Strip markdown fences if present
+	if idx := strings.Index(raw, "```"); idx != -1 {
+		raw = raw[idx:]
 		raw = strings.TrimPrefix(raw, "```json")
 		raw = strings.TrimPrefix(raw, "```")
-		raw = strings.TrimSuffix(raw, "```")
+		if end := strings.LastIndex(raw, "```"); end > 0 {
+			raw = raw[:end]
+		}
 		raw = strings.TrimSpace(raw)
 	}
+
+	// Extract the outermost JSON object in case there's surrounding text
+	start := strings.Index(raw, "{")
+	end := strings.LastIndex(raw, "}")
+	if start == -1 || end == -1 || end <= start {
+		slog.Error("doAnalysis: no JSON object found in LLM response", "run_id", runID, "raw", raw)
+		return
+	}
+	raw = raw[start : end+1]
 
 	// Validate it's parseable JSON before storing
 	var check map[string]any
 	if err := json.Unmarshal([]byte(raw), &check); err != nil {
+		slog.Error("doAnalysis: JSON parse failed", "run_id", runID, "err", err, "raw", raw)
 		return
 	}
 
 	repo := repository.NewEvalRepository(h.pool)
-	repo.UpdateRunAnalysis(ctx, runID, json.RawMessage(raw)) //nolint:errcheck
+	if err := repo.UpdateRunAnalysis(ctx, runID, json.RawMessage(raw)); err != nil {
+		slog.Error("doAnalysis: UpdateRunAnalysis failed", "run_id", runID, "err", err)
+	}
 }
 
 // AnalyzeRun handles POST /evals/runs/{runId}/analyze — on-demand analysis trigger.

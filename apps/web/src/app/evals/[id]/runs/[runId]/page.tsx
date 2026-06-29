@@ -170,6 +170,7 @@ export default function RunDetailPage({ params }: { params: { id: string; runId:
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [autoAnalyzeTriggered, setAutoAnalyzeTriggered] = useState(false)
 
   const load = useCallback(() =>
     evalsAPI.getRun(runId).then((r: unknown) => {
@@ -181,15 +182,28 @@ export default function RunDetailPage({ params }: { params: { id: string; runId:
 
   useEffect(() => { load() }, [load])
 
-  // Poll while running or while analysis is pending (completed with failures but no analysis yet)
+  // Auto-trigger analysis on page load for completed runs with failures and no analysis yet
+  useEffect(() => {
+    if (!run || autoAnalyzeTriggered) return
+    if (run.status === 'completed' && run.failed > 0 && !run.analysis) {
+      setAutoAnalyzeTriggered(true)
+      setAnalyzing(true)
+      evalsAPI.analyzeRun(runId).then((res: unknown) => {
+        const r = res as { analysis: EvalAnalysis | null }
+        if (r.analysis) {
+          setRun(prev => prev ? { ...prev, analysis: r.analysis ?? undefined } : prev)
+        }
+      }).catch(() => {}).finally(() => setAnalyzing(false))
+    }
+  }, [run?.status, run?.failed, run?.analysis, autoAnalyzeTriggered, runId])
+
+  // Poll while run is still executing
   useEffect(() => {
     if (!run) return
-    const isRunning = run.status === 'pending' || run.status === 'running'
-    const needsAnalysisPoll = run.status === 'completed' && run.failed > 0 && !run.analysis
-    if (!isRunning && !needsAnalysisPoll) return
+    if (run.status !== 'pending' && run.status !== 'running') return
     const t = setInterval(load, 2000)
     return () => clearInterval(t)
-  }, [run?.status, run?.failed, run?.analysis, load])
+  }, [run?.status, load])
 
   const handleAnalyze = async () => {
     if (!run) return
@@ -264,11 +278,11 @@ export default function RunDetailPage({ params }: { params: { id: string; runId:
         ) : (
           <div className="border border-dashed border-purple-200 rounded-lg p-4 mb-6 flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2 text-sm text-purple-700">
-              <Sparkles className="w-4 h-4" />
+              {analyzing
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <Sparkles className="w-4 h-4" />}
               <span>
-                {analyzing
-                  ? 'Analyzing failures…'
-                  : 'AI analysis is computing in the background or can be triggered manually.'}
+                {analyzing ? 'Analyzing failures with AI…' : 'Analysis could not be generated. Retry below.'}
               </span>
             </div>
             {!analyzing && (
@@ -277,10 +291,9 @@ export default function RunDetailPage({ params }: { params: { id: string; runId:
                 className="flex items-center gap-1.5 text-sm text-purple-700 border border-purple-300 rounded px-3 py-1.5 hover:bg-purple-50 transition-colors"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                Analyze failures
+                Retry analysis
               </button>
             )}
-            {analyzing && <Loader2 className="w-4 h-4 text-purple-500 animate-spin" />}
           </div>
         )
       )}
