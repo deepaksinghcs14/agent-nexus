@@ -154,8 +154,8 @@ function GenerateCasesModal({ suiteId, suiteName, onDone }: { suiteId: string; s
     try {
       const res = await evalsAPI.generateCases(suiteId, count) as { cases: EvalCase[]; count: number }
       setGenerated(res.cases ?? [])
-    } catch {
-      setError('Generation failed. Make sure the agent has a configured LLM provider.')
+    } catch (e) {
+      setError((e instanceof Error ? e.message : null) || 'Generation failed — check that this agent has an LLM provider configured.')
     } finally {
       setLoading(false)
     }

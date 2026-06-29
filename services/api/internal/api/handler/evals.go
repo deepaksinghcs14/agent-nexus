@@ -592,10 +592,18 @@ Return ONLY a valid JSON array, no other text:
 	}
 
 	var reply strings.Builder
+	var streamErr error
 	for event := range ch {
-		if event.Type == provider.EventDelta {
+		switch event.Type {
+		case provider.EventDelta:
 			reply.WriteString(event.Delta)
+		case provider.EventError:
+			streamErr = event.Error
 		}
+	}
+	if streamErr != nil {
+		errs.Write(w, errs.Internal("LLM error: "+streamErr.Error()))
+		return
 	}
 
 	raw := strings.TrimSpace(reply.String())
@@ -605,6 +613,10 @@ Return ONLY a valid JSON array, no other text:
 		raw = strings.TrimSuffix(raw, "```")
 		raw = strings.TrimSpace(raw)
 	}
+	if raw == "" {
+		errs.Write(w, errs.Internal("LLM returned an empty response"))
+		return
+	}
 
 	var generated []struct {
 		Input           string `json:"input"`
@@ -612,7 +624,7 @@ Return ONLY a valid JSON array, no other text:
 		GradingCriteria string `json:"grading_criteria"`
 	}
 	if err := json.Unmarshal([]byte(raw), &generated); err != nil {
-		errs.Write(w, errs.Internal("failed to parse generated cases: "+err.Error()))
+		errs.Write(w, errs.Internal("failed to parse LLM response as JSON: "+raw[:min(len(raw), 120)]))
 		return
 	}
 
