@@ -268,6 +268,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 				r.Get("/admin/usage", h.Admin.Usage)
 				r.Get("/admin/policies", h.Admin.GetPolicies)
 				r.Put("/admin/policies", h.Admin.SetPolicies)
+				r.Get("/admin/claude-code/status", h.Admin.ClaudeCodeStatus)
 			})
 		})
 	})

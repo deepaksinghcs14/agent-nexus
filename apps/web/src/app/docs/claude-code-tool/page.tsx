@@ -223,7 +223,7 @@ Description: {{.Body.issue.fields.description}}`}</code></pre>
         </thead>
         <tbody>
           <tr>
-            <td><code>'claude' CLI not found in PATH</code></td>
+            <td><code>&apos;claude&apos; CLI not found in PATH</code></td>
             <td>Run <code>npm install -g @anthropic-ai/claude-code</code> on the API server and ensure the install location is in <code>$PATH</code>.</td>
           </tr>
           <tr>

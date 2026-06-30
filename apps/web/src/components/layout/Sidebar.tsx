@@ -7,7 +7,7 @@ import {
   Bot, GitBranch, Wrench, Plug, Link2, Zap, Sparkles, Radio, BookMarked,
   MessageSquare, History,
   Activity, Brain, BarChart2, Timer, FlaskConical,
-  Key, Settings, BookOpen,
+  Key, Settings, BookOpen, Code2, Terminal,
   LayoutDashboard, Users, Building2, Shield, ClipboardList,
   Hexagon, ShieldCheck, PanelLeftClose, PanelLeftOpen, SquareTerminal, X,
 } from 'lucide-react'
@@ -32,6 +32,7 @@ const userNav: NavGroup[] = [
       { label: 'Triggers',      href: '/triggers',      icon: Zap },
       { label: 'Gateway',       href: '/gateway',       icon: Radio },
       { label: 'Skills',        href: '/skills',        icon: BookMarked },
+      { label: 'Claude Code',   href: '/docs/claude-code-tool', icon: Code2 },
     ],
   },
   {
@@ -77,6 +78,7 @@ const adminNav: NavGroup[] = [
       { label: 'Policies',    href: '/admin/policies',    icon: Shield },
       { label: 'Audit Logs',  href: '/admin/audit-logs',  icon: ClipboardList },
       { label: 'Service Logs', href: '/admin/service-logs', icon: SquareTerminal },
+      { label: 'Claude Code',  href: '/admin/claude-code',  icon: Terminal },
     ],
   },
 ]

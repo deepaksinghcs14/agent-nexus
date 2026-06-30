@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
@@ -345,4 +348,51 @@ func (h *AdminHandler) SetPolicies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	errs.WriteJSON(w, 200, map[string]any{"status": "saved"})
+}
+
+// ClaudeCodeStatus checks whether the claude CLI is installed and authenticated on this server.
+func (h *AdminHandler) ClaudeCodeStatus(w http.ResponseWriter, r *http.Request) {
+	type result struct {
+		ClaudeInstalled     bool   `json:"claude_installed"`
+		ClaudeAuthenticated bool   `json:"claude_authenticated"`
+		ClaudeVersion       string `json:"claude_version,omitempty"`
+		AnthropicKeySet     bool   `json:"anthropic_key_set"`
+		GitInstalled        bool   `json:"git_installed"`
+	}
+	res := result{}
+
+	// Check git.
+	if gitPath, err := exec.LookPath("git"); err == nil && gitPath != "" {
+		res.GitInstalled = true
+	}
+
+	// Check claude CLI.
+	claudePath, err := exec.LookPath("claude")
+	if err == nil && claudePath != "" {
+		res.ClaudeInstalled = true
+
+		// Try to get version.
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		versionOut, err := exec.CommandContext(ctx, claudePath, "--version").Output()
+		if err == nil {
+			res.ClaudeVersion = strings.TrimSpace(string(versionOut))
+		}
+
+		// Check if authenticated: run `claude --print -p ""` with a 5-second budget.
+		// We just check if it doesn't immediately error with an auth failure.
+		authCtx, authCancel := context.WithTimeout(r.Context(), 15*time.Second)
+		defer authCancel()
+		authOut, authErr := exec.CommandContext(authCtx, claudePath, "--print", "--dangerously-skip-permissions", "-p", "reply with the single word PING").Output()
+		if authErr == nil && len(authOut) > 0 {
+			res.ClaudeAuthenticated = true
+		}
+	}
+
+	// Check env var fallback.
+	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		res.AnthropicKeySet = true
+	}
+
+	errs.WriteJSON(w, 200, res)
 }
