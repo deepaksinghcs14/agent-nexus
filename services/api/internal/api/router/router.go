@@ -262,6 +262,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 				r.Patch("/admin/users/{id}", h.Admin.UpdateUser)
 				r.Get("/admin/workspaces", h.Admin.ListWorkspaces)
 				r.Patch("/admin/workspaces/{id}", h.Admin.UpdateWorkspace)
+				r.Delete("/admin/workspaces/{id}", h.Admin.DeleteWorkspace)
 				r.Get("/admin/audit-logs", h.Admin.AuditLogs)
 				r.Get("/admin/service-logs/stream", h.Admin.ServiceLogStream)
 				r.Get("/admin/usage", h.Admin.Usage)

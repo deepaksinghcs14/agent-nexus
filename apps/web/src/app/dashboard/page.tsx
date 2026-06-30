@@ -2,11 +2,11 @@
 
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Bot, Database, Key, Plug, Zap } from 'lucide-react'
-import { agentsAPI, providersAPI, runsAPI, webhookTriggersAPI } from '@/lib/api'
+import { Activity, Bot, Database, FlaskConical, GitBranch, Key, Plug, Radio, Zap, type LucideIcon } from 'lucide-react'
+import { agentsAPI, connectorsAPI, evalsAPI, gatewayAPI, providersAPI, runsAPI, webhookTriggersAPI, workflowsAPI } from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
 import { formatTokens, relativeTime } from '@/lib/utils'
-import type { Run, WebhookTrigger } from '@/types'
+import type { Connector, Run, WebhookTrigger } from '@/types'
 
 const quickActions = [
   { label: 'Create Agent', desc: 'Build a new AI agent', href: '/agents/new', icon: Bot, color: 'bg-purple-50 text-purple-700' },
@@ -14,15 +14,6 @@ const quickActions = [
   { label: 'Add Source', desc: 'Connect a data source', href: '/connectors', icon: Database, color: 'bg-teal-50 text-teal-700' },
   { label: 'Add API Key', desc: 'Configure a provider', href: '/settings/providers', icon: Key, color: 'bg-amber-50 text-amber-700' },
   { label: 'New Trigger', desc: 'Wire a webhook event', href: '/triggers/new', icon: Zap, color: 'bg-rose-50 text-rose-700' },
-]
-
-const statIcons = [
-  { icon: Bot, color: 'bg-purple-50 text-purple-600' },
-  { icon: Key, color: 'bg-blue-50 text-blue-600' },
-  { icon: Activity, color: 'bg-indigo-50 text-indigo-600' },
-  { icon: Zap, color: 'bg-green-50 text-green-600' },
-  { icon: Plug, color: 'bg-amber-50 text-amber-600' },
-  { icon: Database, color: 'bg-rose-50 text-rose-600' },
 ]
 
 function runStatusDot(status: string) {
@@ -39,25 +30,26 @@ function greeting() {
   return 'Good evening'
 }
 
+interface StatCard {
+  label: string
+  value: string
+  sub: string
+  icon: LucideIcon
+  color: string
+  href: string
+}
+
 export default function DashboardPage() {
   const { user, workspace } = useAuthStore()
 
-  const { data: agentsData } = useQuery({
-    queryKey: ['agents'],
-    queryFn: () => agentsAPI.list() as Promise<{ data: unknown[] }>,
-  })
-  const { data: providersData } = useQuery({
-    queryKey: ['providers'],
-    queryFn: () => providersAPI.list() as Promise<{ data: unknown[] }>,
-  })
-  const { data: runsData } = useQuery({
-    queryKey: ['runs'],
-    queryFn: () => runsAPI.list() as Promise<{ data: Run[] }>,
-  })
-  const { data: triggersData } = useQuery({
-    queryKey: ['webhook-triggers'],
-    queryFn: () => webhookTriggersAPI.list() as Promise<{ data: WebhookTrigger[] }>,
-  })
+  const { data: agentsData } = useQuery({ queryKey: ['agents'], queryFn: () => agentsAPI.list() as Promise<{ data: unknown[] }> })
+  const { data: providersData } = useQuery({ queryKey: ['providers'], queryFn: () => providersAPI.list() as Promise<{ data: unknown[] }> })
+  const { data: runsData } = useQuery({ queryKey: ['runs'], queryFn: () => runsAPI.list() as Promise<{ data: Run[] }> })
+  const { data: triggersData } = useQuery({ queryKey: ['webhook-triggers'], queryFn: () => webhookTriggersAPI.list() as Promise<{ data: WebhookTrigger[] }> })
+  const { data: connectorsData } = useQuery({ queryKey: ['connectors'], queryFn: () => connectorsAPI.list() as Promise<{ data: Connector[] }> })
+  const { data: channelsData } = useQuery({ queryKey: ['gateway-channels'], queryFn: () => gatewayAPI.listChannels() as Promise<{ data: unknown[] }> })
+  const { data: workflowsData } = useQuery({ queryKey: ['workflows'], queryFn: () => workflowsAPI.list() as Promise<{ data: unknown[] }> })
+  const { data: evalSuitesData } = useQuery({ queryKey: ['eval-suites'], queryFn: () => evalsAPI.listSuites() as Promise<{ data: unknown[] }> })
 
   const agentCount = agentsData?.data?.length ?? 0
   const providerCount = providersData?.data?.length ?? 0
@@ -66,15 +58,22 @@ export default function DashboardPage() {
   const tokens = runs.reduce((sum, r) => sum + r.total_input_tokens + r.total_output_tokens, 0)
   const triggers = triggersData?.data ?? []
   const activeTriggers = triggers.filter((t) => t.is_active).length
-  const totalFired = triggers.reduce((sum, t) => sum + t.trigger_count, 0)
+  const connectors = connectorsData?.data ?? []
+  const syncingConnectors = connectors.filter((c) => (c as { sync_status?: string }).sync_status === 'syncing').length
+  const channelCount = channelsData?.data?.length ?? 0
+  const workflowCount = workflowsData?.data?.length ?? 0
+  const evalSuiteCount = evalSuitesData?.data?.length ?? 0
 
-  const stats = [
-    { label: 'Total Agents', value: String(agentCount), sub: 'in this workspace' },
-    { label: 'Providers Connected', value: String(providerCount), sub: 'API keys configured' },
-    { label: 'Active Runs', value: String(activeRuns), sub: `${runs.length} total runs` },
-    { label: 'Tokens Recorded', value: formatTokens(tokens), sub: 'across all runs' },
-    { label: 'Active Triggers', value: String(activeTriggers), sub: `${triggers.length} total configured` },
-    { label: 'Times Fired', value: String(totalFired), sub: 'webhook invocations' },
+  const stats: StatCard[] = [
+    { label: 'Total Agents', value: String(agentCount), sub: 'in this workspace', icon: Bot, color: 'bg-purple-50 text-purple-600', href: '/agents' },
+    { label: 'Providers', value: String(providerCount), sub: 'API keys configured', icon: Key, color: 'bg-blue-50 text-blue-600', href: '/settings/providers' },
+    { label: 'Active Runs', value: String(activeRuns), sub: `${runs.length} total runs`, icon: Activity, color: 'bg-indigo-50 text-indigo-600', href: '/runs' },
+    { label: 'Tokens Used', value: formatTokens(tokens), sub: 'across all runs', icon: Zap, color: 'bg-green-50 text-green-600', href: '/runs' },
+    { label: 'Workflows', value: String(workflowCount), sub: 'automation pipelines', icon: GitBranch, color: 'bg-cyan-50 text-cyan-600', href: '/workflows' },
+    { label: 'Active Triggers', value: String(activeTriggers), sub: `${triggers.length} total configured`, icon: Zap, color: 'bg-amber-50 text-amber-600', href: '/triggers' },
+    { label: 'Connectors', value: String(connectors.length), sub: syncingConnectors > 0 ? `${syncingConnectors} syncing` : 'data sources', icon: Database, color: 'bg-teal-50 text-teal-600', href: '/connectors' },
+    { label: 'Gateway Channels', value: String(channelCount), sub: 'messaging channels', icon: Radio, color: 'bg-rose-50 text-rose-600', href: '/gateway' },
+    { label: 'Eval Suites', value: String(evalSuiteCount), sub: 'test suites', icon: FlaskConical, color: 'bg-fuchsia-50 text-fuchsia-600', href: '/evals' },
   ]
 
   const recentRuns = runs.slice(0, 6)
@@ -91,21 +90,18 @@ export default function DashboardPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        {stats.map((s, i) => {
-          const { icon: Icon, color } = statIcons[i]
-          return (
-            <div key={s.label} className="border border-gray-100 rounded-xl p-4 bg-white flex items-start gap-3">
-              <div className={`w-9 h-9 rounded-lg ${color} flex items-center justify-center flex-shrink-0`}>
-                <Icon size={17} />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-900 leading-tight">{s.value}</div>
-                <div className="text-sm font-medium text-gray-700 mt-0.5">{s.label}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{s.sub}</div>
-              </div>
+        {stats.map((s) => (
+          <Link key={s.label} href={s.href} className="border border-gray-100 rounded-xl p-4 bg-white flex items-start gap-3 hover:border-purple-200 hover:shadow-sm transition-all">
+            <div className={`w-9 h-9 rounded-lg ${s.color} flex items-center justify-center flex-shrink-0`}>
+              <s.icon size={17} />
             </div>
-          )
-        })}
+            <div>
+              <div className="text-2xl font-bold text-gray-900 leading-tight">{s.value}</div>
+              <div className="text-sm font-medium text-gray-700 mt-0.5">{s.label}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{s.sub}</div>
+            </div>
+          </Link>
+        ))}
       </div>
 
       {/* Quick Actions */}

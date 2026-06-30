@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -315,60 +316,79 @@ func (h *EvalHandler) executeEvalRun(ctx context.Context, suite *domain.EvalSuit
 		llm, _ = h.runsH.providerFor(ctx, suite.WorkspaceID, agent.Provider)
 	}
 
+	// Run cases in parallel — up to 5 at a time so we don't hammer the LLM API.
+	const maxConcurrency = 5
+	sem := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
 	var failedResults []domain.EvalResult
+
 	for i, c := range cases {
-		start := time.Now()
+		i, c := i, c
+		wg.Add(1)
+		sem <- struct{}{} // acquire slot
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }() // release slot
 
-		convID := uuid.NewString()
-		title := fmt.Sprintf("Eval: %s / Case %d", suite.Name, i+1)
-		h.pool.Exec(ctx, //nolint:errcheck
-			`INSERT INTO conversations(id,workspace_id,agent_id,user_id,title) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5)`,
-			convID, suite.WorkspaceID, agent.ID, uid, title)
-		h.pool.Exec(ctx, //nolint:errcheck
-			`INSERT INTO messages(id,conversation_id,role,content) VALUES($1::uuid,$2::uuid,'user',$3)`,
-			uuid.NewString(), convID, c.Input)
+			start := time.Now()
+			convID := uuid.NewString()
+			title := fmt.Sprintf("Eval: %s / Case %d", suite.Name, i+1)
+			h.pool.Exec(ctx, //nolint:errcheck
+				`INSERT INTO conversations(id,workspace_id,agent_id,user_id,title) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5)`,
+				convID, suite.WorkspaceID, agent.ID, uid, title)
+			h.pool.Exec(ctx, //nolint:errcheck
+				`INSERT INTO messages(id,conversation_id,role,content) VALUES($1::uuid,$2::uuid,'user',$3)`,
+				uuid.NewString(), convID, c.Input)
 
-		output, agentRunID, runErr := h.invokeH.RunAgentSync(ctx, agent, suite.WorkspaceID, uid, convID, c.Input)
-		latencyMs := int(time.Since(start).Milliseconds())
+			output, agentRunID, runErr := h.invokeH.RunAgentSync(ctx, agent, suite.WorkspaceID, uid, convID, c.Input)
+			latencyMs := int(time.Since(start).Milliseconds())
 
-		result := &domain.EvalResult{
-			ID:        uuid.NewString(),
-			EvalRunID: run.ID,
-			CaseID:    c.ID,
-			LatencyMs: latencyMs,
-		}
-		if agentRunID != "" {
-			result.RunID = &agentRunID
-		}
+			result := &domain.EvalResult{
+				ID:        uuid.NewString(),
+				EvalRunID: run.ID,
+				CaseID:    c.ID,
+				LatencyMs: latencyMs,
+			}
+			if agentRunID != "" {
+				result.RunID = &agentRunID
+			}
 
-		if runErr != nil {
-			result.Error = runErr.Error()
-			run.ErrorCount++
-			run.Failed++
-			// Include errors in analysis so patterns (e.g. agent always crashes on a topic) are visible
-			result.Input = c.Input
-			result.ExpectedOutput = c.ExpectedOutput
-			result.GradingCriteria = c.GradingCriteria
-			failedResults = append(failedResults, *result)
-		} else {
-			result.ActualOutput = output
-			passed, score, reasoning := h.grade(ctx, suite.GradingMode, c, output, agent.Model, llm)
-			result.Passed = &passed
-			result.Score = score
-			result.JudgeReasoning = reasoning
-			if passed {
-				run.Passed++
-			} else {
-				run.Failed++
+			if runErr != nil {
+				result.Error = runErr.Error()
 				result.Input = c.Input
 				result.ExpectedOutput = c.ExpectedOutput
 				result.GradingCriteria = c.GradingCriteria
+				mu.Lock()
+				run.ErrorCount++
+				run.Failed++
 				failedResults = append(failedResults, *result)
+				mu.Unlock()
+			} else {
+				result.ActualOutput = output
+				// Grade outside the lock — LLM judge can take several seconds.
+				passed, score, reasoning := h.grade(ctx, suite.GradingMode, c, output, agent.Model, llm)
+				result.Passed = &passed
+				result.Score = score
+				result.JudgeReasoning = reasoning
+				mu.Lock()
+				if passed {
+					run.Passed++
+				} else {
+					run.Failed++
+					result.Input = c.Input
+					result.ExpectedOutput = c.ExpectedOutput
+					result.GradingCriteria = c.GradingCriteria
+					failedResults = append(failedResults, *result)
+				}
+				mu.Unlock()
 			}
-		}
 
-		repo.CreateResult(ctx, result) //nolint:errcheck
+			repo.CreateResult(ctx, result) //nolint:errcheck
+		}()
 	}
+
+	wg.Wait()
 
 	total := run.Passed + run.Failed
 	if total > 0 {
