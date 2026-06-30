@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
@@ -351,6 +352,7 @@ func (h *AdminHandler) SetPolicies(w http.ResponseWriter, r *http.Request) {
 }
 
 // ClaudeCodeStatus checks whether the claude CLI is installed and authenticated on this server.
+// Auth is checked by inspecting credential files — no LLM call is made.
 func (h *AdminHandler) ClaudeCodeStatus(w http.ResponseWriter, r *http.Request) {
 	type result struct {
 		ClaudeInstalled     bool   `json:"claude_installed"`
@@ -366,32 +368,45 @@ func (h *AdminHandler) ClaudeCodeStatus(w http.ResponseWriter, r *http.Request) 
 		res.GitInstalled = true
 	}
 
-	// Check claude CLI.
-	claudePath, err := exec.LookPath("claude")
-	if err == nil && claudePath != "" {
-		res.ClaudeInstalled = true
-
-		// Try to get version.
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-		defer cancel()
-		versionOut, err := exec.CommandContext(ctx, claudePath, "--version").Output()
-		if err == nil {
-			res.ClaudeVersion = strings.TrimSpace(string(versionOut))
-		}
-
-		// Check if authenticated: run `claude --print -p ""` with a 5-second budget.
-		// We just check if it doesn't immediately error with an auth failure.
-		authCtx, authCancel := context.WithTimeout(r.Context(), 15*time.Second)
-		defer authCancel()
-		authOut, authErr := exec.CommandContext(authCtx, claudePath, "--print", "--dangerously-skip-permissions", "-p", "reply with the single word PING").Output()
-		if authErr == nil && len(authOut) > 0 {
-			res.ClaudeAuthenticated = true
-		}
-	}
-
-	// Check env var fallback.
+	// Check env var fallback first (no filesystem needed).
 	if os.Getenv("ANTHROPIC_API_KEY") != "" {
 		res.AnthropicKeySet = true
+	}
+
+	// Check claude CLI presence.
+	claudePath, err := exec.LookPath("claude")
+	if err != nil || claudePath == "" {
+		errs.WriteJSON(w, 200, res)
+		return
+	}
+	res.ClaudeInstalled = true
+
+	// Get version — lightweight, no network call.
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if versionOut, err := exec.CommandContext(ctx, claudePath, "--version").Output(); err == nil {
+		res.ClaudeVersion = strings.TrimSpace(string(versionOut))
+	}
+
+	// Check auth by looking for the Claude Code credentials file — no LLM call, no shell spawning.
+	// Claude Code stores OAuth tokens in ~/.config/claude/credentials.json (Linux/Mac) or
+	// %APPDATA%\Claude\credentials.json (Windows).
+	if !res.AnthropicKeySet {
+		homeDir, _ := os.UserHomeDir()
+		candidates := []string{
+			filepath.Join(homeDir, ".config", "claude", "credentials.json"),
+			filepath.Join(homeDir, ".claude", "credentials.json"),
+			filepath.Join(homeDir, "AppData", "Roaming", "Claude", "credentials.json"),
+		}
+		for _, p := range candidates {
+			if info, err := os.Stat(p); err == nil && info.Size() > 10 {
+				res.ClaudeAuthenticated = true
+				break
+			}
+		}
+	} else {
+		// ANTHROPIC_API_KEY set — claude will use it automatically; treat as authenticated.
+		res.ClaudeAuthenticated = true
 	}
 
 	errs.WriteJSON(w, 200, res)
