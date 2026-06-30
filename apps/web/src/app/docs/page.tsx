@@ -58,6 +58,16 @@ export default function DocsOverview() {
         },
       ]} />
 
+      <h2>Developer Tools</h2>
+      <ConceptGrid items={[
+        {
+          title: 'Claude Code Tool',
+          href: '/docs/claude-code-tool',
+          desc: 'Give agents the ability to write and ship code — clone a repo, implement a task with Claude Code, push a branch, and open a pull request automatically.',
+          badge: 'Tool',
+        },
+      ]} />
+
       <h2>Messaging Channels</h2>
       <ConceptGrid items={[
         {

@@ -260,11 +260,13 @@ func progressLabel(toolName string) string {
 	case "native_http_request", "http_request":
 		return "Fetching data…"
 
-	// Files
+	// Files & code execution
 	case "native_read_file", "read_file":
 		return "Reading file…"
 	case "native_write_file", "write_file":
 		return "Writing file…"
+	case "native_run_claude_code":
+		return "Running Claude Code…"
 
 	// Memory
 	case "native_save_memory":

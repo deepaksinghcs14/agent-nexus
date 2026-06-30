@@ -310,9 +310,9 @@ func (c *Connector) syncRepo(
 		}
 
 		if err := emit(connector.Document{
-			Source:           "github",
+			Source:           "github:" + fullName,
 			SourceDocumentID: fullName + "/" + b.path,
-			Title:            filepath.Base(b.path),
+			Title:            fullName + "/" + b.path,
 			URL:              fmt.Sprintf("https://github.com/%s/%s/blob/%s/%s", owner, repo, branch, b.path),
 			Author:           owner,
 			Content:          text,

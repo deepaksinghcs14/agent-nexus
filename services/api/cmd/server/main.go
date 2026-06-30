@@ -129,6 +129,7 @@ func main() {
 	if !cfg.DemoMode {
 		reg.Register(native.NewWriteFileTool(cfg.StoragePath))
 		reg.Register(native.NewHTTPRequestTool())
+		reg.Register(native.NewRunClaudeCodeTool(pool))
 	}
 	if err := reg.SeedDB(ctx, pool); err != nil {
 		slog.Warn("failed to seed native tools", "error", err)

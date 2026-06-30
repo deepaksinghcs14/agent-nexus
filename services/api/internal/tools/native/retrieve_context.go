@@ -93,6 +93,9 @@ func (t *RetrieveContextTool) ExecuteWithContext(ctx context.Context, execCtx to
 	}
 	for i, c := range chunks {
 		sb.WriteString(fmt.Sprintf("[%d] %s", i+1, c.Title))
+		if c.Source != "" {
+			sb.WriteString(fmt.Sprintf(" [%s]", c.Source))
+		}
 		if c.URL != "" {
 			sb.WriteString(fmt.Sprintf(" (%s)", c.URL))
 		}
