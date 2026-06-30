@@ -615,18 +615,20 @@ type EvalCase struct {
 }
 
 type EvalRun struct {
-	ID          string     `json:"id"`
-	SuiteID     string     `json:"suite_id"`
-	WorkspaceID string     `json:"workspace_id"`
-	Status      string     `json:"status"`
-	TotalCases  int        `json:"total_cases"`
-	Passed      int        `json:"passed"`
-	Failed      int        `json:"failed"`
-	ErrorCount  int        `json:"error_count"`
-	Score       float64    `json:"score"`
-	StartedAt   *time.Time `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID          string          `json:"id"`
+	SuiteID     string          `json:"suite_id"`
+	WorkspaceID string          `json:"workspace_id"`
+	AgentID     string          `json:"agent_id,omitempty"`
+	Status      string          `json:"status"`
+	TotalCases  int             `json:"total_cases"`
+	Passed      int             `json:"passed"`
+	Failed      int             `json:"failed"`
+	ErrorCount  int             `json:"error_count"`
+	Score       float64         `json:"score"`
+	StartedAt   *time.Time      `json:"started_at"`
+	CompletedAt *time.Time      `json:"completed_at"`
+	CreatedAt   time.Time       `json:"created_at"`
+	Analysis    json.RawMessage `json:"analysis,omitempty"`
 }
 
 type EvalResult struct {
@@ -643,5 +645,6 @@ type EvalResult struct {
 	JudgeReasoning  string    `json:"judge_reasoning"`
 	Error           string    `json:"error"`
 	LatencyMs       int       `json:"latency_ms"`
+	OverridePassed  *bool     `json:"override_passed"`
 	CreatedAt       time.Time `json:"created_at"`
 }

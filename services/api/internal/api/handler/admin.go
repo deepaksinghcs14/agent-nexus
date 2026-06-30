@@ -75,22 +75,50 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	errs.WriteJSON(w, 200, u)
 }
 func (h *AdminHandler) ListWorkspaces(w http.ResponseWriter, r *http.Request) {
-	rows, e := h.pool.Query(r.Context(), `SELECT id::text,name,display_name,owner_id::text,settings,workspace_type,created_at,updated_at FROM workspaces ORDER BY created_at DESC`)
+	rows, e := h.pool.Query(r.Context(), `
+		SELECT w.id::text, w.name, w.display_name, w.owner_id::text, w.settings, w.workspace_type, w.created_at, w.updated_at,
+		       COALESCE(a.cnt,0), COALESCE(r.cnt,0), COALESCE(r.tokens,0)
+		FROM workspaces w
+		LEFT JOIN (SELECT workspace_id, COUNT(*) AS cnt FROM agents WHERE ephemeral=false GROUP BY workspace_id) a ON a.workspace_id=w.id
+		LEFT JOIN (SELECT workspace_id, COUNT(*) AS cnt, COALESCE(SUM(total_input_tokens+total_output_tokens),0) AS tokens FROM runs GROUP BY workspace_id) r ON r.workspace_id=w.id
+		ORDER BY w.created_at DESC`)
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to list workspaces"))
 		return
 	}
 	defer rows.Close()
-	a := []domain.Workspace{}
+	type wsRow struct {
+		domain.Workspace
+		AgentCount  int64 `json:"agent_count"`
+		RunCount    int64 `json:"run_count"`
+		TotalTokens int64 `json:"total_tokens"`
+	}
+	a := []wsRow{}
 	for rows.Next() {
-		var x domain.Workspace
-		if rows.Scan(&x.ID, &x.Name, &x.DisplayName, &x.OwnerID, &x.Settings, &x.WorkspaceType, &x.CreatedAt, &x.UpdatedAt) != nil {
+		var x wsRow
+		if rows.Scan(&x.ID, &x.Name, &x.DisplayName, &x.OwnerID, &x.Settings, &x.WorkspaceType, &x.CreatedAt, &x.UpdatedAt, &x.AgentCount, &x.RunCount, &x.TotalTokens) != nil {
 			errs.Write(w, errs.Internal("failed to read workspaces"))
 			return
 		}
 		a = append(a, x)
 	}
 	errs.WriteJSON(w, 200, map[string]any{"data": a})
+}
+
+func (h *AdminHandler) DeleteWorkspace(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var memberCount int
+	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM workspace_members WHERE workspace_id=$1::uuid`, id).Scan(&memberCount)
+	if memberCount > 1 {
+		errs.Write(w, errs.BadRequest("workspace still has members — remove all members before deleting"))
+		return
+	}
+	tag, e := h.pool.Exec(r.Context(), `DELETE FROM workspaces WHERE id=$1::uuid`, id)
+	if e != nil || tag.RowsAffected() == 0 {
+		errs.Write(w, errs.NotFound("workspace not found"))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 func (h *AdminHandler) UpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	var q struct {
@@ -113,7 +141,15 @@ func (h *AdminHandler) UpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	errs.WriteJSON(w, 200, x)
 }
 func (h *AdminHandler) AuditLogs(w http.ResponseWriter, r *http.Request) {
-	rows, e := h.pool.Query(r.Context(), `SELECT id::text,COALESCE(workspace_id::text,''),COALESCE(actor_id::text,''),actor_email,action,resource_type,resource_id,metadata,ip_address,created_at FROM admin_audit_logs WHERE ($1='' OR resource_type=$1) ORDER BY created_at DESC LIMIT 200`, r.URL.Query().Get("resource_type"))
+	q := r.URL.Query()
+	resourceType := q.Get("resource_type")
+	actorEmail := q.Get("actor_email")
+	rows, e := h.pool.Query(r.Context(),
+		`SELECT id::text,COALESCE(workspace_id::text,''),COALESCE(actor_id::text,''),actor_email,action,resource_type,resource_id,metadata,ip_address,created_at
+		 FROM admin_audit_logs
+		 WHERE ($1='' OR resource_type=$1) AND ($2='' OR actor_email ILIKE '%'||$2||'%')
+		 ORDER BY created_at DESC LIMIT 200`,
+		resourceType, actorEmail)
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to list audit logs"))
 		return
@@ -212,12 +248,55 @@ func (h *AdminHandler) IngestServiceLog(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *AdminHandler) Usage(w http.ResponseWriter, r *http.Request) {
-	var runs, tokens int
-	var cost float64
-	var webhookTriggers int
-	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*),COALESCE(SUM(total_input_tokens+total_output_tokens),0),COALESCE(SUM(cost_estimate),0) FROM runs`).Scan(&runs, &tokens, &cost)
+	var totalRuns, totalTokens int
+	var totalCost float64
+	var webhookTriggers, totalWorkspaces, totalAgents, totalConnectors, totalGatewayChannels, totalEvalSuites int
+	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*),COALESCE(SUM(total_input_tokens+total_output_tokens),0),COALESCE(SUM(cost_estimate),0) FROM runs`).Scan(&totalRuns, &totalTokens, &totalCost)
 	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM webhook_triggers`).Scan(&webhookTriggers)
-	errs.WriteJSON(w, 200, map[string]any{"runs": runs, "tokens": tokens, "cost": cost, "webhook_triggers": webhookTriggers})
+	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM workspaces`).Scan(&totalWorkspaces)
+	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM agents WHERE ephemeral=false`).Scan(&totalAgents)
+	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM connectors`).Scan(&totalConnectors)
+	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM gateway_channels`).Scan(&totalGatewayChannels)
+	_ = h.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM eval_suites`).Scan(&totalEvalSuites)
+
+	// Top 5 workspaces by run count
+	type topWs struct {
+		ID          string  `json:"id"`
+		DisplayName string  `json:"display_name"`
+		Runs        int     `json:"runs"`
+		Tokens      int64   `json:"tokens"`
+		Cost        float64 `json:"cost"`
+	}
+	topRows, _ := h.pool.Query(r.Context(), `
+		SELECT w.id::text, w.display_name, COUNT(r.id), COALESCE(SUM(r.total_input_tokens+r.total_output_tokens),0), COALESCE(SUM(r.cost_estimate),0)
+		FROM workspaces w
+		LEFT JOIN runs r ON r.workspace_id=w.id
+		GROUP BY w.id, w.display_name
+		ORDER BY COUNT(r.id) DESC
+		LIMIT 5`)
+	topWorkspaces := []topWs{}
+	if topRows != nil {
+		defer topRows.Close()
+		for topRows.Next() {
+			var t topWs
+			if topRows.Scan(&t.ID, &t.DisplayName, &t.Runs, &t.Tokens, &t.Cost) == nil {
+				topWorkspaces = append(topWorkspaces, t)
+			}
+		}
+	}
+
+	errs.WriteJSON(w, 200, map[string]any{
+		"runs":                  totalRuns,
+		"tokens":                totalTokens,
+		"cost":                  totalCost,
+		"webhook_triggers":      webhookTriggers,
+		"total_workspaces":      totalWorkspaces,
+		"total_agents":          totalAgents,
+		"total_connectors":      totalConnectors,
+		"total_gateway_channels": totalGatewayChannels,
+		"total_eval_suites":     totalEvalSuites,
+		"top_workspaces":        topWorkspaces,
+	})
 }
 func (h *AdminHandler) GetPolicies(w http.ResponseWriter, r *http.Request) {
 	rows, e := h.pool.Query(r.Context(), `SELECT id::text,COALESCE(workspace_id::text,''),key,value,created_at,updated_at FROM policies ORDER BY key`)

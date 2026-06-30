@@ -9,19 +9,37 @@ import type { AuditLog } from '@/types'
 
 export default function AdminAuditLogsPage() {
   const [resourceType, setResourceType] = useState('')
-  const params = resourceType ? `resource_type=${encodeURIComponent(resourceType)}` : ''
-  const { data, isLoading, error } = useQuery({ queryKey: ['admin-audit-logs', resourceType], queryFn: () => adminAPI.auditLogs(params) as Promise<{ data: AuditLog[] }> })
+  const [actorEmail, setActorEmail] = useState('')
+
+  const params = [
+    resourceType ? `resource_type=${encodeURIComponent(resourceType)}` : '',
+    actorEmail ? `actor_email=${encodeURIComponent(actorEmail)}` : '',
+  ].filter(Boolean).join('&')
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['admin-audit-logs', resourceType, actorEmail],
+    queryFn: () => adminAPI.auditLogs(params) as Promise<{ data: AuditLog[] }>,
+  })
   const logs = data?.data ?? []
+
   return (
     <div className="p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-4">
         <h1 className="text-xl font-semibold text-gray-900">Audit logs</h1>
-        <input
-          value={resourceType}
-          onChange={(e) => setResourceType(e.target.value)}
-          placeholder="Filter resource type"
-          className="text-[12px] px-3 py-1.5 border border-gray-200 rounded-lg w-48"
-        />
+        <div className="flex flex-wrap gap-2">
+          <input
+            value={actorEmail}
+            onChange={(e) => setActorEmail(e.target.value)}
+            placeholder="Filter by actor email"
+            className="text-[12px] px-3 py-1.5 border border-gray-200 rounded-lg w-44"
+          />
+          <input
+            value={resourceType}
+            onChange={(e) => setResourceType(e.target.value)}
+            placeholder="Filter resource type"
+            className="text-[12px] px-3 py-1.5 border border-gray-200 rounded-lg w-40"
+          />
+        </div>
       </div>
       {error && (
         <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">{(error as Error).message}</div>

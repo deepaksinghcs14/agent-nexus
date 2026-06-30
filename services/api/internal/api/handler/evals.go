@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -314,50 +316,79 @@ func (h *EvalHandler) executeEvalRun(ctx context.Context, suite *domain.EvalSuit
 		llm, _ = h.runsH.providerFor(ctx, suite.WorkspaceID, agent.Provider)
 	}
 
+	// Run cases in parallel — up to 5 at a time so we don't hammer the LLM API.
+	const maxConcurrency = 5
+	sem := make(chan struct{}, maxConcurrency)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var failedResults []domain.EvalResult
+
 	for i, c := range cases {
-		start := time.Now()
+		i, c := i, c
+		wg.Add(1)
+		sem <- struct{}{} // acquire slot
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }() // release slot
 
-		convID := uuid.NewString()
-		title := fmt.Sprintf("Eval: %s / Case %d", suite.Name, i+1)
-		h.pool.Exec(ctx, //nolint:errcheck
-			`INSERT INTO conversations(id,workspace_id,agent_id,user_id,title) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5)`,
-			convID, suite.WorkspaceID, agent.ID, uid, title)
-		h.pool.Exec(ctx, //nolint:errcheck
-			`INSERT INTO messages(id,conversation_id,role,content) VALUES($1::uuid,$2::uuid,'user',$3)`,
-			uuid.NewString(), convID, c.Input)
+			start := time.Now()
+			convID := uuid.NewString()
+			title := fmt.Sprintf("Eval: %s / Case %d", suite.Name, i+1)
+			h.pool.Exec(ctx, //nolint:errcheck
+				`INSERT INTO conversations(id,workspace_id,agent_id,user_id,title) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5)`,
+				convID, suite.WorkspaceID, agent.ID, uid, title)
+			h.pool.Exec(ctx, //nolint:errcheck
+				`INSERT INTO messages(id,conversation_id,role,content) VALUES($1::uuid,$2::uuid,'user',$3)`,
+				uuid.NewString(), convID, c.Input)
 
-		output, agentRunID, runErr := h.invokeH.RunAgentSync(ctx, agent, suite.WorkspaceID, uid, convID, c.Input)
-		latencyMs := int(time.Since(start).Milliseconds())
+			output, agentRunID, runErr := h.invokeH.RunAgentSync(ctx, agent, suite.WorkspaceID, uid, convID, c.Input)
+			latencyMs := int(time.Since(start).Milliseconds())
 
-		result := &domain.EvalResult{
-			ID:        uuid.NewString(),
-			EvalRunID: run.ID,
-			CaseID:    c.ID,
-			LatencyMs: latencyMs,
-		}
-		if agentRunID != "" {
-			result.RunID = &agentRunID
-		}
-
-		if runErr != nil {
-			result.Error = runErr.Error()
-			run.ErrorCount++
-			run.Failed++
-		} else {
-			result.ActualOutput = output
-			passed, score, reasoning := h.grade(ctx, suite.GradingMode, c, output, agent.Model, llm)
-			result.Passed = &passed
-			result.Score = score
-			result.JudgeReasoning = reasoning
-			if passed {
-				run.Passed++
-			} else {
-				run.Failed++
+			result := &domain.EvalResult{
+				ID:        uuid.NewString(),
+				EvalRunID: run.ID,
+				CaseID:    c.ID,
+				LatencyMs: latencyMs,
 			}
-		}
+			if agentRunID != "" {
+				result.RunID = &agentRunID
+			}
 
-		repo.CreateResult(ctx, result) //nolint:errcheck
+			if runErr != nil {
+				result.Error = runErr.Error()
+				result.Input = c.Input
+				result.ExpectedOutput = c.ExpectedOutput
+				result.GradingCriteria = c.GradingCriteria
+				mu.Lock()
+				run.ErrorCount++
+				run.Failed++
+				failedResults = append(failedResults, *result)
+				mu.Unlock()
+			} else {
+				result.ActualOutput = output
+				// Grade outside the lock — LLM judge can take several seconds.
+				passed, score, reasoning := h.grade(ctx, suite.GradingMode, c, output, agent.Model, llm)
+				result.Passed = &passed
+				result.Score = score
+				result.JudgeReasoning = reasoning
+				mu.Lock()
+				if passed {
+					run.Passed++
+				} else {
+					run.Failed++
+					result.Input = c.Input
+					result.ExpectedOutput = c.ExpectedOutput
+					result.GradingCriteria = c.GradingCriteria
+					failedResults = append(failedResults, *result)
+				}
+				mu.Unlock()
+			}
+
+			repo.CreateResult(ctx, result) //nolint:errcheck
+		}()
 	}
+
+	wg.Wait()
 
 	total := run.Passed + run.Failed
 	if total > 0 {
@@ -367,6 +398,11 @@ func (h *EvalHandler) executeEvalRun(ctx context.Context, suite *domain.EvalSuit
 	run.Status = "completed"
 	run.CompletedAt = &t
 	repo.UpdateRun(ctx, run) //nolint:errcheck
+
+	if len(failedResults) > 0 {
+		agentCopy := *agent
+		go h.doAnalysis(context.Background(), run.ID, &agentCopy, failedResults)
+	}
 }
 
 func (h *EvalHandler) grade(ctx context.Context, mode string, c domain.EvalCase, actual, model string, llm provider.Provider) (passed bool, score float64, reasoning string) {
@@ -426,7 +462,7 @@ Respond with JSON only (no other text):
 	ch, err := llm.Complete(ctx, provider.CompletionRequest{
 		Model:       model,
 		Temperature: 0.1,
-		MaxTokens:   300,
+		MaxTokens:   4000,
 		Messages:    []provider.Message{{Role: "user", Content: judgePrompt}},
 	})
 	if err != nil {
@@ -792,6 +828,359 @@ func (h *EvalHandler) ImportCases(w http.ResponseWriter, r *http.Request) {
 	}
 
 	errs.WriteJSON(w, http.StatusCreated, map[string]any{"imported": imported})
+}
+
+// OverrideResult handles PATCH /evals/runs/{runId}/results/{resultId} — manual pass/fail override.
+func (h *EvalHandler) OverrideResult(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	runID := chi.URLParam(r, "runId")
+	resultID := chi.URLParam(r, "resultId")
+
+	// Verify run belongs to workspace
+	repo := repository.NewEvalRepository(h.pool)
+	run, err := repo.GetRun(r.Context(), runID, ws)
+	if err != nil {
+		errs.Write(w, errs.NotFound("eval run not found"))
+		return
+	}
+	_ = run
+
+	var body struct {
+		OverridePassed *bool `json:"override_passed"` // null clears the override
+	}
+	json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
+
+	if err := repo.OverrideResult(r.Context(), resultID, runID, body.OverridePassed); err != nil {
+		errs.Write(w, errs.Internal("failed to update result"))
+		return
+	}
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// FixCase handles POST /evals/runs/{runId}/results/{resultId}/fix-case — AI-refines the test case.
+func (h *EvalHandler) FixCase(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	runID := chi.URLParam(r, "runId")
+	resultID := chi.URLParam(r, "resultId")
+
+	repo := repository.NewEvalRepository(h.pool)
+	run, err := repo.GetRun(r.Context(), runID, ws)
+	if err != nil {
+		errs.Write(w, errs.NotFound("eval run not found"))
+		return
+	}
+
+	result, err := repo.GetResult(r.Context(), resultID, runID)
+	if err != nil {
+		errs.Write(w, errs.NotFound("eval result not found"))
+		return
+	}
+
+	agentRepo := repository.NewAgentRepository(h.pool)
+	agent, err := agentRepo.Get(r.Context(), run.AgentID, ws)
+	if err != nil {
+		errs.Write(w, errs.Internal("agent not found"))
+		return
+	}
+
+	llm, err := h.runsH.providerFor(r.Context(), ws, agent.Provider)
+	if err != nil || llm == nil {
+		errs.Write(w, errs.Internal("LLM provider not available"))
+		return
+	}
+
+	humanVerdict := "INCORRECT (false positive — agent actually failed but was graded as passed)"
+	if result.OverridePassed != nil && *result.OverridePassed {
+		humanVerdict = "CORRECT (false negative — agent succeeded but was graded as failed)"
+	}
+
+	prompt := fmt.Sprintf(`A test case for an AI agent was manually reviewed and marked as %s.
+
+Agent: %s
+
+Test case:
+  Input: %s
+  Expected output: %s
+  Grading criteria: %s
+
+Agent's actual response:
+%s
+
+Update the expected_output and grading_criteria to make this test case accurate going forward.
+- If the response was CORRECT: update criteria to accept this style of valid response
+- If the response was INCORRECT: tighten criteria to clearly reject this type of bad response
+
+Output ONLY raw JSON (no markdown, no preamble):
+{"expected_output":"updated expected output or phrase","grading_criteria":"updated grading criteria, 1-2 clear sentences"}`,
+		humanVerdict, agent.Name,
+		result.Input, result.ExpectedOutput, result.GradingCriteria, result.ActualOutput)
+
+	ch, err := llm.Complete(r.Context(), provider.CompletionRequest{
+		Model:       agent.Model,
+		Temperature: 0.1,
+		MaxTokens:   800,
+		Messages:    []provider.Message{{Role: "user", Content: prompt}},
+	})
+	if err != nil {
+		errs.Write(w, errs.Internal("LLM call failed"))
+		return
+	}
+
+	var reply strings.Builder
+	for event := range ch {
+		if event.Type == provider.EventError {
+			errs.Write(w, errs.Internal("LLM error: "+event.Error.Error()))
+			return
+		}
+		if event.Type == provider.EventDelta {
+			reply.WriteString(event.Delta)
+		}
+	}
+
+	raw := strings.TrimSpace(reply.String())
+	start := strings.Index(raw, "{")
+	end := strings.LastIndex(raw, "}")
+	if start == -1 || end <= start {
+		errs.Write(w, errs.Internal("LLM returned invalid JSON"))
+		return
+	}
+	raw = raw[start : end+1]
+
+	var suggestion struct {
+		ExpectedOutput  string `json:"expected_output"`
+		GradingCriteria string `json:"grading_criteria"`
+	}
+	if err := json.Unmarshal([]byte(raw), &suggestion); err != nil {
+		errs.Write(w, errs.Internal("failed to parse LLM suggestion"))
+		return
+	}
+
+	// Apply the fix to the eval case
+	caseRepo := repository.NewEvalRepository(h.pool)
+	updatedCase := &domain.EvalCase{
+		ID:              result.CaseID,
+		SuiteID:         run.SuiteID,
+		Input:           result.Input,
+		ExpectedOutput:  suggestion.ExpectedOutput,
+		GradingCriteria: suggestion.GradingCriteria,
+	}
+	if err := caseRepo.UpdateCase(r.Context(), updatedCase); err != nil {
+		errs.Write(w, errs.Internal("failed to update case"))
+		return
+	}
+
+	errs.WriteJSON(w, http.StatusOK, map[string]any{
+		"expected_output":  suggestion.ExpectedOutput,
+		"grading_criteria": suggestion.GradingCriteria,
+	})
+}
+
+// doAnalysis runs an LLM over the failed cases for a completed run and stores the result.
+// Called asynchronously from executeEvalRun, and synchronously from AnalyzeRun.
+func (h *EvalHandler) doAnalysis(ctx context.Context, runID string, agent *domain.Agent, failedResults []domain.EvalResult) {
+	if len(failedResults) == 0 {
+		return
+	}
+
+	// Fetch tool names
+	var toolNames []string
+	toolRows, _ := h.pool.Query(ctx,
+		`SELECT t.name FROM agent_tools at JOIN tools t ON t.id=at.tool_id WHERE at.agent_id=$1::uuid ORDER BY t.name`,
+		agent.ID)
+	if toolRows != nil {
+		defer toolRows.Close()
+		for toolRows.Next() {
+			var name string
+			toolRows.Scan(&name) //nolint:errcheck
+			toolNames = append(toolNames, name)
+		}
+	}
+	toolsText := "None"
+	if len(toolNames) > 0 {
+		toolsText = strings.Join(toolNames, ", ")
+	}
+
+	// Fetch skill names
+	var skillNames []string
+	skillRows, _ := h.pool.Query(ctx,
+		`SELECT s.name FROM agent_skills ask JOIN skills s ON s.id=ask.skill_id WHERE ask.agent_id=$1::uuid ORDER BY ask.order_index`,
+		agent.ID)
+	if skillRows != nil {
+		defer skillRows.Close()
+		for skillRows.Next() {
+			var name string
+			skillRows.Scan(&name) //nolint:errcheck
+			skillNames = append(skillNames, name)
+		}
+	}
+	skillsText := "None"
+	if len(skillNames) > 0 {
+		skillsText = strings.Join(skillNames, ", ")
+	}
+
+	llm, err := h.runsH.providerFor(ctx, agent.WorkspaceID, agent.Provider)
+	if err != nil || llm == nil {
+		slog.Error("doAnalysis: provider not available", "run_id", runID, "provider", agent.Provider, "err", err)
+		return
+	}
+
+	// Truncate actual output per case to avoid hitting token limits
+	var caseParts []string
+	for i, r := range failedResults {
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "Case %d:\n  Input: %s\n", i+1, r.Input)
+		if r.ExpectedOutput != "" {
+			fmt.Fprintf(&sb, "  Expected: %s\n", r.ExpectedOutput)
+		}
+		actual := r.ActualOutput
+		if len(actual) > 300 {
+			actual = actual[:300] + "…"
+		}
+		if actual != "" {
+			fmt.Fprintf(&sb, "  Actual: %s\n", actual)
+		} else if r.Error != "" {
+			fmt.Fprintf(&sb, "  Error: %s\n", r.Error)
+		}
+		if r.JudgeReasoning != "" {
+			fmt.Fprintf(&sb, "  Judge reasoning: %s\n", r.JudgeReasoning)
+		}
+		caseParts = append(caseParts, sb.String())
+	}
+	casesText := strings.Join(caseParts, "\n")
+
+	prompt := fmt.Sprintf(`You are a senior AI engineer reviewing failures in an AI agent evaluation.
+
+Agent name: %s
+Agent system prompt (truncated):
+%s
+
+Tools: %s
+Skills: %s
+
+FAILED test cases (%d):
+%s
+
+Output ONLY a raw JSON object with NO markdown fences and NO text before or after the JSON. Keep it SHORT:
+- "issues": max 2 sentences
+- each fix "description": max 1 sentence
+- prompt fix "content": max 3 sentences of text to append
+
+{"issues":"one or two sentences on the failure pattern","fixes":[{"type":"prompt","description":"why","content":"exact text to append"},{"type":"tool","description":"what and why"},{"type":"skill","description":"what and why"}]}
+
+Only include fix types genuinely needed. fixes array: 1-3 items max.`,
+		agent.Name, agent.Instructions, toolsText, skillsText, len(failedResults), casesText)
+
+	ch, err := llm.Complete(ctx, provider.CompletionRequest{
+		Model:       agent.Model,
+		Temperature: 0.1,
+		MaxTokens:   4000,
+		Messages:    []provider.Message{{Role: "user", Content: prompt}},
+	})
+	if err != nil {
+		slog.Error("doAnalysis: LLM complete failed", "run_id", runID, "err", err)
+		return
+	}
+
+	var reply strings.Builder
+	for event := range ch {
+		if event.Type == provider.EventError {
+			slog.Error("doAnalysis: LLM stream error", "run_id", runID, "err", event.Error)
+			return
+		}
+		if event.Type == provider.EventDelta {
+			reply.WriteString(event.Delta)
+		}
+	}
+
+	raw := strings.TrimSpace(reply.String())
+	slog.Info("doAnalysis: LLM raw response", "run_id", runID, "raw", raw)
+
+	// Strip markdown fences if present
+	if idx := strings.Index(raw, "```"); idx != -1 {
+		raw = raw[idx:]
+		raw = strings.TrimPrefix(raw, "```json")
+		raw = strings.TrimPrefix(raw, "```")
+		if end := strings.LastIndex(raw, "```"); end > 0 {
+			raw = raw[:end]
+		}
+		raw = strings.TrimSpace(raw)
+	}
+
+	// Extract the outermost JSON object in case there's surrounding text
+	start := strings.Index(raw, "{")
+	end := strings.LastIndex(raw, "}")
+	if start == -1 || end == -1 || end <= start {
+		slog.Error("doAnalysis: no JSON object found in LLM response", "run_id", runID, "raw", raw)
+		return
+	}
+	raw = raw[start : end+1]
+
+	// Validate it's parseable JSON before storing
+	var check map[string]any
+	if err := json.Unmarshal([]byte(raw), &check); err != nil {
+		slog.Error("doAnalysis: JSON parse failed", "run_id", runID, "err", err, "raw", raw)
+		return
+	}
+
+	repo := repository.NewEvalRepository(h.pool)
+	if err := repo.UpdateRunAnalysis(ctx, runID, json.RawMessage(raw)); err != nil {
+		slog.Error("doAnalysis: UpdateRunAnalysis failed", "run_id", runID, "err", err)
+	}
+}
+
+// AnalyzeRun handles POST /evals/runs/{runId}/analyze — on-demand analysis trigger.
+func (h *EvalHandler) AnalyzeRun(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	runID := chi.URLParam(r, "runId")
+
+	repo := repository.NewEvalRepository(h.pool)
+	run, err := repo.GetRun(r.Context(), runID, ws)
+	if err != nil {
+		errs.Write(w, errs.NotFound("eval run not found"))
+		return
+	}
+
+	// Return cached analysis immediately if already computed
+	if len(run.Analysis) > 0 && string(run.Analysis) != "null" {
+		errs.WriteJSON(w, http.StatusOK, map[string]any{"analysis": run.Analysis})
+		return
+	}
+
+	agentRepo := repository.NewAgentRepository(h.pool)
+	agent, err := agentRepo.Get(r.Context(), run.AgentID, ws)
+	if err != nil {
+		errs.Write(w, errs.Internal("agent not found"))
+		return
+	}
+
+	results, err := repo.ListResults(r.Context(), runID)
+	if err != nil {
+		errs.Write(w, errs.Internal("failed to fetch results"))
+		return
+	}
+
+	var failedResults []domain.EvalResult
+	for _, res := range results {
+		passed := res.Passed != nil && *res.Passed
+		if !passed {
+			failedResults = append(failedResults, res)
+		}
+	}
+
+	if len(failedResults) == 0 {
+		errs.WriteJSON(w, http.StatusOK, map[string]any{"analysis": nil})
+		return
+	}
+
+	h.doAnalysis(r.Context(), runID, agent, failedResults)
+
+	// Re-fetch to get the stored analysis
+	run, err = repo.GetRun(r.Context(), runID, ws)
+	if err != nil {
+		errs.Write(w, errs.Internal("failed to fetch updated run"))
+		return
+	}
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"analysis": run.Analysis})
 }
 
 // TriggerAutoRunsForAgent fires eval runs for all auto_run suites of a given agent.

@@ -248,6 +248,9 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 				r.Post("/suites/{id}/runs", h.Evals.TriggerRun)
 				r.Get("/suites/{id}/runs", h.Evals.ListRuns)
 				r.Get("/runs/{runId}", h.Evals.GetRun)
+				r.Post("/runs/{runId}/analyze", h.Evals.AnalyzeRun)
+				r.Patch("/runs/{runId}/results/{resultId}", h.Evals.OverrideResult)
+				r.Post("/runs/{runId}/results/{resultId}/fix-case", h.Evals.FixCase)
 			})
 
 			// Admin (requires is_admin flag)
@@ -259,6 +262,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 				r.Patch("/admin/users/{id}", h.Admin.UpdateUser)
 				r.Get("/admin/workspaces", h.Admin.ListWorkspaces)
 				r.Patch("/admin/workspaces/{id}", h.Admin.UpdateWorkspace)
+				r.Delete("/admin/workspaces/{id}", h.Admin.DeleteWorkspace)
 				r.Get("/admin/audit-logs", h.Admin.AuditLogs)
 				r.Get("/admin/service-logs/stream", h.Admin.ServiceLogStream)
 				r.Get("/admin/usage", h.Admin.Usage)

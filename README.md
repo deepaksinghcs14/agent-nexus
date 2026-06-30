@@ -154,12 +154,24 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **API token management** — generate named API tokens with optional expiry dates for CI pipelines, integrations, and programmatic agent invocations; revoke any token instantly
 - **Webhook triggers** — persistent inbound HTTP endpoints that fire an agent or workflow run from any external HTTP POST; see the [Webhook Triggers](#webhook-triggers) section for full details
 
+### Eval Framework
+- **Eval suites** — define named test suites per agent; a suite contains an ordered list of test cases each with an `input`, optional `expected_output`, and `grading_criteria`
+- **Three grading modes** — `llm_judge` (LLM scores the response against criteria at temperature 0.1), `contains` (substring match), `exact` (case-insensitive equality)
+- **Parallel execution** — cases run up to 5 at a time concurrently; wall-clock time is dominated by the slowest batch, not the sum of all cases; typical 10-case suites run ~5× faster than sequential
+- **AI case generation** — describe your agent and click "Generate Cases"; an LLM creates realistic test inputs, expected outputs, and grading criteria in batches; saves them directly into the suite
+- **AI run analysis** — after any run with failures, an LLM automatically identifies the root cause pattern and suggests specific fixes: exact text to append to the system prompt, a missing tool to add, or a skill to enable; each fix has an "Apply" button that patches the agent in one click
+- **Manual overrides** — thumbs up / thumbs down buttons on each result let you mark false positives and false negatives; overrides are reflected in the effective pass/fail score immediately
+- **AI case fix** — when you override a result, click "Fix case with AI" to have the LLM refine the `expected_output` and `grading_criteria` for that case so it grades correctly in future runs
+- **Export / import** — download all cases as a JSON file and import them into any suite on any instance; great for sharing test suites across teams
+- **Auto-run on agent save** — enable `auto_run` on a suite and it triggers automatically whenever the agent's system prompt is updated; catches regressions before they reach production
+- **Live polling** — the run detail page polls every 2 s while a run is in progress and updates per-case results in real time
+
 ### Administration
-- **Admin dashboard** — platform-wide overview of users, workspaces, run volume, and token usage across all tenants
+- **Admin dashboard** — platform-wide overview: total users, workspaces, agents, connectors, gateway channels, eval suites, and webhook triggers; all-time run count, token usage, and estimated cost; top-5 workspaces by run count with per-workspace token/cost breakdown
 - **User management** — list all users, enable/disable accounts, and promote users to platform admin
-- **Workspace management** — view and modify any workspace from the admin panel; see member counts, storage, and usage stats
+- **Workspace management** — view all workspaces with inline per-workspace stats (agent count, run count, total tokens); delete any workspace via the admin panel (refuses if members are still present); search and sort by usage
 - **Policy controls** — configure platform-wide policies (e.g. allowed providers, max token budgets)
-- **Audit logs** — every create, update, and delete action is recorded with actor, resource type, timestamp, and IP address
+- **Audit logs** — every create, update, and delete action is recorded with actor, resource type, timestamp, and IP address; filter by actor email and/or resource type simultaneously
 
 ### Webhook Triggers
 - **Inbound HTTP endpoints** — create persistent webhook URLs tied to any agent or workflow; POST from GitHub, Stripe, Slack, Zapier, or any external system to fire a run automatically
@@ -409,6 +421,7 @@ What's working today vs. what's coming next:
 | GitHub connector (RAG — multi-repo auto-discovery, filesystem-style browser) | ✅ Done |
 | Confluence connector (RAG — space-wise indexing, page browser) | ✅ Done |
 | Agentic RAG — `native_retrieve_context` tool, per-agent `max_chunks` / `min_score`, configurable via UI and Nexus AI | ✅ Done |
+| Eval framework — suites, cases, parallel runs, LLM judge, AI analysis, manual overrides, case fix, export/import | ✅ Done |
 | Additional connectors (Slack, Jira, Google Drive) | 🔜 Planned |
 | Agent versioning and snapshot rollback | 🔜 Planned |
 | API rate limiting per workspace | 🔜 Planned |

@@ -352,6 +352,7 @@ export const adminAPI = {
   updateUser: (id: string, body: unknown) => api.patch(`/admin/users/${id}`, body),
   workspaces: () => api.get('/admin/workspaces'),
   updateWorkspace: (id: string, body: unknown) => api.patch(`/admin/workspaces/${id}`, body),
+  deleteWorkspace: (id: string) => api.delete(`/admin/workspaces/${id}`),
   auditLogs: (params?: string) => api.get(`/admin/audit-logs${params ? '?' + params : ''}`),
   serviceLogStream: () => api.sse('/admin/service-logs/stream'),
   usage: () => api.get('/admin/usage'),
@@ -389,4 +390,9 @@ export const evalsAPI = {
   triggerRun: (suiteId: string) => api.post(`/evals/suites/${suiteId}/runs`, {}),
   listRuns: (suiteId: string) => api.get(`/evals/suites/${suiteId}/runs`),
   getRun: (runId: string) => api.get(`/evals/runs/${runId}`),
+  analyzeRun: (runId: string) => api.post<{ analysis: import('@/types').EvalAnalysis | null }>(`/evals/runs/${runId}/analyze`, {}),
+  overrideResult: (runId: string, resultId: string, overridePassed: boolean | null) =>
+    api.patch(`/evals/runs/${runId}/results/${resultId}`, { override_passed: overridePassed }),
+  fixCase: (runId: string, resultId: string) =>
+    api.post<{ expected_output: string; grading_criteria: string }>(`/evals/runs/${runId}/results/${resultId}/fix-case`, {}),
 }
