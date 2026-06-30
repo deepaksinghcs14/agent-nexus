@@ -48,6 +48,16 @@ export default function DocsOverview() {
         },
       ]} />
 
+      <h2>Testing & Quality</h2>
+      <ConceptGrid items={[
+        {
+          title: 'Eval Framework',
+          href: '/docs/evals',
+          desc: 'Test agents with named suites, LLM judge grading, AI failure analysis, and one-click prompt fixes.',
+          badge: 'Evals',
+        },
+      ]} />
+
       <h2>Messaging Channels</h2>
       <ConceptGrid items={[
         {
