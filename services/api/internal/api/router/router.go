@@ -46,6 +46,9 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 	r.Delete("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Delete)
 	r.Put("/internal/whatsapp/{accountId}/lid-map", h.WhatsAppCreds.PutLIDMap)
 
+	// Runner session completion callbacks — verified by RUNNER_CALLBACK_SECRET.
+	r.Post("/internal/sessions/callback", h.Invoke.SessionCallback)
+
 	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC secret)
 	r.Post("/webhook/{webhookId}", h.WebhookIngress.Receive)
 	r.Post("/gateway/whatsapp/{channelId}", h.Gateway.WhatsAppReceive)

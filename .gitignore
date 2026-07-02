@@ -13,4 +13,4 @@
 /apps/web/.next/
 CLAUDE.md
 .claude/
-.gocache/
+.gocache/services/runner/runner

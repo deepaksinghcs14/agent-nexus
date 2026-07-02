@@ -574,13 +574,15 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			emit(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
 				call.ID, call.Name, jsonOrStr(call.Input)))
 
-			// Execute the tool — HTTP and code tools bypass the native registry
+			// Execute the tool — HTTP, code, and MCP tools bypass the native registry
 			var result *tools.ExecutionResult
 			var execErr error
 			if toolExists && dbTool.Type == "http" {
 				var cfg tools.HTTPToolConfig
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(r.Context(), cfg, call.Input, dbTool.TimeoutMs)
+			} else if toolExists && dbTool.Type == "mcp" {
+				result = executeMCPTool(r.Context(), h.pool, dbTool, call.Input)
 			} else if toolExists && dbTool.Type == "code" {
 				var codeCfg struct {
 					Code string `json:"code"`
@@ -1057,7 +1059,7 @@ func (h *RunsHandler) SubmitUserInput(w http.ResponseWriter, r *http.Request) {
 
 func (h *RunsHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	runID := chi.URLParam(r, "id")
-	t, e := h.pool.Exec(r.Context(), `UPDATE runs SET status='cancelled',completed_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid AND status IN('pending','running','approval_wait')`, runID, middleware.WorkspaceIDFromCtx(r.Context()))
+	t, e := h.pool.Exec(r.Context(), `UPDATE runs SET status='cancelled',completed_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid AND status IN('pending','running','approval_wait','session_wait')`, runID, middleware.WorkspaceIDFromCtx(r.Context()))
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to cancel run"))
 		return

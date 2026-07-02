@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -232,10 +233,14 @@ type invokeOpts struct {
 	// SendMessage, if non-nil, delivers mid-run progress text back to the caller (e.g. WhatsApp).
 	SendMessage func(ctx context.Context, msg string) error
 	// resume, if non-nil, re-enters the tool-calling loop from a persisted
-	// approval-wait snapshot instead of building a fresh prompt. resumeDecision
-	// carries the approval decision for the pending call the run parked on.
-	resume         *runWaitState
-	resumeDecision *ApprovalDecision
+	// wait snapshot instead of building a fresh prompt. Exactly one of the
+	// following accompanies it: resumeDecision carries the approval decision
+	// for the pending call the run parked on (the call then executes), while
+	// resumeToolResult carries an externally produced RESULT for the pending
+	// call (e.g. a session callback) — the call is NOT re-executed.
+	resume           *runWaitState
+	resumeDecision   *ApprovalDecision
+	resumeToolResult *string
 }
 
 // progressLabel returns a short human-readable status for a tool that is about to execute.
@@ -775,6 +780,56 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		actionLog = append(actionLog, opts.resume.ActionLog...)
 	}
 
+	// Session-wait plumbing for native_launch_repo_session: the closure
+	// snapshots the loop state at the current call (tracked via curBatch /
+	// curCallIdx below), blocks briefly on the runner callback, then parks the
+	// run by returning tools.ErrRunParked. Assigned here — after the loop-state
+	// variables it captures are declared.
+	var curBatch []provider.ToolCall
+	var curCallIdx int
+	execCtx.WaitForSession = func(waitCtx context.Context, sessionKey string) (string, error) {
+		if opts.invokeDepth > 0 {
+			return "", fmt.Errorf("repo sessions can only be launched from top-level runs")
+		}
+		st := &runWaitState{
+			Version:          1,
+			WaitType:         "session",
+			WorkspaceID:      ws,
+			UserID:           uid,
+			AgentID:          a.ID,
+			ConversationID:   convID,
+			Input:            input,
+			Messages:         messages,
+			StableSystem:     stableSystem,
+			PendingCalls:     curBatch,
+			CallIndex:        curCallIdx,
+			StepCount:        stepCount,
+			TotalInput:       totalInput,
+			TotalOutput:      totalOutput,
+			ActionLog:        actionLog,
+			MemorySaveCalled: memorySaveCalled,
+			RequestedTools:   keysOf(requestedTools),
+			ActiveSkills:     keysOf(activeSkills),
+			ActiveMemoryIDs:  keysOf(activeMemoryIDs),
+		}
+		if err := saveWaitState(dbCtx, h.pool, runID, st); err != nil {
+			return "", fmt.Errorf("failed to persist session wait state: %w", err)
+		}
+		ch := RegisterSessionWait(runID)
+		h.pool.Exec(waitCtx, `UPDATE runs SET status='session_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
+		sseEmitOrNil(fmt.Sprintf(`{"type":"session_wait","run_id":%q,"session":%q}`, runID, sessionKey))
+
+		// Sessions run for minutes to hours; block only briefly for fast stubs
+		// and tests, then park. The runner's callback resumes the run.
+		content, got := awaitSessionResult(runID, ch, 60*time.Second)
+		if !got {
+			return "", tools.ErrRunParked
+		}
+		deleteWaitState(dbCtx, h.pool, runID)
+		h.pool.Exec(waitCtx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, runID) //nolint:errcheck
+		return content, nil
+	}
+
 	for {
 		// Build the tool list for this iteration.
 		var toolDefs []provider.ToolDefinition
@@ -816,7 +871,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		if resuming {
 			// The model call for this batch happened before the run parked; the
 			// snapshot already holds the assistant turn plus the results of any
-			// calls that executed before the gated one.
+			// calls that executed before the pending one.
 			pendingCalls = opts.resume.PendingCalls
 			startIdx = opts.resume.CallIndex
 		} else {
@@ -978,8 +1033,36 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			}
 		}
 
+		curBatch = pendingCalls
 		for callIdx := startIdx; callIdx < len(pendingCalls); callIdx++ {
 			call := pendingCalls[callIdx]
+			curCallIdx = callIdx
+
+			// Session resume: the pending call's result was produced externally
+			// (runner callback) — inject it and continue, do not re-execute.
+			if resuming && callIdx == startIdx && opts.resumeToolResult != nil {
+				resultContent := *opts.resumeToolResult
+				if !execCtx.AlwaysActiveTools[call.Name] {
+					actionLog = append(actionLog, summarizeToolCall(call.Name, call.Input, ""))
+				}
+				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
+					map[string]any{"tool": call.Name, "input": call.Input},
+					map[string]any{"output": resultContent},
+					time.Now(), 0, call.Name, "")
+				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":0}`,
+					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent))))
+				messages = append(messages, provider.Message{
+					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: resultContent,
+				})
+				stepCount++
+				if stepCount > a.MaxSteps {
+					runErrMsg = "max steps exceeded"
+					sseErr("max steps exceeded")
+					return
+				}
+				continue
+			}
+
 			if call.Name == "native_save_memory" {
 				memorySaveCalled = true
 			}
@@ -1125,6 +1208,8 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					var cfg tools.HTTPToolConfig
 					_ = json.Unmarshal(dbTool.Config, &cfg)
 					result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
+				} else if toolExists && dbTool.Type == "mcp" {
+					result = executeMCPTool(ctx, h.pool, dbTool, call.Input)
 				} else if toolExists && dbTool.Type == "code" {
 					var codeCfg struct {
 						Code string `json:"code"`
@@ -1140,6 +1225,13 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					}
 				} else {
 					result, execErr = h.executor.ExecuteWithContext(ctx, execCtx, call.Name, call.Input)
+				}
+				if errors.Is(execErr, tools.ErrRunParked) {
+					// The session tool persisted its wait state and the in-process
+					// wait expired. Exit without failing the run — the runner's
+					// callback resumes it via ResumeSessionRun.
+					runParked = true
+					return
 				}
 				if result != nil {
 					latencyMs = result.LatencyMs
@@ -2356,6 +2448,8 @@ func (h *InvokeHandler) executeSupervisorRun(
 				var cfg tools.HTTPToolConfig
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
+			} else if toolExists && dbTool.Type == "mcp" {
+				result = executeMCPTool(ctx, h.pool, dbTool, call.Input)
 			} else if toolExists && dbTool.Type == "code" {
 				var codeCfg struct {
 					Code string `json:"code"`

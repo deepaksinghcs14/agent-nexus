@@ -23,6 +23,8 @@ type Config struct {
 	DemoMode                bool   // when true, restricts dangerous capabilities for public hosted instances
 	EmbedOllamaURL          string // Ollama base URL used for embeddings (e.g. http://localhost:11434)
 	EmbedModel              string // embedding model name (default: nomic-embed-text)
+	RunnerURL               string // base URL of the repo-session runner service (empty = sessions disabled)
+	RunnerCallbackSecret    string // shared secret the runner presents on session callbacks
 }
 
 func Load() (*Config, error) {
@@ -42,6 +44,8 @@ func Load() (*Config, error) {
 		DemoMode:                getEnvBool("DEMO_MODE", false),
 		EmbedOllamaURL:          getEnv("EMBED_OLLAMA_URL", "http://localhost:11434"),
 		EmbedModel:              getEnv("EMBED_MODEL", "nomic-embed-text"),
+		RunnerURL:               getEnv("RUNNER_URL", ""),
+		RunnerCallbackSecret:    getEnv("RUNNER_CALLBACK_SECRET", ""),
 	}
 
 	origins := getEnv("CORS_ORIGINS", "http://localhost:3000")

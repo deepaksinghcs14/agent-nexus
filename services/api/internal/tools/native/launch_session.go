@@ -1,0 +1,114 @@
+package native
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
+)
+
+// LaunchRepoSessionTool starts a headless Claude Code session against a repo
+// via the runner service and blocks the run (durably — see WaitForSession)
+// until the session's completion callback arrives.
+type LaunchRepoSessionTool struct {
+	runnerURL      string
+	callbackURL    string
+	callbackSecret string
+}
+
+func NewLaunchRepoSessionTool(cfg *config.Config) *LaunchRepoSessionTool {
+	return &LaunchRepoSessionTool{
+		runnerURL:      strings.TrimRight(cfg.RunnerURL, "/"),
+		callbackURL:    strings.TrimRight(cfg.PublicAPIURL, "/") + "/internal/sessions/callback",
+		callbackSecret: cfg.RunnerCallbackSecret,
+	}
+}
+
+func (t *LaunchRepoSessionTool) Definition() domain.Tool {
+	return domain.Tool{
+		Name: "native_launch_repo_session",
+		Description: "Launch an autonomous Claude Code coding session against a GitHub repository. " +
+			"The session clones the repo, works on the given task on a fresh branch, pushes the branch, " +
+			"and this tool returns its outcome: {status: success|budget-exceeded|crashed, branch, summary, cost_usd}. " +
+			"Sessions can take minutes to hours; execution waits for completion. " +
+			"Call once per (ticket, repo) pair — repeat calls for the same pair return the existing session.",
+		Type: "native",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{
+			"repo":{"type":"string","description":"GitHub repository as owner/name, e.g. deepaksinghcs14/agent-nexus"},
+			"ticket_key":{"type":"string","description":"Jira ticket key this work belongs to, e.g. PROJ-123"},
+			"task_description":{"type":"string","description":"Complete, self-contained description of the work to do in this repo"},
+			"base_branch":{"type":"string","description":"Branch to start from (default: the repo default branch)"},
+			"budget_usd":{"type":"number","description":"Optional cost cap for the session in USD"}
+		},"required":["repo","ticket_key","task_description"]}`),
+		RiskLevel: "high",
+		TimeoutMs: 120000,
+	}
+}
+
+func (t *LaunchRepoSessionTool) Execute(_ map[string]any) (any, error) {
+	return nil, fmt.Errorf("native_launch_repo_session requires run context")
+}
+
+func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
+	repo, _ := input["repo"].(string)
+	ticketKey, _ := input["ticket_key"].(string)
+	task, _ := input["task_description"].(string)
+	baseBranch, _ := input["base_branch"].(string)
+	budgetUSD, _ := input["budget_usd"].(float64)
+
+	if repo == "" || ticketKey == "" || task == "" {
+		return nil, fmt.Errorf("repo, ticket_key, and task_description are required")
+	}
+	if t.runnerURL == "" {
+		return nil, fmt.Errorf("repo sessions are not configured (RUNNER_URL is unset)")
+	}
+	if execCtx.WaitForSession == nil {
+		return nil, fmt.Errorf("repo sessions are not available in this run context")
+	}
+
+	payload, _ := json.Marshal(map[string]any{
+		"run_id":           execCtx.RunID,
+		"repo":             repo,
+		"ticket_key":       ticketKey,
+		"task_description": task,
+		"base_branch":      baseBranch,
+		"budget_usd":       budgetUSD,
+		"callback_url":     t.callbackURL,
+		"callback_secret":  t.callbackSecret,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.runnerURL+"/sessions", bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("runner unreachable: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
+		return nil, fmt.Errorf("runner rejected session launch: %s: %s", res.Status, strings.TrimSpace(string(b)))
+	}
+
+	// Block (then durably park) until the runner's completion callback.
+	content, err := execCtx.WaitForSession(ctx, ticketKey+"|"+repo)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if json.Unmarshal([]byte(content), &out) != nil {
+		return map[string]any{"raw": content}, nil
+	}
+	return out, nil
+}

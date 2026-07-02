@@ -11,6 +11,7 @@ import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 MOCK_TOOL = os.environ.get("MOCK_TOOL", "native_list_agents")
+MOCK_TOOL_ARGS = os.environ.get("MOCK_TOOL_ARGS", "{}")
 PORT = int(os.environ.get("MOCK_PORT", "9099"))
 
 
@@ -40,7 +41,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             sse({"choices": [{"delta": {"tool_calls": [{
                 "index": 0, "id": "call_mock_1", "type": "function",
-                "function": {"name": MOCK_TOOL, "arguments": "{}"},
+                "function": {"name": MOCK_TOOL, "arguments": MOCK_TOOL_ARGS},
             }]}, "finish_reason": None}]})
             sse({"choices": [{"delta": {}, "finish_reason": "tool_calls"}]})
         sse({"usage": {"prompt_tokens": 10, "completion_tokens": 5}})

@@ -86,6 +86,35 @@ func TestAwaitApprovalDecisionReceived(t *testing.T) {
 	}
 }
 
+func TestAwaitSessionResultReceived(t *testing.T) {
+	runID := "test-session-received"
+	ch := RegisterSessionWait(runID)
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		if !SendSessionResult(runID, `{"status":"success"}`) {
+			t.Error("send should find the registered channel")
+		}
+	}()
+	content, got := awaitSessionResult(runID, ch, 5*time.Second)
+	if !got || content != `{"status":"success"}` {
+		t.Fatalf("expected result, got=%v content=%q", got, content)
+	}
+}
+
+func TestAwaitSessionResultTimeoutParks(t *testing.T) {
+	runID := "test-session-timeout"
+	ch := RegisterSessionWait(runID)
+	_, got := awaitSessionResult(runID, ch, 20*time.Millisecond)
+	if got {
+		t.Fatal("expected clean timeout")
+	}
+	// After the timeout reclaimed the entry, a late callback must fall back to
+	// the resume path.
+	if SendSessionResult(runID, "late") {
+		t.Error("send after timeout should not find a channel")
+	}
+}
+
 func TestAwaitApprovalDecisionTimeout(t *testing.T) {
 	runID := "test-run-timeout"
 	ch := RegisterApprovalWait(runID)

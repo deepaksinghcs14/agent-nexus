@@ -17,7 +17,11 @@ import (
 // Everything else (agent config, tool definitions, skills, provider
 // credentials) is reloaded from the database on resume.
 type runWaitState struct {
-	Version          int                 `json:"version"`
+	Version int `json:"version"`
+	// WaitType is 'approval' (blocked at the approval gate; resume applies a
+	// decision AT the pending call) or 'session' (blocked inside a session
+	// tool; resume injects the pending call's RESULT and continues after it).
+	WaitType         string              `json:"wait_type,omitempty"`
 	WorkspaceID      string              `json:"workspace_id"`
 	UserID           string              `json:"user_id"`
 	AgentID          string              `json:"agent_id"`
@@ -37,29 +41,34 @@ type runWaitState struct {
 	ActiveMemoryIDs  []string            `json:"active_memory_ids,omitempty"`
 }
 
-// saveWaitState upserts the snapshot for runID. Called at the approval gate
-// before the goroutine blocks, and again (with an advanced CallIndex) if a
-// resumed run hits another gated call.
+// saveWaitState upserts the snapshot for runID. Called before the goroutine
+// blocks on an external decision/callback, and again (with an advanced
+// CallIndex) if a resumed run hits another wait.
 func saveWaitState(ctx context.Context, pool *pgxpool.Pool, runID string, st *runWaitState) error {
+	if st.WaitType == "" {
+		st.WaitType = "approval"
+	}
 	b, err := json.Marshal(st)
 	if err != nil {
 		return err
 	}
 	_, err = pool.Exec(ctx,
-		`INSERT INTO run_wait_states(run_id, wait_type, state) VALUES($1::uuid, 'approval', $2::jsonb)
-		 ON CONFLICT (run_id) DO UPDATE SET wait_type='approval', state=$2::jsonb, created_at=NOW()`,
-		runID, b)
+		`INSERT INTO run_wait_states(run_id, wait_type, state) VALUES($1::uuid, $2, $3::jsonb)
+		 ON CONFLICT (run_id) DO UPDATE SET wait_type=$2, state=$3::jsonb, created_at=NOW()`,
+		runID, st.WaitType, b)
 	return err
 }
 
-// claimWaitState atomically removes and returns the snapshot for runID.
-// Returns (nil, nil) when no snapshot exists — either the run was never
-// parked or another caller already claimed it. The delete-returning claim is
-// what prevents two Approve calls from resuming the same run twice.
-func claimWaitState(ctx context.Context, pool *pgxpool.Pool, runID string) (*runWaitState, error) {
+// claimWaitState atomically removes and returns the snapshot for runID,
+// scoped to the given wait type so an approval decision can never claim a
+// session wait (or vice versa). Returns (nil, nil) when no matching snapshot
+// exists — either the run was never parked or another caller already claimed
+// it. The delete-returning claim is what prevents two callers from resuming
+// the same run twice.
+func claimWaitState(ctx context.Context, pool *pgxpool.Pool, runID, waitType string) (*runWaitState, error) {
 	var b []byte
 	err := pool.QueryRow(ctx,
-		`DELETE FROM run_wait_states WHERE run_id=$1::uuid RETURNING state`, runID).Scan(&b)
+		`DELETE FROM run_wait_states WHERE run_id=$1::uuid AND wait_type=$2 RETURNING state`, runID, waitType).Scan(&b)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}

@@ -72,15 +72,16 @@ func main() {
 
 	// Mark orphaned runs as failed. Any run still in running/pending/user_input_wait
 	// at startup was left stranded by a previous server crash or restart — their
-	// goroutines are gone. Runs in approval_wait survive the restart when their
-	// loop state is persisted in run_wait_states: they resume when approved
-	// (see handler.ResumeApprovedRun). Only approval_wait runs WITHOUT persisted
-	// state (e.g. nested sub-runs, whose parent stack cannot be restored) are failed.
+	// goroutines are gone. Runs in approval_wait/session_wait survive the restart
+	// when their loop state is persisted in run_wait_states: they resume on the
+	// approval decision or the runner's session callback (see handler.ResumeApprovedRun
+	// / handler.ResumeSessionRun). Only waiting runs WITHOUT persisted state
+	// (e.g. nested sub-runs, whose parent stack cannot be restored) are failed.
 	if t, err := pool.Exec(ctx, `
 		UPDATE runs
 		SET status='failed', completed_at=NOW(), error_message='Server restarted while run was active'
 		WHERE status IN ('running','pending','user_input_wait')
-		   OR (status='approval_wait' AND NOT EXISTS (
+		   OR (status IN ('approval_wait','session_wait') AND NOT EXISTS (
 		         SELECT 1 FROM run_wait_states w WHERE w.run_id = runs.id))
 	`); err != nil {
 		slog.Warn("failed to mark orphaned runs as failed", "error", err)
@@ -132,6 +133,7 @@ func main() {
 	}
 	reg.Register(native.NewSendMessageTool())
 	reg.Register(native.NewAskUserTool())
+	reg.Register(native.NewLaunchRepoSessionTool(cfg))
 	if !cfg.DemoMode {
 		reg.Register(native.NewWriteFileTool(cfg.StoragePath))
 		reg.Register(native.NewHTTPRequestTool())

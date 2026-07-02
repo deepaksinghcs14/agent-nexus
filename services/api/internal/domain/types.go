@@ -192,6 +192,7 @@ const (
 	RunStatusFailed       RunStatus = "failed"
 	RunStatusCancelled    RunStatus = "cancelled"
 	RunStatusApprovalWait RunStatus = "approval_wait"
+	RunStatusSessionWait  RunStatus = "session_wait"
 )
 
 type Run struct {
