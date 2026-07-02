@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -230,6 +231,11 @@ type invokeOpts struct {
 	rootTraceID string // trace_id of the root run; empty means this IS the root
 	// SendMessage, if non-nil, delivers mid-run progress text back to the caller (e.g. WhatsApp).
 	SendMessage func(ctx context.Context, msg string) error
+	// resume, if non-nil, re-enters the tool-calling loop from a persisted
+	// approval-wait snapshot instead of building a fresh prompt. resumeDecision
+	// carries the approval decision for the pending call the run parked on.
+	resume         *runWaitState
+	resumeDecision *ApprovalDecision
 }
 
 // progressLabel returns a short human-readable status for a tool that is about to execute.
@@ -452,9 +458,18 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer dbCancel()
 
+	resuming := opts.resume != nil
+
 	runCompleted := false
+	runParked := false
 	runErrMsg := "run terminated unexpectedly"
 	defer func() {
+		if runParked {
+			// The run is waiting on an approval decision with its loop state
+			// persisted in run_wait_states. Leave it in approval_wait and keep
+			// ephemeral resources — the Approve endpoint resumes it later.
+			return
+		}
 		if !runCompleted {
 			h.runs.failRun(dbCtx, runID, runErrMsg) //nolint:errcheck
 		}
@@ -484,7 +499,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		connSettings, _ = h.runs.agentConnectorSettings(ctx, a.ID)
 	}
 
-	if a.ContextRetrievalEnabled && !a.AgenticRAG {
+	if a.ContextRetrievalEnabled && !a.AgenticRAG && !resuming {
 		start := time.Now()
 		var queryEmbedding []float32
 		if len(connSettings.IDs) > 0 {
@@ -514,31 +529,33 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			histLimit = 20
 		}
 	}
-	historyRows, err := h.pool.Query(ctx,
-		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,''), COALESCE(tool_calls::text,'')
-		 FROM messages WHERE conversation_id=$1::uuid
-		 ORDER BY created_at DESC LIMIT $2`,
-		convID, histLimit)
-	if err != nil {
-		runErrMsg = err.Error()
-		sseErr("failed to load conversation history")
-		return
-	}
-	defer historyRows.Close()
 	history := []provider.Message{}
-	for historyRows.Next() {
-		var role, content, toolCallID, toolName, toolCallsRaw string
-		if historyRows.Scan(&role, &content, &toolCallID, &toolName, &toolCallsRaw) == nil && (role == "user" || role == "assistant" || role == "tool") {
-			content = injectActionLog(role, content, toolCallsRaw)
-			if len(content) > 800 {
-				content = content[:800] + "…[truncated]"
-			}
-			history = append(history, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
+	if !resuming {
+		historyRows, err := h.pool.Query(ctx,
+			`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,''), COALESCE(tool_calls::text,'')
+			 FROM messages WHERE conversation_id=$1::uuid
+			 ORDER BY created_at DESC LIMIT $2`,
+			convID, histLimit)
+		if err != nil {
+			runErrMsg = err.Error()
+			sseErr("failed to load conversation history")
+			return
 		}
-	}
-	// Reverse: query returned newest-first, LLM needs oldest-first.
-	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
-		history[i], history[j] = history[j], history[i]
+		defer historyRows.Close()
+		for historyRows.Next() {
+			var role, content, toolCallID, toolName, toolCallsRaw string
+			if historyRows.Scan(&role, &content, &toolCallID, &toolName, &toolCallsRaw) == nil && (role == "user" || role == "assistant" || role == "tool") {
+				content = injectActionLog(role, content, toolCallsRaw)
+				if len(content) > 800 {
+					content = content[:800] + "…[truncated]"
+				}
+				history = append(history, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
+			}
+		}
+		// Reverse: query returned newest-first, LLM needs oldest-first.
+		for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
+			history[i], history[j] = history[j], history[i]
+		}
 	}
 
 	allToolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
@@ -573,23 +590,37 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	if a.ContextRetrievalEnabled && a.AgenticRAG {
 		instructions += "\n\nTo look up information from your connected knowledge sources, use the `native_retrieve_context` tool. Always call it before answering questions that require specific knowledge from your documents, codebase, or indexed files. Do NOT call any tool named \"search\" — use `native_retrieve_context` instead."
 	}
-	initialMessages, stableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
-		SystemInstructions: instructions,
-		Skills:             skills.Always,
-		ContextChunks:      contextChunks,
-		History:            history,
-		MemoryEnabled:      a.MemoryEnabled,
-		MemorySaveMode:     a.MemorySaveMode,
-		HasCallAgent:       hasCallAgent,
-		HasCreateAgent:     hasCreateAgent,
-		LazyToolLoading:    a.LazyToolLoading,
-		ConvCompaction:     convCompaction,
-	})
+	var initialMessages []provider.Message
+	var stableSystem string
+	if resuming {
+		// The prompt (including any skill content and memory context appended
+		// mid-run) is already baked into the snapshot messages.
+		initialMessages = opts.resume.Messages
+		stableSystem = opts.resume.StableSystem
+	} else {
+		initialMessages, stableSystem = agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
+			SystemInstructions: instructions,
+			Skills:             skills.Always,
+			ContextChunks:      contextChunks,
+			History:            history,
+			MemoryEnabled:      a.MemoryEnabled,
+			MemorySaveMode:     a.MemorySaveMode,
+			HasCallAgent:       hasCallAgent,
+			HasCreateAgent:     hasCreateAgent,
+			LazyToolLoading:    a.LazyToolLoading,
+			ConvCompaction:     convCompaction,
+		})
+	}
 
 	// requestedTools grows when native_request_tool is called (lazy loading mode).
 	requestedTools := map[string]bool{}
 	if a.ContextRetrievalEnabled && a.AgenticRAG {
 		requestedTools["native_retrieve_context"] = true
+	}
+	if resuming {
+		for _, name := range opts.resume.RequestedTools {
+			requestedTools[name] = true
+		}
 	}
 	skillSummaries := map[string]string{}
 	skillToolMap := map[string]string{}
@@ -601,6 +632,10 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	}
 	activeSkills := map[string]bool{}
 	activeMemoryIDs := map[string]bool{}
+	if resuming {
+		activeSkills = setOf(opts.resume.ActiveSkills)
+		activeMemoryIDs = setOf(opts.resume.ActiveMemoryIDs)
+	}
 	var messages []provider.Message
 
 	// Determine trace root and depth for sub-agent calls.
@@ -733,6 +768,12 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	memorySaveCalled := false
 	futureWorkRetried := false
 	actionLog := []string{}
+	if resuming {
+		stepCount = opts.resume.StepCount
+		totalInput, totalOutput = opts.resume.TotalInput, opts.resume.TotalOutput
+		memorySaveCalled = opts.resume.MemorySaveCalled
+		actionLog = append(actionLog, opts.resume.ActionLog...)
+	}
 
 	for {
 		// Build the tool list for this iteration.
@@ -770,121 +811,131 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			allowedToolNames[td.Name] = true
 		}
 
-		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
-			messages = trimmed
-			sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`,
-				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
-		}
-
-		modelStart := time.Now()
-		completion, err := completeWithEmptyRetry(ctx, llm, provider.CompletionRequest{
-			Model:               a.Model,
-			Messages:            messages,
-			Tools:               toolDefs,
-			Temperature:         a.Temperature,
-			MaxTokens:           a.MaxTokens,
-			Stream:              true,
-			StableSystemContent: stableSystem,
-		}, func(delta string) {
-			sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
-		}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
-		if err != nil {
-			runErrMsg = err.Error()
-			sseErr(err.Error())
-			return
-		}
-
-		reply := completion.Reply
-		usage := completion.Usage
-		pendingCalls := completion.ToolCalls
-
-		totalInput += usage.InputTokens
-		totalOutput += usage.OutputTokens
-		h.runs.createStep(ctx, runID, domain.StepModelCall, //nolint:errcheck
-			map[string]any{"provider": a.Provider, "model": a.Model, "messages": len(messages)},
-			map[string]any{"content": reply, "tool_calls": len(pendingCalls)},
-			modelStart, usage.InputTokens+usage.OutputTokens, "", "")
-
-		if len(pendingCalls) == 0 {
-			if stepCount == 0 && promisesUnconfirmedFutureWork(reply) {
-				if !futureWorkRetried {
-					futureWorkRetried = true
-					messages[0].Content += futureWorkCorrection
-					continue
-				}
-				reply = "I don't have enough information to answer that."
+		var pendingCalls []provider.ToolCall
+		startIdx := 0
+		if resuming {
+			// The model call for this batch happened before the run parked; the
+			// snapshot already holds the assistant turn plus the results of any
+			// calls that executed before the gated one.
+			pendingCalls = opts.resume.PendingCalls
+			startIdx = opts.resume.CallIndex
+		} else {
+			if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
+				messages = trimmed
+				sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`,
+					fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
 			}
-			if strings.TrimSpace(reply) == "" {
-				msg := "model returned an empty response"
-				runErrMsg = msg
-				sseErr(msg)
+
+			modelStart := time.Now()
+			completion, err := completeWithEmptyRetry(ctx, llm, provider.CompletionRequest{
+				Model:               a.Model,
+				Messages:            messages,
+				Tools:               toolDefs,
+				Temperature:         a.Temperature,
+				MaxTokens:           a.MaxTokens,
+				Stream:              true,
+				StableSystemContent: stableSystem,
+			}, func(delta string) {
+				sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
+			}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
+			if err != nil {
+				runErrMsg = err.Error()
+				sseErr(err.Error())
 				return
 			}
-			var actionLogJSON any
-			if len(actionLog) > 0 {
-				b, _ := json.Marshal(actionLog)
-				actionLogJSON = b
-			}
-			h.pool.Exec(ctx, //nolint:errcheck
-				`INSERT INTO messages(id,conversation_id,role,content,tool_calls,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4::jsonb,$5)`,
-				uuid.NewString(), convID, reply, actionLogJSON, usage.OutputTokens)
-			h.runs.createStep(ctx, runID, domain.StepFinalResponse, //nolint:errcheck
-				map[string]any{},
-				map[string]any{"content": reply},
-				time.Now(), usage.OutputTokens, "", "")
-			runCompleted = true
-			costUSD := cost.Estimate(a.Provider, a.Model, totalInput, totalOutput)
-			h.pool.Exec(dbCtx, //nolint:errcheck
-				`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
-				runID, reply, totalInput, totalOutput, costUSD)
-			sseEmitOrNil(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`,
-				runID, totalInput, totalOutput, costUSD))
-			// Memory extraction runs after marking run complete so gateway delivery
-			// is not blocked by the extra LLM call.
-			if shouldRunMemoryExtractor(a, memorySaveCalled) {
-				aCopy, llmCopy, replySnap, inputSnap := a, llm, reply, input
-				go func() {
-					start := time.Now()
-					count, err := runMemoryExtractor(context.Background(), h.pool, llmCopy, aCopy, ws, uid, convID, runID, inputSnap, replySnap)
-					h.runs.createStep(context.Background(), runID, domain.StepToolCall, //nolint:errcheck
-						map[string]any{"tool": "memory_extractor"},
-						map[string]any{"saved": count},
-						start, 0, "memory_extractor", errString(err))
-				}()
-			}
-			{
-				threshold := a.CompactionThreshold
-				if threshold <= 0 {
-					threshold = 6
+
+			reply := completion.Reply
+			usage := completion.Usage
+			pendingCalls = completion.ToolCalls
+
+			totalInput += usage.InputTokens
+			totalOutput += usage.OutputTokens
+			h.runs.createStep(ctx, runID, domain.StepModelCall, //nolint:errcheck
+				map[string]any{"provider": a.Provider, "model": a.Model, "messages": len(messages)},
+				map[string]any{"content": reply, "tool_calls": len(pendingCalls)},
+				modelStart, usage.InputTokens+usage.OutputTokens, "", "")
+
+			if len(pendingCalls) == 0 {
+				if stepCount == 0 && promisesUnconfirmedFutureWork(reply) {
+					if !futureWorkRetried {
+						futureWorkRetried = true
+						messages[0].Content += futureWorkCorrection
+						continue
+					}
+					reply = "I don't have enough information to answer that."
 				}
-				tokenThreshold := a.CompactionTokenThreshold
-				if tokenThreshold <= 0 {
-					tokenThreshold = 3000
+				if strings.TrimSpace(reply) == "" {
+					msg := "model returned an empty response"
+					runErrMsg = msg
+					sseErr(msg)
+					return
 				}
-				if convCompaction != "" || len(history) >= threshold || totalInput > tokenThreshold {
-					llmCopy, modelSnap, convSnap, compSnap := llm, a.Model, convID, convCompaction
+				var actionLogJSON any
+				if len(actionLog) > 0 {
+					b, _ := json.Marshal(actionLog)
+					actionLogJSON = b
+				}
+				h.pool.Exec(ctx, //nolint:errcheck
+					`INSERT INTO messages(id,conversation_id,role,content,tool_calls,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4::jsonb,$5)`,
+					uuid.NewString(), convID, reply, actionLogJSON, usage.OutputTokens)
+				h.runs.createStep(ctx, runID, domain.StepFinalResponse, //nolint:errcheck
+					map[string]any{},
+					map[string]any{"content": reply},
+					time.Now(), usage.OutputTokens, "", "")
+				runCompleted = true
+				costUSD := cost.Estimate(a.Provider, a.Model, totalInput, totalOutput)
+				h.pool.Exec(dbCtx, //nolint:errcheck
+					`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
+					runID, reply, totalInput, totalOutput, costUSD)
+				sseEmitOrNil(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`,
+					runID, totalInput, totalOutput, costUSD))
+				// Memory extraction runs after marking run complete so gateway delivery
+				// is not blocked by the extra LLM call.
+				if shouldRunMemoryExtractor(a, memorySaveCalled) {
+					aCopy, llmCopy, replySnap, inputSnap := a, llm, reply, input
 					go func() {
-						sseEmitOrNil(`{"type":"compacting","status":"start"}`)
-						newCompaction, err := compactConversation(context.Background(), h.pool, llmCopy, modelSnap, convSnap, compSnap)
-						if err != nil || newCompaction == "" {
-							sseEmitOrNil(`{"type":"compacting","status":"done"}`)
-							return
-						}
-						h.pool.Exec(context.Background(), //nolint:errcheck
-							`UPDATE conversations SET compaction=$2, updated_at=NOW() WHERE id=$1::uuid`,
-							convSnap, newCompaction)
-						sseEmitOrNil(`{"type":"compacting","status":"done"}`)
+						start := time.Now()
+						count, err := runMemoryExtractor(context.Background(), h.pool, llmCopy, aCopy, ws, uid, convID, runID, inputSnap, replySnap)
+						h.runs.createStep(context.Background(), runID, domain.StepToolCall, //nolint:errcheck
+							map[string]any{"tool": "memory_extractor"},
+							map[string]any{"saved": count},
+							start, 0, "memory_extractor", errString(err))
 					}()
 				}
+				{
+					threshold := a.CompactionThreshold
+					if threshold <= 0 {
+						threshold = 6
+					}
+					tokenThreshold := a.CompactionTokenThreshold
+					if tokenThreshold <= 0 {
+						tokenThreshold = 3000
+					}
+					if convCompaction != "" || len(history) >= threshold || totalInput > tokenThreshold {
+						llmCopy, modelSnap, convSnap, compSnap := llm, a.Model, convID, convCompaction
+						go func() {
+							sseEmitOrNil(`{"type":"compacting","status":"start"}`)
+							newCompaction, err := compactConversation(context.Background(), h.pool, llmCopy, modelSnap, convSnap, compSnap)
+							if err != nil || newCompaction == "" {
+								sseEmitOrNil(`{"type":"compacting","status":"done"}`)
+								return
+							}
+							h.pool.Exec(context.Background(), //nolint:errcheck
+								`UPDATE conversations SET compaction=$2, updated_at=NOW() WHERE id=$1::uuid`,
+								convSnap, newCompaction)
+							sseEmitOrNil(`{"type":"compacting","status":"done"}`)
+						}()
+					}
+				}
+				return
 			}
-			return
-		}
 
-		messages = append(messages, provider.Message{
-			Role:      "assistant",
-			Content:   reply,
-			ToolCalls: pendingCalls,
-		})
+			messages = append(messages, provider.Message{
+				Role:      "assistant",
+				Content:   reply,
+				ToolCalls: pendingCalls,
+			})
+		}
 
 		// Pre-compute: if there are multiple native_call_agent calls in this batch,
 		// run them all concurrently in goroutines. Results are keyed by tool call ID.
@@ -896,7 +947,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					agentCallsInBatch = append(agentCallsInBatch, call)
 				}
 			}
-			if len(agentCallsInBatch) > 1 {
+			if !resuming && len(agentCallsInBatch) > 1 {
 				type agentCallOut struct {
 					id      string
 					content string
@@ -927,7 +978,8 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			}
 		}
 
-		for _, call := range pendingCalls {
+		for callIdx := startIdx; callIdx < len(pendingCalls); callIdx++ {
+			call := pendingCalls[callIdx]
 			if call.Name == "native_save_memory" {
 				memorySaveCalled = true
 			}
@@ -983,26 +1035,69 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			dbTool, toolExists := dbTools[call.Name]
 
 			if toolExists && dbTool.RequiresApproval {
-				arID := uuid.NewString()
-				h.pool.Exec(ctx, //nolint:errcheck
-					`INSERT INTO approval_requests(id,run_id,tool_name,tool_input,status)VALUES($1::uuid,$2::uuid,$3,$4::jsonb,'pending')`,
-					arID, runID, call.Name, call.Input)
-				h.pool.Exec(ctx, `UPDATE runs SET status='approval_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
-
-				ch := RegisterApprovalWait(runID)
-				sseEmitOrNil(fmt.Sprintf(`{"type":"approval_required","tool":%q,"input":%s,"approval_id":%q}`,
-					call.Name, string(call.Input), arID))
-
 				var decision ApprovalDecision
-				select {
-				case decision = <-ch:
-				case <-time.After(10 * time.Minute):
-					UnregisterApprovalWait(runID)
-					runErrMsg = "approval timed out"
-					sseErr("approval timed out after 10 minutes")
-					return
+				if resuming && callIdx == startIdx && opts.resumeDecision != nil {
+					// This gated call is why the run parked; the decision arrived via
+					// the Approve endpoint, which already reclaimed the snapshot and
+					// flipped the run back to running.
+					decision = *opts.resumeDecision
+				} else {
+					arID := uuid.NewString()
+					h.pool.Exec(ctx, //nolint:errcheck
+						`INSERT INTO approval_requests(id,run_id,tool_name,tool_input,status)VALUES($1::uuid,$2::uuid,$3,$4::jsonb,'pending')`,
+						arID, runID, call.Name, call.Input)
+					h.pool.Exec(ctx, `UPDATE runs SET status='approval_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
+
+					if opts.invokeDepth == 0 {
+						// Snapshot the loop state so the run survives a process restart
+						// and can park if nobody approves before the in-process timeout.
+						st := &runWaitState{
+							Version:          1,
+							WorkspaceID:      ws,
+							UserID:           uid,
+							AgentID:          a.ID,
+							ConversationID:   convID,
+							Input:            input,
+							Messages:         messages,
+							StableSystem:     stableSystem,
+							PendingCalls:     pendingCalls,
+							CallIndex:        callIdx,
+							StepCount:        stepCount,
+							TotalInput:       totalInput,
+							TotalOutput:      totalOutput,
+							ActionLog:        actionLog,
+							MemorySaveCalled: memorySaveCalled,
+							RequestedTools:   keysOf(requestedTools),
+							ActiveSkills:     keysOf(activeSkills),
+							ActiveMemoryIDs:  keysOf(activeMemoryIDs),
+						}
+						if err := saveWaitState(dbCtx, h.pool, runID, st); err != nil {
+							slog.Warn("failed to persist approval wait state; run will not survive restart",
+								"run_id", runID, "error", err)
+						}
+					}
+
+					ch := RegisterApprovalWait(runID)
+					sseEmitOrNil(fmt.Sprintf(`{"type":"approval_required","tool":%q,"input":%s,"approval_id":%q}`,
+						call.Name, string(call.Input), arID))
+
+					var got bool
+					decision, got = awaitApprovalDecision(runID, ch, 10*time.Minute)
+					if !got {
+						if opts.invokeDepth == 0 {
+							// Park: free this goroutine and leave the run in approval_wait
+							// with its state persisted. The Approve endpoint resumes it.
+							sseEmitOrNil(fmt.Sprintf(`{"type":"approval_parked","run_id":%q,"approval_id":%q}`, runID, arID))
+							runParked = true
+							return
+						}
+						runErrMsg = "approval timed out"
+						sseErr("approval timed out after 10 minutes")
+						return
+					}
+					deleteWaitState(dbCtx, h.pool, runID)
+					h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, runID) //nolint:errcheck
 				}
-				h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, runID) //nolint:errcheck
 
 				if decision.Decision == "rejected" {
 					messages = append(messages, provider.Message{Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: "Tool call rejected by user."})
@@ -1087,6 +1182,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				return
 			}
 		}
+		resuming = false
 		// Reload tool definitions to pick up tools created or attached mid-run.
 		if freshAll, freshDB, err := loadAgentToolDefs(ctx, h.pool, a.ID); err == nil {
 			freshAll, freshDB = ensureMemoryToolDefs(freshAll, freshDB)
@@ -2230,11 +2326,10 @@ func (h *InvokeHandler) executeSupervisorRun(
 				sseEmitOrNil(fmt.Sprintf(`{"type":"approval_required","tool":%q,"input":%s,"approval_id":%q}`,
 					call.Name, string(call.Input), arID))
 
-				var decision ApprovalDecision
-				select {
-				case decision = <-ch:
-				case <-time.After(10 * time.Minute):
-					UnregisterApprovalWait(runID)
+				// Supervisor runs are workflow children — their parent's graph walk
+				// lives on this process's stack, so parking is not possible here.
+				decision, got := awaitApprovalDecision(runID, ch, 10*time.Minute)
+				if !got {
 					runErrMsg = "approval timed out"
 					sseErr("approval timed out after 10 minutes")
 					return

@@ -70,12 +70,18 @@ func main() {
 		slog.Warn("bootstrap admin promotion failed", "error", err)
 	}
 
-	// Mark orphaned runs as failed. Any run still in running/pending/approval_wait/user_input_wait
-	// at startup was left stranded by a previous server crash or restart — their goroutines are gone.
+	// Mark orphaned runs as failed. Any run still in running/pending/user_input_wait
+	// at startup was left stranded by a previous server crash or restart — their
+	// goroutines are gone. Runs in approval_wait survive the restart when their
+	// loop state is persisted in run_wait_states: they resume when approved
+	// (see handler.ResumeApprovedRun). Only approval_wait runs WITHOUT persisted
+	// state (e.g. nested sub-runs, whose parent stack cannot be restored) are failed.
 	if t, err := pool.Exec(ctx, `
 		UPDATE runs
 		SET status='failed', completed_at=NOW(), error_message='Server restarted while run was active'
-		WHERE status IN ('running','pending','approval_wait','user_input_wait')
+		WHERE status IN ('running','pending','user_input_wait')
+		   OR (status='approval_wait' AND NOT EXISTS (
+		         SELECT 1 FROM run_wait_states w WHERE w.run_id = runs.id))
 	`); err != nil {
 		slog.Warn("failed to mark orphaned runs as failed", "error", err)
 	} else if t.RowsAffected() > 0 {
