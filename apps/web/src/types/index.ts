@@ -117,6 +117,7 @@ export interface MCPServer {
   url: string
   transport: 'http' | 'stdio'
   status: 'connected' | 'disconnected' | 'error'
+  auth_type?: 'config' | 'oauth'
   tools_synced_at?: string
   created_at: string
   updated_at: string
@@ -162,7 +163,7 @@ export interface ToolCall {
   input: Record<string, unknown>
 }
 
-export type RunStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled' | 'approval_wait'
+export type RunStatus = 'pending' | 'running' | 'success' | 'failed' | 'cancelled' | 'approval_wait' | 'session_wait'
 
 export interface Run {
   id: string

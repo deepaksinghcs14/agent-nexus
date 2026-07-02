@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Globe, Plug, Plus, RefreshCw, Terminal, Trash2, Wrench, X } from 'lucide-react'
+import { AlertTriangle, Globe, KeyRound, Plug, Plus, RefreshCw, Terminal, Trash2, Wrench, X } from 'lucide-react'
 import { mcpAPI } from '@/lib/api'
 import { relativeTime, riskColor, statusColor } from '@/lib/utils'
 import { useDemoMode } from '@/context/demo-mode'
@@ -250,6 +250,20 @@ export default function MCPServersPage() {
     onSuccess: () => { setSelected(''); queryClient.invalidateQueries({ queryKey: ['mcp-servers'] }) },
     onError: (err: Error) => setActionError(err.message),
   })
+  const oauthConnect = useMutation({
+    mutationFn: (id: string) => mcpAPI.oauthStart(id) as Promise<{ authorize_url: string }>,
+    onSuccess: (res) => {
+      setActionError('')
+      // The user grants access in the provider's consent screen; the callback
+      // lands on the API, which stores tokens and syncs tools automatically.
+      window.open(res.authorize_url, '_blank', 'noopener')
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['mcp-servers'] })
+        queryClient.invalidateQueries({ queryKey: ['mcp-tools'] })
+      }, 15000)
+    },
+    onError: (err: Error) => setActionError(err.message),
+  })
 
   const tools = toolsData?.data ?? []
 
@@ -374,6 +388,11 @@ export default function MCPServersPage() {
                     <TransportIcon size={10} />
                     {server.transport}
                   </span>
+                  {server.auth_type === 'oauth' && (
+                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-blue-50 text-blue-700 border-blue-200">
+                      oauth
+                    </span>
+                  )}
                   {server.tools_synced_at && (
                     <span className="text-[10px] text-gray-400 ml-auto">
                       synced {relativeTime(server.tools_synced_at)}
@@ -390,6 +409,17 @@ export default function MCPServersPage() {
                     <RefreshCw size={11} className={isSyncing ? 'animate-spin' : ''} />
                     {isSyncing ? 'Syncing…' : 'Sync tools'}
                   </button>
+                  {server.transport !== 'stdio' && (
+                    <button
+                      onClick={() => oauthConnect.mutate(server.id)}
+                      disabled={oauthConnect.isPending && (oauthConnect.variables as string) === server.id}
+                      title="Authorize via OAuth (for servers like Atlassian's hosted MCP)"
+                      className="inline-flex items-center gap-1 px-2 py-1 border border-blue-200 text-[11px] text-blue-700 rounded-md hover:bg-blue-50 disabled:opacity-50"
+                    >
+                      <KeyRound size={11} />
+                      {server.auth_type === 'oauth' ? 'Re-connect' : 'Connect (OAuth)'}
+                    </button>
+                  )}
                   <button
                     onClick={() => { if (confirm('Delete this server and all its discovered tools?')) remove.mutate(server.id) }}
                     className="ml-auto p-1 text-gray-300 hover:text-red-500"

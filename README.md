@@ -108,6 +108,11 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 
 ## Features
 
+### Autonomous Jira → PR Pipeline
+- **Ticket to pull request, hands-off** — a Jira ticket labeled `auto-dev` triggers repo selection (RAG over a repo catalog), headless Claude Code sessions in a dedicated runner service, an automated review pass, PR creation, and Jira updates. See [docs/jira-pipeline.md](docs/jira-pipeline.md).
+- **Durable waits** — runs blocked on human approval or a long coding session persist their state (`run_wait_states`) and survive API restarts; the approval decision or the runner's completion callback resumes them exactly where they parked
+- **OAuth 2.1 MCP** — connect Atlassian's hosted MCP server (or any OAuth-protected remote MCP server) with one click: discovery, dynamic client registration, PKCE, and automatic token refresh
+
 ### Core Agent Platform
 - **Model-agnostic** — Anthropic Claude, OpenAI GPT, Google Gemini, and local Ollama models. Bring your own API keys per workspace. Switch providers without changing your agent config.
 - **Agent builder** — configure instructions (system prompt), model, temperature, max tokens, memory scope, tool list, and guardrails (max steps, max tool calls, timeout) from a clean tabbed UI; tools are grouped by source (native, MCP, HTTP, code) with live search and collapsible sections; skills support drag-to-reorder

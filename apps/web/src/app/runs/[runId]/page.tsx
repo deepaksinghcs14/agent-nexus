@@ -9,11 +9,12 @@ import { formatCost, formatTokens, statusColor } from '@/lib/utils'
 import type { Agent, Run, RunStep } from '@/types'
 import { TraceGraph, type RunWithWorkflow, STEP_STYLE } from './TraceGraph'
 
-type RunDetail = Run & { steps?: RunStep[]; workflow_id?: string }
+type ApprovalRequest = { id: string; tool_name: string; tool_input: unknown; status: string; created_at: string }
+type RunDetail = Run & { steps?: RunStep[]; workflow_id?: string; approval_request?: ApprovalRequest }
 
 const ROW_GRID = 'grid items-center gap-x-3 px-4' as const
 const GRID_COLS = 'grid-cols-[20px_1fr_80px_48px_64px_56px]' as const
-const ACTIVE_RUN_STATUSES = new Set(['pending', 'running', 'approval_wait'])
+const ACTIVE_RUN_STATUSES = new Set(['pending', 'running', 'approval_wait', 'session_wait'])
 
 function SubRunRow({ subRun, agentName }: { subRun: Run; agentName?: string }) {
   const [open, setOpen] = useState(false)
@@ -120,6 +121,11 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['run', params.runId] }),
   })
 
+  const decide = useMutation({
+    mutationFn: (decision: 'approved' | 'rejected') => runsAPI.approve(params.runId, { decision }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['run', params.runId] }),
+  })
+
   const detail: RunWithWorkflow | undefined = data
     ? 'run' in data
       ? {
@@ -128,6 +134,9 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
           workflow_id: (data as { workflow_id?: string }).workflow_id,
         }
       : (data as RunDetail)
+    : undefined
+  const approvalRequest = data && 'approval_request' in (data as object)
+    ? (data as { approval_request?: ApprovalRequest }).approval_request
     : undefined
   const steps = detail?.steps ?? []
   const isWorkflowRoot = !!detail && !detail.agent_id && !detail.parent_run_id
@@ -143,7 +152,7 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
         <Link href="/runs" className="text-[12px] text-gray-500 hover:text-gray-700 inline-flex items-center gap-1">
           <ArrowLeft className="w-3 h-3" /> Runs
         </Link>
-        {detail && ['pending', 'running', 'approval_wait'].includes(detail.status) && (
+        {detail && ['pending', 'running', 'approval_wait', 'session_wait'].includes(detail.status) && (
           <button
             onClick={() => cancel.mutate()}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-red-200 text-red-600 text-[12px] rounded-lg"
@@ -162,6 +171,43 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
 
       {detail && (
         <>
+          {/* Pending approval — shown for waiting runs, including runs parked
+              across a server restart (no live playground session exists). */}
+          {detail.status === 'approval_wait' && approvalRequest && (
+            <div className="mb-5 rounded-xl border border-purple-200 bg-purple-50/60 p-4">
+              <p className="text-[12px] font-semibold text-purple-900 mb-1">
+                Approval required: <span className="font-mono">{approvalRequest.tool_name}</span>
+              </p>
+              <pre className="text-[11px] text-purple-900/80 bg-white/70 border border-purple-100 rounded-lg p-2.5 mb-3 max-h-40 overflow-auto whitespace-pre-wrap">
+                {JSON.stringify(approvalRequest.tool_input, null, 2)}
+              </pre>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => decide.mutate('approved')}
+                  disabled={decide.isPending}
+                  className="px-3 py-1.5 rounded-lg bg-purple-700 text-white text-[12px] font-medium disabled:opacity-50"
+                >
+                  {decide.isPending ? 'Sending…' : 'Approve & resume'}
+                </button>
+                <button
+                  onClick={() => decide.mutate('rejected')}
+                  disabled={decide.isPending}
+                  className="px-3 py-1.5 rounded-lg border border-purple-300 text-purple-800 text-[12px] font-medium disabled:opacity-50"
+                >
+                  Reject
+                </button>
+                {decide.isError && (
+                  <span className="text-[11px] text-red-600">{(decide.error as Error).message}</span>
+                )}
+              </div>
+            </div>
+          )}
+          {detail.status === 'session_wait' && (
+            <div className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 text-[12px] text-indigo-900">
+              A repo coding session is running for this run. It resumes automatically when the session completes — this can take minutes to hours.
+            </div>
+          )}
+
           {/* Metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
             {[

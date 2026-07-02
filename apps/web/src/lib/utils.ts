@@ -35,6 +35,7 @@ export function statusColor(status: string): string {
     case 'failed':
     case 'error':       return 'bg-red-50 text-red-800'
     case 'approval_wait': return 'bg-purple-50 text-purple-800'
+    case 'session_wait':  return 'bg-indigo-50 text-indigo-800'
     case 'pending':
     case 'disconnected':
     default:            return 'bg-gray-100 text-gray-600'

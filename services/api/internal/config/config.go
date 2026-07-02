@@ -25,6 +25,8 @@ type Config struct {
 	EmbedModel              string // embedding model name (default: nomic-embed-text)
 	RunnerURL               string // base URL of the repo-session runner service (empty = sessions disabled)
 	RunnerCallbackSecret    string // shared secret the runner presents on session callbacks
+	GithubToken             string // token for GitHub API tools (PR creation, branch diffs)
+	GithubAPIURL            string // GitHub API base URL (override for tests / GHE)
 }
 
 func Load() (*Config, error) {
@@ -46,6 +48,8 @@ func Load() (*Config, error) {
 		EmbedModel:              getEnv("EMBED_MODEL", "nomic-embed-text"),
 		RunnerURL:               getEnv("RUNNER_URL", ""),
 		RunnerCallbackSecret:    getEnv("RUNNER_CALLBACK_SECRET", ""),
+		GithubToken:             getEnv("GITHUB_TOKEN", ""),
+		GithubAPIURL:            getEnv("GITHUB_API_URL", "https://api.github.com"),
 	}
 
 	origins := getEnv("CORS_ORIGINS", "http://localhost:3000")

@@ -194,6 +194,7 @@ export const mcpAPI = {
   list: () => api.get('/mcp-servers'),
   create: (body: unknown) => api.post('/mcp-servers', body),
   sync: (id: string) => api.post(`/mcp-servers/${id}/sync`),
+  oauthStart: (id: string) => api.post(`/mcp-servers/${id}/oauth/start`),
   tools: (id: string) => api.get(`/mcp-servers/${id}/tools`),
   updateToolRisk: (serverId: string, toolId: string, riskLevel: string) =>
     api.patch(`/mcp-servers/${serverId}/tools/${toolId}`, { risk_level: riskLevel }),
