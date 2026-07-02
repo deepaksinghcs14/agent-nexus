@@ -108,6 +108,16 @@ func main() {
 		*repo, *workspace, connectorID, headBranch)
 	die(err, "upsert repo_catalog")
 
+	// Link the catalog to the workspace's seeded pipeline orchestrator so
+	// onboarding a repo is the only step needed for repo selection to work.
+	_, err = pool.Exec(ctx, `
+		INSERT INTO agent_connectors(agent_id, connector_id, enabled, max_chunks, min_score)
+		SELECT a.id, $1::uuid, true, 10, 0.3 FROM agents a
+		WHERE a.workspace_id=$2::uuid AND a.name='Jira Pipeline Orchestrator'
+		ON CONFLICT (agent_id, connector_id) DO NOTHING`,
+		connectorID, *workspace)
+	die(err, "link connector to orchestrator")
+
 	fmt.Printf("onboarded %s: %d documents, %d chunks, connector %s, branch %s\n",
 		*repo, len(docs), totalChunks, connectorID, headBranch)
 }

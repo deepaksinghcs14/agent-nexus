@@ -148,6 +148,11 @@ func main() {
 	if err := syncRequiredSkillTools(ctx, pool); err != nil {
 		slog.Warn("failed to sync required skill tools", "error", err)
 	}
+	// Seed the protected Jira→PR pipeline agents into every workspace.
+	// Runs after tool seeding so agent_tools name lookups resolve.
+	if err := handler.SeedPipelineAgents(ctx, pool); err != nil {
+		slog.Warn("failed to seed pipeline agents", "error", err)
+	}
 	if err := attachExistingWhatsAppCapabilities(ctx, pool); err != nil {
 		slog.Warn("failed to attach whatsapp capabilities", "error", err)
 	}

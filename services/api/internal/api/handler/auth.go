@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -86,6 +87,11 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			errs.Write(w, errs.Internal("registration failed"))
 		}
 		return
+	}
+
+	// Seed the protected pipeline agents into the new personal workspace.
+	if _, err := SeedPipelineAgentsForWorkspace(r.Context(), h.pool, wsID, userID); err != nil {
+		slog.Warn("failed to seed pipeline agents for new workspace", "workspace_id", wsID, "error", err)
 	}
 
 	h.issueTokens(w, r, user, wsID)
