@@ -237,12 +237,18 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 ### Option A — One command (Docker Compose)
 
 ```bash
-cp infra/.env.example infra/.env
-# Edit infra/.env — set JWT_SECRET and ENCRYPTION_KEY
-cd infra && docker compose up -d
+make up
 ```
 
-Open http://localhost:3000, register an account, and you're in.
+That's it — builds and starts Postgres, the API, the repo-session runner, and
+the web app (creates `infra/.env` from the example on first run; edit it to set
+real `JWT_SECRET` / `ENCRYPTION_KEY`). Open http://localhost:3000, register an
+account, and you're in. `make down` stops everything.
+
+The runner starts in `stub` mode (simulated coding sessions, no credentials
+needed). For real Claude Code sessions set `RUNNER_EXECUTOR=claude` plus
+`GITHUB_TOKEN` in `infra/.env`, and connect a Claude account in
+Settings → Providers (see [docs/jira-pipeline.md](docs/jira-pipeline.md)).
 
 ### Option B — Docker build (production images)
 
@@ -301,17 +307,24 @@ make logs       # tail logs from all services
 
 ```
 agent-nexus/
-  Makefile                 ← dev workflow commands
+  Makefile                 ← dev workflow commands (make up = full stack)
   ARCHITECTURE.md          ← architecture, domain model, API reference
+  docs/
+    jira-pipeline.md       ← autonomous Jira→PR pipeline: architecture + setup
   apps/
     web/                   ← Next.js 14 frontend (port 3000)
   services/
     api/                   ← Go API + agent runtime (port 8080)
+      cmd/catalog-ingest/  ← CLI: onboard a repo into the pipeline's repo catalog
       .env.example         ← copy to .env and fill in secrets
+    runner/                ← repo-session runner: headless Claude Code sessions (port 8092)
   infra/
-    docker-compose.yml     ← Postgres + API + Web
+    docker-compose.yml     ← Postgres + API + Runner + Web
     .env.example           ← copy to .env for docker compose vars
     migrations/            ← SQL migrations applied automatically on first start
+    scripts/
+      setup_pipeline.sh    ← one-shot Jira→PR pipeline assembly (agents + triggers)
+      mock_llm.py …        ← mocks for credential-free integration testing
 ```
 
 ---
@@ -338,6 +351,11 @@ cp services/api/.env.example services/api/.env
 | `GOOGLE_OAUTH_CLIENT_ID` | no | Google OAuth — leave blank to disable |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | no | Google OAuth — leave blank to disable |
 | `WHATSAPP_ADAPTER_URL` | no | Base URL of the WhatsApp Web adapter service, default `http://127.0.0.1:18901`. Required only when using Gateway WhatsApp channels |
+| `RUNNER_URL` | no | Base URL of the repo-session runner service. Empty disables `native_launch_repo_session` |
+| `RUNNER_CALLBACK_SECRET` | no | Shared secret the runner presents on session-completion callbacks |
+| `SESSION_CALLBACK_URL` | no | Callback URL the runner uses to reach this API when it differs from `PUBLIC_API_URL` (e.g. `http://api:8080` inside Docker, private domains on Railway) |
+| `GITHUB_TOKEN` | no | Token for the GitHub tools (`native_create_pull_request`, `native_get_branch_diff`) |
+| `GITHUB_API_URL` | no | GitHub API base URL, default `https://api.github.com` (override for GHE or tests) |
 
 ### `apps/web/.env.local` (local dev)
 
@@ -374,8 +392,12 @@ POST   /api/v1/invoke/agents/:id          ← stateless invoke (SSE stream, no c
 POST   /api/v1/conversations
 POST   /api/v1/conversations/:id/runs     ← SSE stream
 GET    /api/v1/runs/:id
+POST   /api/v1/runs/:id/approve           ← approve/reject a waiting run (resumes parked runs)
 GET    /api/v1/workflows
 POST   /api/v1/workflows/:id/runs
+POST   /api/v1/mcp-servers/:id/oauth/start   ← OAuth 2.1 flow for remote MCP servers
+PUT    /api/v1/workspace/runner-credentials  ← connect a Claude account for repo sessions
+POST   /webhook/:webhookId                ← inbound webhook triggers (Jira, GitHub, …)
 ...
 ```
 
@@ -427,6 +449,12 @@ What's working today vs. what's coming next:
 | Confluence connector (RAG — space-wise indexing, page browser) | ✅ Done |
 | Agentic RAG — `native_retrieve_context` tool, per-agent `max_chunks` / `min_score`, configurable via UI and Nexus AI | ✅ Done |
 | Eval framework — suites, cases, parallel runs, LLM judge, AI analysis, manual overrides, case fix, export/import | ✅ Done |
+| Durable waits — approval/session runs survive restarts and resume (`run_wait_states`) | ✅ Done |
+| Repo-session runner — headless Claude Code coding sessions as a service | ✅ Done |
+| Autonomous Jira→PR pipeline (repo catalog RAG, review agent, PR creation, docs maps) | ✅ Done |
+| OAuth 2.1 for remote MCP servers (hosted Atlassian: discovery, DCR, PKCE, refresh) | ✅ Done |
+| GitHub tools — create PR, branch diff (token-based) | ✅ Done |
+| Claude account credential (subscription billing for repo sessions via `claude setup-token`) | ✅ Done |
 | Additional connectors (Slack, Jira, Google Drive) | 🔜 Planned |
 | Agent versioning and snapshot rollback | 🔜 Planned |
 | API rate limiting per workspace | 🔜 Planned |
