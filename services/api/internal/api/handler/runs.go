@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -345,6 +346,51 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	fabricationRetried := false
 	actionLog := []string{}
 
+	// Session-wait plumbing for native_launch_repo_session — mirrors the
+	// executeRun loop: snapshot at the current call, block briefly on the
+	// runner callback, then park by returning tools.ErrRunParked. A parked
+	// playground run resumes headlessly via ResumeSessionRun (executeRun),
+	// exactly like a parked approval does.
+	var curBatch []provider.ToolCall
+	var curCallIdx int
+	execCtx.WaitForSession = func(waitCtx context.Context, sessionKey string) (string, error) {
+		st := &runWaitState{
+			Version:          1,
+			WaitType:         "session",
+			WorkspaceID:      ws,
+			UserID:           uid,
+			AgentID:          a.ID,
+			ConversationID:   c.ID,
+			Input:            q.Input,
+			Messages:         messages,
+			StableSystem:     stableSystem,
+			PendingCalls:     curBatch,
+			CallIndex:        curCallIdx,
+			StepCount:        stepCount,
+			TotalInput:       totalInput,
+			TotalOutput:      totalOutput,
+			ActionLog:        actionLog,
+			MemorySaveCalled: memorySaveCalled,
+			RequestedTools:   keysOf(requestedTools),
+			ActiveSkills:     keysOf(activeSkills),
+			ActiveMemoryIDs:  keysOf(activeMemoryIDs),
+		}
+		if err := saveWaitState(context.Background(), h.pool, id, st); err != nil {
+			return "", fmt.Errorf("failed to persist session wait state: %w", err)
+		}
+		ch := RegisterSessionWait(id)
+		h.pool.Exec(waitCtx, `UPDATE runs SET status='session_wait' WHERE id=$1::uuid`, id) //nolint:errcheck
+		emit(fmt.Sprintf(`{"type":"session_wait","run_id":%q,"session":%q}`, id, sessionKey))
+
+		content, got := awaitSessionResult(id, ch, 60*time.Second)
+		if !got {
+			return "", tools.ErrRunParked
+		}
+		deleteWaitState(context.Background(), h.pool, id)
+		h.pool.Exec(waitCtx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, id) //nolint:errcheck
+		return content, nil
+	}
+
 	for {
 		var toolDefs []provider.ToolDefinition
 		if a.LazyToolLoading {
@@ -493,8 +539,10 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			ToolCalls: pendingCalls,
 		})
 
+		curBatch = pendingCalls
 		for callIdx := 0; callIdx < len(pendingCalls); callIdx++ {
 			call := pendingCalls[callIdx]
+			curCallIdx = callIdx
 			if call.Name == "native_save_memory" {
 				memorySaveCalled = true
 			}
@@ -610,6 +658,14 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				}
 			} else {
 				result, execErr = h.executor.ExecuteWithContext(r.Context(), execCtx, call.Name, call.Input)
+			}
+			if errors.Is(execErr, tools.ErrRunParked) {
+				// The session tool persisted its wait state and the in-process
+				// wait expired. End the SSE stream without failing the run —
+				// the runner's callback resumes it via ResumeSessionRun.
+				emit(fmt.Sprintf(`{"type":"session_parked","run_id":%q}`, id))
+				runParked = true
+				return
 			}
 			var resultContent, errMsg string
 			latencyMs := 0

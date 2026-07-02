@@ -140,6 +140,32 @@ func (h *InvokeHandler) SessionCallback(w http.ResponseWriter, r *http.Request) 
 	errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "delivered": "ignored", "run_status": status})
 }
 
+// blockingSessionWait returns a WaitForSession implementation that blocks
+// in-process until the runner callback arrives (no durable park). Used for
+// child runs — workflow nodes, supervisor delegates, and sub-agents — whose
+// parent's control flow lives on this process's stack: parking would return
+// control to the parent as if the child had finished. The block is bounded by
+// SESSION_WAIT_TIMEOUT_MIN, the same ceiling the watchdog uses.
+func (h *InvokeHandler) blockingSessionWait(runID string, emitFn func(string)) func(context.Context, string) (string, error) {
+	return func(waitCtx context.Context, sessionKey string) (string, error) {
+		timeout := time.Duration(h.cfg.SessionWaitTimeoutMin) * time.Minute
+		if timeout <= 0 {
+			timeout = 240 * time.Minute
+		}
+		ch := RegisterSessionWait(runID)
+		h.pool.Exec(waitCtx, `UPDATE runs SET status='session_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
+		if emitFn != nil {
+			emitFn(fmt.Sprintf(`{"type":"session_wait","run_id":%q,"session":%q}`, runID, sessionKey))
+		}
+		content, got := awaitSessionResult(runID, ch, timeout)
+		h.pool.Exec(waitCtx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, runID) //nolint:errcheck
+		if !got {
+			return "", fmt.Errorf("session %s did not complete within %s", sessionKey, timeout)
+		}
+		return content, nil
+	}
+}
+
 // ── stale session watchdog ────────────────────────────────────────────────────
 
 // StartSessionWaitWatchdog periodically resumes runs stuck in session_wait

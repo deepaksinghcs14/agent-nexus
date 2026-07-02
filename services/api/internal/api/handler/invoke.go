@@ -781,16 +781,24 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		actionLog = append(actionLog, opts.resume.ActionLog...)
 	}
 
-	// Session-wait plumbing for native_launch_repo_session: the closure
-	// snapshots the loop state at the current call (tracked via curBatch /
-	// curCallIdx below), blocks briefly on the runner callback, then parks the
-	// run by returning tools.ErrRunParked. Assigned here — after the loop-state
-	// variables it captures are declared.
+	// Session-wait plumbing for native_launch_repo_session. Two modes:
+	// top-level runs snapshot loop state (curBatch/curCallIdx), block briefly,
+	// then PARK durably via tools.ErrRunParked; child runs (sub-agents,
+	// workflow nodes, supervisor delegates — anything whose parent control
+	// flow lives on this process's stack) BLOCK in-process instead, because
+	// parking would return to the parent as if the child had finished.
 	var curBatch []provider.ToolCall
 	var curCallIdx int
+	isChildRun := opts.invokeDepth > 0
+	if !isChildRun {
+		// Workflow-node runs arrive with depth 0 — detect them by lineage.
+		_ = h.pool.QueryRow(ctx,
+			`SELECT parent_run_id IS NOT NULL OR workflow_node_id IS NOT NULL FROM runs WHERE id=$1::uuid`,
+			runID).Scan(&isChildRun)
+	}
 	execCtx.WaitForSession = func(waitCtx context.Context, sessionKey string) (string, error) {
-		if opts.invokeDepth > 0 {
-			return "", fmt.Errorf("repo sessions can only be launched from top-level runs")
+		if isChildRun {
+			return h.blockingSessionWait(runID, sseEmitOrNil)(waitCtx, sessionKey)
 		}
 		st := &runWaitState{
 			Version:          1,
@@ -2234,6 +2242,9 @@ func (h *InvokeHandler) executeSupervisorRun(
 	_ = h.pool.QueryRow(ctx, `SELECT COALESCE(channel_session_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&execCtx.ChannelSessionID)
 	execCtx.SendMessage = nil      // supervisor runs are always embedded inside a workflow, never directly gateway-dispatched
 	execCtx.WaitForUserInput = nil // supervisor runs cannot pause for user input
+	// Supervisor runs are workflow children: sessions block in-process (their
+	// parent's graph walk lives on this stack, so durable parking is impossible).
+	execCtx.WaitForSession = h.blockingSessionWait(runID, sseEmitOrNil)
 
 	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
 
