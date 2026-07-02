@@ -63,6 +63,10 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 		// Google OAuth callback is public — Google redirects here with no JWT
 		r.Get("/providers/oauth/google/callback", h.Providers.OAuthGoogleCallback)
 
+		// MCP OAuth browser redirect — unauthenticated; verified by the state
+		// nonce persisted when the flow started.
+		r.Get("/mcp-servers/oauth/callback", h.MCP.OAuthCallback)
+
 		// Authenticated routes (accept JWT or API token)
 		r.Group(func(r chi.Router) {
 			r.Use(mw.Authenticate(cfg.JWTSecret, pool))
@@ -128,6 +132,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Get("/mcp-servers/{id}", h.MCP.Get)
 			r.Delete("/mcp-servers/{id}", h.MCP.Delete)
 			r.Post("/mcp-servers/{id}/sync", h.MCP.Sync)
+			r.Post("/mcp-servers/{id}/oauth/start", h.MCP.OAuthStart)
 			r.Get("/mcp-servers/{id}/tools", h.MCP.ListTools)
 			r.Patch("/mcp-servers/{id}/tools/{toolId}", h.MCP.UpdateToolRisk)
 

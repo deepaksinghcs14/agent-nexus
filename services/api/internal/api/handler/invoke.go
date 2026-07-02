@@ -1209,7 +1209,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					_ = json.Unmarshal(dbTool.Config, &cfg)
 					result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
 				} else if toolExists && dbTool.Type == "mcp" {
-					result = executeMCPTool(ctx, h.pool, dbTool, call.Input)
+					result = executeMCPTool(ctx, h.pool, h.cfg, dbTool, call.Input)
 				} else if toolExists && dbTool.Type == "code" {
 					var codeCfg struct {
 						Code string `json:"code"`
@@ -2449,7 +2449,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
 			} else if toolExists && dbTool.Type == "mcp" {
-				result = executeMCPTool(ctx, h.pool, dbTool, call.Input)
+				result = executeMCPTool(ctx, h.pool, h.cfg, dbTool, call.Input)
 			} else if toolExists && dbTool.Type == "code" {
 				var codeCfg struct {
 					Code string `json:"code"`

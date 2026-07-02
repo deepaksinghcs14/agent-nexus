@@ -582,7 +582,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(r.Context(), cfg, call.Input, dbTool.TimeoutMs)
 			} else if toolExists && dbTool.Type == "mcp" {
-				result = executeMCPTool(r.Context(), h.pool, dbTool, call.Input)
+				result = executeMCPTool(r.Context(), h.pool, h.cfg, dbTool, call.Input)
 			} else if toolExists && dbTool.Type == "code" {
 				var codeCfg struct {
 					Code string `json:"code"`

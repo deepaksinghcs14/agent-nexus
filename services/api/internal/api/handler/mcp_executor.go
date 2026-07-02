@@ -5,16 +5,17 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/mcp"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // executeMCPTool runs a tools-table entry of type 'mcp' by proxying the call
 // to its MCP server. The tool's config carries {"server_id": ...} (written by
-// the sync handler); the server row supplies URL, transport, and auth config.
-func executeMCPTool(ctx context.Context, pool *pgxpool.Pool, dbTool domain.Tool, input json.RawMessage) *tools.ExecutionResult {
+// the sync handler); the server row supplies URL, transport, and auth — for
+// oauth servers a fresh access token is resolved (refreshing if expired).
+func executeMCPTool(ctx context.Context, pool *pgxpool.Pool, appCfg *config.Config, dbTool domain.Tool, input json.RawMessage) *tools.ExecutionResult {
 	start := time.Now()
 	fail := func(msg string) *tools.ExecutionResult {
 		return &tools.ExecutionResult{Error: msg, LatencyMs: int(time.Since(start).Milliseconds())}
@@ -27,11 +28,11 @@ func executeMCPTool(ctx context.Context, pool *pgxpool.Pool, dbTool domain.Tool,
 		return fail("mcp tool is missing server_id in config")
 	}
 
-	var url, transport string
+	var url, transport, authType string
 	var serverCfg []byte
 	if err := pool.QueryRow(ctx,
-		`SELECT url, transport, COALESCE(config,'{}'::jsonb) FROM mcp_servers WHERE id=$1::uuid`,
-		cfg.ServerID).Scan(&url, &transport, &serverCfg); err != nil {
+		`SELECT url, transport, COALESCE(auth_type,'config'), COALESCE(config,'{}'::jsonb) FROM mcp_servers WHERE id=$1::uuid`,
+		cfg.ServerID).Scan(&url, &transport, &authType, &serverCfg); err != nil {
 		return fail("mcp server not found for tool " + dbTool.Name)
 	}
 
@@ -42,7 +43,10 @@ func executeMCPTool(ctx context.Context, pool *pgxpool.Pool, dbTool domain.Tool,
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	client := mcp.NewClient(cfg.ServerID, url, transport, serverCfg)
+	client, err := mcpClientForServer(callCtx, pool, appCfg, cfg.ServerID, url, transport, authType, serverCfg)
+	if err != nil {
+		return fail(err.Error())
+	}
 	out, err := client.CallTool(callCtx, dbTool.Name, input)
 	if err != nil {
 		return fail(err.Error())
