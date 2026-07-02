@@ -219,11 +219,14 @@ export const providersAPI = {
   models: (id: string) => api.get(`/providers/${id}/models`),
 }
 
-// Workspace Claude account for repo sessions (`claude setup-token` output).
+// Workspace pipeline credentials for repo sessions: Claude account token
+// (`claude setup-token` output) and GitHub token. Either can be set alone.
 export const runnerCredsAPI = {
   get: () => api.get('/workspace/runner-credentials'),
-  put: (claudeToken: string) => api.put('/workspace/runner-credentials', { claude_token: claudeToken }),
-  delete: () => api.delete('/workspace/runner-credentials'),
+  put: (body: { claude_token?: string; github_token?: string }) =>
+    api.put('/workspace/runner-credentials', body),
+  delete: (field: 'claude' | 'github' | 'all' = 'all') =>
+    api.delete(`/workspace/runner-credentials?field=${field}`),
 }
 
 export const conversationsAPI = {

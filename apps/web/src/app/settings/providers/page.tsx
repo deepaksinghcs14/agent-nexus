@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Check, Key, Chrome } from 'lucide-react'
+import Link from 'next/link'
 import { providersAPI } from '@/lib/api'
 import type { ProviderCredential } from '@/types'
-import { ClaudeAccountCard } from './ClaudeAccountCard'
 
 const PROVIDER_OPTIONS = [
   { value: 'anthropic', label: 'Anthropic', color: 'bg-amber-50 text-amber-700' },
@@ -127,8 +127,11 @@ export default function ProvidersPage() {
         </div>
       )}
 
-      {/* Claude account for repo coding sessions (Jira→PR pipeline) */}
-      <ClaudeAccountCard />
+      {/* Pipeline credentials (Claude account, GitHub token) moved to their own tab */}
+      <p className="text-[11px] text-gray-400 mb-4">
+        Looking for repo coding session credentials?{' '}
+        <Link href="/settings/claude-code" className="text-purple-600 hover:underline">Settings → Claude Code</Link>
+      </p>
 
       {/* Google OAuth quick-connect for Gemini */}
       {!providers.find((p) => p.provider === 'gemini') && (

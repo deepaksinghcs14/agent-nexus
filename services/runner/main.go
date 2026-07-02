@@ -43,6 +43,9 @@ type launchRequest struct {
 	// (workspace Claude account, subscription billing). Takes precedence over
 	// the runner's own ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN env.
 	ClaudeToken string `json:"claude_token"`
+	// GithubToken, if set, is the workspace's GitHub token for this session's
+	// clone/push. Takes precedence over the runner's own GITHUB_TOKEN env.
+	GithubToken string `json:"github_token"`
 }
 
 type subscriber struct {
@@ -278,14 +281,20 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 		slog.Error("session stage failed", "ticket", req.TicketKey, "repo", req.Repo, "stage", stage, "error", err, "detail", detail)
 		return result{Status: "crashed", Summary: fmt.Sprintf("%s failed: %v: %s", stage, err, truncate(detail, 500))}
 	}
-	if s.githubToken == "" {
-		return crash("setup", fmt.Errorf("GITHUB_TOKEN is not configured"), "")
+	// Workspace token from the launch request wins; runner env is the
+	// single-tenant fallback.
+	githubToken := req.GithubToken
+	if githubToken == "" {
+		githubToken = s.githubToken
+	}
+	if githubToken == "" {
+		return crash("setup", fmt.Errorf("no GitHub token: set one in Settings → Claude Code, or GITHUB_TOKEN on the runner"), "")
 	}
 
 	dir := filepath.Join(s.workDir, sanitize(req.TicketKey+"-"+strings.ReplaceAll(req.Repo, "/", "-")+"-"+strconv.FormatInt(time.Now().UnixNano(), 36)))
 	defer os.RemoveAll(dir)
 
-	cloneURL := fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", s.githubToken, req.Repo)
+	cloneURL := fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", githubToken, req.Repo)
 	branch := "nexus/" + sanitize(req.TicketKey)
 
 	cloneArgs := []string{"clone", "--depth", "50"}
@@ -294,7 +303,7 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 	}
 	cloneArgs = append(cloneArgs, cloneURL, dir)
 	if out, err := runCmd(ctx, "", nil, "git", cloneArgs...); err != nil {
-		return crash("clone", err, redactToken(out, s.githubToken))
+		return crash("clone", err, redactToken(out, githubToken))
 	}
 	if out, err := runCmd(ctx, dir, nil, "git", "checkout", "-B", branch); err != nil {
 		return crash("branch", err, out)
@@ -348,7 +357,7 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 	// on the branch is the whole point of the fallback.
 	pushed := false
 	if out, err := runCmd(ctx, dir, nil, "git", "push", "-u", "origin", branch); err != nil {
-		slog.Warn("push failed", "ticket", req.TicketKey, "error", err, "detail", redactToken(out, s.githubToken))
+		slog.Warn("push failed", "ticket", req.TicketKey, "error", err, "detail", redactToken(out, githubToken))
 	} else {
 		pushed = true
 	}

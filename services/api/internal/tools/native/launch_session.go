@@ -42,20 +42,27 @@ func NewLaunchRepoSessionTool(pool *pgxpool.Pool, cfg *config.Config) *LaunchRep
 	}
 }
 
-// workspaceClaudeToken returns the workspace's decrypted Claude account token
-// (`claude setup-token` output stored via the runner-credentials API), or ""
-// when none is configured — the runner then falls back to its own env.
-func (t *LaunchRepoSessionTool) workspaceClaudeToken(ctx context.Context, workspaceID string) string {
-	var enc string
+// workspaceTokens returns the workspace's decrypted pipeline credentials
+// (stored via the runner-credentials API). Either may be "" — the runner and
+// tools then fall back to instance env.
+func (t *LaunchRepoSessionTool) workspaceTokens(ctx context.Context, workspaceID string) (claude, github string) {
+	var encClaude, encGithub *string
 	if err := t.pool.QueryRow(ctx,
-		`SELECT claude_token FROM runner_credentials WHERE workspace_id=$1::uuid`, workspaceID).Scan(&enc); err != nil {
-		return ""
+		`SELECT claude_token, github_token FROM runner_credentials WHERE workspace_id=$1::uuid`, workspaceID).
+		Scan(&encClaude, &encGithub); err != nil {
+		return "", ""
 	}
-	token, err := encrypt.Decrypt([]byte(t.cfg.EncryptionKey), enc)
-	if err != nil {
-		return ""
+	dec := func(enc *string) string {
+		if enc == nil || *enc == "" {
+			return ""
+		}
+		v, err := encrypt.Decrypt([]byte(t.cfg.EncryptionKey), *enc)
+		if err != nil {
+			return ""
+		}
+		return v
 	}
-	return token
+	return dec(encClaude), dec(encGithub)
 }
 
 func (t *LaunchRepoSessionTool) Definition() domain.Tool {
@@ -110,10 +117,15 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 		"callback_url":     t.callbackURL,
 		"callback_secret":  t.callbackSecret,
 	}
-	// Workspace Claude account (subscription billing) takes precedence over
-	// any static key configured on the runner service itself.
-	if token := t.workspaceClaudeToken(ctx, execCtx.WorkspaceID); token != "" {
-		launch["claude_token"] = token
+	// Workspace credentials take precedence over any static keys configured
+	// on the runner service itself — GitHub access in particular is a
+	// workspace concern, not an instance one.
+	claudeToken, githubToken := t.workspaceTokens(ctx, execCtx.WorkspaceID)
+	if claudeToken != "" {
+		launch["claude_token"] = claudeToken
+	}
+	if githubToken != "" {
+		launch["github_token"] = githubToken
 	}
 	payload, _ := json.Marshal(launch)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.runnerURL+"/sessions", bytes.NewReader(payload))

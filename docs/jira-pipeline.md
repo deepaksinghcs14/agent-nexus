@@ -33,22 +33,26 @@ Jira webhook ──▶ /webhook/{id} ──▶ Orchestrator agent run
 
 ## Setup
 
-1. **Deploy** the API (env: `RUNNER_URL`, `RUNNER_CALLBACK_SECRET`, `GITHUB_TOKEN`)
-   and the runner (`services/runner/Dockerfile`; env: `GITHUB_TOKEN`,
-   `RUNNER_EXECUTOR=claude`). For Claude auth, either connect a **Claude
-   account** in Settings → Providers (run `claude setup-token` locally, paste
-   the token — stored encrypted, injected per session, subscription billing)
-   or set `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` on the runner as a
-   static fallback. The per-workspace account takes precedence.
-2. **Onboard repos**:
+1. **Deploy** the API (env: `RUNNER_URL`, `RUNNER_CALLBACK_SECRET`) and the
+   runner (`services/runner/Dockerfile`; env: `RUNNER_EXECUTOR=claude`).
+2. **Connect credentials in Settings → Claude Code** (per workspace, encrypted,
+   injected per session):
+   - **Claude account** — run `claude setup-token` locally, paste the token
+     (subscription billing). Fallback: `ANTHROPIC_API_KEY` /
+     `CLAUDE_CODE_OAUTH_TOKEN` env on the runner.
+   - **GitHub token** — scoped to the workspace's repositories; used for
+     clone/push in sessions and the PR/diff tools. Fallback: `GITHUB_TOKEN`
+     env on API + runner (single-tenant only — a workspace token always wins).
+   The tab also shows a pipeline-readiness checklist (agents, catalog, triggers).
+3. **Onboard repos**:
    `DATABASE_URL=… GITHUB_TOKEN=… go run ./services/api/cmd/catalog-ingest -repo owner/name -workspace <uuid>`
-3. **Assemble the pipeline**:
+4. **Assemble the pipeline**:
    `NEXUS_API=… NEXUS_TOKEN=… PROVIDER=anthropic MODEL=claude-sonnet-4-6 ./infra/scripts/setup_pipeline.sh`
    — prints the Jira and GitHub webhook URLs to configure.
-4. **Connect Atlassian**: add an MCP server with URL
+5. **Connect Atlassian**: add an MCP server with URL
    `https://mcp.atlassian.com/v1/mcp`, click **Connect (OAuth)**, grant access,
    then attach the synced Jira comment/transition tools to the orchestrator.
-5. **Schedule** the weekly docs-map refresh (the setup script prints the
+6. **Schedule** the weekly docs-map refresh (the setup script prints the
    `curl` for a Railway cron).
 
 ## Operational notes

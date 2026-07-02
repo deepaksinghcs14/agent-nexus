@@ -134,8 +134,8 @@ func main() {
 	reg.Register(native.NewSendMessageTool())
 	reg.Register(native.NewAskUserTool())
 	reg.Register(native.NewLaunchRepoSessionTool(pool, cfg))
-	reg.Register(native.NewCreatePullRequestTool(cfg))
-	reg.Register(native.NewGetBranchDiffTool(cfg))
+	reg.Register(native.NewCreatePullRequestTool(pool, cfg))
+	reg.Register(native.NewGetBranchDiffTool(pool, cfg))
 	if !cfg.DemoMode {
 		reg.Register(native.NewWriteFileTool(cfg.StoragePath))
 		reg.Register(native.NewHTTPRequestTool())

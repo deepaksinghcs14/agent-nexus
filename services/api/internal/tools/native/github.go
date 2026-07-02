@@ -12,13 +12,31 @@ import (
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
+	"github.com/deepaksingh/agent-nexus/services/api/pkg/encrypt"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // GitHub REST tools for the Jira→PR pipeline: open pull requests from
 // runner-pushed branches and read branch diffs for the review stage.
-// Token-based (GITHUB_TOKEN) per the pipeline's no-local-auth rule.
+// Token resolution is workspace-first (Settings → Claude Code), with the
+// instance-level GITHUB_TOKEN env as a single-tenant fallback.
 
 var githubHTTP = &http.Client{Timeout: 30 * time.Second}
+
+// githubTokenFor resolves the effective GitHub token for a workspace.
+func githubTokenFor(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config, workspaceID string) string {
+	if pool != nil && workspaceID != "" {
+		var enc *string
+		if err := pool.QueryRow(ctx,
+			`SELECT github_token FROM runner_credentials WHERE workspace_id=$1::uuid`, workspaceID).Scan(&enc); err == nil && enc != nil && *enc != "" {
+			if token, err := encrypt.Decrypt([]byte(cfg.EncryptionKey), *enc); err == nil {
+				return token
+			}
+		}
+	}
+	return cfg.GithubToken
+}
 
 func githubRequest(ctx context.Context, apiURL, token, method, path string, body any) (int, []byte, error) {
 	var rd io.Reader
@@ -55,11 +73,12 @@ func validRepo(repo string) bool {
 // ── native_create_pull_request ────────────────────────────────────────────────
 
 type CreatePullRequestTool struct {
-	cfg *config.Config
+	pool *pgxpool.Pool
+	cfg  *config.Config
 }
 
-func NewCreatePullRequestTool(cfg *config.Config) *CreatePullRequestTool {
-	return &CreatePullRequestTool{cfg: cfg}
+func NewCreatePullRequestTool(pool *pgxpool.Pool, cfg *config.Config) *CreatePullRequestTool {
+	return &CreatePullRequestTool{pool: pool, cfg: cfg}
 }
 
 func (t *CreatePullRequestTool) Definition() domain.Tool {
@@ -81,10 +100,14 @@ func (t *CreatePullRequestTool) Definition() domain.Tool {
 }
 
 func (t *CreatePullRequestTool) Execute(input map[string]any) (any, error) {
-	return t.run(context.Background(), input)
+	return t.run(context.Background(), t.cfg.GithubToken, input)
 }
 
-func (t *CreatePullRequestTool) run(ctx context.Context, input map[string]any) (any, error) {
+func (t *CreatePullRequestTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
+	return t.run(ctx, githubTokenFor(ctx, t.pool, t.cfg, execCtx.WorkspaceID), input)
+}
+
+func (t *CreatePullRequestTool) run(ctx context.Context, token string, input map[string]any) (any, error) {
 	repo, _ := input["repo"].(string)
 	head, _ := input["head"].(string)
 	base, _ := input["base"].(string)
@@ -93,14 +116,14 @@ func (t *CreatePullRequestTool) run(ctx context.Context, input map[string]any) (
 	if !validRepo(repo) || head == "" || title == "" {
 		return nil, fmt.Errorf("repo (owner/name), head, and title are required")
 	}
-	if t.cfg.GithubToken == "" {
-		return nil, fmt.Errorf("GitHub tools are not configured (GITHUB_TOKEN is unset)")
+	if token == "" {
+		return nil, fmt.Errorf("no GitHub token: set one in Settings → Claude Code, or GITHUB_TOKEN on the API")
 	}
 	if base == "" {
 		base = "main"
 	}
 
-	status, raw, err := githubRequest(ctx, t.cfg.GithubAPIURL, t.cfg.GithubToken, http.MethodPost,
+	status, raw, err := githubRequest(ctx, t.cfg.GithubAPIURL, token, http.MethodPost,
 		"/repos/"+repo+"/pulls",
 		map[string]any{"title": title, "head": head, "base": base, "body": body})
 	if err != nil {
@@ -109,7 +132,7 @@ func (t *CreatePullRequestTool) run(ctx context.Context, input map[string]any) (
 	if status == http.StatusUnprocessableEntity && bytes.Contains(raw, []byte("already exists")) {
 		// Idempotency: surface the existing PR for this head branch.
 		owner := strings.SplitN(repo, "/", 2)[0]
-		s2, raw2, err2 := githubRequest(ctx, t.cfg.GithubAPIURL, t.cfg.GithubToken, http.MethodGet,
+		s2, raw2, err2 := githubRequest(ctx, t.cfg.GithubAPIURL, token, http.MethodGet,
 			"/repos/"+repo+"/pulls?state=open&head="+owner+":"+head, nil)
 		if err2 == nil && s2 == http.StatusOK {
 			var prs []struct {
@@ -139,11 +162,12 @@ func (t *CreatePullRequestTool) run(ctx context.Context, input map[string]any) (
 // ── native_get_branch_diff ────────────────────────────────────────────────────
 
 type GetBranchDiffTool struct {
-	cfg *config.Config
+	pool *pgxpool.Pool
+	cfg  *config.Config
 }
 
-func NewGetBranchDiffTool(cfg *config.Config) *GetBranchDiffTool {
-	return &GetBranchDiffTool{cfg: cfg}
+func NewGetBranchDiffTool(pool *pgxpool.Pool, cfg *config.Config) *GetBranchDiffTool {
+	return &GetBranchDiffTool{pool: pool, cfg: cfg}
 }
 
 func (t *GetBranchDiffTool) Definition() domain.Tool {
@@ -163,24 +187,28 @@ func (t *GetBranchDiffTool) Definition() domain.Tool {
 }
 
 func (t *GetBranchDiffTool) Execute(input map[string]any) (any, error) {
-	return t.run(context.Background(), input)
+	return t.run(context.Background(), t.cfg.GithubToken, input)
 }
 
-func (t *GetBranchDiffTool) run(ctx context.Context, input map[string]any) (any, error) {
+func (t *GetBranchDiffTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
+	return t.run(ctx, githubTokenFor(ctx, t.pool, t.cfg, execCtx.WorkspaceID), input)
+}
+
+func (t *GetBranchDiffTool) run(ctx context.Context, token string, input map[string]any) (any, error) {
 	repo, _ := input["repo"].(string)
 	head, _ := input["head"].(string)
 	base, _ := input["base"].(string)
 	if !validRepo(repo) || head == "" {
 		return nil, fmt.Errorf("repo (owner/name) and head are required")
 	}
-	if t.cfg.GithubToken == "" {
-		return nil, fmt.Errorf("GitHub tools are not configured (GITHUB_TOKEN is unset)")
+	if token == "" {
+		return nil, fmt.Errorf("no GitHub token: set one in Settings → Claude Code, or GITHUB_TOKEN on the API")
 	}
 	if base == "" {
 		base = "main"
 	}
 
-	status, raw, err := githubRequest(ctx, t.cfg.GithubAPIURL, t.cfg.GithubToken, http.MethodGet,
+	status, raw, err := githubRequest(ctx, t.cfg.GithubAPIURL, token, http.MethodGet,
 		"/repos/"+repo+"/compare/"+base+"..."+head, nil)
 	if err != nil {
 		return nil, err
