@@ -107,6 +107,35 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 		return nil, fmt.Errorf("repo sessions are not available in this run context")
 	}
 
+	// Hard gate: sessions may only target repositories onboarded into this
+	// workspace's catalog (catalog-ingest). This makes "never invent repo
+	// names" a mechanical guarantee rather than an instruction the model can
+	// ignore — a hallucinated repo fails here with the real options listed.
+	var onboarded bool
+	if err := t.pool.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM repo_catalog WHERE workspace_id=$1::uuid AND repo=$2)`,
+		execCtx.WorkspaceID, repo).Scan(&onboarded); err != nil {
+		return nil, fmt.Errorf("repo catalog lookup failed: %w", err)
+	}
+	if !onboarded {
+		rows, err := t.pool.Query(ctx,
+			`SELECT repo FROM repo_catalog WHERE workspace_id=$1::uuid ORDER BY repo`, execCtx.WorkspaceID)
+		var known []string
+		if err == nil {
+			for rows.Next() {
+				var r string
+				if rows.Scan(&r) == nil {
+					known = append(known, r)
+				}
+			}
+			rows.Close()
+		}
+		if len(known) == 0 {
+			return nil, fmt.Errorf("repository %q is not onboarded and this workspace's repo catalog is empty — onboard repos with catalog-ingest first", repo)
+		}
+		return nil, fmt.Errorf("repository %q is not onboarded in this workspace — sessions can only target catalog repos: %s", repo, strings.Join(known, ", "))
+	}
+
 	launch := map[string]any{
 		"run_id":           execCtx.RunID,
 		"repo":             repo,

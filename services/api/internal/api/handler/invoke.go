@@ -772,6 +772,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
 	futureWorkRetried := false
+	fabricationRetried := false
 	actionLog := []string{}
 	if resuming {
 		stepCount = opts.resume.StepCount
@@ -911,6 +912,17 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				modelStart, usage.InputTokens+usage.OutputTokens, "", "")
 
 			if len(pendingCalls) == 0 {
+				// Fabrication guard: a reply written in the internal action-log
+				// replay format means the model narrated tool activity it never
+				// performed. Retry once with a correction; never deliver it.
+				if fabricatesActionLog(reply) {
+					if !fabricationRetried {
+						fabricationRetried = true
+						messages[0].Content += fabricatedActionCorrection
+						continue
+					}
+					reply = fabricatedActionReply
+				}
 				if stepCount == 0 && promisesUnconfirmedFutureWork(reply) {
 					if !futureWorkRetried {
 						futureWorkRetried = true
@@ -2229,6 +2241,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	stepCount := 0
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
+	supFabricationRetried := false
 	actionLog := []string{}
 
 	for {
@@ -2268,6 +2281,15 @@ func (h *InvokeHandler) executeSupervisorRun(
 			modelStart, usage.InputTokens+usage.OutputTokens, "", "")
 
 		if len(pendingCalls) == 0 {
+			// Fabrication guard — see the executeRun loop for rationale.
+			if fabricatesActionLog(reply) {
+				if !supFabricationRetried {
+					supFabricationRetried = true
+					messages[0].Content += fabricatedActionCorrection
+					continue
+				}
+				reply = fabricatedActionReply
+			}
 			if strings.TrimSpace(reply) == "" {
 				msg := "model returned an empty response"
 				runErrMsg = msg

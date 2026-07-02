@@ -342,6 +342,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
 	futureWorkRetried := false
+	fabricationRetried := false
 	actionLog := []string{}
 
 	for {
@@ -413,6 +414,17 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			modelStart, usage.InputTokens+usage.OutputTokens, "", "")
 
 		if len(pendingCalls) == 0 {
+			// Fabrication guard: a reply written in the internal action-log
+			// replay format means the model narrated tool activity it never
+			// performed. Retry once with a correction; never deliver it.
+			if fabricatesActionLog(reply) {
+				if !fabricationRetried {
+					fabricationRetried = true
+					messages[0].Content += fabricatedActionCorrection
+					continue
+				}
+				reply = fabricatedActionReply
+			}
 			if stepCount == 0 && promisesUnconfirmedFutureWork(reply) {
 				if !futureWorkRetried {
 					futureWorkRetried = true
