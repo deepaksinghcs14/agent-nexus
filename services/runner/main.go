@@ -39,6 +39,10 @@ type launchRequest struct {
 	BudgetUSD       float64 `json:"budget_usd"`
 	CallbackURL     string  `json:"callback_url"`
 	CallbackSecret  string  `json:"callback_secret"`
+	// ClaudeToken, if set, authenticates the claude subprocess for this session
+	// (workspace Claude account, subscription billing). Takes precedence over
+	// the runner's own ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN env.
+	ClaudeToken string `json:"claude_token"`
 }
 
 type subscriber struct {
@@ -220,7 +224,22 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 			"Do not push — the harness pushes your branch when you finish.",
 		req.TicketKey, req.Repo, req.TaskDescription)
 
-	claudeOut, claudeErr := runCmd(ctx, dir, os.Environ(),
+	// Per-request Claude account token (subscription billing) wins over any
+	// static credentials on the service; strip the env keys so the CLI cannot
+	// pick the wrong one.
+	env := os.Environ()
+	if req.ClaudeToken != "" {
+		filtered := env[:0]
+		for _, kv := range env {
+			if strings.HasPrefix(kv, "ANTHROPIC_API_KEY=") || strings.HasPrefix(kv, "CLAUDE_CODE_OAUTH_TOKEN=") {
+				continue
+			}
+			filtered = append(filtered, kv)
+		}
+		env = append(filtered, "CLAUDE_CODE_OAUTH_TOKEN="+req.ClaudeToken)
+	}
+
+	claudeOut, claudeErr := runCmd(ctx, dir, env,
 		"claude", "-p", prompt,
 		"--output-format", "json",
 		"--max-turns", strconv.Itoa(s.maxTurns),

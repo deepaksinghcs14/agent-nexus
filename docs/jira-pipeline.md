@@ -35,7 +35,11 @@ Jira webhook ──▶ /webhook/{id} ──▶ Orchestrator agent run
 
 1. **Deploy** the API (env: `RUNNER_URL`, `RUNNER_CALLBACK_SECRET`, `GITHUB_TOKEN`)
    and the runner (`services/runner/Dockerfile`; env: `GITHUB_TOKEN`,
-   `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, `RUNNER_EXECUTOR=claude`).
+   `RUNNER_EXECUTOR=claude`). For Claude auth, either connect a **Claude
+   account** in Settings → Providers (run `claude setup-token` locally, paste
+   the token — stored encrypted, injected per session, subscription billing)
+   or set `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` on the runner as a
+   static fallback. The per-workspace account takes precedence.
 2. **Onboard repos**:
    `DATABASE_URL=… GITHUB_TOKEN=… go run ./services/api/cmd/catalog-ingest -repo owner/name -workspace <uuid>`
 3. **Assemble the pipeline**:

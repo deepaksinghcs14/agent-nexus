@@ -13,27 +13,49 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
+	"github.com/deepaksingh/agent-nexus/services/api/pkg/encrypt"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // LaunchRepoSessionTool starts a headless Claude Code session against a repo
 // via the runner service and blocks the run (durably — see WaitForSession)
 // until the session's completion callback arrives.
 type LaunchRepoSessionTool struct {
+	pool           *pgxpool.Pool
+	cfg            *config.Config
 	runnerURL      string
 	callbackURL    string
 	callbackSecret string
 }
 
-func NewLaunchRepoSessionTool(cfg *config.Config) *LaunchRepoSessionTool {
+func NewLaunchRepoSessionTool(pool *pgxpool.Pool, cfg *config.Config) *LaunchRepoSessionTool {
 	callbackBase := cfg.SessionCallbackURL
 	if callbackBase == "" {
 		callbackBase = cfg.PublicAPIURL
 	}
 	return &LaunchRepoSessionTool{
+		pool:           pool,
+		cfg:            cfg,
 		runnerURL:      strings.TrimRight(cfg.RunnerURL, "/"),
 		callbackURL:    strings.TrimRight(callbackBase, "/") + "/internal/sessions/callback",
 		callbackSecret: cfg.RunnerCallbackSecret,
 	}
+}
+
+// workspaceClaudeToken returns the workspace's decrypted Claude account token
+// (`claude setup-token` output stored via the runner-credentials API), or ""
+// when none is configured — the runner then falls back to its own env.
+func (t *LaunchRepoSessionTool) workspaceClaudeToken(ctx context.Context, workspaceID string) string {
+	var enc string
+	if err := t.pool.QueryRow(ctx,
+		`SELECT claude_token FROM runner_credentials WHERE workspace_id=$1::uuid`, workspaceID).Scan(&enc); err != nil {
+		return ""
+	}
+	token, err := encrypt.Decrypt([]byte(t.cfg.EncryptionKey), enc)
+	if err != nil {
+		return ""
+	}
+	return token
 }
 
 func (t *LaunchRepoSessionTool) Definition() domain.Tool {
@@ -78,7 +100,7 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 		return nil, fmt.Errorf("repo sessions are not available in this run context")
 	}
 
-	payload, _ := json.Marshal(map[string]any{
+	launch := map[string]any{
 		"run_id":           execCtx.RunID,
 		"repo":             repo,
 		"ticket_key":       ticketKey,
@@ -87,7 +109,13 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 		"budget_usd":       budgetUSD,
 		"callback_url":     t.callbackURL,
 		"callback_secret":  t.callbackSecret,
-	})
+	}
+	// Workspace Claude account (subscription billing) takes precedence over
+	// any static key configured on the runner service itself.
+	if token := t.workspaceClaudeToken(ctx, execCtx.WorkspaceID); token != "" {
+		launch["claude_token"] = token
+	}
+	payload, _ := json.Marshal(launch)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.runnerURL+"/sessions", bytes.NewReader(payload))
 	if err != nil {
 		return nil, err

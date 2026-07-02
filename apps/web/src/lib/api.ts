@@ -219,6 +219,13 @@ export const providersAPI = {
   models: (id: string) => api.get(`/providers/${id}/models`),
 }
 
+// Workspace Claude account for repo sessions (`claude setup-token` output).
+export const runnerCredsAPI = {
+  get: () => api.get('/workspace/runner-credentials'),
+  put: (claudeToken: string) => api.put('/workspace/runner-credentials', { claude_token: claudeToken }),
+  delete: () => api.delete('/workspace/runner-credentials'),
+}
+
 export const conversationsAPI = {
   list: () => api.get('/conversations'),
   create: (body: { agent_id: string; title?: string }) => api.post('/conversations', body),

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Check, Key, Chrome } from 'lucide-react'
 import { providersAPI } from '@/lib/api'
 import type { ProviderCredential } from '@/types'
+import { ClaudeAccountCard } from './ClaudeAccountCard'
 
 const PROVIDER_OPTIONS = [
   { value: 'anthropic', label: 'Anthropic', color: 'bg-amber-50 text-amber-700' },
@@ -125,6 +126,9 @@ export default function ProvidersPage() {
           <Check size={14} /> API key saved successfully
         </div>
       )}
+
+      {/* Claude account for repo coding sessions (Jira→PR pipeline) */}
+      <ClaudeAccountCard />
 
       {/* Google OAuth quick-connect for Gemini */}
       {!providers.find((p) => p.provider === 'gemini') && (
