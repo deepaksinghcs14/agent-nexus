@@ -383,6 +383,7 @@ export const adminAPI = {
   usage: () => api.get('/admin/usage'),
   policies: () => api.get('/admin/policies'),
   setPolicies: (body: unknown) => api.put('/admin/policies', body),
+  pipeline: () => api.get('/admin/pipeline'),
 }
 
 export const configAPI = {

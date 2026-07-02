@@ -73,6 +73,7 @@ const adminNav: NavGroup[] = [
     label: 'Admin',
     items: [
       { label: 'Overview',    href: '/admin/overview',    icon: LayoutDashboard },
+      { label: 'Pipeline',    href: '/admin/pipeline',    icon: SquareTerminal },
       { label: 'Users',       href: '/admin/users',       icon: Users },
       { label: 'Workspaces',  href: '/admin/workspaces',  icon: Building2 },
       { label: 'Policies',    href: '/admin/policies',    icon: Shield },

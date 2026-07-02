@@ -273,6 +273,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Group(func(r chi.Router) {
 				r.Use(mw.RequireAdmin)
 
+				r.Get("/admin/pipeline", h.Admin.PipelineOverview)
 				r.Get("/admin/users", h.Admin.ListUsers)
 				r.Get("/admin/users/{id}", h.Admin.GetUser)
 				r.Patch("/admin/users/{id}", h.Admin.UpdateUser)
