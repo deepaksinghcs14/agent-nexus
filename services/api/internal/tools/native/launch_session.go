@@ -131,9 +131,9 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 			rows.Close()
 		}
 		if len(known) == 0 {
-			return nil, fmt.Errorf("repository %q is not onboarded and this workspace's repo catalog is empty — onboard repos with catalog-ingest first", repo)
+			return nil, fmt.Errorf("repository %q is not onboarded and this workspace's repo catalog is empty — a workspace admin can add repositories in Settings → Claude Code, or sync a GitHub connector (synced repos onboard automatically)", repo)
 		}
-		return nil, fmt.Errorf("repository %q is not onboarded in this workspace — sessions can only target catalog repos: %s", repo, strings.Join(known, ", "))
+		return nil, fmt.Errorf("repository %q is not onboarded in this workspace — sessions can only target onboarded repos (%s); a workspace admin can add it in Settings → Claude Code", repo, strings.Join(known, ", "))
 	}
 
 	launch := map[string]any{

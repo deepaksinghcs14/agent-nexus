@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/catalog"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/connector"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/connector/providers/confluence"
@@ -175,6 +176,11 @@ func (h *ConnectorsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 			rep.Fail(err)
 		} else {
 			rep.Complete()
+			// GitHub connectors double as pipeline repo onboarding: every synced
+			// repo joins the session allowlist.
+			if n, err := catalog.AdoptFromConnector(ctx, h.pool, id); err == nil && n > 0 {
+				slog.Info("repos adopted into session allowlist from connector sync", "connector_id", id, "repos", n)
+			}
 		}
 	}()
 
@@ -268,6 +274,9 @@ func (h *ConnectorsHandler) launchSync(ctx context.Context, connID, wsID string,
 			rep.Fail(err)
 		} else {
 			rep.Complete()
+			if n, err := catalog.AdoptFromConnector(context.Background(), h.pool, connID); err == nil && n > 0 {
+				slog.Info("repos adopted into session allowlist from connector sync", "connector_id", connID, "repos", n)
+			}
 		}
 	}()
 }
@@ -304,8 +313,12 @@ func (h *ConnectorsHandler) ListDocuments(w http.ResponseWriter, r *http.Request
 
 	var (
 		total int
-		rows  interface{ Next() bool; Scan(...any) error; Close() }
-		e     error
+		rows  interface {
+			Next() bool
+			Scan(...any) error
+			Close()
+		}
+		e error
 	)
 
 	if metaKey != "" {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/handler"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/router"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/catalog"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/migrate"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/logstream"
@@ -152,6 +153,14 @@ func main() {
 	// Runs after tool seeding so agent_tools name lookups resolve.
 	if err := handler.SeedPipelineAgents(ctx, pool); err != nil {
 		slog.Warn("failed to seed pipeline agents", "error", err)
+	}
+	// Adopt repos already synced by GitHub connectors into the session
+	// allowlist (covers connectors synced before adoption existed or while
+	// the API was down; per-sync adoption handles the steady state).
+	if n, err := catalog.AdoptAllGithubConnectors(ctx, pool); err != nil {
+		slog.Warn("failed to adopt connector repos", "error", err)
+	} else if n > 0 {
+		slog.Info("repos adopted into session allowlist at startup", "repos", n)
 	}
 	if err := attachExistingWhatsAppCapabilities(ctx, pool); err != nil {
 		slog.Warn("failed to attach whatsapp capabilities", "error", err)
