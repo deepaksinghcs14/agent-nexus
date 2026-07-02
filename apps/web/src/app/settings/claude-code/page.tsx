@@ -269,7 +269,7 @@ export default function ClaudeCodePage() {
                 }`}
               >
                 <GitBranch size={12} className={r.sessions_enabled ? 'text-green-600' : 'text-gray-400'} />
-                <span className="font-mono text-gray-800">{r.repo}</span>
+                <span className="font-mono text-gray-800 break-all">{r.repo}</span>
                 <span className="text-gray-400">
                   {r.documents} docs · indexed {relativeTime(r.updated_at)}
                 </span>

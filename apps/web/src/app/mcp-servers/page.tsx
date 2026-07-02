@@ -400,7 +400,7 @@ export default function MCPServersPage() {
                   )}
                 </div>
 
-                <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+                <div className="flex flex-wrap gap-1.5" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => sync.mutate(server.id)}
                     disabled={isSyncing}
