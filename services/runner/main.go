@@ -46,9 +46,9 @@ type launchRequest struct {
 }
 
 type subscriber struct {
-	runID          string
-	callbackURL    string
-	callbackSecret string
+	RunID          string `json:"run_id"`
+	CallbackURL    string `json:"callback_url"`
+	CallbackSecret string `json:"callback_secret"`
 }
 
 type session struct {
@@ -56,6 +56,17 @@ type session struct {
 	req         launchRequest
 	subscribers []subscriber
 	done        bool
+}
+
+// sessionJournal is the crash-recovery record persisted to WORK_DIR while a
+// session is in flight. It deliberately excludes the Claude token — recovery
+// only needs enough to tell every subscribed run the session died.
+type sessionJournal struct {
+	Key         string       `json:"key"`
+	Repo        string       `json:"repo"`
+	TicketKey   string       `json:"ticket_key"`
+	Subscribers []subscriber `json:"subscribers"`
+	StartedAt   time.Time    `json:"started_at"`
 }
 
 type server struct {
@@ -96,6 +107,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Sessions interrupted by a previous crash/restart: notify their runs.
+	go s.recoverJournals()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /sessions", s.handleLaunch)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -127,7 +141,7 @@ func (s *server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := req.TicketKey + "|" + req.Repo
-	sub := subscriber{runID: req.RunID, callbackURL: req.CallbackURL, callbackSecret: req.CallbackSecret}
+	sub := subscriber{RunID: req.RunID, CallbackURL: req.CallbackURL, CallbackSecret: req.CallbackSecret}
 
 	s.mu.Lock()
 	existing, ok := s.sessions[key]
@@ -136,13 +150,14 @@ func (s *server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 		// run's callback fires when it completes.
 		already := false
 		for _, es := range existing.subscribers {
-			if es.runID == sub.runID {
+			if es.RunID == sub.RunID {
 				already = true
 				break
 			}
 		}
 		if !already {
 			existing.subscribers = append(existing.subscribers, sub)
+			s.saveJournalLocked(existing)
 		}
 		s.mu.Unlock()
 		writeJSON(w, http.StatusOK, map[string]any{"session": key, "status": "already_running"})
@@ -150,10 +165,77 @@ func (s *server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 	}
 	sess := &session{key: key, req: req, subscribers: []subscriber{sub}}
 	s.sessions[key] = sess
+	s.saveJournalLocked(sess)
 	s.mu.Unlock()
 
 	go s.runSession(sess)
 	writeJSON(w, http.StatusAccepted, map[string]any{"session": key, "status": "started"})
+}
+
+// ── crash-recovery journal ────────────────────────────────────────────────────
+
+func (s *server) journalPath(key string) string {
+	return filepath.Join(s.workDir, "journal-"+sanitize(key)+".json")
+}
+
+// saveJournalLocked persists the session's recovery record. Caller holds s.mu.
+// The journal is what lets a restarted runner tell every subscribed run that
+// its in-flight session died with the process.
+func (s *server) saveJournalLocked(sess *session) {
+	j := sessionJournal{
+		Key:         sess.key,
+		Repo:        sess.req.Repo,
+		TicketKey:   sess.req.TicketKey,
+		Subscribers: append([]subscriber(nil), sess.subscribers...),
+		StartedAt:   time.Now().UTC(),
+	}
+	b, err := json.Marshal(j)
+	if err == nil {
+		err = os.WriteFile(s.journalPath(sess.key), b, 0o600)
+	}
+	if err != nil {
+		slog.Warn("failed to persist session journal; session will not survive a runner restart",
+			"session", sess.key, "error", err)
+	}
+}
+
+// recoverJournals runs once at startup: every leftover journal is a session
+// that was in flight when the previous process died. Deliver a crashed
+// callback to each subscribed run so the orchestrator's crash handling
+// (retry once, then report) takes over instead of the run waiting forever.
+func (s *server) recoverJournals() {
+	entries, err := os.ReadDir(s.workDir)
+	if err != nil {
+		slog.Warn("journal recovery: cannot read work dir", "error", err)
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), "journal-") || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(s.workDir, e.Name())
+		b, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var j sessionJournal
+		if json.Unmarshal(b, &j) != nil || len(j.Subscribers) == 0 {
+			os.Remove(path) //nolint:errcheck
+			continue
+		}
+		slog.Warn("recovering session interrupted by runner restart",
+			"session", j.Key, "subscribers", len(j.Subscribers), "started_at", j.StartedAt)
+		res := result{
+			Status: "crashed",
+			Summary: fmt.Sprintf("runner restarted while the session was executing (started %s); work in progress was lost",
+				j.StartedAt.Format(time.RFC3339)),
+		}
+		req := launchRequest{Repo: j.Repo, TicketKey: j.TicketKey}
+		for _, sub := range j.Subscribers {
+			s.deliverCallback(sub, req, res)
+		}
+		os.Remove(path) //nolint:errcheck
+	}
 }
 
 func (s *server) runSession(sess *session) {
@@ -183,6 +265,10 @@ func (s *server) runSession(sess *session) {
 	for _, sub := range subs {
 		s.deliverCallback(sub, sess.req, res)
 	}
+	// The session reached a terminal state and every callback was attempted —
+	// it no longer needs crash recovery. (Duplicate crashed callbacks after an
+	// ill-timed restart are acknowledged and ignored by the API.)
+	os.Remove(s.journalPath(sess.key)) //nolint:errcheck
 }
 
 // runClaudeSession clones the repo, runs headless Claude Code on a fresh
@@ -288,7 +374,7 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 // ambiguous failures is safe.
 func (s *server) deliverCallback(sub subscriber, req launchRequest, res result) {
 	payload, _ := json.Marshal(map[string]any{
-		"run_id":     sub.runID,
+		"run_id":     sub.RunID,
 		"session_id": req.TicketKey + "|" + req.Repo,
 		"status":     res.Status,
 		"repo":       req.Repo,
@@ -299,32 +385,32 @@ func (s *server) deliverCallback(sub subscriber, req launchRequest, res result) 
 	})
 	backoff := 2 * time.Second
 	for attempt := 1; attempt <= 6; attempt++ {
-		httpReq, err := http.NewRequest(http.MethodPost, sub.callbackURL, bytes.NewReader(payload))
+		httpReq, err := http.NewRequest(http.MethodPost, sub.CallbackURL, bytes.NewReader(payload))
 		if err != nil {
-			slog.Error("callback request build failed", "run_id", sub.runID, "error", err)
+			slog.Error("callback request build failed", "run_id", sub.RunID, "error", err)
 			return
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
-		httpReq.Header.Set("X-Runner-Secret", sub.callbackSecret)
+		httpReq.Header.Set("X-Runner-Secret", sub.CallbackSecret)
 		resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(httpReq)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				slog.Info("callback delivered", "run_id", sub.runID, "attempt", attempt)
+				slog.Info("callback delivered", "run_id", sub.RunID, "attempt", attempt)
 				return
 			}
 			// 4xx other than 408/429 will not succeed on retry.
 			if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 408 && resp.StatusCode != 429 {
-				slog.Error("callback rejected", "run_id", sub.runID, "status", resp.StatusCode)
+				slog.Error("callback rejected", "run_id", sub.RunID, "status", resp.StatusCode)
 				return
 			}
 			err = fmt.Errorf("status %d", resp.StatusCode)
 		}
-		slog.Warn("callback attempt failed", "run_id", sub.runID, "attempt", attempt, "error", err)
+		slog.Warn("callback attempt failed", "run_id", sub.RunID, "attempt", attempt, "error", err)
 		time.Sleep(backoff)
 		backoff *= 2
 	}
-	slog.Error("callback delivery exhausted retries", "run_id", sub.runID)
+	slog.Error("callback delivery exhausted retries", "run_id", sub.RunID)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

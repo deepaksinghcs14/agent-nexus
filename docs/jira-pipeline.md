@@ -60,8 +60,14 @@ Jira webhook ──▶ /webhook/{id} ──▶ Orchestrator agent run
 - Budget fallback: the runner reports `budget-exceeded` with the partial
   branch; the orchestrator posts a Jira comment and continues with other repos.
 - Sessions are idempotent per `(ticket, repo)`; a duplicate launch joins the
-  in-flight session. Runner idempotency state is in-memory — run one replica,
-  or accept re-execution after a runner restart.
+  in-flight session. Runner idempotency state is in-memory — run one replica.
+- A runner crash/restart mid-session does not strand runs: the runner journals
+  every in-flight session (on its volume) and delivers `crashed` callbacks for
+  leftovers at startup, and the API's session watchdog resumes any
+  `session_wait` run whose callback never arrives within
+  `SESSION_WAIT_TIMEOUT_MIN` (default 240; keep it above the runner's
+  `SESSION_TIMEOUT_MIN`). The orchestrator's crash handling (retry once, then
+  report to Jira) takes over from there.
 - Native-tool `requires_approval` flags are reset from code defaults on every
   API startup (`SeedDB`) — gate pipeline approvals on http/code/MCP tools or
   set the flag in the Go registry definition.

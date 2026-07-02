@@ -236,6 +236,9 @@ func main() {
 	// Deliver scheduled outbound messages as they come due.
 	go h.Gateway.StartScheduledMessageDispatcher(context.Background())
 
+	// Resume session_wait runs whose runner callback never arrived.
+	go invoke.StartSessionWaitWatchdog(context.Background())
+
 	<-quit
 	slog.Info("shutting down server...")
 

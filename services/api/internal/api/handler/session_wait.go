@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -136,4 +138,74 @@ func (h *InvokeHandler) SessionCallback(w http.ResponseWriter, r *http.Request) 
 	_ = h.pool.QueryRow(r.Context(), `SELECT status FROM runs WHERE id=$1::uuid`, p.RunID).Scan(&status)
 	slog.Info("session callback had no waiting run", "run_id", p.RunID, "run_status", status, "session_status", p.Status)
 	errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "delivered": "ignored", "run_status": status})
+}
+
+// ── stale session watchdog ────────────────────────────────────────────────────
+
+// StartSessionWaitWatchdog periodically resumes runs stuck in session_wait
+// whose completion callback never arrived — the backstop for a runner that
+// crashed AND lost its journal (volume wiped), or callbacks that could never
+// be delivered. The timeout must comfortably exceed the runner's own session
+// cap so healthy long sessions are never killed; the runner's journal
+// recovery normally reports crashes long before this fires.
+func (h *InvokeHandler) StartSessionWaitWatchdog(ctx context.Context) {
+	timeout := time.Duration(h.cfg.SessionWaitTimeoutMin) * time.Minute
+	if timeout <= 0 {
+		timeout = 240 * time.Minute
+	}
+	// Sweep immediately: runs that went stale while the API was down should
+	// not wait another tick.
+	h.sweepStaleSessionWaits(ctx, timeout)
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			h.sweepStaleSessionWaits(ctx, timeout)
+		}
+	}
+}
+
+func (h *InvokeHandler) sweepStaleSessionWaits(ctx context.Context, timeout time.Duration) {
+	rows, err := h.pool.Query(ctx, `
+		SELECT w.run_id::text, w.created_at
+		FROM run_wait_states w JOIN runs r ON r.id = w.run_id
+		WHERE w.wait_type='session' AND r.status='session_wait' AND w.created_at < NOW() - $1::interval`,
+		timeout.String())
+	if err != nil {
+		slog.Warn("session watchdog query failed", "error", err)
+		return
+	}
+	type stale struct {
+		runID     string
+		createdAt time.Time
+	}
+	var stales []stale
+	for rows.Next() {
+		var s stale
+		if rows.Scan(&s.runID, &s.createdAt) == nil {
+			stales = append(stales, s)
+		}
+	}
+	rows.Close()
+
+	for _, s := range stales {
+		content, _ := json.Marshal(map[string]any{
+			"status": "crashed",
+			"summary": fmt.Sprintf(
+				"no completion callback received within %s (session started waiting %s) — the runner likely died mid-session and lost its state",
+				timeout, s.createdAt.UTC().Format(time.RFC3339)),
+		})
+		resumed, err := h.ResumeSessionRun(s.runID, string(content))
+		if err != nil {
+			slog.Warn("session watchdog resume failed", "run_id", s.runID, "error", err)
+			continue
+		}
+		if resumed {
+			slog.Warn("session watchdog resumed stale run as crashed",
+				"run_id", s.runID, "waiting_since", s.createdAt)
+		}
+	}
 }
