@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, GitBranch, Terminal, Unplug, Workflow } from 'lucide-react'
-import { agentsAPI, connectorsAPI, runnerCredsAPI, webhookTriggersAPI } from '@/lib/api'
+import { BookMarked, Check, GitBranch, Loader2, Plus, Terminal, Trash2, Unplug, Workflow } from 'lucide-react'
+import { agentsAPI, repoCatalogAPI, runnerCredsAPI, webhookTriggersAPI } from '@/lib/api'
 import { relativeTime } from '@/lib/utils'
 import type { Agent } from '@/types'
 
@@ -12,6 +12,14 @@ type RunnerCreds = {
   github_connected: boolean
   github_env_fallback: boolean
   updated_at?: string
+}
+
+type CatalogRepo = {
+  repo: string
+  default_branch: string
+  documents: number
+  chunks: number
+  updated_at: string
 }
 
 // Settings → Claude Code: everything the Jira→PR pipeline needs, configured
@@ -96,9 +104,9 @@ export default function ClaudeCodePage() {
     queryKey: ['agents'],
     queryFn: () => agentsAPI.list() as Promise<{ data: Agent[] }>,
   })
-  const { data: connectorsData } = useQuery({
-    queryKey: ['connectors'],
-    queryFn: () => connectorsAPI.list() as Promise<{ data: { name: string }[] }>,
+  const { data: catalogData } = useQuery({
+    queryKey: ['repo-catalog'],
+    queryFn: () => repoCatalogAPI.list() as Promise<{ data: CatalogRepo[] }>,
   })
   const { data: triggersData } = useQuery({
     queryKey: ['webhook-triggers'],
@@ -115,9 +123,26 @@ export default function ClaudeCodePage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['runner-credentials'] }),
   })
 
+  const [newRepo, setNewRepo] = useState('')
+  const [repoError, setRepoError] = useState('')
+  const onboard = useMutation({
+    mutationFn: (repo: string) => repoCatalogAPI.onboard(repo),
+    onSuccess: () => {
+      setNewRepo('')
+      setRepoError('')
+      queryClient.invalidateQueries({ queryKey: ['repo-catalog'] })
+    },
+    onError: (err: Error) => setRepoError(err.message),
+  })
+  const removeRepo = useMutation({
+    mutationFn: (repo: string) => repoCatalogAPI.remove(repo),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repo-catalog'] }),
+  })
+
   const agents = agentsData?.data ?? []
   const seededAgents = PIPELINE_AGENT_NAMES.filter((n) => agents.some((a) => a.name === n))
-  const hasCatalog = (connectorsData?.data ?? []).some((c) => c.name === 'repo-catalog')
+  const repos = catalogData?.data ?? []
+  const hasCatalog = repos.length > 0
   const triggerCount = (triggersData?.data ?? []).filter((t) => t.is_active).length
 
   const checklist: { label: string; ok: boolean; hint: string }[] = [
@@ -141,9 +166,9 @@ export default function ClaudeCodePage() {
       hint: 'Seeded automatically; protected from deletion',
     },
     {
-      label: 'Repo catalog',
+      label: `Repo catalog (${repos.length} repo${repos.length === 1 ? '' : 's'})`,
       ok: hasCatalog,
-      hint: hasCatalog ? 'Connector present' : 'Onboard repos with catalog-ingest',
+      hint: hasCatalog ? 'Sessions may target these repositories' : 'Add a repository below',
     },
     {
       label: `Webhook triggers (${triggerCount} active)`,
@@ -193,6 +218,56 @@ export default function ClaudeCodePage() {
           saving={save.isPending}
           error={error}
         />
+      </div>
+
+      {/* Repositories: the allowlist of repos coding sessions may target.
+          Onboarding clones + indexes server-side with the workspace token. */}
+      <div className="border border-gray-200 bg-white rounded-xl px-4 py-3 mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <BookMarked size={15} className="text-purple-600" />
+          <p className="text-sm font-medium text-gray-900">Repositories</p>
+        </div>
+        <p className="text-[11px] text-gray-400 mb-3">
+          Coding sessions can only target repositories onboarded here. Private repos use this workspace&apos;s
+          GitHub token{creds?.github_connected ? '' : ' — connect one above first'}.
+        </p>
+        {repos.length > 0 && (
+          <div className="space-y-1.5 mb-3">
+            {repos.map((r) => (
+              <div key={r.repo} className="flex items-center gap-2 text-[12px] border border-gray-100 rounded-lg px-2.5 py-1.5">
+                <GitBranch size={12} className="text-gray-400 flex-shrink-0" />
+                <span className="font-mono text-gray-800">{r.repo}</span>
+                <span className="text-gray-400">
+                  {r.documents} docs · {r.chunks} chunks · {r.default_branch} · indexed {relativeTime(r.updated_at)}
+                </span>
+                <button
+                  onClick={() => { if (confirm(`Remove ${r.repo} from the catalog? Sessions will no longer be able to target it.`)) removeRepo.mutate(r.repo) }}
+                  className="ml-auto p-1 text-gray-300 hover:text-red-500"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={newRepo}
+            onChange={(e) => setNewRepo(e.target.value)}
+            placeholder="owner/repo"
+            className="flex-1 min-w-[200px] px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+            onKeyDown={(e) => { if (e.key === 'Enter' && newRepo.trim() && !onboard.isPending) onboard.mutate(newRepo.trim()) }}
+          />
+          <button
+            onClick={() => onboard.mutate(newRepo.trim())}
+            disabled={!newRepo.trim() || onboard.isPending}
+            className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg font-medium disabled:opacity-50"
+          >
+            {onboard.isPending ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+            {onboard.isPending ? 'Cloning & indexing…' : 'Add repository'}
+          </button>
+        </div>
+        {repoError && <p className="text-xs text-red-600 mt-2">{repoError}</p>}
       </div>
 
       <div className="border border-gray-200 bg-white rounded-xl px-4 py-3">

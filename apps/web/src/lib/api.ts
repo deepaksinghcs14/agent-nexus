@@ -229,6 +229,14 @@ export const runnerCredsAPI = {
     api.delete(`/workspace/runner-credentials?field=${field}`),
 }
 
+// Repo catalog: the workspace allowlist of repos coding sessions may target.
+// Onboarding clones and indexes server-side with the workspace GitHub token.
+export const repoCatalogAPI = {
+  list: () => api.get('/repo-catalog'),
+  onboard: (repo: string, branch?: string) => api.post('/repo-catalog', { repo, branch }),
+  remove: (repo: string) => api.delete(`/repo-catalog?repo=${encodeURIComponent(repo)}`),
+}
+
 export const conversationsAPI = {
   list: () => api.get('/conversations'),
   create: (body: { agent_id: string; title?: string }) => api.post('/conversations', body),
