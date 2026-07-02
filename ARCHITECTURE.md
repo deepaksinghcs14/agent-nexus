@@ -95,9 +95,10 @@ services/api/
         provider_helper.go         ← Shared provider/model resolution helpers
         providers.go               ← Provider credential CRUD, model listing, Google OAuth flow
         runs.go                    ← Run CRUD, start (SSE), approve, cancel, user input, children
-        runner_credentials.go      ← Workspace Claude account for repo sessions (setup-token)
+        runner_credentials.go      ← Workspace pipeline credentials (Claude account + GitHub token)
+        pipeline_seed.go           ← Seeds the three protected pipeline agents per workspace
         wait_state.go              ← Durable wait snapshots (run_wait_states persist/claim)
-        session_wait.go            ← Session wait registry + runner completion callback
+        session_wait.go            ← Session wait registry, runner completion callback, stale-session watchdog
         resume.go                  ← Headless resume of parked runs (approval + session)
         mcp_executor.go            ← Executes tools-table entries of type 'mcp' via the MCP client
         mcp_oauth.go               ← OAuth 2.1 for remote MCP servers (start/callback, token refresh)
@@ -492,6 +493,14 @@ restarts (the startup sweep only fails waiting runs *without* a snapshot).
 Nested sub-runs and workflow-node runs are excluded: their parent's stack cannot
 be restored. See `handler/wait_state.go`, `session_wait.go`, `resume.go`, and
 docs/jira-pipeline.md.
+
+Session waits are additionally crash-resilient on the runner side: the runner
+journals every in-flight session and delivers `crashed` callbacks for leftovers
+at startup, and the API's session watchdog (`StartSessionWaitWatchdog`) resumes
+any `session_wait` run whose callback never arrives within
+`SESSION_WAIT_TIMEOUT_MIN`. Session credentials (workspace Claude account and
+GitHub token, stored encrypted in `runner_credentials`) are injected per launch
+and never persisted by the runner.
 
 ### Memory Review Policy
 

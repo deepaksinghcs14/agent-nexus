@@ -110,7 +110,9 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 
 ### Autonomous Jira → PR Pipeline
 - **Ticket to pull request, hands-off** — a Jira ticket labeled `auto-dev` triggers repo selection (RAG over a repo catalog), headless Claude Code sessions in a dedicated runner service, an automated review pass, PR creation, and Jira updates. See [docs/jira-pipeline.md](docs/jira-pipeline.md).
-- **Durable waits** — runs blocked on human approval or a long coding session persist their state (`run_wait_states`) and survive API restarts; the approval decision or the runner's completion callback resumes them exactly where they parked
+- **Durable waits + crash resilience** — runs blocked on human approval or a long coding session persist their state (`run_wait_states`) and survive API restarts; the approval decision or the runner's completion callback resumes them exactly where they parked. Runner crashes mid-session are journaled and reported as `crashed` on restart, with an API watchdog as backstop — no run can be stranded
+- **Settings → Claude Code** — all pipeline credentials configured per workspace from the UI: a Claude account (paste your `claude setup-token` output — coding sessions bill your subscription) and a workspace-scoped GitHub token (encrypted at rest, injected per session; instance env is only a single-tenant fallback), plus a pipeline-readiness checklist
+- **Protected system agents** — the orchestrator, review, and docs-map agents are seeded into every workspace automatically (editable, non-deletable); setup never creates agents
 - **OAuth 2.1 MCP** — connect Atlassian's hosted MCP server (or any OAuth-protected remote MCP server) with one click: discovery, dynamic client registration, PKCE, and automatic token refresh
 
 ### Core Agent Platform
@@ -246,9 +248,10 @@ real `JWT_SECRET` / `ENCRYPTION_KEY`). Open http://localhost:3000, register an
 account, and you're in. `make down` stops everything.
 
 The runner starts in `stub` mode (simulated coding sessions, no credentials
-needed). For real Claude Code sessions set `RUNNER_EXECUTOR=claude` plus
-`GITHUB_TOKEN` in `infra/.env`, and connect a Claude account in
-Settings → Providers (see [docs/jira-pipeline.md](docs/jira-pipeline.md)).
+needed). For real Claude Code sessions set `RUNNER_EXECUTOR=claude` in
+`infra/.env`, then connect your Claude account and a GitHub token in
+**Settings → Claude Code** — both are workspace-scoped, encrypted, and
+injected per session (see [docs/jira-pipeline.md](docs/jira-pipeline.md)).
 
 ### Option B — Docker build (production images)
 
@@ -352,9 +355,10 @@ cp services/api/.env.example services/api/.env
 | `GOOGLE_OAUTH_CLIENT_SECRET` | no | Google OAuth — leave blank to disable |
 | `WHATSAPP_ADAPTER_URL` | no | Base URL of the WhatsApp Web adapter service, default `http://127.0.0.1:18901`. Required only when using Gateway WhatsApp channels |
 | `RUNNER_URL` | no | Base URL of the repo-session runner service. Empty disables `native_launch_repo_session` |
+| `SESSION_WAIT_TIMEOUT_MIN` | no | Minutes before a `session_wait` run with no runner callback is resumed as crashed (default `240`; keep above the runner's `SESSION_TIMEOUT_MIN`) |
 | `RUNNER_CALLBACK_SECRET` | no | Shared secret the runner presents on session-completion callbacks |
 | `SESSION_CALLBACK_URL` | no | Callback URL the runner uses to reach this API when it differs from `PUBLIC_API_URL` (e.g. `http://api:8080` inside Docker, private domains on Railway) |
-| `GITHUB_TOKEN` | no | Token for the GitHub tools (`native_create_pull_request`, `native_get_branch_diff`) |
+| `GITHUB_TOKEN` | no | Single-tenant fallback token for GitHub tools and runner sessions — a workspace token set in Settings → Claude Code always takes precedence |
 | `GITHUB_API_URL` | no | GitHub API base URL, default `https://api.github.com` (override for GHE or tests) |
 
 ### `apps/web/.env.local` (local dev)
@@ -396,7 +400,7 @@ POST   /api/v1/runs/:id/approve           ← approve/reject a waiting run (resu
 GET    /api/v1/workflows
 POST   /api/v1/workflows/:id/runs
 POST   /api/v1/mcp-servers/:id/oauth/start   ← OAuth 2.1 flow for remote MCP servers
-PUT    /api/v1/workspace/runner-credentials  ← connect a Claude account for repo sessions
+PUT    /api/v1/workspace/runner-credentials  ← workspace Claude account + GitHub token for repo sessions
 POST   /webhook/:webhookId                ← inbound webhook triggers (Jira, GitHub, …)
 ...
 ```
@@ -454,7 +458,10 @@ What's working today vs. what's coming next:
 | Autonomous Jira→PR pipeline (repo catalog RAG, review agent, PR creation, docs maps) | ✅ Done |
 | OAuth 2.1 for remote MCP servers (hosted Atlassian: discovery, DCR, PKCE, refresh) | ✅ Done |
 | GitHub tools — create PR, branch diff (token-based) | ✅ Done |
-| Claude account credential (subscription billing for repo sessions via `claude setup-token`) | ✅ Done |
+| Workspace pipeline credentials — Claude account + GitHub token, Settings → Claude Code tab | ✅ Done |
+| Session crash resilience (runner journal recovery + API session watchdog) | ✅ Done |
+| Protected seeded pipeline agents (orchestrator, review, docs-map per workspace) | ✅ Done |
+| Railway deploy from any branch (workflow_dispatch, per-service selection) | ✅ Done |
 | Additional connectors (Slack, Jira, Google Drive) | 🔜 Planned |
 | Agent versioning and snapshot rollback | 🔜 Planned |
 | API rate limiting per workspace | 🔜 Planned |
