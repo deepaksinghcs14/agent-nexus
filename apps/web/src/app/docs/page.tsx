@@ -48,6 +48,16 @@ export default function DocsOverview() {
         },
       ]} />
 
+      <h2>Autonomous Coding</h2>
+      <ConceptGrid items={[
+        {
+          title: 'Claude Code Pipeline',
+          href: '/docs/claude-code-pipeline',
+          desc: 'Jira tickets driven to reviewed pull requests — repo catalog, coding sessions, review agent, durable waits.',
+          badge: 'Pipeline',
+        },
+      ]} />
+
       <h2>Testing & Quality</h2>
       <ConceptGrid items={[
         {
