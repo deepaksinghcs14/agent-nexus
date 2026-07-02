@@ -13,6 +13,7 @@
 /apps/web/.next/
 CLAUDE.md
 .claude/
-.gocache/services/runner/runner
+.gocache/
+services/runner/runner
 services/api/vendor/
 infra/.env
