@@ -114,10 +114,12 @@ func Ingest(ctx context.Context, pool *pgxpool.Pool, req Request) (*Result, erro
 		totalChunks += n
 	}
 
+	// Explicit onboarding is an intentional act — sessions are enabled
+	// directly (unlike connector adoption, which arrives disabled).
 	if _, err := pool.Exec(ctx, `
-		INSERT INTO repo_catalog(repo, workspace_id, connector_id, default_branch, updated_at)
-		VALUES ($1, $2::uuid, $3::uuid, $4, NOW())
-		ON CONFLICT (workspace_id, repo) DO UPDATE SET connector_id=$3::uuid, default_branch=$4, updated_at=NOW()`,
+		INSERT INTO repo_catalog(repo, workspace_id, connector_id, default_branch, sessions_enabled, updated_at)
+		VALUES ($1, $2::uuid, $3::uuid, $4, true, NOW())
+		ON CONFLICT (workspace_id, repo) DO UPDATE SET connector_id=$3::uuid, default_branch=$4, sessions_enabled=true, updated_at=NOW()`,
 		req.Repo, req.WorkspaceID, connectorID, headBranch); err != nil {
 		return nil, fmt.Errorf("upsert repo_catalog: %w", err)
 	}

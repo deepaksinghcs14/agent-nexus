@@ -18,18 +18,19 @@ import (
 // never re-enter credentials on the CLI.
 
 type repoCatalogEntry struct {
-	Repo          string    `json:"repo"`
-	DefaultBranch string    `json:"default_branch"`
-	Documents     int       `json:"documents"`
-	Chunks        int       `json:"chunks"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	Repo            string    `json:"repo"`
+	DefaultBranch   string    `json:"default_branch"`
+	SessionsEnabled bool      `json:"sessions_enabled"`
+	Documents       int       `json:"documents"`
+	Chunks          int       `json:"chunks"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // ListRepoCatalog handles GET /api/v1/repo-catalog.
 func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	rows, err := h.pool.Query(r.Context(), `
-		SELECT rc.repo, rc.default_branch, rc.updated_at,
+		SELECT rc.repo, rc.default_branch, rc.sessions_enabled, rc.updated_at,
 		       COUNT(DISTINCT cd.id) AS documents,
 		       COUNT(cc.id) AS chunks
 		FROM repo_catalog rc
@@ -37,8 +38,8 @@ func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Reques
 		       ON cd.connector_id = rc.connector_id AND cd.source_document_id LIKE rc.repo || '/%'
 		LEFT JOIN connector_chunks cc ON cc.document_id = cd.id
 		WHERE rc.workspace_id=$1::uuid
-		GROUP BY rc.repo, rc.default_branch, rc.updated_at
-		ORDER BY rc.repo`, ws)
+		GROUP BY rc.repo, rc.default_branch, rc.sessions_enabled, rc.updated_at
+		ORDER BY rc.sessions_enabled DESC, rc.repo`, ws)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to list repo catalog"))
 		return
@@ -47,11 +48,35 @@ func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Reques
 	list := []repoCatalogEntry{}
 	for rows.Next() {
 		var e repoCatalogEntry
-		if rows.Scan(&e.Repo, &e.DefaultBranch, &e.UpdatedAt, &e.Documents, &e.Chunks) == nil {
+		if rows.Scan(&e.Repo, &e.DefaultBranch, &e.SessionsEnabled, &e.UpdatedAt, &e.Documents, &e.Chunks) == nil {
 			list = append(list, e)
 		}
 	}
 	errs.WriteJSON(w, http.StatusOK, map[string]any{"data": list})
+}
+
+// SetRepoSessions handles PATCH /api/v1/repo-catalog — enables or disables
+// coding sessions for one repo. This toggle is the deliberate grant of write
+// access; connector syncs only make repos known.
+func (h *WorkspaceHandler) SetRepoSessions(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	var req struct {
+		Repo            string `json:"repo"`
+		SessionsEnabled bool   `json:"sessions_enabled"`
+	}
+	if json.NewDecoder(r.Body).Decode(&req) != nil || strings.TrimSpace(req.Repo) == "" {
+		errs.Write(w, errs.BadRequest("repo is required"))
+		return
+	}
+	tag, err := h.pool.Exec(r.Context(),
+		`UPDATE repo_catalog SET sessions_enabled=$3, updated_at=NOW() WHERE workspace_id=$1::uuid AND repo=$2`,
+		ws, strings.TrimSpace(req.Repo), req.SessionsEnabled)
+	if err != nil || tag.RowsAffected() == 0 {
+		errs.Write(w, errs.NotFound("repo not found in catalog"))
+		return
+	}
+	writeAudit(r, h.pool, "repo_catalog.sessions_toggled", "workspace", ws)
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"repo": req.Repo, "sessions_enabled": req.SessionsEnabled})
 }
 
 // OnboardRepo handles POST /api/v1/repo-catalog — clones and indexes the repo

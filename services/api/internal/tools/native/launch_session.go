@@ -107,33 +107,38 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 		return nil, fmt.Errorf("repo sessions are not available in this run context")
 	}
 
-	// Hard gate: sessions may only target repositories onboarded into this
-	// workspace's catalog (catalog-ingest). This makes "never invent repo
-	// names" a mechanical guarantee rather than an instruction the model can
-	// ignore — a hallucinated repo fails here with the real options listed.
-	var onboarded bool
-	if err := t.pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM repo_catalog WHERE workspace_id=$1::uuid AND repo=$2)`,
-		execCtx.WorkspaceID, repo).Scan(&onboarded); err != nil {
-		return nil, fmt.Errorf("repo catalog lookup failed: %w", err)
+	// Hard gate: sessions may only target repositories that are onboarded AND
+	// have sessions explicitly enabled. Connector syncs make repos known
+	// (searchable); the enable toggle in Settings → Claude Code is the
+	// deliberate act that grants write access — so a hallucinated or merely
+	// indexed repo fails here mechanically, with the real options listed.
+	var known, enabled bool
+	if err := t.pool.QueryRow(ctx, `
+		SELECT true, sessions_enabled FROM repo_catalog
+		WHERE workspace_id=$1::uuid AND repo=$2`,
+		execCtx.WorkspaceID, repo).Scan(&known, &enabled); err != nil {
+		known = false
 	}
-	if !onboarded {
+	if !enabled {
 		rows, err := t.pool.Query(ctx,
-			`SELECT repo FROM repo_catalog WHERE workspace_id=$1::uuid ORDER BY repo`, execCtx.WorkspaceID)
-		var known []string
+			`SELECT repo FROM repo_catalog WHERE workspace_id=$1::uuid AND sessions_enabled ORDER BY repo`, execCtx.WorkspaceID)
+		var allowed []string
 		if err == nil {
 			for rows.Next() {
 				var r string
 				if rows.Scan(&r) == nil {
-					known = append(known, r)
+					allowed = append(allowed, r)
 				}
 			}
 			rows.Close()
 		}
-		if len(known) == 0 {
-			return nil, fmt.Errorf("repository %q is not onboarded and this workspace's repo catalog is empty — a workspace admin can add repositories in Settings → Claude Code, or sync a GitHub connector (synced repos onboard automatically)", repo)
+		if known {
+			return nil, fmt.Errorf("repository %q is indexed but sessions are not enabled for it — a workspace admin can enable it in Settings → Claude Code → Repositories", repo)
 		}
-		return nil, fmt.Errorf("repository %q is not onboarded in this workspace — sessions can only target onboarded repos (%s); a workspace admin can add it in Settings → Claude Code", repo, strings.Join(known, ", "))
+		if len(allowed) == 0 {
+			return nil, fmt.Errorf("repository %q is not onboarded and no repositories have sessions enabled — a workspace admin can add/enable repositories in Settings → Claude Code", repo)
+		}
+		return nil, fmt.Errorf("repository %q is not onboarded in this workspace — sessions can only target enabled repos (%s); a workspace admin can add it in Settings → Claude Code", repo, strings.Join(allowed, ", "))
 	}
 
 	launch := map[string]any{

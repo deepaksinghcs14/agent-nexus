@@ -231,9 +231,15 @@ export const runnerCredsAPI = {
 
 // Repo catalog: the workspace allowlist of repos coding sessions may target.
 // Onboarding clones and indexes server-side with the workspace GitHub token.
+export const pipelineAPI = {
+  status: () => api.get('/pipeline/status'),
+}
+
 export const repoCatalogAPI = {
   list: () => api.get('/repo-catalog'),
   onboard: (repo: string, branch?: string) => api.post('/repo-catalog', { repo, branch }),
+  setSessions: (repo: string, enabled: boolean) =>
+    api.patch('/repo-catalog', { repo, sessions_enabled: enabled }),
   remove: (repo: string) => api.delete(`/repo-catalog?repo=${encodeURIComponent(repo)}`),
 }
 

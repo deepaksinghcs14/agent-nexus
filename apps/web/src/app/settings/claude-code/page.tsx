@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BookMarked, Check, GitBranch, Loader2, Plus, Terminal, Trash2, Unplug, Workflow } from 'lucide-react'
-import { agentsAPI, repoCatalogAPI, runnerCredsAPI, webhookTriggersAPI } from '@/lib/api'
+import { agentsAPI, pipelineAPI, repoCatalogAPI, runnerCredsAPI, webhookTriggersAPI } from '@/lib/api'
 import { relativeTime } from '@/lib/utils'
 import type { Agent } from '@/types'
 
@@ -17,6 +17,7 @@ type RunnerCreds = {
 type CatalogRepo = {
   repo: string
   default_branch: string
+  sessions_enabled: boolean
   documents: number
   chunks: number
   updated_at: string
@@ -108,6 +109,11 @@ export default function ClaudeCodePage() {
     queryKey: ['repo-catalog'],
     queryFn: () => repoCatalogAPI.list() as Promise<{ data: CatalogRepo[] }>,
   })
+  const { data: pipeStatus } = useQuery({
+    queryKey: ['pipeline-status'],
+    queryFn: () => pipelineAPI.status() as Promise<{ runner_configured: boolean; runner_reachable: boolean; runner_executor: string }>,
+    refetchInterval: 30000,
+  })
   const { data: triggersData } = useQuery({
     queryKey: ['webhook-triggers'],
     queryFn: () => webhookTriggersAPI.list() as Promise<{ data: { name: string; is_active: boolean }[] }>,
@@ -138,14 +144,32 @@ export default function ClaudeCodePage() {
     mutationFn: (repo: string) => repoCatalogAPI.remove(repo),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repo-catalog'] }),
   })
+  const toggleSessions = useMutation({
+    mutationFn: (r: { repo: string; enabled: boolean }) => repoCatalogAPI.setSessions(r.repo, r.enabled),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repo-catalog'] }),
+  })
 
   const agents = agentsData?.data ?? []
   const seededAgents = PIPELINE_AGENT_NAMES.filter((n) => agents.some((a) => a.name === n))
   const repos = catalogData?.data ?? []
-  const hasCatalog = repos.length > 0
+  const enabledRepos = repos.filter((r) => r.sessions_enabled)
+  const hasCatalog = enabledRepos.length > 0
   const triggerCount = (triggersData?.data ?? []).filter((t) => t.is_active).length
 
+  const runnerHint = !pipeStatus?.runner_configured
+    ? 'RUNNER_URL is not set on the API — sessions are disabled'
+    : !pipeStatus?.runner_reachable
+      ? 'Runner is configured but not responding'
+      : pipeStatus.runner_executor === 'stub'
+        ? '⚠ STUB MODE — sessions are simulated: no code is written, branches are fake. Set RUNNER_EXECUTOR=claude for real sessions.'
+        : 'Real Claude Code sessions enabled'
+
   const checklist: { label: string; ok: boolean; hint: string }[] = [
+    {
+      label: `Runner${pipeStatus?.runner_executor ? ` (${pipeStatus.runner_executor} mode)` : ''}`,
+      ok: !!pipeStatus?.runner_reachable && pipeStatus?.runner_executor !== 'stub',
+      hint: runnerHint,
+    },
     {
       label: 'Claude account',
       ok: !!creds?.claude_connected,
@@ -166,9 +190,13 @@ export default function ClaudeCodePage() {
       hint: 'Seeded automatically; protected from deletion',
     },
     {
-      label: `Repo catalog (${repos.length} repo${repos.length === 1 ? '' : 's'})`,
+      label: `Repositories (${enabledRepos.length} enabled / ${repos.length} known)`,
       ok: hasCatalog,
-      hint: hasCatalog ? 'Sessions may target these repositories' : 'Add a repository below',
+      hint: hasCatalog
+        ? 'Sessions may only modify enabled repositories'
+        : repos.length > 0
+          ? 'Repos are indexed but none are session-enabled — flip a toggle below'
+          : 'Add a repository below, or sync a GitHub connector',
     },
     {
       label: `Webhook triggers (${triggerCount} active)`,
@@ -234,18 +262,37 @@ export default function ClaudeCodePage() {
         {repos.length > 0 && (
           <div className="space-y-1.5 mb-3">
             {repos.map((r) => (
-              <div key={r.repo} className="flex items-center gap-2 text-[12px] border border-gray-100 rounded-lg px-2.5 py-1.5">
-                <GitBranch size={12} className="text-gray-400 flex-shrink-0" />
+              <div
+                key={r.repo}
+                className={`flex flex-wrap items-center gap-2 text-[12px] border rounded-lg px-2.5 py-1.5 ${
+                  r.sessions_enabled ? 'border-green-200 bg-green-50/40' : 'border-gray-100'
+                }`}
+              >
+                <GitBranch size={12} className={r.sessions_enabled ? 'text-green-600' : 'text-gray-400'} />
                 <span className="font-mono text-gray-800">{r.repo}</span>
                 <span className="text-gray-400">
-                  {r.documents} docs · {r.chunks} chunks · {r.default_branch} · indexed {relativeTime(r.updated_at)}
+                  {r.documents} docs · indexed {relativeTime(r.updated_at)}
                 </span>
-                <button
-                  onClick={() => { if (confirm(`Remove ${r.repo} from the catalog? Sessions will no longer be able to target it.`)) removeRepo.mutate(r.repo) }}
-                  className="ml-auto p-1 text-gray-300 hover:text-red-500"
-                >
-                  <Trash2 size={12} />
-                </button>
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    onClick={() => toggleSessions.mutate({ repo: r.repo, enabled: !r.sessions_enabled })}
+                    disabled={toggleSessions.isPending}
+                    title={r.sessions_enabled ? 'Sessions may modify this repo — click to revoke' : 'Indexed for context only — click to allow coding sessions'}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors disabled:opacity-50 ${
+                      r.sessions_enabled
+                        ? 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200'
+                        : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+                    }`}
+                  >
+                    {r.sessions_enabled ? 'sessions on' : 'enable sessions'}
+                  </button>
+                  <button
+                    onClick={() => { if (confirm(`Remove ${r.repo} from the catalog entirely?`)) removeRepo.mutate(r.repo) }}
+                    className="p-1 text-gray-300 hover:text-red-500"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

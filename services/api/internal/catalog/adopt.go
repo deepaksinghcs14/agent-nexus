@@ -28,10 +28,13 @@ func AdoptFromConnector(ctx context.Context, pool *pgxpool.Pool, connectorID str
 		return 0, nil
 	}
 
+	// Adopted repos arrive with sessions DISABLED: syncing makes a repo
+	// known/searchable, but write access requires an explicit enable in
+	// Settings → Claude Code (or explicit onboarding).
 	tag, err := pool.Exec(ctx, `
-		INSERT INTO repo_catalog(repo, workspace_id, connector_id, default_branch)
+		INSERT INTO repo_catalog(repo, workspace_id, connector_id, default_branch, sessions_enabled)
 		SELECT DISTINCT split_part(cd.source_document_id,'/',1) || '/' || split_part(cd.source_document_id,'/',2),
-		       $2::uuid, $1::uuid, 'main'
+		       $2::uuid, $1::uuid, 'main', false
 		FROM connector_documents cd
 		WHERE cd.connector_id = $1::uuid
 		  AND cd.source_document_id LIKE '%/%/%'

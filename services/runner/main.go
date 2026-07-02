@@ -116,8 +116,9 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /sessions", s.handleLaunch)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{"status":"ok"}`)
+		fmt.Fprintf(w, `{"status":"ok","executor":%q}`, s.executor)
 	})
 
 	port := getEnv("PORT", "8092")
@@ -250,9 +251,11 @@ func (s *server) runSession(sess *session) {
 	if s.executor == "stub" {
 		time.Sleep(s.stubDelay)
 		res = result{
-			Status:  s.stubStatus,
-			Branch:  "nexus/" + sess.req.TicketKey,
-			Summary: "stub session completed for " + sess.key,
+			Status: s.stubStatus,
+			Branch: "nexus/" + sess.req.TicketKey,
+			Summary: "SIMULATED SESSION (runner is in stub mode — no code was written, no branch was pushed). " +
+				"This validates pipeline plumbing only. Set RUNNER_EXECUTOR=claude on the runner for real coding sessions. " +
+				"Simulated work order: " + sess.key,
 			CostUSD: 0.01,
 		}
 	} else {
