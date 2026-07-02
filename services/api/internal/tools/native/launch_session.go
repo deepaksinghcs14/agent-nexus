@@ -25,9 +25,13 @@ type LaunchRepoSessionTool struct {
 }
 
 func NewLaunchRepoSessionTool(cfg *config.Config) *LaunchRepoSessionTool {
+	callbackBase := cfg.SessionCallbackURL
+	if callbackBase == "" {
+		callbackBase = cfg.PublicAPIURL
+	}
 	return &LaunchRepoSessionTool{
 		runnerURL:      strings.TrimRight(cfg.RunnerURL, "/"),
-		callbackURL:    strings.TrimRight(cfg.PublicAPIURL, "/") + "/internal/sessions/callback",
+		callbackURL:    strings.TrimRight(callbackBase, "/") + "/internal/sessions/callback",
 		callbackSecret: cfg.RunnerCallbackSecret,
 	}
 }

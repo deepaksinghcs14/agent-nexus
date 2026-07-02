@@ -44,6 +44,12 @@ services:
       WHATSAPP_AUTH_ROOT: /data/whatsapp-auth
       EMBED_OLLAMA_URL: http://host.docker.internal:11434
       EMBED_MODEL: nomic-embed-text
+      # ── Jira→PR pipeline ──
+      RUNNER_URL: http://runner:8092
+      RUNNER_CALLBACK_SECRET: ${RUNNER_CALLBACK_SECRET:-dev-runner-secret-change-me}
+      SESSION_CALLBACK_URL: http://api:8080
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_API_URL: ${GITHUB_API_URL:-https://api.github.com}
     ports:
       - "8080:8080"
     volumes:
@@ -51,6 +57,27 @@ services:
       - whatsapp_auth:/data/whatsapp-auth
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  runner:
+    build:
+      context: ../services/runner
+      dockerfile: Dockerfile
+    container_name: agent-nexus-runner
+    restart: unless-stopped
+    environment:
+      PORT: 8092
+      # stub = simulated sessions (works with no credentials); set to "claude"
+      # plus GITHUB_TOKEN and ANTHROPIC_API_KEY (or CLAUDE_CODE_OAUTH_TOKEN)
+      # for real Claude Code repo sessions.
+      RUNNER_EXECUTOR: ${RUNNER_EXECUTOR:-stub}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      MAX_TURNS: ${RUNNER_MAX_TURNS:-50}
+      SESSION_TIMEOUT_MIN: ${RUNNER_SESSION_TIMEOUT_MIN:-120}
+      WORK_DIR: /data/sessions
+    volumes:
+      - runner_sessions:/data/sessions
 
   web:
     build:
@@ -71,3 +98,4 @@ volumes:
   postgres_data:
   api_storage:
   whatsapp_auth:
+  runner_sessions:

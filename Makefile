@@ -1,4 +1,4 @@
-.PHONY: dev postgres api web stop logs migrate docker-up help
+.PHONY: dev postgres api web stop logs migrate docker docker-up up down help
 
 # ─── config ──────────────────────────────────────────────────────────────────
 COMPOSE     := docker compose -f infra/docker-compose.yml
@@ -9,6 +9,8 @@ API_ENV     := $(API_DIR)/.env
 # ─── default ─────────────────────────────────────────────────────────────────
 help:
 	@echo ""
+	@echo "  make up        build + start the FULL stack in Docker (postgres, api, runner, web)"
+	@echo "  make down      stop and remove the full Docker stack"
 	@echo "  make dev       start postgres + api + web (local dev, hot-reload)"
 	@echo "  make postgres  start postgres in Docker (if not already running)"
 	@echo "  make api       start Go API locally (reads $(API_ENV))"
@@ -19,6 +21,25 @@ help:
 	@echo "  make docker    run everything in Docker (full stack)"
 	@echo "  make docker-up rebuild images (no cache) + start full stack"
 	@echo ""
+
+# ─── up: one command, everything in Docker ───────────────────────────────────
+up:
+	@if [ ! -f infra/.env ]; then \
+		echo "→ infra/.env not found — creating from example (edit it for real secrets)"; \
+		cp infra/.env.example infra/.env; \
+	fi
+	$(COMPOSE) --env-file infra/.env up -d --build
+	@echo ""
+	@echo "✓ Full stack running:"
+	@echo "    web     http://localhost:3000"
+	@echo "    api     http://localhost:8080"
+	@echo "    runner  internal (http://runner:8092, executor: $${RUNNER_EXECUTOR:-stub})"
+	@echo ""
+	@echo "  Jira→PR pipeline setup: see docs/jira-pipeline.md"
+
+down:
+	$(COMPOSE) --env-file infra/.env down
+	@echo "✓ Stack stopped"
 
 # ─── full local dev ──────────────────────────────────────────────────────────
 dev: postgres
