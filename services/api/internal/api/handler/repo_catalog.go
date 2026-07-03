@@ -29,13 +29,18 @@ type repoCatalogEntry struct {
 // ListRepoCatalog handles GET /api/v1/repo-catalog.
 func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	// Documents/chunks are counted across every connector in the workspace,
+	// not just the one the allowlist row points at: an adopted repo's full
+	// content lives in the GitHub connector that synced it, while its catalog
+	// card lives in the repo-catalog connector — both make the repo
+	// searchable, so both belong in the "how indexed is this repo" number.
 	rows, err := h.pool.Query(r.Context(), `
 		SELECT rc.repo, rc.default_branch, rc.sessions_enabled, rc.updated_at,
 		       COUNT(DISTINCT cd.id) AS documents,
 		       COUNT(cc.id) AS chunks
 		FROM repo_catalog rc
 		LEFT JOIN connector_documents cd
-		       ON cd.connector_id = rc.connector_id AND cd.source_document_id LIKE rc.repo || '/%'
+		       ON cd.workspace_id = rc.workspace_id AND cd.source_document_id LIKE rc.repo || '/%'
 		LEFT JOIN connector_chunks cc ON cc.document_id = cd.id
 		WHERE rc.workspace_id=$1::uuid
 		GROUP BY rc.repo, rc.default_branch, rc.sessions_enabled, rc.updated_at
