@@ -5,13 +5,17 @@ set -e
 # added to the system trust store (Go API: provider/MCP/GitHub calls) and
 # exported to node subprocesses (WhatsApp adapter, npx MCP servers), which use
 # their own bundled roots. No-op when the directory is empty or absent.
-if ls /corp-certs/*.pem /corp-certs/*.crt >/dev/null 2>&1; then
-  for f in /corp-certs/*.pem /corp-certs/*.crt; do
-    [ -f "$f" ] && cp "$f" "/usr/local/share/ca-certificates/corp-$(basename "$f" | tr . -).crt"
-  done
+extra_ca=""
+for f in /corp-certs/*.pem /corp-certs/*.crt; do
+  # Unmatched globs stay literal — skip anything that isn't a real file.
+  [ -f "$f" ] || continue
+  mkdir -p /usr/local/share/ca-certificates
+  cp "$f" "/usr/local/share/ca-certificates/corp-$(basename "$f" | tr . -).crt"
+  extra_ca="$f"
+done
+if [ -n "$extra_ca" ]; then
   update-ca-certificates >/dev/null 2>&1 || true
-  NODE_EXTRA_CA_CERTS="$(ls /corp-certs/*.pem /corp-certs/*.crt 2>/dev/null | head -1)"
-  export NODE_EXTRA_CA_CERTS
+  export NODE_EXTRA_CA_CERTS="$extra_ca"
   echo "trusted extra CA(s) from /corp-certs"
 fi
 
