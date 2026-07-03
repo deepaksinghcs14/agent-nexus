@@ -42,7 +42,7 @@ services:
       PUBLIC_APP_URL: http://localhost:3000
       WHATSAPP_ADAPTER_URL: http://127.0.0.1:18901
       WHATSAPP_AUTH_ROOT: /data/whatsapp-auth
-      EMBED_OLLAMA_URL: http://host.docker.internal:11434
+      EMBED_OLLAMA_URL: http://ollama:11434
       EMBED_MODEL: nomic-embed-text
       # ── Jira→PR pipeline ──
       RUNNER_URL: http://runner:8092
@@ -60,6 +60,25 @@ services:
       - ./certs:/corp-certs:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  ollama:
+    build:
+      context: ../services/ollama
+      dockerfile: Dockerfile
+    container_name: agent-nexus-ollama
+    restart: unless-stopped
+    environment:
+      PORT: 11434
+      EMBED_MODEL: nomic-embed-text
+    volumes:
+      # Model cache — nomic-embed-text (~274 MB) is pulled on first start and
+      # reused across restarts.
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
 
   runner:
     build:
@@ -107,3 +126,4 @@ volumes:
   api_storage:
   whatsapp_auth:
   runner_sessions:
+  ollama_models:

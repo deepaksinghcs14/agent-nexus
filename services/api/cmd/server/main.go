@@ -179,6 +179,9 @@ func main() {
 	} else if n > 0 {
 		slog.Info("encrypted plaintext connector config secrets", "connectors", n)
 	}
+	// Embed chunks that were indexed while the embedder was unreachable —
+	// syncs skip unchanged documents, so these never self-heal otherwise.
+	handler.StartEmbeddingBackfill(ctx, pool, cfg)
 	exec := tools.NewExecutor(reg)
 
 	// Wire handlers — runs needs invokeH set post-construction to avoid circular init.
