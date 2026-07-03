@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { DocPage, Callout } from '@/components/docs/DocPage'
 
 export const metadata = { title: 'Webhook Triggers — Docs' }
@@ -17,13 +18,13 @@ export default function WebhookTriggersDoc() {
       </p>
       <p>
         Triggered runs appear in the{' '}
-        <a href="/runs">Runs</a> view exactly like any other run, with full step traces and output.
+        <Link href="/runs">Runs</Link> view exactly like any other run, with full step traces and output.
       </p>
 
       <h2>How it works</h2>
       <ol>
         <li>
-          <strong>Create a trigger</strong> at <a href="/triggers">/triggers</a> — pick a target agent
+          <strong>Create a trigger</strong> at <Link href="/triggers">/triggers</Link> — pick a target agent
           or workflow, optionally set a secret for HMAC verification, and save.
         </li>
         <li>
@@ -39,7 +40,7 @@ export default function WebhookTriggersDoc() {
           (<code>202</code>) — your caller is never blocked waiting for the agent to finish.
         </li>
         <li>
-          <strong>Observe the run</strong> at <a href="/runs">/runs</a> or poll{' '}
+          <strong>Observe the run</strong> at <Link href="/runs">/runs</Link> or poll{' '}
           <code>GET /api/v1/runs/:id</code> with an API token.
         </li>
       </ol>
@@ -156,7 +157,7 @@ Content-Type: application/json
       <h2>Management API</h2>
       <p>
         All trigger CRUD operations require an{' '}
-        <a href="/docs/api-tokens">API token</a> in the <code>Authorization</code> header.
+        <Link href="/docs/api-tokens">API token</Link> in the <code>Authorization</code> header.
       </p>
       <div className="table-scroll">
       <table>
@@ -194,8 +195,8 @@ Content-Type: application/json
 
       <Callout type="info">
         After a run is created, track it with{' '}
-        <a href="/docs/run-states">Run States</a> or stream its output with{' '}
-        <a href="/docs/sse-events">SSE Events</a>.
+        <Link href="/docs/run-states">Run States</Link> or stream its output with{' '}
+        <Link href="/docs/sse-events">SSE Events</Link>.
       </Callout>
     </DocPage>
   )

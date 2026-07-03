@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { use, useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Ban, ChevronDown, ChevronRight, Loader2, Sparkles } from 'lucide-react'
@@ -89,12 +89,13 @@ function SubRunRow({ subRun, agentName }: { subRun: Run; agentName?: string }) {
   )
 }
 
-export default function RunDetailPage({ params }: { params: { runId: string } }) {
+export default function RunDetailPage({ params }: { params: Promise<{ runId: string }> }) {
+  const { runId } = use(params)
   const queryClient = useQueryClient()
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['run', params.runId],
-    queryFn: () => runsAPI.get(params.runId) as Promise<RunDetail | { run: Run; steps: RunStep[]; workflow_id?: string }>,
+    queryKey: ['run', runId],
+    queryFn: () => runsAPI.get(runId) as Promise<RunDetail | { run: Run; steps: RunStep[]; workflow_id?: string }>,
     refetchInterval: (query) => {
       const current = query.state.data as RunDetail | { run: Run; steps: RunStep[]; workflow_id?: string } | undefined
       const run = current ? ('run' in current ? current.run : current) : undefined
@@ -103,8 +104,8 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
   })
 
   const { data: childrenData } = useQuery({
-    queryKey: ['run-children', params.runId],
-    queryFn: () => runsAPI.listChildren(params.runId) as Promise<{ data: Run[] }>,
+    queryKey: ['run-children', runId],
+    queryFn: () => runsAPI.listChildren(runId) as Promise<{ data: Run[] }>,
     refetchInterval: (query) => {
       const current = query.state.data as { data: Run[] } | undefined
       return current?.data.some((run) => ACTIVE_RUN_STATUSES.has(run.status)) ? 2000 : false
@@ -117,13 +118,13 @@ export default function RunDetailPage({ params }: { params: { runId: string } })
   })
 
   const cancel = useMutation({
-    mutationFn: () => runsAPI.cancel(params.runId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['run', params.runId] }),
+    mutationFn: () => runsAPI.cancel(runId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['run', runId] }),
   })
 
   const decide = useMutation({
-    mutationFn: (decision: 'approved' | 'rejected') => runsAPI.approve(params.runId, { decision }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['run', params.runId] }),
+    mutationFn: (decision: 'approved' | 'rejected') => runsAPI.approve(runId, { decision }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['run', runId] }),
   })
 
   const detail: RunWithWorkflow | undefined = data

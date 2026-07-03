@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { DocPage, Callout } from '@/components/docs/DocPage'
 
 export const metadata = { title: 'Eval Framework — Docs' }
@@ -15,7 +16,7 @@ export default function EvalsDoc() {
         actionable suggestions for fixing the prompt, adding a tool, or enabling a skill.
       </p>
       <p>
-        Navigate to <a href="/evals">/evals</a> to manage eval suites.
+        Navigate to <Link href="/evals">/evals</Link> to manage eval suites.
       </p>
 
       <h2>Core concepts</h2>
@@ -115,7 +116,7 @@ export default function EvalsDoc() {
 
       <h2>Creating a suite</h2>
       <ol>
-        <li>Go to <a href="/evals">/evals</a> and click <strong>New Suite</strong>.</li>
+        <li>Go to <Link href="/evals">/evals</Link> and click <strong>New Suite</strong>.</li>
         <li>Select the agent to test and choose a grading mode.</li>
         <li>
           Add cases manually, or click <strong>Generate Cases</strong> to have an LLM create

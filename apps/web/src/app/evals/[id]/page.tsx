@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { use, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { evalsAPI, providersAPI } from '@/lib/api'
 import type { EvalCase, EvalRun, EvalSuite, ModelInfo, ProviderCredential } from '@/types'
@@ -484,8 +484,8 @@ function EditSuiteModal({ suite, onSaved, onClose }: {
   )
 }
 
-export default function SuitePage({ params }: { params: { id: string } }) {
-  const { id } = params
+export default function SuitePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const [suite, setSuite] = useState<EvalSuite | null>(null)
   const [cases, setCases] = useState<EvalCase[]>([])
   const [runs, setRuns] = useState<EvalRun[]>([])

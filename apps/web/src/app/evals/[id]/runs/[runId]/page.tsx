@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { use, useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { evalsAPI, agentsAPI } from '@/lib/api'
 import type { EvalAnalysis, EvalAnalysisFix, EvalResult, EvalRun } from '@/types'
@@ -327,8 +327,8 @@ function ResultCard({
   )
 }
 
-export default function RunDetailPage({ params }: { params: { id: string; runId: string } }) {
-  const { id, runId } = params
+export default function RunDetailPage({ params }: { params: Promise<{ id: string; runId: string }> }) {
+  const { id, runId } = use(params)
   const [run, setRun] = useState<EvalRun | null>(null)
   const [results, setResults] = useState<EvalResult[]>([])
   const [loading, setLoading] = useState(true)

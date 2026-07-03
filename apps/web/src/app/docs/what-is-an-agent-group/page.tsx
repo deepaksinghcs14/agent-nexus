@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { DocPage, Callout, Badge } from '@/components/docs/DocPage'
 
 export const metadata = { title: 'What is a Workflow — Docs' }
@@ -40,7 +41,7 @@ export default function WhatIsAnAgentGroupDoc() {
 
       <h2>Creating a Workflow</h2>
       <p>
-        Go to <a href="/workflows/new">Workflows → New Workflow</a>. You configure:
+        Go to <Link href="/workflows/new">Workflows → New Workflow</Link>. You configure:
       </p>
       <div className="table-scroll">
       <table>
@@ -87,9 +88,9 @@ export default function WhatIsAnAgentGroupDoc() {
 
       <h2>Next Steps</h2>
       <ul>
-        <li><a href="/workflows/new">Create your first workflow</a></li>
-        <li><a href="/docs/invoke-api">Invoke a workflow via the API</a></li>
-        <li><a href="/docs/run-states">Understand workflow run states</a></li>
+        <li><Link href="/workflows/new">Create your first workflow</Link></li>
+        <li><Link href="/docs/invoke-api">Invoke a workflow via the API</Link></li>
+        <li><Link href="/docs/run-states">Understand workflow run states</Link></li>
       </ul>
     </DocPage>
   )
