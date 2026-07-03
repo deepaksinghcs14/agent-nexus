@@ -164,6 +164,11 @@ func main() {
 	} else if n > 0 {
 		slog.Info("repos adopted into session allowlist at startup", "repos", n)
 	}
+	// Card healing must not depend on a GitHub connector existing: allowlist
+	// rows outlive a deleted connector, and each needs a searchable card.
+	if err := catalog.EnsureCardsForAllWorkspaces(ctx, pool); err != nil {
+		slog.Warn("failed to ensure catalog cards", "error", err)
+	}
 	if err := attachExistingWhatsAppCapabilities(ctx, pool); err != nil {
 		slog.Warn("failed to attach whatsapp capabilities", "error", err)
 	}

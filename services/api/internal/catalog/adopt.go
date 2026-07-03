@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -154,9 +155,39 @@ func AdoptAllGithubConnectors(ctx context.Context, pool *pgxpool.Pool) (int, err
 	for _, id := range ids {
 		n, err := AdoptFromConnector(ctx, pool, id)
 		if err != nil {
+			slog.Warn("connector adoption failed", "connector_id", id, "error", err)
 			continue
 		}
 		total += n
 	}
 	return total, nil
+}
+
+// EnsureCardsForAllWorkspaces writes catalog cards for every workspace that
+// has repo_catalog rows — startup healing that does not depend on a GitHub
+// connector existing (adoption alone misses workspaces whose connector was
+// deleted after its repos were adopted; the allowlist rows survive the
+// connector, and each still needs a searchable card).
+func EnsureCardsForAllWorkspaces(ctx context.Context, pool *pgxpool.Pool) error {
+	rows, err := pool.Query(ctx, `SELECT DISTINCT workspace_id::text FROM repo_catalog`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var workspaces []string
+	for rows.Next() {
+		var ws string
+		if rows.Scan(&ws) == nil {
+			workspaces = append(workspaces, ws)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, ws := range workspaces {
+		if err := WriteCatalogCards(ctx, pool, ws); err != nil {
+			slog.Warn("catalog card healing failed for workspace", "workspace_id", ws, "error", err)
+		}
+	}
+	return nil
 }
