@@ -5,6 +5,9 @@
 //	                  the session clones the repo over HTTPS with GITHUB_TOKEN,
 //	                  works on a fresh branch via headless Claude Code, pushes,
 //	                  and POSTs a completion callback to every subscribed run.
+//	                  mode=review instead checks out an existing branch
+//	                  read-only, diffs it against base, and returns Claude's
+//	                  review verdict in the summary (nothing pushed).
 //	GET  /healthz   — liveness.
 //
 // Executor modes (RUNNER_EXECUTOR):
@@ -39,6 +42,13 @@ type launchRequest struct {
 	BudgetUSD       float64 `json:"budget_usd"`
 	CallbackURL     string  `json:"callback_url"`
 	CallbackSecret  string  `json:"callback_secret"`
+	// Mode selects the session type: "" (or "code") runs a coding session that
+	// commits and pushes a fresh branch; "review" checks out Head read-only,
+	// diffs it against BaseBranch, and returns Claude's review verdict as the
+	// result summary — nothing is committed or pushed.
+	Mode string `json:"mode"`
+	// Head is the existing branch under review (review mode only).
+	Head string `json:"head"`
 	// ClaudeToken, if set, authenticates the claude subprocess for this session
 	// (workspace Claude account, subscription billing). Takes precedence over
 	// the runner's own ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN env.
@@ -55,10 +65,22 @@ type subscriber struct {
 }
 
 type session struct {
-	key         string // ticket_key|repo
+	key         string // sessionKey(req): ticket_key|repo, "review:"-prefixed for review mode
 	req         launchRequest
 	subscribers []subscriber
 	done        bool
+}
+
+// sessionKey is the dedup identity of a session. Review sessions get their own
+// prefix so an in-flight review never absorbs a coding-session launch for the
+// same (ticket, repo) — the joiner would receive a review verdict where it
+// expected a coding-session result.
+func sessionKey(req launchRequest) string {
+	key := req.TicketKey + "|" + req.Repo
+	if req.Mode == "review" {
+		return "review:" + key
+	}
+	return key
 }
 
 // sessionJournal is the crash-recovery record persisted to WORK_DIR while a
@@ -156,8 +178,12 @@ func (s *server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, http.StatusBadRequest, "repo must be owner/name")
 		return
 	}
+	if req.Mode == "review" && req.Head == "" {
+		httpErr(w, http.StatusBadRequest, "head is required for review sessions")
+		return
+	}
 
-	key := req.TicketKey + "|" + req.Repo
+	key := sessionKey(req)
 	sub := subscriber{RunID: req.RunID, CallbackURL: req.CallbackURL, CallbackSecret: req.CallbackSecret}
 
 	s.mu.Lock()
@@ -249,7 +275,7 @@ func (s *server) recoverJournals() {
 		}
 		req := launchRequest{Repo: j.Repo, TicketKey: j.TicketKey}
 		for _, sub := range j.Subscribers {
-			s.deliverCallback(sub, req, res)
+			s.deliverCallback(sub, j.Key, req, res)
 		}
 		os.Remove(path) //nolint:errcheck
 	}
@@ -271,6 +297,12 @@ func (s *server) runSession(sess *session) {
 				"Simulated work order: " + sess.key,
 			CostUSD: 0.01,
 		}
+		if sess.req.Mode == "review" {
+			res.Branch = sess.req.Head
+			res.Summary = `{"verdict":"approve","blocking_issues":[],"non_blocking_notes":["SIMULATED REVIEW (runner is in stub mode — no diff was inspected)"],"pr_description_notes":"Simulated review — stub mode validates pipeline plumbing only."}`
+		}
+	} else if sess.req.Mode == "review" {
+		res = s.runReviewSession(ctx, sess.req)
 	} else {
 		res = s.runClaudeSession(ctx, sess.req)
 	}
@@ -282,7 +314,7 @@ func (s *server) runSession(sess *session) {
 
 	slog.Info("session finished", "session", sess.key, "status", res.Status, "cost_usd", res.CostUSD)
 	for _, sub := range subs {
-		s.deliverCallback(sub, sess.req, res)
+		s.deliverCallback(sub, sess.key, sess.req, res)
 	}
 	// The session reached a terminal state and every callback was attempted —
 	// it no longer needs crash recovery. (Duplicate crashed callbacks after an
@@ -335,22 +367,7 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 			"Do not push — the harness pushes your branch when you finish.",
 		req.TicketKey, req.Repo, req.TaskDescription)
 
-	// Per-request Claude account token (subscription billing) wins over any
-	// static credentials on the service; strip the env keys so the CLI cannot
-	// pick the wrong one.
-	env := os.Environ()
-	if req.ClaudeToken != "" {
-		filtered := env[:0]
-		for _, kv := range env {
-			if strings.HasPrefix(kv, "ANTHROPIC_API_KEY=") || strings.HasPrefix(kv, "CLAUDE_CODE_OAUTH_TOKEN=") {
-				continue
-			}
-			filtered = append(filtered, kv)
-		}
-		env = append(filtered, "CLAUDE_CODE_OAUTH_TOKEN="+req.ClaudeToken)
-	}
-
-	claudeOut, claudeErr := runCmd(ctx, dir, env,
+	claudeOut, claudeErr := runCmd(ctx, dir, claudeEnv(req.ClaudeToken),
 		"claude", "-p", prompt,
 		"--output-format", "json",
 		"--max-turns", strconv.Itoa(s.maxTurns),
@@ -394,13 +411,138 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 	return res
 }
 
+// runReviewSession checks out an existing branch, diffs it against base, and
+// runs headless Claude Code as a read-only reviewer over the checkout. Nothing
+// is committed or pushed; the reviewer's verdict JSON is the result summary.
+func (s *server) runReviewSession(ctx context.Context, req launchRequest) result {
+	crash := func(stage string, err error, detail string) result {
+		slog.Error("review stage failed", "ticket", req.TicketKey, "repo", req.Repo, "stage", stage, "error", err, "detail", detail)
+		return result{Status: "crashed", Summary: fmt.Sprintf("%s failed: %v: %s", stage, err, truncate(detail, 500))}
+	}
+	githubToken := req.GithubToken
+	if githubToken == "" {
+		githubToken = s.githubToken
+	}
+	if githubToken == "" {
+		return crash("setup", fmt.Errorf("no GitHub token: set one in Settings → Claude Code, or GITHUB_TOKEN on the runner"), "")
+	}
+
+	dir := filepath.Join(s.workDir, sanitize("review-"+req.TicketKey+"-"+strings.ReplaceAll(req.Repo, "/", "-")+"-"+strconv.FormatInt(time.Now().UnixNano(), 36)))
+	defer os.RemoveAll(dir)
+
+	cloneURL := fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", githubToken, req.Repo)
+	base := req.BaseBranch
+	if base == "" {
+		base = "main"
+	}
+
+	// Bounded-depth clone of base plus a fetch of head: enough history for a
+	// three-dot diff in the common case without paying for full repo history.
+	if out, err := runCmd(ctx, "", nil, "git", "clone", "--no-checkout", "--depth", "200", "--branch", base, cloneURL, dir); err != nil {
+		return crash("clone", err, redactToken(out, githubToken))
+	}
+	if out, err := runCmd(ctx, dir, nil, "git", "fetch", "--depth", "200", "origin", req.Head+":refs/remotes/origin/"+req.Head); err != nil {
+		return crash("fetch", err, redactToken(out, githubToken))
+	}
+	// Materialize the working tree at the head commit so the reviewer can read
+	// files and run read-only checks (the --no-checkout clone left it empty).
+	if out, err := runCmd(ctx, dir, nil, "git", "checkout", "-B", req.Head, "refs/remotes/origin/"+req.Head); err != nil {
+		return crash("checkout", err, out)
+	}
+
+	diff, diffErr := runCmd(ctx, dir, nil, "git", "diff", "origin/"+base+"...origin/"+req.Head)
+	if diffErr != nil {
+		// Shallow clones can lack a merge base for the three-dot diff — deepen
+		// once (while origin still has the credential) and retry.
+		if out, err := runCmd(ctx, dir, nil, "git", "fetch", "--unshallow", "origin"); err != nil {
+			return crash("unshallow", err, redactToken(out, githubToken))
+		}
+		if diff, diffErr = runCmd(ctx, dir, nil, "git", "diff", "origin/"+base+"...origin/"+req.Head); diffErr != nil {
+			return crash("diff", diffErr, diff)
+		}
+	}
+	const diffBudget = 60000
+	if len(diff) > diffBudget {
+		diff = diff[:diffBudget] + "\n…[diff truncated — inspect the checkout for the full changes]"
+	}
+
+	// The review session must not be able to write to the remote: strip the
+	// token from origin before the model gets a shell. No credential helper is
+	// configured on this container, so any push attempted from inside the
+	// session fails instead of silently mutating the branch under review.
+	if out, err := runCmd(ctx, dir, nil, "git", "remote", "set-url", "origin", "https://github.com/"+req.Repo+".git"); err != nil {
+		return crash("sanitize-remote", err, out)
+	}
+
+	prompt := fmt.Sprintf(
+		"You are reviewing branch %s of repository %s (base: %s) for ticket %s.\n\n"+
+			"%s\n\n"+
+			"This is a READ-ONLY review session: do not modify, commit, or push anything. "+
+			"The repository is checked out at the head branch — you may read files and run "+
+			"tests, linters, and other read-only inspection commands.\n\n"+
+			"Unified diff (%s...%s):\n%s",
+		req.Head, req.Repo, base, req.TicketKey,
+		req.TaskDescription,
+		base, req.Head, diff)
+
+	claudeOut, claudeErr := runCmd(ctx, dir, claudeEnv(req.ClaudeToken),
+		"claude", "-p", prompt,
+		"--output-format", "json",
+		"--max-turns", strconv.Itoa(s.maxTurns),
+		"--dangerously-skip-permissions")
+
+	var cli struct {
+		Subtype      string  `json:"subtype"`
+		IsError      bool    `json:"is_error"`
+		Result       string  `json:"result"`
+		TotalCostUSD float64 `json:"total_cost_usd"`
+	}
+	parseErr := json.Unmarshal([]byte(lastJSONObject(claudeOut)), &cli)
+	if claudeErr != nil && parseErr != nil {
+		return crash("claude", claudeErr, truncate(claudeOut, 800))
+	}
+
+	// The verdict JSON is the whole deliverable — allow a much larger summary
+	// than coding sessions so a multi-issue verdict is never cut mid-structure.
+	res := result{Branch: req.Head, Summary: truncate(cli.Result, 12000), CostUSD: cli.TotalCostUSD}
+	switch {
+	case cli.Subtype == "error_max_turns",
+		req.BudgetUSD > 0 && cli.TotalCostUSD > req.BudgetUSD:
+		res.Status = "budget-exceeded"
+	case cli.IsError || claudeErr != nil:
+		res.Status = "crashed"
+	default:
+		res.Status = "success"
+	}
+	return res
+}
+
+// claudeEnv returns the subprocess environment for the claude CLI. A
+// per-request Claude account token (subscription billing) wins over any static
+// credentials on the service; the env keys are stripped first so the CLI
+// cannot pick the wrong one.
+func claudeEnv(claudeToken string) []string {
+	env := os.Environ()
+	if claudeToken == "" {
+		return env
+	}
+	filtered := env[:0]
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "ANTHROPIC_API_KEY=") || strings.HasPrefix(kv, "CLAUDE_CODE_OAUTH_TOKEN=") {
+			continue
+		}
+		filtered = append(filtered, kv)
+	}
+	return append(filtered, "CLAUDE_CODE_OAUTH_TOKEN="+claudeToken)
+}
+
 // deliverCallback POSTs the session result to one subscriber, retrying with
 // backoff. Agent Nexus treats duplicate deliveries as no-ops, so retrying on
 // ambiguous failures is safe.
-func (s *server) deliverCallback(sub subscriber, req launchRequest, res result) {
+func (s *server) deliverCallback(sub subscriber, key string, req launchRequest, res result) {
 	payload, _ := json.Marshal(map[string]any{
 		"run_id":     sub.RunID,
-		"session_id": req.TicketKey + "|" + req.Repo,
+		"session_id": key,
 		"status":     res.Status,
 		"repo":       req.Repo,
 		"ticket_key": req.TicketKey,

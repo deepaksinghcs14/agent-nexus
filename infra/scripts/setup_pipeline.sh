@@ -14,8 +14,8 @@
 # The three pipeline agents (Jira Pipeline Orchestrator, Code Review Agent,
 # Docs Map Maintainer) are seeded automatically as protected system agents —
 # this script only wires the webhook triggers and the catalog connector.
-# Adjust the agents' provider/model in the UI if the seeded defaults
-# (workspace's prevailing provider, else anthropic/claude-sonnet-4-6) don't fit.
+# Adjust the agents' provider/model in the UI if the seeded default
+# (anthropic/claude-sonnet-4-6) doesn't fit.
 #
 # Usage:
 #   NEXUS_API=http://localhost:8080 NEXUS_TOKEN=<jwt> \

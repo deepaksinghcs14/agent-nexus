@@ -42,12 +42,13 @@ func NewLaunchRepoSessionTool(pool *pgxpool.Pool, cfg *config.Config) *LaunchRep
 	}
 }
 
-// workspaceTokens returns the workspace's decrypted pipeline credentials
-// (stored via the runner-credentials API). Either may be "" — the runner and
-// tools then fall back to instance env.
-func (t *LaunchRepoSessionTool) workspaceTokens(ctx context.Context, workspaceID string) (claude, github string) {
+// runnerTokens returns the workspace's decrypted pipeline credentials
+// (stored via the runner-credentials API), shared by every tool that launches
+// a runner session. Either may be "" — the runner and tools then fall back to
+// instance env.
+func runnerTokens(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config, workspaceID string) (claude, github string) {
 	var encClaude, encGithub *string
-	if err := t.pool.QueryRow(ctx,
+	if err := pool.QueryRow(ctx,
 		`SELECT claude_token, github_token FROM runner_credentials WHERE workspace_id=$1::uuid`, workspaceID).
 		Scan(&encClaude, &encGithub); err != nil {
 		return "", ""
@@ -56,13 +57,84 @@ func (t *LaunchRepoSessionTool) workspaceTokens(ctx context.Context, workspaceID
 		if enc == nil || *enc == "" {
 			return ""
 		}
-		v, err := encrypt.Decrypt([]byte(t.cfg.EncryptionKey), *enc)
+		v, err := encrypt.Decrypt([]byte(cfg.EncryptionKey), *enc)
 		if err != nil {
 			return ""
 		}
 		return v
 	}
 	return dec(encClaude), dec(encGithub)
+}
+
+// checkSessionsEnabled enforces the repo-onboarding gate shared by every tool
+// that launches a runner session: sessions may only target repositories that
+// are onboarded AND have sessions explicitly enabled. Connector syncs make
+// repos known (searchable); the enable toggle in Settings → Claude Code is the
+// deliberate act that grants session access — so a hallucinated or merely
+// indexed repo fails here mechanically, with the real options listed.
+func checkSessionsEnabled(ctx context.Context, pool *pgxpool.Pool, workspaceID, repo string) error {
+	var known, enabled bool
+	if err := pool.QueryRow(ctx, `
+		SELECT true, sessions_enabled FROM repo_catalog
+		WHERE workspace_id=$1::uuid AND repo=$2`,
+		workspaceID, repo).Scan(&known, &enabled); err != nil {
+		known = false
+	}
+	if enabled {
+		return nil
+	}
+	rows, err := pool.Query(ctx,
+		`SELECT repo FROM repo_catalog WHERE workspace_id=$1::uuid AND sessions_enabled ORDER BY repo`, workspaceID)
+	var allowed []string
+	if err == nil {
+		for rows.Next() {
+			var r string
+			if rows.Scan(&r) == nil {
+				allowed = append(allowed, r)
+			}
+		}
+		rows.Close()
+	}
+	if known {
+		return fmt.Errorf("repository %q is indexed but sessions are not enabled for it — a workspace admin can enable it in Settings → Claude Code → Repositories", repo)
+	}
+	if len(allowed) == 0 {
+		return fmt.Errorf("repository %q is not onboarded and no repositories have sessions enabled — a workspace admin can add/enable repositories in Settings → Claude Code", repo)
+	}
+	return fmt.Errorf("repository %q is not onboarded in this workspace — sessions can only target enabled repos (%s); a workspace admin can add it in Settings → Claude Code", repo, strings.Join(allowed, ", "))
+}
+
+// launchAndWait POSTs a launch payload to the runner and blocks (durably
+// parking, for top-level runs) until the session's completion callback,
+// returning the callback content as the tool output.
+func launchAndWait(ctx context.Context, execCtx tools.ExecutionContext, runnerURL string, launch map[string]any, waitKey string) (any, error) {
+	payload, _ := json.Marshal(launch)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, runnerURL+"/sessions", bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("runner unreachable: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
+		return nil, fmt.Errorf("runner rejected session launch: %s: %s", res.Status, strings.TrimSpace(string(b)))
+	}
+
+	content, err := execCtx.WaitForSession(ctx, waitKey)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if json.Unmarshal([]byte(content), &out) != nil {
+		return map[string]any{"raw": content}, nil
+	}
+	return out, nil
 }
 
 func (t *LaunchRepoSessionTool) Definition() domain.Tool {
@@ -107,38 +179,8 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 		return nil, fmt.Errorf("repo sessions are not available in this run context")
 	}
 
-	// Hard gate: sessions may only target repositories that are onboarded AND
-	// have sessions explicitly enabled. Connector syncs make repos known
-	// (searchable); the enable toggle in Settings → Claude Code is the
-	// deliberate act that grants write access — so a hallucinated or merely
-	// indexed repo fails here mechanically, with the real options listed.
-	var known, enabled bool
-	if err := t.pool.QueryRow(ctx, `
-		SELECT true, sessions_enabled FROM repo_catalog
-		WHERE workspace_id=$1::uuid AND repo=$2`,
-		execCtx.WorkspaceID, repo).Scan(&known, &enabled); err != nil {
-		known = false
-	}
-	if !enabled {
-		rows, err := t.pool.Query(ctx,
-			`SELECT repo FROM repo_catalog WHERE workspace_id=$1::uuid AND sessions_enabled ORDER BY repo`, execCtx.WorkspaceID)
-		var allowed []string
-		if err == nil {
-			for rows.Next() {
-				var r string
-				if rows.Scan(&r) == nil {
-					allowed = append(allowed, r)
-				}
-			}
-			rows.Close()
-		}
-		if known {
-			return nil, fmt.Errorf("repository %q is indexed but sessions are not enabled for it — a workspace admin can enable it in Settings → Claude Code → Repositories", repo)
-		}
-		if len(allowed) == 0 {
-			return nil, fmt.Errorf("repository %q is not onboarded and no repositories have sessions enabled — a workspace admin can add/enable repositories in Settings → Claude Code", repo)
-		}
-		return nil, fmt.Errorf("repository %q is not onboarded in this workspace — sessions can only target enabled repos (%s); a workspace admin can add it in Settings → Claude Code", repo, strings.Join(allowed, ", "))
+	if err := checkSessionsEnabled(ctx, t.pool, execCtx.WorkspaceID, repo); err != nil {
+		return nil, err
 	}
 
 	launch := map[string]any{
@@ -154,39 +196,12 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 	// Workspace credentials take precedence over any static keys configured
 	// on the runner service itself — GitHub access in particular is a
 	// workspace concern, not an instance one.
-	claudeToken, githubToken := t.workspaceTokens(ctx, execCtx.WorkspaceID)
+	claudeToken, githubToken := runnerTokens(ctx, t.pool, t.cfg, execCtx.WorkspaceID)
 	if claudeToken != "" {
 		launch["claude_token"] = claudeToken
 	}
 	if githubToken != "" {
 		launch["github_token"] = githubToken
 	}
-	payload, _ := json.Marshal(launch)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.runnerURL+"/sessions", bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	res, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("runner unreachable: %w", err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		b, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
-		return nil, fmt.Errorf("runner rejected session launch: %s: %s", res.Status, strings.TrimSpace(string(b)))
-	}
-
-	// Block (then durably park) until the runner's completion callback.
-	content, err := execCtx.WaitForSession(ctx, ticketKey+"|"+repo)
-	if err != nil {
-		return nil, err
-	}
-	var out map[string]any
-	if json.Unmarshal([]byte(content), &out) != nil {
-		return map[string]any{"raw": content}, nil
-	}
-	return out, nil
+	return launchAndWait(ctx, execCtx, t.runnerURL, launch, ticketKey+"|"+repo)
 }

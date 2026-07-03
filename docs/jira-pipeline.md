@@ -13,7 +13,9 @@ Jira webhook ──▶ /webhook/{id} ──▶ Orchestrator agent run
                                  │      (run parks durably in session_wait;      │ git clone (GITHUB_TOKEN)
                                  │       callback resumes it — survives restarts)│ claude -p … (ANTHROPIC_API_KEY)
                                  │ ◀── POST /internal/sessions/callback ─────────┘ push nexus/<ticket>
-                                 │ 4. native_get_branch_diff + review agent (native_call_agent)
+                                 │ 4. native_launch_review_session ──▶ runner service
+                                 │      (read-only checkout + diff, verdict JSON in summary,
+                                 │       same durable park/callback; nothing pushed)
                                  │ 5. native_create_pull_request
                                  └ 6. Jira comment / transition
 ```
@@ -26,7 +28,8 @@ Jira webhook ──▶ /webhook/{id} ──▶ Orchestrator agent run
 | Runner service (Railway container) | `services/runner` — `RUNNER_EXECUTOR=claude\|stub`, idempotent per `(ticket, repo)` |
 | Repo catalog | `services/api/cmd/catalog-ingest` → `connectors` named `repo-catalog` + `repo_catalog` table |
 | GitHub tools | `native_create_pull_request`, `native_get_branch_diff` (`GITHUB_TOKEN`, `GITHUB_API_URL`) |
-| Session tool | `native_launch_repo_session` (`RUNNER_URL`, `RUNNER_CALLBACK_SECRET`, `PUBLIC_API_URL`) |
+| Session tools | `native_launch_repo_session`, `native_launch_review_session` (`RUNNER_URL`, `RUNNER_CALLBACK_SECRET`, `PUBLIC_API_URL`) |
+| Review contract | "Code Review Agent" (protected agent) — its instructions are the contract `native_launch_review_session` embeds in the review prompt; it is not invoked conversationally |
 | Atlassian MCP (hosted, OAuth 2.1) | `POST /api/v1/mcp-servers/{id}/oauth/start` or the “Connect (OAuth)” button; tokens auto-refresh |
 | Pipeline assembly | `infra/scripts/setup_pipeline.sh` (agents, connector link, webhook triggers) |
 | Docs maps (llms.txt) | Docs Map Maintainer agent; post-merge GitHub trigger + scheduled invoke |

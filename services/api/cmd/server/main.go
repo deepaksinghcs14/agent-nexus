@@ -135,6 +135,7 @@ func main() {
 	reg.Register(native.NewSendMessageTool())
 	reg.Register(native.NewAskUserTool())
 	reg.Register(native.NewLaunchRepoSessionTool(pool, cfg))
+	reg.Register(native.NewLaunchReviewSessionTool(pool, cfg))
 	reg.Register(native.NewCreatePullRequestTool(pool, cfg))
 	reg.Register(native.NewGetBranchDiffTool(pool, cfg))
 	if !cfg.DemoMode {
