@@ -4,6 +4,9 @@
 #
 # Required service variables:
 #   RUNNER_EXECUTOR=claude
+#   PORT=8092                           # must be explicit: Railway injects
+#                                       # PORT=8080 otherwise, overriding the
+#                                       # Dockerfile ENV and breaking RUNNER_URL
 #   GITHUB_TOKEN=...                    # repo clone/push
 #   ANTHROPIC_API_KEY=...               # or CLAUDE_CODE_OAUTH_TOKEN
 #
