@@ -72,6 +72,7 @@ func (h *ConnectorsHandler) List(w http.ResponseWriter, r *http.Request) {
 			errs.Write(w, errs.Internal("failed to read connectors"))
 			return
 		}
+		c.Config = connector.RedactConfigSecrets(c.Config)
 		a = append(a, c)
 	}
 	errs.WriteJSON(w, 200, map[string]any{"data": a})
@@ -100,12 +101,14 @@ func (h *ConnectorsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if len(c.Config) == 0 {
 		c.Config = json.RawMessage(`{}`)
 	}
+	c.Config = connector.EncryptConfigSecrets([]byte(h.cfg.EncryptionKey), c.Config)
 	e := h.pool.QueryRow(r.Context(), `INSERT INTO connectors(id,workspace_id,name,provider,type,auth_type,status,config,created_by)VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9::uuid)RETURNING created_at,updated_at`, c.ID, c.WorkspaceID, c.Name, c.Provider, c.Type, c.AuthType, c.Status, c.Config, c.CreatedBy).Scan(&c.CreatedAt, &c.UpdatedAt)
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to create connector"))
 		return
 	}
 	writeAudit(r, h.pool, "connector.created", "connector", c.ID)
+	c.Config = connector.RedactConfigSecrets(c.Config)
 	errs.WriteJSON(w, 201, c)
 }
 
@@ -115,6 +118,7 @@ func (h *ConnectorsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.NotFound("connector not found"))
 		return
 	}
+	c.Config = connector.RedactConfigSecrets(c.Config)
 	errs.WriteJSON(w, 200, c)
 }
 

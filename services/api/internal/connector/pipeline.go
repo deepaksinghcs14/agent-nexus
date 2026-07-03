@@ -59,6 +59,8 @@ func (p *Pipeline) Sync(
 	if cfg == nil {
 		cfg = map[string]any{}
 	}
+	// Provider credentials are stored encrypted; hand the provider plaintext.
+	DecryptConfigSecrets([]byte(p.cfg.EncryptionKey), cfg)
 
 	// emit is the shared per-document processor used by both batch and streaming paths.
 	emit := func(doc Document) error {

@@ -16,6 +16,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/router"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/catalog"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/connector"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/migrate"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/logstream"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
@@ -165,6 +166,13 @@ func main() {
 	}
 	if err := attachExistingWhatsAppCapabilities(ctx, pool); err != nil {
 		slog.Warn("failed to attach whatsapp capabilities", "error", err)
+	}
+	// Encrypt provider credentials still stored as plaintext in connector
+	// configs (rows created before config secrets were encrypted at rest).
+	if n, err := connector.EncryptLegacyConfigs(ctx, pool, []byte(cfg.EncryptionKey)); err != nil {
+		slog.Warn("failed to encrypt legacy connector config secrets", "error", err)
+	} else if n > 0 {
+		slog.Info("encrypted plaintext connector config secrets", "connectors", n)
 	}
 	exec := tools.NewExecutor(reg)
 
