@@ -55,6 +55,9 @@ services:
     volumes:
       - api_storage:/data/files
       - whatsapp_auth:/data/whatsapp-auth
+      # Corporate TLS interception: drop the gateway root CA (PEM) into
+      # infra/certs/ and it is trusted at container start (see start-api.sh).
+      - ./certs:/corp-certs:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
