@@ -14,6 +14,11 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && npm install -g @anthropic-ai/claude-code
 COPY --from=build /runner /usr/local/bin/runner
-ENV PORT=8092 WORK_DIR=/data/sessions
+# Run as the non-root `node` user: the claude CLI refuses
+# --dangerously-skip-permissions under root. Pre-create the session work dir
+# so the named volume inherits node's ownership.
+RUN mkdir -p /data/sessions && chown -R node:node /data
+USER node
+ENV PORT=8092 WORK_DIR=/data/sessions HOME=/home/node
 EXPOSE 8092
 CMD ["runner"]
