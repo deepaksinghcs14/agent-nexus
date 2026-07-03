@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,32 +39,81 @@ func githubTokenFor(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config,
 	return cfg.GithubToken
 }
 
+// maxRateLimitRetryWait bounds the in-call wait when the quota window resets
+// soon: a near reset is worth riding out (the run is already executing);
+// anything longer is surfaced as a clear error instead of a silent stall.
+const maxRateLimitRetryWait = 2 * time.Minute
+
 func githubRequest(ctx context.Context, apiURL, token, method, path string, body any) (int, []byte, error) {
-	var rd io.Reader
+	var payload []byte
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return 0, nil, err
 		}
-		rd = bytes.NewReader(b)
+		payload = b
 	}
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(apiURL, "/")+path, rd)
-	if err != nil {
-		return 0, nil, err
+	for attempt := 0; ; attempt++ {
+		var rd io.Reader
+		if payload != nil {
+			rd = bytes.NewReader(payload)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(apiURL, "/")+path, rd)
+		if err != nil {
+			return 0, nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+		if payload != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		res, err := githubHTTP.Do(req)
+		if err != nil {
+			return 0, nil, err
+		}
+		raw, _ := io.ReadAll(io.LimitReader(res.Body, 4<<20))
+		res.Body.Close()
+
+		if rateLimited(res, raw) {
+			reset := rateLimitReset(res)
+			wait := time.Until(reset)
+			if attempt == 0 && wait > 0 && wait <= maxRateLimitRetryWait {
+				select {
+				case <-ctx.Done():
+					return 0, nil, ctx.Err()
+				case <-time.After(wait + 5*time.Second):
+					continue
+				}
+			}
+			return res.StatusCode, raw, fmt.Errorf(
+				"GitHub rate limit exceeded for this token — resets at %s (in %s). Background indexing shares the same hourly quota; retry after the reset",
+				reset.Local().Format("15:04:05"), wait.Round(time.Minute))
+		}
+		return res.StatusCode, raw, nil
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+}
+
+// rateLimited reports whether a response was rejected for REST quota
+// exhaustion (403/429 with the remaining header at zero, or GitHub's
+// rate-limit message in the body).
+func rateLimited(res *http.Response, body []byte) bool {
+	if res.StatusCode != http.StatusForbidden && res.StatusCode != http.StatusTooManyRequests {
+		return false
 	}
-	res, err := githubHTTP.Do(req)
-	if err != nil {
-		return 0, nil, err
+	if res.Header.Get("X-RateLimit-Remaining") == "0" {
+		return true
 	}
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(io.LimitReader(res.Body, 4<<20))
-	return res.StatusCode, raw, nil
+	return bytes.Contains(body, []byte("rate limit exceeded"))
+}
+
+// rateLimitReset parses X-RateLimit-Reset (epoch seconds), defaulting to an
+// hour out when absent.
+func rateLimitReset(res *http.Response) time.Time {
+	if v, err := strconv.ParseInt(res.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil && v > 0 {
+		return time.Unix(v, 0)
+	}
+	return time.Now().Add(time.Hour)
 }
 
 func validRepo(repo string) bool {
