@@ -70,6 +70,7 @@ var pipelineAgentSpecs = []pipelineAgentSpec{
 		toolNames: []string{
 			"native_launch_repo_session", "native_create_pull_request",
 			"native_launch_review_session",
+			"native_jira_get_issue", "native_jira_add_comment", "native_jira_transition_issue",
 		},
 	},
 	{

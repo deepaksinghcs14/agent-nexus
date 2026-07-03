@@ -139,6 +139,10 @@ func main() {
 	reg.Register(native.NewLaunchReviewSessionTool(pool, cfg))
 	reg.Register(native.NewCreatePullRequestTool(pool, cfg))
 	reg.Register(native.NewGetBranchDiffTool(pool, cfg))
+	reg.Register(native.NewJiraGetIssueTool(pool, cfg))
+	reg.Register(native.NewJiraSearchTool(pool, cfg))
+	reg.Register(native.NewJiraAddCommentTool(pool, cfg))
+	reg.Register(native.NewJiraTransitionIssueTool(pool, cfg))
 	if !cfg.DemoMode {
 		reg.Register(native.NewWriteFileTool(cfg.StoragePath))
 		reg.Register(native.NewHTTPRequestTool())

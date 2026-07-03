@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookMarked, Check, GitBranch, Loader2, Plus, Terminal, Trash2, Unplug, Workflow } from 'lucide-react'
+import { BookMarked, Check, ClipboardList, GitBranch, Loader2, Plus, Terminal, Trash2, Unplug, Workflow } from 'lucide-react'
 import { agentsAPI, pipelineAPI, repoCatalogAPI, runnerCredsAPI, webhookTriggersAPI } from '@/lib/api'
 import { relativeTime } from '@/lib/utils'
 import type { Agent } from '@/types'
@@ -10,7 +10,10 @@ import type { Agent } from '@/types'
 type RunnerCreds = {
   claude_connected: boolean
   github_connected: boolean
+  jira_connected: boolean
   github_env_fallback: boolean
+  jira_env_fallback: boolean
+  jira_base_url?: string
   updated_at?: string
 }
 
@@ -91,6 +94,98 @@ function CredentialCard(props: {
   )
 }
 
+// Jira needs three fields (site URL, email, API token), so it gets its own
+// card instead of CredentialCard's single-token layout. Email stays optional:
+// Data Center PATs authenticate with Bearer and no email.
+function JiraCredentialCard(props: {
+  connected: boolean
+  envFallback: boolean
+  baseURL?: string
+  updatedAt?: string
+  onSave: (creds: { jira_base_url: string; jira_email: string; jira_api_token: string }) => void
+  onDisconnect: () => void
+  saving: boolean
+  error: string
+}) {
+  const [baseURL, setBaseURL] = useState('')
+  const [email, setEmail] = useState('')
+  const [token, setToken] = useState('')
+  const canSave = baseURL.trim() !== '' && token.trim() !== ''
+  return (
+    <div className="border border-gray-200 bg-white rounded-xl px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 justify-between">
+        <div className="flex items-center gap-2.5">
+          <ClipboardList size={16} className="text-blue-700" />
+          <div>
+            <p className="text-sm font-medium text-gray-900">Jira</p>
+            {props.connected ? (
+              <p className="text-xs text-green-700 flex items-center gap-1">
+                <Check size={11} /> Connected · {props.baseURL}
+                {props.updatedAt ? ` · updated ${relativeTime(props.updatedAt)}` : ''}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500">
+                API-token auth for the native Jira tools (issues, JQL search, comments, transitions)
+                {props.envFallback ? ' — instance-level JIRA_* env is active as fallback' : ''}
+              </p>
+            )}
+          </div>
+        </div>
+        {props.connected && (
+          <button
+            onClick={props.onDisconnect}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 text-xs text-gray-700 rounded-lg hover:bg-gray-50"
+          >
+            <Unplug size={12} /> Disconnect
+          </button>
+        )}
+      </div>
+      {!props.connected && (
+        <div className="flex flex-col gap-2 mt-2.5">
+          <input
+            type="url"
+            value={baseURL}
+            onChange={(e) => setBaseURL(e.target.value)}
+            placeholder="https://yourorg.atlassian.net"
+            className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@org.com (leave empty for Data Center PAT)"
+              className="flex-1 min-w-[220px] px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+            />
+            <input
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="API token"
+              className="flex-1 min-w-[180px] px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+            />
+            <button
+              onClick={() => {
+                props.onSave({ jira_base_url: baseURL.trim(), jira_email: email.trim(), jira_api_token: token.trim() })
+                setToken('')
+              }}
+              disabled={!canSave || props.saving}
+              className="px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg font-medium disabled:opacity-50"
+            >
+              {props.saving ? 'Saving…' : 'Connect'}
+            </button>
+          </div>
+        </div>
+      )}
+      {props.error && <p className="text-xs text-red-600 mt-2">{props.error}</p>}
+      <p className="text-[11px] text-gray-400 mt-2">
+        Cloud: create an API token at id.atlassian.com → Security → API tokens, and enter your account email.
+        Data Center: use a personal access token and leave email empty.
+      </p>
+    </div>
+  )
+}
+
 const PIPELINE_AGENT_NAMES = ['Jira Pipeline Orchestrator', 'Code Review Agent', 'Docs Map Maintainer']
 
 export default function ClaudeCodePage() {
@@ -120,12 +215,12 @@ export default function ClaudeCodePage() {
   })
 
   const save = useMutation({
-    mutationFn: (body: { claude_token?: string; github_token?: string }) => runnerCredsAPI.put(body),
+    mutationFn: (body: Parameters<typeof runnerCredsAPI.put>[0]) => runnerCredsAPI.put(body),
     onSuccess: () => { setError(''); queryClient.invalidateQueries({ queryKey: ['runner-credentials'] }) },
     onError: (err: Error) => setError(err.message),
   })
   const disconnect = useMutation({
-    mutationFn: (field: 'claude' | 'github') => runnerCredsAPI.delete(field),
+    mutationFn: (field: 'claude' | 'github' | 'jira') => runnerCredsAPI.delete(field),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['runner-credentials'] }),
   })
 
@@ -243,6 +338,16 @@ export default function ClaudeCodePage() {
           footnote="Scoped to this workspace — other workspaces never see it. Takes precedence over any instance-level GITHUB_TOKEN."
           onSave={(t) => save.mutate({ github_token: t })}
           onDisconnect={() => disconnect.mutate('github')}
+          saving={save.isPending}
+          error={error}
+        />
+        <JiraCredentialCard
+          connected={!!creds?.jira_connected}
+          envFallback={!!creds?.jira_env_fallback}
+          baseURL={creds?.jira_base_url}
+          updatedAt={creds?.updated_at}
+          onSave={(c) => save.mutate(c)}
+          onDisconnect={() => disconnect.mutate('jira')}
           saving={save.isPending}
           error={error}
         />

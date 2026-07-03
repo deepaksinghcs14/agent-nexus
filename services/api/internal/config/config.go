@@ -29,6 +29,9 @@ type Config struct {
 	SessionCallbackURL      string // callback URL the RUNNER uses to reach this API (defaults to PUBLIC_API_URL; override when the runner reaches the API over an internal network, e.g. http://api:8080 in Docker)
 	GithubToken             string // token for GitHub API tools (PR creation, branch diffs)
 	GithubAPIURL            string // GitHub API base URL (override for tests / GHE)
+	JiraBaseURL             string // instance-level Jira fallback for the native Jira tools (e.g. https://org.atlassian.net)
+	JiraEmail               string // account email for Jira Cloud Basic auth (empty = Bearer PAT auth for Data Center)
+	JiraAPIToken            string // Jira API token / PAT (workspace credentials take precedence)
 	SessionWaitTimeoutMin   int    // minutes before a session_wait run with no callback is failed as crashed (0 = default 240)
 }
 
@@ -54,6 +57,9 @@ func Load() (*Config, error) {
 		SessionCallbackURL:      getEnv("SESSION_CALLBACK_URL", ""),
 		GithubToken:             getEnv("GITHUB_TOKEN", ""),
 		GithubAPIURL:            getEnv("GITHUB_API_URL", "https://api.github.com"),
+		JiraBaseURL:             getEnv("JIRA_BASE_URL", ""),
+		JiraEmail:               getEnv("JIRA_EMAIL", ""),
+		JiraAPIToken:            getEnv("JIRA_API_TOKEN", ""),
 		SessionWaitTimeoutMin:   getEnvInt("SESSION_WAIT_TIMEOUT_MIN", 240),
 	}
 
