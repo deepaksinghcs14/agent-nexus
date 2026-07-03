@@ -13,9 +13,13 @@ FROM alpine:3.20
 # Fall back to HTTP mirrors when TLS to the CDN is intercepted (corporate
 # proxies) — apk verifies package signatures, so transport TLS is not
 # integrity-critical.
-RUN apk --no-cache add ca-certificates tzdata nodejs npm git \
+RUN apk --no-cache add ca-certificates tzdata nodejs npm git python3 \
  || (sed -i 's|https://|http://|g' /etc/apk/repositories \
-     && apk --no-cache add ca-certificates tzdata nodejs npm git)
+     && apk --no-cache add ca-certificates tzdata nodejs npm git python3)
+# uv/uvx for Python-based stdio MCP servers (e.g. mcp-atlassian); uses the
+# system python3 above, packages cached under UV_CACHE_DIR.
+RUN wget -qO- https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+ENV UV_CACHE_DIR=/app/data/uv-cache UV_PYTHON_INSTALL_DIR=/app/data/uv-python
 WORKDIR /app
 COPY --from=builder /agent-nexus-api .
 COPY whatsapp-adapter ./whatsapp-adapter

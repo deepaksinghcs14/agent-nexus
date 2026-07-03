@@ -183,6 +183,12 @@ func main() {
 	} else if n > 0 {
 		slog.Info("encrypted plaintext connector config secrets", "connectors", n)
 	}
+	// Same for MCP server configs (HTTP auth tokens, stdio env credentials).
+	if n, err := handler.EncryptLegacyMCPConfigs(ctx, pool, []byte(cfg.EncryptionKey)); err != nil {
+		slog.Warn("failed to encrypt legacy mcp config secrets", "error", err)
+	} else if n > 0 {
+		slog.Info("encrypted plaintext mcp config secrets", "servers", n)
+	}
 	// Embed chunks that were indexed while the embedder was unreachable —
 	// syncs skip unchanged documents, so these never self-heal otherwise.
 	handler.StartEmbeddingBackfill(ctx, pool, cfg)

@@ -265,5 +265,5 @@ func mcpClientForServer(ctx context.Context, pool *pgxpool.Pool, cfg *config.Con
 		c, _ := json.Marshal(map[string]string{"token": tok})
 		return mcp.NewClient(id, url, transport, c), nil
 	}
-	return mcp.NewClient(id, url, transport, config), nil
+	return mcp.NewClient(id, url, transport, decryptMCPConfig([]byte(cfg.EncryptionKey), config)), nil
 }

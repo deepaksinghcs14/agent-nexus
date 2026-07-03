@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Globe, KeyRound, Plug, Plus, RefreshCw, Terminal, Trash2, Wrench, X } from 'lucide-react'
+import { AlertTriangle, Globe, KeyRound, Package, Plug, Plus, RefreshCw, Terminal, Trash2, Wrench, X } from 'lucide-react'
 import { mcpAPI } from '@/lib/api'
+import { MCP_PRESETS, type MCPPreset } from '@/lib/mcp-presets'
 import { relativeTime, riskColor, statusColor } from '@/lib/utils'
 import { useDemoMode } from '@/context/demo-mode'
 import type { MCPServer, MCPTool } from '@/types'
@@ -27,28 +28,60 @@ const TRANSPORTS = [
 
 // ─── add server panel ─────────────────────────────────────────────────────────
 
+type CreateBody = {
+  name: string
+  url: string
+  transport: string
+  config?: { token?: string; env?: Record<string, string> }
+}
+
 function AddServerPanel({
   onClose,
   onCreate,
   isPending,
 }: {
   onClose: () => void
-  onCreate: (body: { name: string; url: string; transport: string; config?: Record<string, string> }) => void
+  onCreate: (body: CreateBody) => void
   isPending: boolean
 }) {
   const [form, setForm] = useState({ name: '', url: '', transport: 'http', token: '' })
   const [formError, setFormError] = useState('')
+  // null = custom setup; otherwise a preset from the catalog drives the form.
+  const [preset, setPreset] = useState<MCPPreset | null>(null)
+  const [envValues, setEnvValues] = useState<Record<string, string>>({})
+
+  const pickPreset = (p: MCPPreset | null) => {
+    setPreset(p)
+    setEnvValues({})
+    setFormError('')
+    if (p) setForm((f) => ({ ...f, name: p.label, url: p.command, transport: 'stdio' }))
+    else setForm({ name: '', url: '', transport: 'http', token: '' })
+  }
 
   const handleSubmit = () => {
     if (!form.name.trim()) { setFormError('Server name is required'); return }
     if (!form.url.trim())  { setFormError('URL / command is required'); return }
+    if (preset) {
+      const missing = preset.env.filter((f) => f.required && !envValues[f.key]?.trim())
+      if (missing.length > 0) {
+        setFormError(`${missing.map((f) => f.label).join(', ')} ${missing.length === 1 ? 'is' : 'are'} required`)
+        return
+      }
+    }
     setFormError('')
-    const body: { name: string; url: string; transport: string; config?: Record<string, string> } = {
+    const body: CreateBody = {
       name: form.name.trim(),
       url: form.url.trim(),
       transport: form.transport,
     }
-    if (form.transport === 'http' && form.token.trim()) {
+    if (preset) {
+      const env: Record<string, string> = {}
+      for (const f of preset.env) {
+        const v = envValues[f.key]?.trim()
+        if (v) env[f.key] = v
+      }
+      if (Object.keys(env).length > 0) body.config = { env }
+    } else if (form.transport === 'http' && form.token.trim()) {
       body.config = { token: form.token.trim() }
     }
     onCreate(body)
@@ -68,6 +101,88 @@ function AddServerPanel({
           <p className="text-[12px] text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2 mb-3">{formError}</p>
         )}
 
+        {/* Preset catalog: popular token-auth servers, or fully custom */}
+        <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-3">Server</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4">
+          {MCP_PRESETS.map((p) => {
+            const active = preset?.id === p.id
+            return (
+              <button
+                key={p.id}
+                onClick={() => pickPreset(active ? null : p)}
+                className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
+                  active ? 'border-purple-300 bg-purple-50' : 'border-gray-200 hover:border-gray-300 bg-white'
+                }`}
+              >
+                <Package size={14} className={`mt-0.5 flex-shrink-0 ${active ? 'text-purple-600' : 'text-gray-400'}`} />
+                <div>
+                  <p className={`text-[12px] font-medium ${active ? 'text-purple-700' : 'text-gray-700'}`}>{p.label}</p>
+                  <p className="text-[10px] text-gray-400 leading-tight mt-0.5">{p.description}</p>
+                </div>
+              </button>
+            )
+          })}
+          <button
+            onClick={() => pickPreset(null)}
+            className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
+              preset === null ? 'border-purple-300 bg-purple-50' : 'border-gray-200 hover:border-gray-300 bg-white'
+            }`}
+          >
+            <Wrench size={14} className={`mt-0.5 flex-shrink-0 ${preset === null ? 'text-purple-600' : 'text-gray-400'}`} />
+            <div>
+              <p className={`text-[12px] font-medium ${preset === null ? 'text-purple-700' : 'text-gray-700'}`}>Custom</p>
+              <p className="text-[10px] text-gray-400 leading-tight mt-0.5">Any HTTP or stdio MCP server — bring your own URL or command.</p>
+            </div>
+          </button>
+        </div>
+
+        {preset ? (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Server name *</label>
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-600 mb-1">Command</label>
+                <input
+                  value={form.url}
+                  readOnly
+                  className="w-full text-sm px-3 py-2 border border-gray-100 rounded-lg font-mono bg-gray-50 text-gray-500"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              {preset.env.map((f) => (
+                <div key={f.key}>
+                  <label className="block text-[11px] font-medium text-gray-600 mb-1">
+                    {f.label}{f.required ? ' *' : ''}{' '}
+                    <code className="text-[10px] text-gray-400 font-normal">{f.key}</code>
+                  </label>
+                  <input
+                    type={f.secret ? 'password' : 'text'}
+                    value={envValues[f.key] ?? ''}
+                    onChange={(e) => setEnvValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                    placeholder={f.placeholder}
+                    className="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg font-mono"
+                  />
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400 mb-4">
+              {preset.note ? `${preset.note} ` : ''}
+              Credentials are stored encrypted and injected as environment variables into the server process.
+              {preset.docsUrl && (
+                <> Docs: <a href={preset.docsUrl} target="_blank" rel="noreferrer" className="text-purple-500 hover:underline break-all">{preset.docsUrl}</a></>
+              )}
+            </p>
+          </>
+        ) : (
+          <>
         {/* Transport picker */}
         <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wide mb-3">Transport</p>
         <div className="grid grid-cols-2 gap-2 mb-4">
@@ -133,6 +248,8 @@ function AddServerPanel({
         <p className="text-[11px] text-gray-400 mb-4">
           {selectedTransport.description} After adding, click <strong>Sync</strong> to discover available tools.
         </p>
+          </>
+        )}
 
         <div className="flex gap-2">
           <button
@@ -233,7 +350,7 @@ export default function MCPServersPage() {
   })
 
   const create = useMutation({
-    mutationFn: (body: { name: string; url: string; transport: string; config?: Record<string, string> }) => mcpAPI.create(body),
+    mutationFn: (body: CreateBody) => mcpAPI.create(body),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['mcp-servers'] }); setShowAdd(false); setActionError('') },
     onError: (err: Error) => setActionError(err.message),
   })

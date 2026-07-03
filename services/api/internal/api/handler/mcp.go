@@ -54,6 +54,7 @@ func (h *MCPHandler) List(w http.ResponseWriter, r *http.Request) {
 			errs.Write(w, errs.Internal("failed to read MCP servers"))
 			return
 		}
+		s.Config = redactMCPConfig(s.Config)
 		list = append(list, s)
 	}
 	errs.WriteJSON(w, http.StatusOK, map[string]any{"data": list})
@@ -78,12 +79,14 @@ func (h *MCPHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if len(s.Config) == 0 {
 		s.Config = json.RawMessage(`{}`)
 	}
+	s.Config = encryptMCPConfig([]byte(h.cfg.EncryptionKey), s.Config)
 	err := h.pool.QueryRow(r.Context(), `INSERT INTO mcp_servers(id,workspace_id,name,url,transport,status,config,created_by) VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8::uuid) RETURNING created_at,updated_at`, s.ID, s.WorkspaceID, s.Name, s.URL, s.Transport, s.Status, s.Config, s.CreatedBy).Scan(&s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to create MCP server"))
 		return
 	}
 	writeAudit(r, h.pool, "mcp_server.created", "mcp_server", s.ID)
+	s.Config = redactMCPConfig(s.Config)
 	errs.WriteJSON(w, http.StatusCreated, s)
 }
 func (h *MCPHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -92,6 +95,7 @@ func (h *MCPHandler) Get(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.NotFound("MCP server not found"))
 		return
 	}
+	s.Config = redactMCPConfig(s.Config)
 	errs.WriteJSON(w, http.StatusOK, s)
 }
 func (h *MCPHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +133,7 @@ func (h *MCPHandler) Sync(w http.ResponseWriter, r *http.Request) {
 
 	s.Status = "connected"
 	writeAudit(r, h.pool, "mcp_server.synced", "mcp_server", s.ID)
+	s.Config = redactMCPConfig(s.Config)
 	errs.WriteJSON(w, http.StatusOK, map[string]any{"server": s, "tools_discovered": count})
 }
 

@@ -16,6 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# uv/uvx for Python-based stdio MCP servers (e.g. mcp-atlassian). uvx
+# downloads a managed Python on first use; cached under UV_CACHE_DIR.
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+ENV UV_CACHE_DIR=/app/data/uv-cache UV_PYTHON_INSTALL_DIR=/app/data/uv-python
+
 WORKDIR /app
 COPY --from=builder /agent-nexus-api .
 COPY services/api/whatsapp-adapter ./whatsapp-adapter

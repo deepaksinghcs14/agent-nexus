@@ -133,6 +133,7 @@ type Client struct {
 	// parsed from config
 	authHeader string // header name, default "Authorization"
 	authValue  string // full header value, e.g. "Bearer sk-abc123" or raw token
+	env        map[string]string
 }
 
 func NewClient(serverID, url, transport string, config json.RawMessage) *Client {
@@ -140,18 +141,23 @@ func NewClient(serverID, url, transport string, config json.RawMessage) *Client 
 	// Parse optional auth fields from config:
 	//   {"token": "sk-abc123"}              → Authorization: Bearer sk-abc123
 	//   {"header": "X-API-Key", "token": "abc123"} → X-API-Key: abc123
+	//   {"env": {"JIRA_API_TOKEN": "abc"}}  → stdio process environment
 	if len(config) > 0 {
 		var cfg struct {
-			Token  string `json:"token"`
-			Header string `json:"header"`
+			Token  string            `json:"token"`
+			Header string            `json:"header"`
+			Env    map[string]string `json:"env"`
 		}
-		if json.Unmarshal(config, &cfg) == nil && cfg.Token != "" {
-			c.authHeader = cfg.Header
-			if c.authHeader == "" {
-				c.authHeader = "Authorization"
-				c.authValue = "Bearer " + cfg.Token
-			} else {
-				c.authValue = cfg.Token
+		if json.Unmarshal(config, &cfg) == nil {
+			c.env = cfg.Env
+			if cfg.Token != "" {
+				c.authHeader = cfg.Header
+				if c.authHeader == "" {
+					c.authHeader = "Authorization"
+					c.authValue = "Bearer " + cfg.Token
+				} else {
+					c.authValue = cfg.Token
+				}
 			}
 		}
 	}
@@ -307,6 +313,12 @@ func (c *Client) dialStdio(ctx context.Context) (*stdioConn, error) {
 	}
 	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
 	cmd.Stderr = io.Discard // prevent debug output from contaminating stdout
+	if len(c.env) > 0 {
+		cmd.Env = os.Environ()
+		for k, v := range c.env {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
+	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
