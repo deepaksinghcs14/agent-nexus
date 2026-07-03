@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -51,7 +52,86 @@ func AdoptFromConnector(ctx context.Context, pool *pgxpool.Pool, connectorID str
 		ON CONFLICT (agent_id, connector_id) DO NOTHING`,
 		connectorID, workspaceID)
 
+	// Every allowlisted repo needs at least a name card in the catalog, or
+	// repo selection can't find adopted-but-never-ingested repos at all.
+	if err := WriteCatalogCards(ctx, pool, workspaceID); err != nil {
+		return int(tag.RowsAffected()), fmt.Errorf("write catalog cards: %w", err)
+	}
+
 	return int(tag.RowsAffected()), nil
+}
+
+// WriteCatalogCards upserts one small searchable "card" document per
+// repo_catalog row into the workspace's repo-catalog connector: the repo's
+// full name plus its name split into words, so keyword queries like "aadhaar
+// scanner" match the repo Bureau-Inc/aadhaar-qr-scanner-sdk even before the
+// repo is explicitly ingested. Idempotent (content-hash skip in
+// upsertDocument); explicit ingestion adds the richer docs on top.
+func WriteCatalogCards(ctx context.Context, pool *pgxpool.Pool, workspaceID string) error {
+	connectorID, err := ensureConnector(ctx, pool, workspaceID)
+	if err != nil {
+		return err
+	}
+	rows, err := pool.Query(ctx, `
+		SELECT repo, default_branch, sessions_enabled FROM repo_catalog
+		WHERE workspace_id=$1::uuid ORDER BY repo`, workspaceID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	type entry struct {
+		repo, branch string
+		enabled      bool
+	}
+	var entries []entry
+	for rows.Next() {
+		var e entry
+		if rows.Scan(&e.repo, &e.branch, &e.enabled) == nil {
+			entries = append(entries, e)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, e := range entries {
+		sessions := "sessions disabled (indexed only — enable in Settings → Claude Code to allow coding sessions)"
+		if e.enabled {
+			sessions = "sessions enabled"
+		}
+		card := doc{
+			path:  "_catalog_card",
+			title: e.repo + ": repository",
+			content: fmt.Sprintf(
+				"Repository %s (default branch %s, %s).\nName terms: %s",
+				e.repo, e.branch, sessions, strings.Join(nameTerms(e.repo), " ")),
+		}
+		if _, err := upsertDocument(ctx, pool, connectorID, workspaceID, e.repo, card); err != nil {
+			return fmt.Errorf("card for %s: %w", e.repo, err)
+		}
+	}
+	return nil
+}
+
+// nameTerms splits an owner/name repo slug into searchable words:
+// "Bureau-Inc/aadhaar-qr-scanner-sdk" → [bureau inc aadhaar qr scanner sdk].
+func nameTerms(repo string) []string {
+	var terms []string
+	var b strings.Builder
+	flush := func() {
+		if b.Len() > 0 {
+			terms = append(terms, b.String())
+			b.Reset()
+		}
+	}
+	for _, r := range strings.ToLower(repo) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else {
+			flush()
+		}
+	}
+	flush()
+	return terms
 }
 
 // AdoptAllGithubConnectors runs adoption for every GitHub connector — used at

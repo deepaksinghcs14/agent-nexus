@@ -116,20 +116,28 @@ func (r *Retriever) Retrieve(ctx context.Context, workspaceID string, connectorI
 
 // orTSQuery converts free text into a safe OR-combined tsquery expression:
 // "webhook rate limiting" → "webhook | rate | limiting". Non-alphanumeric
-// characters are stripped so user input can't break tsquery syntax.
+// characters SPLIT terms (they must not be silently stripped: to_tsvector
+// tokenizes "aadhaar-qr-scanner-sdk" into its parts, so the glued-together
+// "aadhaarqrscannersdk" would match nothing) and duplicates are dropped.
 func orTSQuery(query string) string {
 	var terms []string
-	for _, w := range strings.Fields(query) {
-		var b strings.Builder
-		for _, r := range strings.ToLower(w) {
-			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-				b.WriteRune(r)
-			}
-		}
-		if b.Len() > 1 {
+	seen := map[string]bool{}
+	var b strings.Builder
+	flush := func() {
+		if b.Len() > 1 && !seen[b.String()] {
+			seen[b.String()] = true
 			terms = append(terms, b.String())
 		}
+		b.Reset()
 	}
+	for _, r := range strings.ToLower(query) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else {
+			flush()
+		}
+	}
+	flush()
 	if len(terms) == 0 {
 		return "zzzznomatch"
 	}

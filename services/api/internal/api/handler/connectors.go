@@ -143,6 +143,15 @@ func (h *ConnectorsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The repo-catalog connector holds the pipeline's curated docs surface
+	// (catalog cards, READMEs, file trees written by internal/catalog). A
+	// generic provider sync would bury it under full repo contents — tens of
+	// thousands of source-file chunks — and repo selection quality collapses.
+	if conn.Name == catalog.ConnectorName {
+		errs.Write(w, errs.BadRequest("the repo-catalog connector is maintained by repository onboarding and cannot be synced directly — sync a regular GitHub connector instead (its repos are adopted into the catalog automatically)"))
+		return
+	}
+
 	prov := getConnectorProvider(conn.Provider)
 	if prov == nil {
 		errs.Write(w, errs.BadRequest("unsupported connector provider: "+conn.Provider))

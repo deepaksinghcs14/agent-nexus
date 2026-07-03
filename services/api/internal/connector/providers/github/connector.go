@@ -29,6 +29,27 @@ var binaryExts = map[string]bool{
 
 const maxFileBytes = 500 * 1024
 
+// vendoredDirs are path segments whose contents are third-party or generated
+// code — indexing them buries a workspace's own code under pip/npm vendored
+// sources (a committed venv/ alone adds thousands of chunks).
+var vendoredDirs = map[string]bool{
+	"node_modules": true, "vendor": true, "venv": true, ".venv": true,
+	"site-packages": true, "__pycache__": true, ".git": true,
+	"dist": true, "build": true, "target": true, ".next": true,
+	"bower_components": true, ".terraform": true,
+}
+
+// vendoredPath reports whether any segment of a repo-relative path is a
+// vendored/generated directory.
+func vendoredPath(path string) bool {
+	for _, seg := range strings.Split(path, "/") {
+		if vendoredDirs[seg] {
+			return true
+		}
+	}
+	return false
+}
+
 // rateLimitFloor is the REST-quota reserve kept free for interactive callers
 // (the pipeline's PR/diff tools, MCP, etc. share the token owner's hourly
 // limit). When remaining drops to this floor, the sync pauses until reset.
@@ -308,6 +329,9 @@ func (c *Connector) syncRepo(
 			continue
 		}
 		if binaryExts[strings.ToLower(filepath.Ext(item.Path))] {
+			continue
+		}
+		if vendoredPath(item.Path) {
 			continue
 		}
 		if item.Size > maxFileBytes {
