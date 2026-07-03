@@ -62,6 +62,11 @@ type ExecutionContext struct {
 	SendMessage func(ctx context.Context, msg string) error
 	// WaitForUserInput, if non-nil, pauses the run and waits for the user to reply.
 	WaitForUserInput func(ctx context.Context, question string) (string, error)
+	// WaitForSession, if non-nil, blocks the run until an external session
+	// callback resolves it (e.g. a Claude Code repo session in the runner
+	// service). Returns the session result as a JSON string, or ErrRunParked
+	// when the run persisted its state and parked instead of blocking further.
+	WaitForSession func(ctx context.Context, sessionKey string) (string, error)
 }
 
 type ContextAwareTool interface {

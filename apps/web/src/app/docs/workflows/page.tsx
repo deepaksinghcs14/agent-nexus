@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { DocPage, Callout, Badge } from '@/components/docs/DocPage'
 
 export const metadata = { title: 'Workflows & Node Types — Docs' }
@@ -285,10 +286,10 @@ export default function WhatIsAnAgentGroupDoc() {
 
       <h2>Next Steps</h2>
       <ul>
-        <li><a href="/workflows/new">Create a workflow</a></li>
-        <li><a href="/docs/invoke-api">Invoke a workflow via the API</a></li>
-        <li><a href="/docs/run-states">Understand run states and trace steps</a></li>
-        <li><a href="/docs/sse-events">SSE events reference</a></li>
+        <li><Link href="/workflows/new">Create a workflow</Link></li>
+        <li><Link href="/docs/invoke-api">Invoke a workflow via the API</Link></li>
+        <li><Link href="/docs/run-states">Understand run states and trace steps</Link></li>
+        <li><Link href="/docs/sse-events">SSE events reference</Link></li>
       </ul>
     </DocPage>
   )

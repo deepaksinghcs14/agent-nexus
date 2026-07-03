@@ -30,6 +30,9 @@ export function DocPage({ title, subtitle, children }: DocPageProps) {
         .doc-content a:hover { text-decoration: underline; }
         .doc-content .table-scroll { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 1rem 0 1.5rem; }
         .doc-content table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        /* Bare tables (most doc pages skip .table-scroll) must scroll on narrow
+           screens rather than pushing the whole page wider than the viewport. */
+        .doc-content > table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 1rem 0 1.5rem; }
         .doc-content th { text-align: left; padding: 0.5rem 0.75rem; font-weight: 600; color: #374151; background: #f9fafb; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
         .doc-content td { padding: 0.5rem 0.75rem; color: #4b5563; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
         .doc-content td code { white-space: nowrap; }

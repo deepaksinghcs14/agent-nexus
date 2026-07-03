@@ -3,17 +3,18 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 	"unicode"
 
-	"github.com/google/uuid"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -297,6 +298,10 @@ func (h *WorkspaceHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err := repo.CreateWorkspace(r.Context(), ws, userID); err != nil {
 		errs.Write(w, errs.Internal("failed to create workspace"))
 		return
+	}
+	// Seed the protected pipeline agents into the new workspace.
+	if _, err := SeedPipelineAgentsForWorkspace(r.Context(), h.pool, ws.ID, userID); err != nil {
+		slog.Warn("failed to seed pipeline agents for new workspace", "workspace_id", ws.ID, "error", err)
 	}
 	writeAudit(r, h.pool, "workspace.created", "workspace", ws.ID)
 	errs.WriteJSON(w, http.StatusCreated, ws)

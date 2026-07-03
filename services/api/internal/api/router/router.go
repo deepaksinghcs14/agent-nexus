@@ -46,6 +46,9 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 	r.Delete("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Delete)
 	r.Put("/internal/whatsapp/{accountId}/lid-map", h.WhatsAppCreds.PutLIDMap)
 
+	// Runner session completion callbacks — verified by RUNNER_CALLBACK_SECRET.
+	r.Post("/internal/sessions/callback", h.Invoke.SessionCallback)
+
 	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC secret)
 	r.Post("/webhook/{webhookId}", h.WebhookIngress.Receive)
 	r.Post("/gateway/whatsapp/{channelId}", h.Gateway.WhatsAppReceive)
@@ -60,6 +63,10 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 		// Google OAuth callback is public — Google redirects here with no JWT
 		r.Get("/providers/oauth/google/callback", h.Providers.OAuthGoogleCallback)
 
+		// MCP OAuth browser redirect — unauthenticated; verified by the state
+		// nonce persisted when the flow started.
+		r.Get("/mcp-servers/oauth/callback", h.MCP.OAuthCallback)
+
 		// Authenticated routes (accept JWT or API token)
 		r.Group(func(r chi.Router) {
 			r.Use(mw.Authenticate(cfg.JWTSecret, pool))
@@ -70,6 +77,14 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			// Workspace (current workspace, scoped by JWT)
 			r.Get("/workspace", h.Workspace.Get)
 			r.Patch("/workspace", h.Workspace.Update)
+			r.Get("/workspace/runner-credentials", h.Workspace.GetRunnerCredentials)
+			r.Put("/workspace/runner-credentials", h.Workspace.PutRunnerCredentials)
+			r.Delete("/workspace/runner-credentials", h.Workspace.DeleteRunnerCredentials)
+			r.Get("/pipeline/status", h.Workspace.PipelineStatus)
+			r.Get("/repo-catalog", h.Workspace.ListRepoCatalog)
+			r.Post("/repo-catalog", h.Workspace.OnboardRepo)
+			r.Patch("/repo-catalog", h.Workspace.SetRepoSessions)
+			r.Delete("/repo-catalog", h.Workspace.RemoveRepo)
 			r.Get("/workspace/members", h.Workspace.ListMembers)
 			r.Post("/workspace/members", h.Workspace.AddMember)
 			r.Patch("/workspace/members/{id}", h.Workspace.UpdateMember)
@@ -125,6 +140,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Get("/mcp-servers/{id}", h.MCP.Get)
 			r.Delete("/mcp-servers/{id}", h.MCP.Delete)
 			r.Post("/mcp-servers/{id}/sync", h.MCP.Sync)
+			r.Post("/mcp-servers/{id}/oauth/start", h.MCP.OAuthStart)
 			r.Get("/mcp-servers/{id}/tools", h.MCP.ListTools)
 			r.Patch("/mcp-servers/{id}/tools/{toolId}", h.MCP.UpdateToolRisk)
 
@@ -257,6 +273,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Group(func(r chi.Router) {
 				r.Use(mw.RequireAdmin)
 
+				r.Get("/admin/pipeline", h.Admin.PipelineOverview)
 				r.Get("/admin/users", h.Admin.ListUsers)
 				r.Get("/admin/users/{id}", h.Admin.GetUser)
 				r.Patch("/admin/users/{id}", h.Admin.UpdateUser)

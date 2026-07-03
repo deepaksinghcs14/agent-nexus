@@ -8,7 +8,7 @@ import { agentsAPI, runsAPI, webhookTriggersAPI, workflowsAPI } from '@/lib/api'
 import { formatCost, formatTokens, relativeTime, statusColor } from '@/lib/utils'
 import type { Agent, PaginatedRuns, Run, WebhookTrigger, Workflow } from '@/types'
 
-const ACTIVE = new Set(['pending', 'running', 'approval_wait'])
+const ACTIVE = new Set(['pending', 'running', 'approval_wait', 'session_wait'])
 
 export default function RunsPage() {
   const [agent, setAgent] = useState('')

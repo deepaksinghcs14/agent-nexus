@@ -3,7 +3,9 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -102,8 +104,11 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		sseErr("failed to create run")
 		return
 	}
+	runParked := false
 	defer func() {
-		if h.invokeH != nil {
+		// A parked run keeps its ephemeral resources — it resumes later via the
+		// Approve endpoint with tool state reloaded from the DB.
+		if !runParked && h.invokeH != nil {
 			h.invokeH.cleanupEphemeralResources(context.Background(), id)
 		}
 	}()
@@ -338,7 +343,53 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	totalInput, totalOutput := 0, 0
 	memorySaveCalled := false
 	futureWorkRetried := false
+	fabricationRetried := false
 	actionLog := []string{}
+
+	// Session-wait plumbing for native_launch_repo_session — mirrors the
+	// executeRun loop: snapshot at the current call, block briefly on the
+	// runner callback, then park by returning tools.ErrRunParked. A parked
+	// playground run resumes headlessly via ResumeSessionRun (executeRun),
+	// exactly like a parked approval does.
+	var curBatch []provider.ToolCall
+	var curCallIdx int
+	execCtx.WaitForSession = func(waitCtx context.Context, sessionKey string) (string, error) {
+		st := &runWaitState{
+			Version:          1,
+			WaitType:         "session",
+			WorkspaceID:      ws,
+			UserID:           uid,
+			AgentID:          a.ID,
+			ConversationID:   c.ID,
+			Input:            q.Input,
+			Messages:         messages,
+			StableSystem:     stableSystem,
+			PendingCalls:     curBatch,
+			CallIndex:        curCallIdx,
+			StepCount:        stepCount,
+			TotalInput:       totalInput,
+			TotalOutput:      totalOutput,
+			ActionLog:        actionLog,
+			MemorySaveCalled: memorySaveCalled,
+			RequestedTools:   keysOf(requestedTools),
+			ActiveSkills:     keysOf(activeSkills),
+			ActiveMemoryIDs:  keysOf(activeMemoryIDs),
+		}
+		if err := saveWaitState(context.Background(), h.pool, id, st); err != nil {
+			return "", fmt.Errorf("failed to persist session wait state: %w", err)
+		}
+		ch := RegisterSessionWait(id)
+		h.pool.Exec(waitCtx, `UPDATE runs SET status='session_wait' WHERE id=$1::uuid`, id) //nolint:errcheck
+		emit(fmt.Sprintf(`{"type":"session_wait","run_id":%q,"session":%q}`, id, sessionKey))
+
+		content, got := awaitSessionResult(id, ch, 60*time.Second)
+		if !got {
+			return "", tools.ErrRunParked
+		}
+		deleteWaitState(context.Background(), h.pool, id)
+		h.pool.Exec(waitCtx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, id) //nolint:errcheck
+		return content, nil
+	}
 
 	for {
 		var toolDefs []provider.ToolDefinition
@@ -409,6 +460,17 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			modelStart, usage.InputTokens+usage.OutputTokens, "", "")
 
 		if len(pendingCalls) == 0 {
+			// Fabrication guard: a reply written in the internal action-log
+			// replay format means the model narrated tool activity it never
+			// performed. Retry once with a correction; never deliver it.
+			if fabricatesActionLog(reply) {
+				if !fabricationRetried {
+					fabricationRetried = true
+					messages[0].Content += fabricatedActionCorrection
+					continue
+				}
+				reply = fabricatedActionReply
+			}
 			if stepCount == 0 && promisesUnconfirmedFutureWork(reply) {
 				if !futureWorkRetried {
 					futureWorkRetried = true
@@ -477,7 +539,10 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			ToolCalls: pendingCalls,
 		})
 
-		for _, call := range pendingCalls {
+		curBatch = pendingCalls
+		for callIdx := 0; callIdx < len(pendingCalls); callIdx++ {
+			call := pendingCalls[callIdx]
+			curCallIdx = callIdx
 			if call.Name == "native_save_memory" {
 				memorySaveCalled = true
 			}
@@ -516,19 +581,48 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 					arID, id, call.Name, call.Input)
 				h.pool.Exec(r.Context(), `UPDATE runs SET status='approval_wait' WHERE id=$1::uuid`, id) //nolint:errcheck
 
+				// Snapshot the loop state so the run survives a process restart and
+				// can park if nobody approves before the in-process timeout. Uses a
+				// background context: the SSE request context dies with the client.
+				st := &runWaitState{
+					Version:          1,
+					WorkspaceID:      ws,
+					UserID:           uid,
+					AgentID:          a.ID,
+					ConversationID:   c.ID,
+					Input:            q.Input,
+					Messages:         messages,
+					StableSystem:     stableSystem,
+					PendingCalls:     pendingCalls,
+					CallIndex:        callIdx,
+					StepCount:        stepCount,
+					TotalInput:       totalInput,
+					TotalOutput:      totalOutput,
+					ActionLog:        actionLog,
+					MemorySaveCalled: memorySaveCalled,
+					RequestedTools:   keysOf(requestedTools),
+					ActiveSkills:     keysOf(activeSkills),
+					ActiveMemoryIDs:  keysOf(activeMemoryIDs),
+				}
+				if err := saveWaitState(context.Background(), h.pool, id, st); err != nil {
+					slog.Warn("failed to persist approval wait state; run will not survive restart",
+						"run_id", id, "error", err)
+				}
+
 				ch := RegisterApprovalWait(id)
 				emit(fmt.Sprintf(`{"type":"approval_required","tool":%q,"input":%s,"approval_id":%q}`,
 					call.Name, string(call.Input), arID))
 
-				var decision ApprovalDecision
-				select {
-				case decision = <-ch:
-				case <-time.After(10 * time.Minute):
-					UnregisterApprovalWait(id)
-					_ = h.failRun(r.Context(), id, "approval timed out")
-					sseErr("approval timed out after 10 minutes")
+				decision, got := awaitApprovalDecision(id, ch, 10*time.Minute)
+				if !got {
+					// Park: end the SSE stream and free this goroutine, leaving the
+					// run in approval_wait with its state persisted. The Approve
+					// endpoint resumes it headlessly (see ResumeApprovedRun).
+					emit(fmt.Sprintf(`{"type":"approval_parked","run_id":%q,"approval_id":%q}`, id, arID))
+					runParked = true
 					return
 				}
+				deleteWaitState(context.Background(), h.pool, id)
 				h.pool.Exec(r.Context(), `UPDATE runs SET status='running' WHERE id=$1::uuid`, id) //nolint:errcheck
 
 				if decision.Decision == "rejected" {
@@ -540,13 +634,15 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			emit(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
 				call.ID, call.Name, jsonOrStr(call.Input)))
 
-			// Execute the tool — HTTP and code tools bypass the native registry
+			// Execute the tool — HTTP, code, and MCP tools bypass the native registry
 			var result *tools.ExecutionResult
 			var execErr error
 			if toolExists && dbTool.Type == "http" {
 				var cfg tools.HTTPToolConfig
 				_ = json.Unmarshal(dbTool.Config, &cfg)
 				result = tools.ExecuteHTTP(r.Context(), cfg, call.Input, dbTool.TimeoutMs)
+			} else if toolExists && dbTool.Type == "mcp" {
+				result = executeMCPTool(r.Context(), h.pool, h.cfg, dbTool, call.Input)
 			} else if toolExists && dbTool.Type == "code" {
 				var codeCfg struct {
 					Code string `json:"code"`
@@ -562,6 +658,14 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				}
 			} else {
 				result, execErr = h.executor.ExecuteWithContext(r.Context(), execCtx, call.Name, call.Input)
+			}
+			if errors.Is(execErr, tools.ErrRunParked) {
+				// The session tool persisted its wait state and the in-process
+				// wait expired. End the SSE stream without failing the run —
+				// the runner's callback resumes it via ResumeSessionRun.
+				emit(fmt.Sprintf(`{"type":"session_parked","run_id":%q}`, id))
+				runParked = true
+				return
 			}
 			var resultContent, errMsg string
 			latencyMs := 0
@@ -968,10 +1072,25 @@ func (h *RunsHandler) Approve(w http.ResponseWriter, r *http.Request) {
 		`UPDATE approval_requests SET status=$2, decided_by=$3::uuid, decided_at=NOW() WHERE id=$1::uuid`,
 		arID, req.Decision, uid)
 
-	if !SendApprovalDecision(runID, ApprovalDecision{Decision: req.Decision, Input: inp}) {
-		h.pool.Exec(r.Context(), //nolint:errcheck
-			`UPDATE runs SET status='failed', completed_at=NOW(), error_message='Approval received but run goroutine no longer active' WHERE id=$1::uuid`,
-			runID)
+	decision := ApprovalDecision{Decision: req.Decision, Input: inp}
+	if !SendApprovalDecision(runID, decision) {
+		// No goroutine is waiting — the in-process wait parked, or the process
+		// restarted since the run entered approval_wait. Resume the run from its
+		// persisted wait state instead of failing it.
+		resumed := false
+		if h.invokeH != nil {
+			var err error
+			resumed, err = h.invokeH.ResumeApprovedRun(runID, decision)
+			if err != nil {
+				errs.Write(w, errs.Internal("failed to resume run: "+err.Error()))
+				return
+			}
+		}
+		if !resumed {
+			h.pool.Exec(r.Context(), //nolint:errcheck
+				`UPDATE runs SET status='failed', completed_at=NOW(), error_message='Approval received but run goroutine no longer active' WHERE id=$1::uuid`,
+				runID)
+		}
 	}
 
 	errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "decision": req.Decision})
@@ -1007,7 +1126,8 @@ func (h *RunsHandler) SubmitUserInput(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RunsHandler) Cancel(w http.ResponseWriter, r *http.Request) {
-	t, e := h.pool.Exec(r.Context(), `UPDATE runs SET status='cancelled',completed_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid AND status IN('pending','running','approval_wait')`, chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()))
+	runID := chi.URLParam(r, "id")
+	t, e := h.pool.Exec(r.Context(), `UPDATE runs SET status='cancelled',completed_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid AND status IN('pending','running','approval_wait','session_wait')`, runID, middleware.WorkspaceIDFromCtx(r.Context()))
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to cancel run"))
 		return
@@ -1016,5 +1136,7 @@ func (h *RunsHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.BadRequest("run cannot be cancelled"))
 		return
 	}
+	// A cancelled approval_wait run must not be resumable later.
+	deleteWaitState(r.Context(), h.pool, runID)
 	errs.WriteJSON(w, 200, map[string]any{"status": "cancelled"})
 }

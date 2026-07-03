@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -23,6 +24,12 @@ type Config struct {
 	DemoMode                bool   // when true, restricts dangerous capabilities for public hosted instances
 	EmbedOllamaURL          string // Ollama base URL used for embeddings (e.g. http://localhost:11434)
 	EmbedModel              string // embedding model name (default: nomic-embed-text)
+	RunnerURL               string // base URL of the repo-session runner service (empty = sessions disabled)
+	RunnerCallbackSecret    string // shared secret the runner presents on session callbacks
+	SessionCallbackURL      string // callback URL the RUNNER uses to reach this API (defaults to PUBLIC_API_URL; override when the runner reaches the API over an internal network, e.g. http://api:8080 in Docker)
+	GithubToken             string // token for GitHub API tools (PR creation, branch diffs)
+	GithubAPIURL            string // GitHub API base URL (override for tests / GHE)
+	SessionWaitTimeoutMin   int    // minutes before a session_wait run with no callback is failed as crashed (0 = default 240)
 }
 
 func Load() (*Config, error) {
@@ -42,6 +49,12 @@ func Load() (*Config, error) {
 		DemoMode:                getEnvBool("DEMO_MODE", false),
 		EmbedOllamaURL:          getEnv("EMBED_OLLAMA_URL", "http://localhost:11434"),
 		EmbedModel:              getEnv("EMBED_MODEL", "nomic-embed-text"),
+		RunnerURL:               getEnv("RUNNER_URL", ""),
+		RunnerCallbackSecret:    getEnv("RUNNER_CALLBACK_SECRET", ""),
+		SessionCallbackURL:      getEnv("SESSION_CALLBACK_URL", ""),
+		GithubToken:             getEnv("GITHUB_TOKEN", ""),
+		GithubAPIURL:            getEnv("GITHUB_API_URL", "https://api.github.com"),
+		SessionWaitTimeoutMin:   getEnvInt("SESSION_WAIT_TIMEOUT_MIN", 240),
 	}
 
 	origins := getEnv("CORS_ORIGINS", "http://localhost:3000")
@@ -76,6 +89,15 @@ func (c *Config) validate() error {
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
 	}
 	return fallback
 }

@@ -31,6 +31,7 @@ func (b *Builder) Build(req BuildRequest) ([]provider.Message, string) {
 	// Stable: derived purely from agent config — identical across all turns of a conversation.
 	stable := req.SystemInstructions
 	stable += "\n\nNever promise future work unless an available tool has started it and returned a confirmed result."
+	stable += "\n\nHistory messages may begin with a \"[actions taken: …]\" block — that is a system-generated record of tools already executed in past turns. NEVER write such a block yourself: writing it does not execute anything. To perform an action, emit a real tool call and report only what its result actually says."
 	stable += "\n\nMulti-step tasks: when the user gives you a numbered list of steps or asks you to create/build multiple things, execute ALL steps without pausing to ask for confirmation or summarising mid-way. Only respond to the user after every step is done."
 	if len(req.Skills) > 0 {
 		stable += "\n\nAdditional instructions:\n"

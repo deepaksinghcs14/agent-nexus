@@ -1,0 +1,26 @@
+# Railway config for the repo-session runner service (Jira→PR pipeline).
+# In Railway dashboard: add a service from this repo, then
+# Service Settings → Config File Path → railway.runner.toml
+#
+# Required service variables:
+#   RUNNER_EXECUTOR=claude
+#   GITHUB_TOKEN=...                    # repo clone/push
+#   ANTHROPIC_API_KEY=...               # or CLAUDE_CODE_OAUTH_TOKEN
+#
+# And on the API service:
+#   RUNNER_URL=http://<runner-service>.railway.internal:8092
+#   RUNNER_CALLBACK_SECRET=<random string, same value is passed per-launch>
+#   SESSION_CALLBACK_URL=http://<api-service>.railway.internal:8080
+#   GITHUB_TOKEN=...                    # PR creation / branch diff tools
+#
+# Keep the runner at ONE replica: session idempotency state is in-memory.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.runner"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+healthcheckPath = "/healthz"
+healthcheckTimeout = 30

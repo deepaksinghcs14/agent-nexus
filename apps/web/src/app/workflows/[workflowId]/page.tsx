@@ -6,7 +6,7 @@
 // - invokeAPI.workflow hits /api/v1/invoke/workflows/:id with { input, stream: true }
 // - SSE node events carry node_id, node_name, node_type, result fields (added to SSEEvent type)
 
-import React, { useCallback, useEffect, useRef, useState, DragEvent } from 'react'
+import React, { use, useCallback, useEffect, useRef, useState, DragEvent } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -2260,10 +2260,11 @@ function ConfigField({ label, children }: { label: string; children: React.React
 // ---------------------------------------------------------------------------
 // Page export — wrapped in ReactFlowProvider
 // ---------------------------------------------------------------------------
-export default function WorkflowBuilderPage({ params }: { params: { workflowId: string } }) {
+export default function WorkflowBuilderPage({ params }: { params: Promise<{ workflowId: string }> }) {
+  const { workflowId } = use(params)
   return (
     <ReactFlowProvider>
-      <WorkflowBuilderInner groupId={params.workflowId} />
+      <WorkflowBuilderInner groupId={workflowId} />
     </ReactFlowProvider>
   )
 }

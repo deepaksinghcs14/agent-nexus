@@ -261,7 +261,10 @@ func (h *WebhookIngressHandler) Receive(w http.ResponseWriter, r *http.Request) 
 	}
 	input = strings.TrimSpace(input)
 	if input == "" {
-		errs.Write(w, errs.BadRequest("rendered input is empty"))
+		// An empty render is the template's filter mechanism (e.g. a Jira
+		// trigger that only fires for a specific label) — acknowledge the
+		// webhook without dispatching a run so the sender doesn't retry.
+		errs.WriteJSON(w, http.StatusOK, map[string]any{"status": "skipped", "reason": "input template rendered empty"})
 		return
 	}
 

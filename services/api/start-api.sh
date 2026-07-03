@@ -1,6 +1,24 @@
 #!/bin/sh
 set -e
 
+# Corporate TLS interception support: any PEM/CRT mounted at /corp-certs is
+# added to the system trust store (Go API: provider/MCP/GitHub calls) and
+# exported to node subprocesses (WhatsApp adapter, npx MCP servers), which use
+# their own bundled roots. No-op when the directory is empty or absent.
+extra_ca=""
+for f in /corp-certs/*.pem /corp-certs/*.crt; do
+  # Unmatched globs stay literal — skip anything that isn't a real file.
+  [ -f "$f" ] || continue
+  mkdir -p /usr/local/share/ca-certificates
+  cp "$f" "/usr/local/share/ca-certificates/corp-$(basename "$f" | tr . -).crt"
+  extra_ca="$f"
+done
+if [ -n "$extra_ca" ]; then
+  update-ca-certificates >/dev/null 2>&1 || true
+  export NODE_EXTRA_CA_CERTS="$extra_ca"
+  echo "trusted extra CA(s) from /corp-certs"
+fi
+
 : "${LOG_STREAM_INGEST_TOKEN:=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s)}"
 export LOG_STREAM_INGEST_TOKEN
 

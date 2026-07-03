@@ -8,7 +8,8 @@ type BadgeColor = 'gray' | 'amber' | 'purple' | 'green' | 'red' | 'blue'
 const STATES: { state: string; color: BadgeColor; desc: string }[] = [
   { state: 'pending',       color: 'gray',   desc: 'Queued, not yet started. Poll again shortly.' },
   { state: 'running',       color: 'amber',  desc: 'Active. Model is generating a response. Poll for updates or subscribe via SSE.' },
-  { state: 'approval_wait', color: 'purple', desc: 'Paused. An agent tool call requires human approval before continuing.' },
+  { state: 'approval_wait', color: 'purple', desc: 'Paused. An agent tool call requires human approval before continuing. Survives API restarts — approving resumes the run.' },
+  { state: 'session_wait',  color: 'blue',   desc: 'Paused. An autonomous coding session is executing in the runner service (minutes to hours). Resumes automatically on the session completion callback; survives API restarts.' },
   { state: 'success',       color: 'green',  desc: 'Completed. The output field contains the final response.' },
   { state: 'failed',        color: 'red',    desc: 'Error occurred. The error_message field has details.' },
   { state: 'cancelled',     color: 'gray',   desc: 'Cancelled by user. Terminal state.' },
@@ -83,7 +84,7 @@ async function waitForRun(runId, token) {
       <ApiPlayground
         method="POST"
         path="/runs/{runId}/cancel"
-        description="Cancel a run in pending, running, or approval_wait state."
+        description="Cancel a run in pending, running, approval_wait, or session_wait state."
         pathParams={[{ name: 'runId', label: 'Run ID' }]}
       />
 

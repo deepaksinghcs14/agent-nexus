@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { use, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Check, ChevronRight, Copy, LogOut, Pencil, QrCode, RefreshCw, X } from 'lucide-react'
@@ -21,7 +21,8 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-export default function GatewayChannelDetailPage({ params }: { params: { id: string } }) {
+export default function GatewayChannelDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id: channelId } = use(params)
   const [tab, setTab] = useState<Tab>('Overview')
   const [channel, setChannel] = useState<GatewayChannel | null>(null)
   const [sessions, setSessions] = useState<ChannelSession[]>([])
@@ -121,17 +122,17 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const ingressURL = useMemo(() => channel ? `${API_URL}/gateway/${channel.channel_type}/${channel.id}` : '', [channel])
 
   const loadContacts = useCallback((page: number, q: string) => {
-    gatewayAPI.listContacts({ channel_id: params.id, page, per_page: 20, ...(q ? { q } : {}) })
+    gatewayAPI.listContacts({ channel_id: channelId, page, per_page: 20, ...(q ? { q } : {}) })
       .then((r) => {
         const res = r as { data?: GatewayContact[]; total?: number }
         setContacts(res.data ?? [])
         setContactTotal(res.total ?? 0)
       }).catch(() => {})
-  }, [params.id])
+  }, [channelId])
 
   const load = useCallback(() => {
-    const q = `channel_id=${params.id}`
-    gatewayAPI.getChannel(params.id).then((c) => {
+    const q = `channel_id=${channelId}`
+    gatewayAPI.getChannel(channelId).then((c) => {
       const ch = c as GatewayChannel
       setChannel(ch)
       if (ch.channel_type === 'whatsapp') {
@@ -146,7 +147,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
     gatewayAPI.listScheduledMessages(q).then((r) => setScheduledMessages(((r as { data?: ScheduledMessage[] }).data) ?? [])).catch(() => {})
     gatewayAPI.listEscalations(q).then((r) => setEscalations(((r as { data?: GatewayEscalation[] }).data) ?? [])).catch(() => {})
     agentsAPI.list().then((r) => setAgents(((r as { data?: { id: string; name: string }[] }).data) ?? [])).catch(() => {})
-  }, [params.id])
+  }, [channelId])
 
   useEffect(() => { load() }, [load])
 
@@ -160,17 +161,17 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   }, [contactSearchInput])
 
   const refreshAdapter = useCallback(async () => {
-    const r = await gatewayAPI.adapterStatus(params.id).catch(() => null)
+    const r = await gatewayAPI.adapterStatus(channelId).catch(() => null)
     if (r) setAdapter(r as Record<string, unknown>)
     return r as Record<string, unknown> | null
-  }, [params.id])
+  }, [channelId])
 
   const startLogin = async () => {
     setError('')
     setLoginLoading(true)
     setQR(null)
     try {
-      await gatewayAPI.startLogin(params.id)
+      await gatewayAPI.startLogin(channelId)
       // Poll for QR or connected status
       for (let i = 0; i < 20; i++) {
         await new Promise((res) => setTimeout(res, 800))
@@ -194,9 +195,9 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
     setPairingCode('')
     setError('')
     try {
-      await gatewayAPI.startLogin(params.id)
+      await gatewayAPI.startLogin(channelId)
       await new Promise((res) => setTimeout(res, 1500))
-      const r = await gatewayAPI.requestPairingCode(params.id, pairingPhone.trim())
+      const r = await gatewayAPI.requestPairingCode(channelId, pairingPhone.trim())
       setPairingCode((r as { code?: string }).code ?? '')
     } catch (e) {
       setError((e as Error).message)
@@ -226,7 +227,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
     setSyncLIDsLoading(true)
     setSyncLIDsResult(null)
     try {
-      const r = await gatewayAPI.syncLIDs(params.id) as { synced?: number }
+      const r = await gatewayAPI.syncLIDs(channelId) as { synced?: number }
       setSyncLIDsResult(`${r.synced ?? 0} LID mappings synced to database`)
     } catch (e) {
       setSyncLIDsResult('Sync failed: ' + (e as Error).message)
@@ -239,7 +240,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
     setSyncContactsLoading(true)
     setSyncContactsResult(null)
     try {
-      const r = await gatewayAPI.syncContacts(params.id) as { created?: number; updated?: number }
+      const r = await gatewayAPI.syncContacts(channelId) as { created?: number; updated?: number }
       setSyncContactsResult(`${r.created ?? 0} created, ${r.updated ?? 0} LIDs updated`)
       loadContacts(contactPage, contactSearch)
     } catch (e) {
@@ -291,7 +292,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
       return
     }
     await gatewayAPI.createContact({
-      channel_id: params.id,
+      channel_id: channelId,
       account_id: channel?.config?.account_id || 'default',
       display_name: contactName,
       alias: contactName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
@@ -316,7 +317,7 @@ export default function GatewayChannelDetailPage({ params }: { params: { id: str
   const scheduleMessage = async () => {
     if (!schedMsg.trim() || !schedSendAt) { setError('Message and send time are required'); return }
     const body: Record<string, unknown> = {
-      channel_id: params.id,
+      channel_id: channelId,
       message: schedMsg,
       send_at: new Date(schedSendAt).toISOString(),
       ...(schedContact ? { contact_id: schedContact } : {}),
@@ -623,7 +624,7 @@ Content-Type: application/json
               <RefreshCw className="w-4 h-4" /> Refresh status
             </button>
             <button
-              onClick={async () => { await gatewayAPI.logout(params.id).catch(() => {}); setQR(null); await refreshAdapter() }}
+              onClick={async () => { await gatewayAPI.logout(channelId).catch(() => {}); setQR(null); await refreshAdapter() }}
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
             >
               <LogOut className="w-4 h-4" /> Logout

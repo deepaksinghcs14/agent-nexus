@@ -14,7 +14,9 @@ import (
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/handler"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/router"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/catalog"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/connector"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/migrate"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/logstream"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
@@ -70,12 +72,19 @@ func main() {
 		slog.Warn("bootstrap admin promotion failed", "error", err)
 	}
 
-	// Mark orphaned runs as failed. Any run still in running/pending/approval_wait/user_input_wait
-	// at startup was left stranded by a previous server crash or restart — their goroutines are gone.
+	// Mark orphaned runs as failed. Any run still in running/pending/user_input_wait
+	// at startup was left stranded by a previous server crash or restart — their
+	// goroutines are gone. Runs in approval_wait/session_wait survive the restart
+	// when their loop state is persisted in run_wait_states: they resume on the
+	// approval decision or the runner's session callback (see handler.ResumeApprovedRun
+	// / handler.ResumeSessionRun). Only waiting runs WITHOUT persisted state
+	// (e.g. nested sub-runs, whose parent stack cannot be restored) are failed.
 	if t, err := pool.Exec(ctx, `
 		UPDATE runs
 		SET status='failed', completed_at=NOW(), error_message='Server restarted while run was active'
-		WHERE status IN ('running','pending','approval_wait','user_input_wait')
+		WHERE status IN ('running','pending','user_input_wait')
+		   OR (status IN ('approval_wait','session_wait') AND NOT EXISTS (
+		         SELECT 1 FROM run_wait_states w WHERE w.run_id = runs.id))
 	`); err != nil {
 		slog.Warn("failed to mark orphaned runs as failed", "error", err)
 	} else if t.RowsAffected() > 0 {
@@ -126,6 +135,10 @@ func main() {
 	}
 	reg.Register(native.NewSendMessageTool())
 	reg.Register(native.NewAskUserTool())
+	reg.Register(native.NewLaunchRepoSessionTool(pool, cfg))
+	reg.Register(native.NewLaunchReviewSessionTool(pool, cfg))
+	reg.Register(native.NewCreatePullRequestTool(pool, cfg))
+	reg.Register(native.NewGetBranchDiffTool(pool, cfg))
 	if !cfg.DemoMode {
 		reg.Register(native.NewWriteFileTool(cfg.StoragePath))
 		reg.Register(native.NewHTTPRequestTool())
@@ -138,9 +151,37 @@ func main() {
 	if err := syncRequiredSkillTools(ctx, pool); err != nil {
 		slog.Warn("failed to sync required skill tools", "error", err)
 	}
+	// Seed the protected Jira→PR pipeline agents into every workspace.
+	// Runs after tool seeding so agent_tools name lookups resolve.
+	if err := handler.SeedPipelineAgents(ctx, pool); err != nil {
+		slog.Warn("failed to seed pipeline agents", "error", err)
+	}
+	// Adopt repos already synced by GitHub connectors into the session
+	// allowlist (covers connectors synced before adoption existed or while
+	// the API was down; per-sync adoption handles the steady state).
+	if n, err := catalog.AdoptAllGithubConnectors(ctx, pool); err != nil {
+		slog.Warn("failed to adopt connector repos", "error", err)
+	} else if n > 0 {
+		slog.Info("repos adopted into session allowlist at startup", "repos", n)
+	}
+	// Card healing must not depend on a GitHub connector existing: allowlist
+	// rows outlive a deleted connector, and each needs a searchable card.
+	if err := catalog.EnsureCardsForAllWorkspaces(ctx, pool); err != nil {
+		slog.Warn("failed to ensure catalog cards", "error", err)
+	}
 	if err := attachExistingWhatsAppCapabilities(ctx, pool); err != nil {
 		slog.Warn("failed to attach whatsapp capabilities", "error", err)
 	}
+	// Encrypt provider credentials still stored as plaintext in connector
+	// configs (rows created before config secrets were encrypted at rest).
+	if n, err := connector.EncryptLegacyConfigs(ctx, pool, []byte(cfg.EncryptionKey)); err != nil {
+		slog.Warn("failed to encrypt legacy connector config secrets", "error", err)
+	} else if n > 0 {
+		slog.Info("encrypted plaintext connector config secrets", "connectors", n)
+	}
+	// Embed chunks that were indexed while the embedder was unreachable —
+	// syncs skip unchanged documents, so these never self-heal otherwise.
+	handler.StartEmbeddingBackfill(ctx, pool, cfg)
 	exec := tools.NewExecutor(reg)
 
 	// Wire handlers — runs needs invokeH set post-construction to avoid circular init.
@@ -220,6 +261,9 @@ func main() {
 
 	// Deliver scheduled outbound messages as they come due.
 	go h.Gateway.StartScheduledMessageDispatcher(context.Background())
+
+	// Resume session_wait runs whose runner callback never arrived.
+	go invoke.StartSessionWaitWatchdog(context.Background())
 
 	<-quit
 	slog.Info("shutting down server...")

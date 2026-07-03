@@ -133,6 +133,7 @@ type MCPServer struct {
 	URL           string          `json:"url"`
 	Transport     string          `json:"transport"` // http | stdio
 	Status        string          `json:"status"`
+	AuthType      string          `json:"auth_type"` // config | oauth
 	Config        json.RawMessage `json:"config,omitempty"`
 	ToolsSyncedAt *time.Time      `json:"tools_synced_at"`
 	CreatedBy     string          `json:"created_by"`
@@ -192,6 +193,7 @@ const (
 	RunStatusFailed       RunStatus = "failed"
 	RunStatusCancelled    RunStatus = "cancelled"
 	RunStatusApprovalWait RunStatus = "approval_wait"
+	RunStatusSessionWait  RunStatus = "session_wait"
 )
 
 type Run struct {

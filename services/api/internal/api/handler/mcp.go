@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -12,7 +14,6 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/mcp"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
 
@@ -32,11 +33,11 @@ func NewMCPHandler(pool *pgxpool.Pool, cfg *config.Config) *MCPHandler {
 	return &MCPHandler{pool: pool, cfg: cfg}
 }
 
-const mcpSelect = `SELECT id::text,workspace_id::text,name,url,transport,status,config,tools_synced_at,created_by::text,created_at,updated_at FROM mcp_servers`
+const mcpSelect = `SELECT id::text,workspace_id::text,name,url,transport,status,auth_type,config,tools_synced_at,created_by::text,created_at,updated_at FROM mcp_servers`
 
 func scanMCP(row interface{ Scan(...any) error }) (domain.MCPServer, error) {
 	var s domain.MCPServer
-	err := row.Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.URL, &s.Transport, &s.Status, &s.Config, &s.ToolsSyncedAt, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt)
+	err := row.Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.URL, &s.Transport, &s.Status, &s.AuthType, &s.Config, &s.ToolsSyncedAt, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt)
 	return s, err
 }
 func (h *MCPHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -120,27 +121,43 @@ func (h *MCPHandler) Sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := mcp.NewClient(s.ID, s.URL, s.Transport, s.Config)
-	tools, listErr := client.ListTools(r.Context())
+	count, err := h.syncServerTools(r.Context(), s)
+	if err != nil {
+		errs.Write(w, errs.BadRequest("failed to connect to MCP server: "+err.Error()))
+		return
+	}
+
+	s.Status = "connected"
+	writeAudit(r, h.pool, "mcp_server.synced", "mcp_server", s.ID)
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"server": s, "tools_discovered": count})
+}
+
+// syncServerTools connects to the MCP server, lists its tools, and replaces
+// the mcp_tools rows plus the mirrored tools-table entries. Shared by the
+// Sync endpoint and the post-OAuth auto-sync.
+func (h *MCPHandler) syncServerTools(ctx context.Context, s domain.MCPServer) (int, error) {
+	client, err := mcpClientForServer(ctx, h.pool, h.cfg, s.ID, s.URL, s.Transport, s.AuthType, s.Config)
+	if err != nil {
+		return 0, err
+	}
+	tools, listErr := client.ListTools(ctx)
 	if listErr != nil {
 		slog.Warn("mcp sync failed", "server_id", s.ID, "transport", s.Transport, "error", listErr)
-		h.pool.Exec(r.Context(), `UPDATE mcp_servers SET status='error',updated_at=NOW() WHERE id=$1::uuid`, s.ID) //nolint:errcheck
-		errs.Write(w, errs.BadRequest("failed to connect to MCP server: "+listErr.Error()))
-		return
+		h.pool.Exec(ctx, `UPDATE mcp_servers SET status='error',updated_at=NOW() WHERE id=$1::uuid`, s.ID) //nolint:errcheck
+		return 0, listErr
 	}
 
 	// Replace all tools for this server atomically.
-	tx, txErr := h.pool.Begin(r.Context())
+	tx, txErr := h.pool.Begin(ctx)
 	if txErr != nil {
-		errs.Write(w, errs.Internal("failed to begin transaction"))
-		return
+		return 0, fmt.Errorf("failed to begin transaction: %w", txErr)
 	}
-	defer func() { _ = tx.Rollback(r.Context()) }()
+	defer func() { _ = tx.Rollback(ctx) }()
 
-	tx.Exec(r.Context(), `DELETE FROM mcp_tools WHERE server_id=$1::uuid`, s.ID) //nolint:errcheck
+	tx.Exec(ctx, `DELETE FROM mcp_tools WHERE server_id=$1::uuid`, s.ID) //nolint:errcheck
 	for _, t := range tools {
 		mcpID := uuid.NewString()
-		tx.Exec(r.Context(), //nolint:errcheck
+		tx.Exec(ctx, //nolint:errcheck
 			`INSERT INTO mcp_tools(id,server_id,name,description,input_schema,risk_level,enabled)
 			 VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7)
 			 ON CONFLICT(server_id,name) DO UPDATE SET description=$4,input_schema=$5,risk_level=$6,updated_at=NOW()`,
@@ -151,7 +168,7 @@ func (h *MCPHandler) Sync(w http.ResponseWriter, r *http.Request) {
 		// Do NOT overwrite risk_level on conflict — preserve user edits.
 		toolsID := mcpToolsID(s.WorkspaceID, s.ID, t.Name)
 		cfg, _ := json.Marshal(map[string]string{"server_id": s.ID, "server_name": s.Name})
-		tx.Exec(r.Context(), //nolint:errcheck
+		tx.Exec(ctx, //nolint:errcheck
 			`INSERT INTO tools(id,workspace_id,name,description,type,input_schema,output_schema,config,risk_level,requires_approval,timeout_ms,enabled)
 			 VALUES($1::uuid,$2::uuid,$3,$4,'mcp',$5,'{}',$6,$7,false,30000,true)
 			 ON CONFLICT(workspace_id,name) DO UPDATE SET
@@ -162,16 +179,12 @@ func (h *MCPHandler) Sync(w http.ResponseWriter, r *http.Request) {
 			toolsID, s.WorkspaceID, t.Name, t.Description, t.InputSchema, cfg, t.RiskLevel,
 		)
 	}
-	tx.Exec(r.Context(), `UPDATE mcp_servers SET status='connected',tools_synced_at=NOW(),updated_at=NOW() WHERE id=$1::uuid`, s.ID) //nolint:errcheck
+	tx.Exec(ctx, `UPDATE mcp_servers SET status='connected',tools_synced_at=NOW(),updated_at=NOW() WHERE id=$1::uuid`, s.ID) //nolint:errcheck
 
-	if err := tx.Commit(r.Context()); err != nil {
-		errs.Write(w, errs.Internal("failed to commit sync"))
-		return
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("failed to commit sync: %w", err)
 	}
-
-	s.Status = "connected"
-	writeAudit(r, h.pool, "mcp_server.synced", "mcp_server", s.ID)
-	errs.WriteJSON(w, http.StatusOK, map[string]any{"server": s, "tools_discovered": len(tools)})
+	return len(tools), nil
 }
 func (h *MCPHandler) UpdateToolRisk(w http.ResponseWriter, r *http.Request) {
 	wsID := middleware.WorkspaceIDFromCtx(r.Context())

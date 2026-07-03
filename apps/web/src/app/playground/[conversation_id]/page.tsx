@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, Suspense } from 'react'
+import { use, useState, useRef, useEffect, useCallback, Suspense } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'next/navigation'
 import {
@@ -711,10 +711,11 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
   )
 }
 
-export default function PlaygroundConversationPage({ params }: { params: { conversation_id: string } }) {
+export default function PlaygroundConversationPage({ params }: { params: Promise<{ conversation_id: string }> }) {
+  const p = use(params)
   return (
     <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-gray-400">Loading…</div>}>
-      <PlaygroundConversation params={params} />
+      <PlaygroundConversation params={p} />
     </Suspense>
   )
 }

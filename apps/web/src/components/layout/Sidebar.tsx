@@ -54,9 +54,10 @@ const userNav: NavGroup[] = [
   {
     label: 'Settings',
     items: [
-      { label: 'Providers',  href: '/settings/providers',  icon: Key },
-      { label: 'API Tokens', href: '/settings/api-tokens', icon: Key },
-      { label: 'Workspace',  href: '/settings/workspace',  icon: Settings },
+      { label: 'Providers',   href: '/settings/providers',   icon: Key },
+      { label: 'Claude Code', href: '/settings/claude-code', icon: SquareTerminal },
+      { label: 'API Tokens',  href: '/settings/api-tokens',  icon: Key },
+      { label: 'Workspace',   href: '/settings/workspace',   icon: Settings },
     ],
   },
   {
@@ -72,6 +73,7 @@ const adminNav: NavGroup[] = [
     label: 'Admin',
     items: [
       { label: 'Overview',    href: '/admin/overview',    icon: LayoutDashboard },
+      { label: 'Pipeline',    href: '/admin/pipeline',    icon: SquareTerminal },
       { label: 'Users',       href: '/admin/users',       icon: Users },
       { label: 'Workspaces',  href: '/admin/workspaces',  icon: Building2 },
       { label: 'Policies',    href: '/admin/policies',    icon: Shield },

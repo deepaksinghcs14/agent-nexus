@@ -3,9 +3,15 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
+
+// ErrRunParked signals that the run persisted its wait state and parked while
+// blocking on an external callback (e.g. a repo session). The run loop must
+// exit without failing the run; an external callback resumes it later.
+var ErrRunParked = errors.New("run parked awaiting external callback")
 
 type ExecutionResult struct {
 	Output    any
@@ -44,6 +50,11 @@ func (e *Executor) ExecuteWithContext(ctx context.Context, execCtx ExecutionCont
 		output, execErr = t.ExecuteWithContext(ctx, execCtx, input)
 	} else {
 		output, execErr = tool.Execute(input)
+	}
+	// A park is control flow, not a tool failure — propagate it as an error so
+	// the run loop can exit without recording a failed step.
+	if errors.Is(execErr, ErrRunParked) {
+		return nil, execErr
 	}
 	latency := int(time.Since(start).Milliseconds())
 

@@ -47,9 +47,13 @@ agent-nexus/
   services/
     api/                           ← Go API + agent runtime (port 8080)
       whatsapp-adapter/            ← Node.js adapter (whatsapp-web.js)
+      cmd/catalog-ingest/          ← CLI: onboard repos into the pipeline repo catalog
+    runner/                        ← repo-session runner: headless Claude Code sessions (port 8092)
   infra/
     docker-compose.yml
     migrations/                    ← numbered SQL files (001_init.sql …)
+    scripts/setup_pipeline.sh      ← Jira→PR pipeline assembly (see docs/jira-pipeline.md)
+  docs/jira-pipeline.md            ← autonomous Jira→PR pipeline architecture + setup
   ARCHITECTURE.md                  ← this file
   CONTRIBUTING.md
   LICENSE
@@ -91,6 +95,13 @@ services/api/
         provider_helper.go         ← Shared provider/model resolution helpers
         providers.go               ← Provider credential CRUD, model listing, Google OAuth flow
         runs.go                    ← Run CRUD, start (SSE), approve, cancel, user input, children
+        runner_credentials.go      ← Workspace pipeline credentials (Claude account + GitHub token)
+        pipeline_seed.go           ← Seeds the three protected pipeline agents per workspace
+        wait_state.go              ← Durable wait snapshots (run_wait_states persist/claim)
+        session_wait.go            ← Session wait registry, runner completion callback, stale-session watchdog
+        resume.go                  ← Headless resume of parked runs (approval + session)
+        mcp_executor.go            ← Executes tools-table entries of type 'mcp' via the MCP client
+        mcp_oauth.go               ← OAuth 2.1 for remote MCP servers (start/callback, token refresh)
         skills.go                  ← Skill CRUD, per-agent skill list/set
         skills_helper.go           ← Shared skill injection helpers
         tools.go                   ← Tool CRUD
@@ -109,7 +120,7 @@ services/api/
       service.go                   ← inbound message dispatch, session matching, contact lookup
     runtime/
       agent/
-        runner.go                  ← core agent run loop
+        runner.go                  ← placeholder — the run loop lives in handler/runs.go + handler/invoke.go
         prompt.go                  ← system prompt assembly (skills, memory, context injection)
         stream.go                  ← SSE streaming helpers
       memory/
@@ -447,7 +458,10 @@ type CompletionEvent struct {
 
 ## Agent Run Loop
 
-`runtime/agent/runner.go` — `Execute(ctx, req)`:
+The loop lives in `internal/api/handler` — `runs.go` (`Start`, playground SSE
+runs) and `invoke.go` (`executeRun`, the general engine used by the Invoke API,
+webhooks, the gateway, and sub-agent calls). `runtime/agent/runner.go` is a
+placeholder; do not make run-loop changes there.
 
 1. Load agent config + tool list from DB (`LazyToolLoading` defers tool schema resolution to first tool call)
 2. Load agent's attached Skills from DB; append each skill's `content` as a labelled block in the system prompt; auto-attach any `required_tool_names` declared by the skill
@@ -461,9 +475,32 @@ type CompletionEvent struct {
    - If `requires_approval`: update run to `approval_wait`, emit `approval_required` SSE, block until decision arrives
    - Execute tool with timeout → log `RunStep{type: tool_call}` → append result message → loop back to step 7
    - Sub-agent calls (`native_call_agent`) fan out to child runs sharing the same `trace_id`; parallel calls execute concurrently; depth is capped at 3
+   - `native_launch_repo_session` blocks on an external coding session (`session_wait`) and resumes on the runner's completion callback
 9. Emit `run_completed` SSE
 10. Update `Run` record (`status=success`, token counts, cost estimate)
 11. Async: summarise run, store new `Memory` records with embeddings; if conversation exceeds `CompactionThreshold` messages or `CompactionTokenThreshold` input tokens, run compaction to produce a rolling LLM-generated summary
+
+### Durable Waits (approval + session)
+
+Top-level runs blocked at an approval gate or inside `native_launch_repo_session`
+snapshot their loop state (messages, pending tool-call batch and index, counters)
+to `run_wait_states` before blocking. After a short in-process wait the goroutine
+*parks* — exits, leaving the run in `approval_wait`/`session_wait`. The approval
+decision (`POST /runs/{id}/approve`) or the runner's completion callback
+(`POST /internal/sessions/callback`) atomically claims the snapshot and re-enters
+the loop headlessly at the exact pending call — so these waits survive process
+restarts (the startup sweep only fails waiting runs *without* a snapshot).
+Nested sub-runs and workflow-node runs are excluded: their parent's stack cannot
+be restored. See `handler/wait_state.go`, `session_wait.go`, `resume.go`, and
+docs/jira-pipeline.md.
+
+Session waits are additionally crash-resilient on the runner side: the runner
+journals every in-flight session and delivers `crashed` callbacks for leftovers
+at startup, and the API's session watchdog (`StartSessionWaitWatchdog`) resumes
+any `session_wait` run whose callback never arrives within
+`SESSION_WAIT_TIMEOUT_MIN`. Session credentials (workspace Claude account and
+GitHub token, stored encrypted in `runner_credentials`) are injected per launch
+and never persisted by the runner.
 
 ### Memory Review Policy
 

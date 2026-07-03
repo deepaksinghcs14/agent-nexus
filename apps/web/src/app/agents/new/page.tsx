@@ -41,10 +41,10 @@ function Toggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => void;
   )
 }
 
-export default function AgentBuilderPage({ params }: { params?: { id?: string } }) {
+export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const isEdit = !!params?.id
+  const isEdit = !!agentId
   const [tab, setTab] = useState<Tab>('Basics')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -87,24 +87,24 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
   const [collapsedSkillGroups, setCollapsedSkillGroups] = useState<Set<string>>(new Set())
 
   const { data: existing, isLoading: isLoadingAgent } = useQuery({
-    queryKey: ['agent', params?.id],
-    queryFn: () => agentsAPI.get(params!.id!) as Promise<Agent>,
+    queryKey: ['agent', agentId],
+    queryFn: () => agentsAPI.get(agentId!) as Promise<Agent>,
     enabled: isEdit,
   })
 
   const { data: agentTools } = useQuery({
-    queryKey: ['agent-tools', params?.id],
-    queryFn: () => agentsAPI.getTools(params!.id!) as Promise<{ data: Tool[] }>,
+    queryKey: ['agent-tools', agentId],
+    queryFn: () => agentsAPI.getTools(agentId!) as Promise<{ data: Tool[] }>,
     enabled: isEdit,
   })
   const { data: agentConnectorsData } = useQuery({
-    queryKey: ['agent-connectors', params?.id],
-    queryFn: () => agentsAPI.getConnectors(params!.id!) as Promise<{ data: Connector[]; max_chunks: number; min_score: number }>,
+    queryKey: ['agent-connectors', agentId],
+    queryFn: () => agentsAPI.getConnectors(agentId!) as Promise<{ data: Connector[]; max_chunks: number; min_score: number }>,
     enabled: isEdit,
   })
   const { data: agentSkillsData } = useQuery({
-    queryKey: ['agent-skills', params?.id],
-    queryFn: () => skillsAPI.listForAgent(params!.id!) as Promise<{ data: AgentSkill[] }>,
+    queryKey: ['agent-skills', agentId],
+    queryFn: () => skillsAPI.listForAgent(agentId!) as Promise<{ data: AgentSkill[] }>,
     enabled: isEdit,
   })
   const { data: toolsData } = useQuery({
@@ -251,8 +251,8 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
         compaction_threshold: compactionThreshold,
         compaction_token_threshold: compactionTokenThreshold,
       }
-      const saved = isEdit ? await agentsAPI.update(params!.id!, body) : await agentsAPI.create(body)
-      const id = isEdit ? params!.id! : (saved as Agent).id
+      const saved = isEdit ? await agentsAPI.update(agentId!, body) : await agentsAPI.create(body)
+      const id = isEdit ? agentId! : (saved as Agent).id
       await agentsAPI.setTools(id, { tool_names: Object.entries(enabledTools).filter(([, enabled]) => enabled).map(([tool]) => tool) })
       await agentsAPI.setConnectors(id, {
         connector_ids: Object.entries(enabledConnectors).filter(([, enabled]) => enabled).map(([cid]) => cid),
@@ -273,9 +273,9 @@ export default function AgentBuilderPage({ params }: { params?: { id?: string } 
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agents'] })
-      queryClient.invalidateQueries({ queryKey: ['agent', params?.id] })
-      queryClient.invalidateQueries({ queryKey: ['agent-tools', params?.id] })
-      queryClient.invalidateQueries({ queryKey: ['agent-skills', params?.id] })
+      queryClient.invalidateQueries({ queryKey: ['agent', agentId] })
+      queryClient.invalidateQueries({ queryKey: ['agent-tools', agentId] })
+      queryClient.invalidateQueries({ queryKey: ['agent-skills', agentId] })
       router.push('/agents')
     },
     onError: (err: Error) => setSaveError(err.message),

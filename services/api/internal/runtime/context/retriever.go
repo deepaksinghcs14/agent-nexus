@@ -76,12 +76,14 @@ func (r *Retriever) Retrieve(ctx context.Context, workspaceID string, connectorI
 		}
 	}
 
-	// No embedding or semantic search returned nothing — use full-text + ILIKE keyword search.
+	// No embedding or semantic search returned nothing — use full-text + ILIKE
+	// keyword search. Terms are OR-combined (any-match) so multi-word queries
+	// still recall; ts_rank_cd naturally ranks chunks matching more terms higher.
 	rows, err = r.pool.Query(ctx,
 		`SELECT cc.content, cd.title, cd.url, cd.source,
 		        COALESCE(ts_rank_cd(
 		            to_tsvector('english', cc.content || ' ' || cd.title),
-		            plainto_tsquery('english', $4)
+		            to_tsquery('english', $5)
 		        ), 0)::float AS score
 		 FROM connector_chunks cc
 		 JOIN connector_documents cd ON cd.id = cc.document_id
@@ -90,12 +92,12 @@ func (r *Retriever) Retrieve(ctx context.Context, workspaceID string, connectorI
 		   AND c.status IN ('connected', 'syncing')
 		   AND ($2::uuid[] IS NULL OR c.id = ANY($2::uuid[]))
 		   AND (
-		       to_tsvector('english', cc.content || ' ' || cd.title) @@ plainto_tsquery('english', $4)
+		       to_tsvector('english', cc.content || ' ' || cd.title) @@ to_tsquery('english', $5)
 		       OR cd.title ILIKE '%' || $4 || '%'
 		   )
 		 ORDER BY score DESC, cd.title
 		 LIMIT $3`,
-		workspaceID, uuidArray(connectorIDs), limit, query)
+		workspaceID, uuidArray(connectorIDs), limit, query, orTSQuery(query))
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +112,36 @@ func (r *Retriever) Retrieve(ctx context.Context, workspaceID string, connectorI
 		chunks = append(chunks, c)
 	}
 	return chunks, rows.Err()
+}
+
+// orTSQuery converts free text into a safe OR-combined tsquery expression:
+// "webhook rate limiting" → "webhook | rate | limiting". Non-alphanumeric
+// characters SPLIT terms (they must not be silently stripped: to_tsvector
+// tokenizes "aadhaar-qr-scanner-sdk" into its parts, so the glued-together
+// "aadhaarqrscannersdk" would match nothing) and duplicates are dropped.
+func orTSQuery(query string) string {
+	var terms []string
+	seen := map[string]bool{}
+	var b strings.Builder
+	flush := func() {
+		if b.Len() > 1 && !seen[b.String()] {
+			seen[b.String()] = true
+			terms = append(terms, b.String())
+		}
+		b.Reset()
+	}
+	for _, r := range strings.ToLower(query) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else {
+			flush()
+		}
+	}
+	flush()
+	if len(terms) == 0 {
+		return "zzzznomatch"
+	}
+	return strings.Join(terms, " | ")
 }
 
 func uuidArray(values []string) any {

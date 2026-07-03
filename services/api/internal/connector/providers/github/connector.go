@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,7 +29,61 @@ var binaryExts = map[string]bool{
 
 const maxFileBytes = 500 * 1024
 
+// vendoredDirs are path segments whose contents are third-party or generated
+// code — indexing them buries a workspace's own code under pip/npm vendored
+// sources (a committed venv/ alone adds thousands of chunks).
+var vendoredDirs = map[string]bool{
+	"node_modules": true, "vendor": true, "venv": true, ".venv": true,
+	"site-packages": true, "__pycache__": true, ".git": true,
+	"dist": true, "build": true, "target": true, ".next": true,
+	"bower_components": true, ".terraform": true,
+}
+
+// vendoredPath reports whether any segment of a repo-relative path is a
+// vendored/generated directory.
+func vendoredPath(path string) bool {
+	for _, seg := range strings.Split(path, "/") {
+		if vendoredDirs[seg] {
+			return true
+		}
+	}
+	return false
+}
+
+// rateLimitFloor is the REST-quota reserve kept free for interactive callers
+// (the pipeline's PR/diff tools, MCP, etc. share the token owner's hourly
+// limit). When remaining drops to this floor, the sync pauses until reset.
+const rateLimitFloor = 500
+
 var httpClient = &http.Client{Timeout: 30 * time.Second}
+
+// rateLimitWait returns how long to pause based on a response's rate-limit
+// headers: >0 when the remaining quota is at/below floor (or the request was
+// rejected for rate limiting), 0 to proceed. Uses X-RateLimit-Reset (epoch
+// seconds) with a small buffer; falls back to a minute when headers are absent
+// on a 403/429.
+func rateLimitWait(res *http.Response, floor int) time.Duration {
+	remaining, remErr := strconv.Atoi(res.Header.Get("X-RateLimit-Remaining"))
+	rejected := res.StatusCode == http.StatusForbidden || res.StatusCode == http.StatusTooManyRequests
+	if remErr != nil {
+		if rejected {
+			return time.Minute
+		}
+		return 0
+	}
+	if remaining > floor && !(rejected && remaining == 0) {
+		return 0
+	}
+	if reset, err := strconv.ParseInt(res.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil {
+		if wait := time.Until(time.Unix(reset, 0)) + 5*time.Second; wait > 0 {
+			return wait
+		}
+	}
+	if rejected {
+		return time.Minute
+	}
+	return 0
+}
 
 type Connector struct{}
 
@@ -60,14 +115,34 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 	}
 
 	do := func(u string) (*http.Response, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-		if err != nil {
-			return nil, err
+		for {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Accept", "application/vnd.github+json")
+			req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+			res, err := httpClient.Do(req)
+			if err != nil {
+				return nil, err
+			}
+			// Background indexing must never starve interactive callers — keep
+			// a quota reserve, and wait out an exhausted window (403/429)
+			// instead of failing the sync.
+			if wait := rateLimitWait(res, rateLimitFloor); wait > 0 {
+				res.Body.Close()
+				slog.Info("github: pausing sync for rate-limit reserve",
+					"wait", wait.Round(time.Second).String())
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(wait):
+					continue
+				}
+			}
+			return res, nil
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Accept", "application/vnd.github+json")
-		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-		return httpClient.Do(req)
 	}
 
 	// Resolve owner from token if not provided.
@@ -80,7 +155,9 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 		if res.StatusCode != http.StatusOK {
 			return fmt.Errorf("github: resolve token owner returned HTTP %d", res.StatusCode)
 		}
-		var u struct{ Login string `json:"login"` }
+		var u struct {
+			Login string `json:"login"`
+		}
 		if err := json.NewDecoder(res.Body).Decode(&u); err != nil {
 			return fmt.Errorf("github: decode user info: %w", err)
 		}
@@ -213,7 +290,9 @@ func (c *Connector) syncRepo(
 		if res.StatusCode != http.StatusOK {
 			return fmt.Errorf("github: repo info returned HTTP %d", res.StatusCode)
 		}
-		var info struct{ DefaultBranch string `json:"default_branch"` }
+		var info struct {
+			DefaultBranch string `json:"default_branch"`
+		}
 		if err := json.NewDecoder(res.Body).Decode(&info); err != nil {
 			return fmt.Errorf("github: decode repo info: %w", err)
 		}
@@ -250,6 +329,9 @@ func (c *Connector) syncRepo(
 			continue
 		}
 		if binaryExts[strings.ToLower(filepath.Ext(item.Path))] {
+			continue
+		}
+		if vendoredPath(item.Path) {
 			continue
 		}
 		if item.Size > maxFileBytes {

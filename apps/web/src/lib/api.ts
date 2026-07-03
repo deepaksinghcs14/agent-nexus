@@ -194,6 +194,7 @@ export const mcpAPI = {
   list: () => api.get('/mcp-servers'),
   create: (body: unknown) => api.post('/mcp-servers', body),
   sync: (id: string) => api.post(`/mcp-servers/${id}/sync`),
+  oauthStart: (id: string) => api.post(`/mcp-servers/${id}/oauth/start`),
   tools: (id: string) => api.get(`/mcp-servers/${id}/tools`),
   updateToolRisk: (serverId: string, toolId: string, riskLevel: string) =>
     api.patch(`/mcp-servers/${serverId}/tools/${toolId}`, { risk_level: riskLevel }),
@@ -216,6 +217,30 @@ export const providersAPI = {
   update: (id: string, body: unknown) => api.put(`/providers/${id}`, body),
   delete: (id: string) => api.delete(`/providers/${id}`),
   models: (id: string) => api.get(`/providers/${id}/models`),
+}
+
+// Workspace pipeline credentials for repo sessions: Claude account token
+// (`claude setup-token` output) and GitHub token. Either can be set alone.
+export const runnerCredsAPI = {
+  get: () => api.get('/workspace/runner-credentials'),
+  put: (body: { claude_token?: string; github_token?: string }) =>
+    api.put('/workspace/runner-credentials', body),
+  delete: (field: 'claude' | 'github' | 'all' = 'all') =>
+    api.delete(`/workspace/runner-credentials?field=${field}`),
+}
+
+// Repo catalog: the workspace allowlist of repos coding sessions may target.
+// Onboarding clones and indexes server-side with the workspace GitHub token.
+export const pipelineAPI = {
+  status: () => api.get('/pipeline/status'),
+}
+
+export const repoCatalogAPI = {
+  list: () => api.get('/repo-catalog'),
+  onboard: (repo: string, branch?: string) => api.post('/repo-catalog', { repo, branch }),
+  setSessions: (repo: string, enabled: boolean) =>
+    api.patch('/repo-catalog', { repo, sessions_enabled: enabled }),
+  remove: (repo: string) => api.delete(`/repo-catalog?repo=${encodeURIComponent(repo)}`),
 }
 
 export const conversationsAPI = {
@@ -358,6 +383,7 @@ export const adminAPI = {
   usage: () => api.get('/admin/usage'),
   policies: () => api.get('/admin/policies'),
   setPolicies: (body: unknown) => api.put('/admin/policies', body),
+  pipeline: () => api.get('/admin/pipeline'),
 }
 
 export const configAPI = {

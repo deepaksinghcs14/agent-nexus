@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/catalog"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/connector"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/connector/providers/confluence"
@@ -71,6 +72,7 @@ func (h *ConnectorsHandler) List(w http.ResponseWriter, r *http.Request) {
 			errs.Write(w, errs.Internal("failed to read connectors"))
 			return
 		}
+		c.Config = connector.RedactConfigSecrets(c.Config)
 		a = append(a, c)
 	}
 	errs.WriteJSON(w, 200, map[string]any{"data": a})
@@ -99,12 +101,14 @@ func (h *ConnectorsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if len(c.Config) == 0 {
 		c.Config = json.RawMessage(`{}`)
 	}
+	c.Config = connector.EncryptConfigSecrets([]byte(h.cfg.EncryptionKey), c.Config)
 	e := h.pool.QueryRow(r.Context(), `INSERT INTO connectors(id,workspace_id,name,provider,type,auth_type,status,config,created_by)VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9::uuid)RETURNING created_at,updated_at`, c.ID, c.WorkspaceID, c.Name, c.Provider, c.Type, c.AuthType, c.Status, c.Config, c.CreatedBy).Scan(&c.CreatedAt, &c.UpdatedAt)
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to create connector"))
 		return
 	}
 	writeAudit(r, h.pool, "connector.created", "connector", c.ID)
+	c.Config = connector.RedactConfigSecrets(c.Config)
 	errs.WriteJSON(w, 201, c)
 }
 
@@ -114,6 +118,7 @@ func (h *ConnectorsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.NotFound("connector not found"))
 		return
 	}
+	c.Config = connector.RedactConfigSecrets(c.Config)
 	errs.WriteJSON(w, 200, c)
 }
 
@@ -139,6 +144,15 @@ func (h *ConnectorsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	conn, e := scanConnector(h.pool.QueryRow(r.Context(), connectorSelect+` WHERE id=$1::uuid AND workspace_id=$2::uuid`, id, ws))
 	if e != nil {
 		errs.Write(w, errs.NotFound("connector not found"))
+		return
+	}
+
+	// The repo-catalog connector holds the pipeline's curated docs surface
+	// (catalog cards, READMEs, file trees written by internal/catalog). A
+	// generic provider sync would bury it under full repo contents — tens of
+	// thousands of source-file chunks — and repo selection quality collapses.
+	if conn.Name == catalog.ConnectorName {
+		errs.Write(w, errs.BadRequest("the repo-catalog connector is maintained by repository onboarding and cannot be synced directly — sync a regular GitHub connector instead (its repos are adopted into the catalog automatically)"))
 		return
 	}
 
@@ -175,6 +189,11 @@ func (h *ConnectorsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 			rep.Fail(err)
 		} else {
 			rep.Complete()
+			// GitHub connectors double as pipeline repo onboarding: every synced
+			// repo joins the session allowlist.
+			if n, err := catalog.AdoptFromConnector(ctx, h.pool, id); err == nil && n > 0 {
+				slog.Info("repos adopted into session allowlist from connector sync", "connector_id", id, "repos", n)
+			}
 		}
 	}()
 
@@ -268,6 +287,9 @@ func (h *ConnectorsHandler) launchSync(ctx context.Context, connID, wsID string,
 			rep.Fail(err)
 		} else {
 			rep.Complete()
+			if n, err := catalog.AdoptFromConnector(context.Background(), h.pool, connID); err == nil && n > 0 {
+				slog.Info("repos adopted into session allowlist from connector sync", "connector_id", connID, "repos", n)
+			}
 		}
 	}()
 }
@@ -304,8 +326,12 @@ func (h *ConnectorsHandler) ListDocuments(w http.ResponseWriter, r *http.Request
 
 	var (
 		total int
-		rows  interface{ Next() bool; Scan(...any) error; Close() }
-		e     error
+		rows  interface {
+			Next() bool
+			Scan(...any) error
+			Close()
+		}
+		e error
 	)
 
 	if metaKey != "" {

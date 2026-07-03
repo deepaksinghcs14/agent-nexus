@@ -1,12 +1,28 @@
 name: Deploy to Railway
 
+# Two ways to deploy:
+#  - push to main → deploys everything (unchanged behavior)
+#  - Actions → "Deploy to Railway" → Run workflow: pick ANY branch in the
+#    ref dropdown and which services to deploy. `railway up` ships the
+#    checked-out code of that branch.
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      services:
+        description: Which services to deploy
+        type: choice
+        default: all
+        options: [all, api, web, runner, ollama]
+
+env:
+  RAILWAY_PROJECT_ID: b11bee08-7115-4026-b73d-1ebe49976792
 
 jobs:
   deploy-api:
     name: Deploy API
+    if: github.event_name == 'push' || inputs.services == 'all' || inputs.services == 'api'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,10 +33,10 @@ jobs:
       - run: railway up --service api --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: b11bee08-7115-4026-b73d-1ebe49976792
 
   deploy-web:
     name: Deploy Web
+    if: github.event_name == 'push' || inputs.services == 'all' || inputs.services == 'web'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,10 +47,26 @@ jobs:
       - run: railway up ./apps/web --path-as-root --service web --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: b11bee08-7115-4026-b73d-1ebe49976792
+
+  deploy-runner:
+    name: Deploy Runner
+    if: github.event_name == 'push' || inputs.services == 'all' || inputs.services == 'runner'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install -g @railway/cli
+      # Requires a "runner" service in the Railway project with
+      # Config File Path = railway.runner.toml (see that file for env vars).
+      - run: railway up --service runner --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
   deploy-ollama:
     name: Deploy Ollama
+    if: github.event_name == 'push' || inputs.services == 'all' || inputs.services == 'ollama'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-node@v4
@@ -44,4 +76,3 @@ jobs:
       - run: railway redeploy --service ollama --yes
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: b11bee08-7115-4026-b73d-1ebe49976792
