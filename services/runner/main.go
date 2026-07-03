@@ -110,6 +110,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	// RUNNER_EXTRA_CA: path to an additional trusted CA (PEM) — for local
+	// installs behind a TLS-intercepting corporate proxy (e.g. Cloudflare
+	// Zero Trust). The CA is appended to the system bundle and exported to
+	// the git and claude subprocesses; without it, clones and API calls fail
+	// with SELF_SIGNED_CERT_IN_CHAIN on such networks.
+	if extraCA := getEnv("RUNNER_EXTRA_CA", ""); extraCA != "" {
+		if err := trustExtraCA(extraCA, s.workDir); err != nil {
+			slog.Warn("RUNNER_EXTRA_CA configured but unusable", "path", extraCA, "error", err)
+		} else {
+			slog.Info("extra CA trusted for git and claude subprocesses", "path", extraCA)
+		}
+	}
+
 	// Sessions interrupted by a previous crash/restart: notify their runs.
 	go s.recoverJournals()
 
@@ -426,6 +439,26 @@ func (s *server) deliverCallback(sub subscriber, req launchRequest, res result) 
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+// trustExtraCA writes a combined bundle (system CAs + the extra CA) into the
+// work dir and points git and node/claude at it via env vars inherited by
+// every subprocess this service spawns.
+func trustExtraCA(extraPath, workDir string) error {
+	extra, err := os.ReadFile(extraPath)
+	if err != nil {
+		return err
+	}
+	combined := filepath.Join(workDir, "ca-bundle.crt")
+	system, _ := os.ReadFile("/etc/ssl/certs/ca-certificates.crt")
+	if err := os.WriteFile(combined, append(append(system, '\n'), extra...), 0o644); err != nil {
+		return err
+	}
+	// node adds NODE_EXTRA_CA_CERTS on top of its bundled roots; git (libcurl)
+	// replaces its bundle, hence the combined file.
+	os.Setenv("NODE_EXTRA_CA_CERTS", extraPath) //nolint:errcheck
+	os.Setenv("GIT_SSL_CAINFO", combined)       //nolint:errcheck
+	return nil
+}
 
 func runCmd(ctx context.Context, dir string, env []string, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)

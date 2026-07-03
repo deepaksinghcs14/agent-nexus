@@ -76,8 +76,13 @@ services:
       MAX_TURNS: ${RUNNER_MAX_TURNS:-50}
       SESSION_TIMEOUT_MIN: ${RUNNER_SESSION_TIMEOUT_MIN:-120}
       WORK_DIR: /data/sessions
+      # Corporate TLS interception (e.g. Cloudflare Zero Trust): drop your
+      # gateway's root CA at infra/certs/corp-ca.pem and set
+      # RUNNER_EXTRA_CA=/corp-certs/corp-ca.pem in infra/.env.
+      RUNNER_EXTRA_CA: ${RUNNER_EXTRA_CA:-}
     volumes:
       - runner_sessions:/data/sessions
+      - ./certs:/corp-certs:ro
 
   web:
     build:
