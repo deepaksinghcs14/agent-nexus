@@ -22,7 +22,7 @@ const TYPE_COLORS: Record<WorkspaceType, string> = {
   team: 'bg-blue-500/20 text-blue-300',
   organization: 'bg-green-500/20 text-green-300',
   project: 'bg-amber-500/20 text-amber-300',
-  sandbox: 'bg-gray-500/20 text-gray-400',
+  sandbox: 'bg-gray-500/20 text-gray-400 dark:text-gray-500',
 }
 
 export function WorkspaceSwitcher({ collapsed = false }: { collapsed?: boolean }) {

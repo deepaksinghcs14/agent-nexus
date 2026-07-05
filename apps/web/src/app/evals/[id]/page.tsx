@@ -8,18 +8,18 @@ import { Plus, Trash2, Play, ChevronRight, Pencil, X, Check, Sparkles, Download,
 
 function RunStatusBadge({ status }: { status: EvalRun['status'] }) {
   const cls = {
-    pending: 'bg-gray-100 text-gray-500',
-    running: 'bg-blue-50 text-blue-600',
-    completed: 'bg-green-50 text-green-700',
-    failed: 'bg-red-50 text-red-600',
-  }[status] ?? 'bg-gray-100 text-gray-500'
+    pending: 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400',
+    running: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300',
+    completed: 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300',
+    failed: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-300',
+  }[status] ?? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{status}</span>
 }
 
 function ScorePct({ score, status }: { score: number; status: string }) {
-  if (status === 'pending' || status === 'running') return <span className="text-xs text-gray-400">—</span>
+  if (status === 'pending' || status === 'running') return <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
   const pct = Math.round(score * 100)
-  const color = pct >= 80 ? 'text-green-600' : pct >= 50 ? 'text-amber-600' : 'text-red-600'
+  const color = pct >= 80 ? 'text-green-600 dark:text-green-300' : pct >= 50 ? 'text-amber-600 dark:text-amber-300' : 'text-red-600 dark:text-red-300'
   return <span className={`text-sm font-semibold ${color}`}>{pct}%</span>
 }
 
@@ -47,38 +47,38 @@ function CaseRow({ c, suiteId, onDeleted, onUpdated }: {
     return (
       <div className="border border-purple-200 rounded-lg p-4 space-y-3 bg-purple-50/30">
         <div>
-          <label className="text-xs font-medium text-gray-600 block mb-1">Input</label>
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Input</label>
           <textarea className="w-full border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500" rows={3} value={input} onChange={e => setInput(e.target.value)} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-medium text-gray-600 block mb-1">Expected output (optional)</label>
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Expected output (optional)</label>
             <textarea className="w-full border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500" rows={2} value={expected} onChange={e => setExpected(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs font-medium text-gray-600 block mb-1">Grading criteria (optional)</label>
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Grading criteria (optional)</label>
             <textarea className="w-full border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500" rows={2} value={criteria} onChange={e => setCriteria(e.target.value)} />
           </div>
         </div>
         <div className="flex justify-end gap-2">
-          <button onClick={() => setEditing(false)} className="p-1.5 rounded hover:bg-gray-100 text-gray-500 transition-colors"><X className="w-4 h-4" /></button>
-          <button onClick={save} disabled={saving || !input} className="p-1.5 rounded hover:bg-green-100 text-green-600 transition-colors disabled:opacity-50"><Check className="w-4 h-4" /></button>
+          <button onClick={() => setEditing(false)} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"><X className="w-4 h-4" /></button>
+          <button onClick={save} disabled={saving || !input} className="p-1.5 rounded hover:bg-green-100 text-green-600 dark:text-green-300 transition-colors disabled:opacity-50"><Check className="w-4 h-4" /></button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="border border-gray-100 rounded-lg p-4 group hover:border-gray-200 transition-colors">
+    <div className="border border-gray-100 dark:border-gray-800 rounded-lg p-4 group hover:border-gray-200 transition-colors">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1 space-y-1">
-          <p className="text-sm text-gray-900 line-clamp-2">{c.input}</p>
-          {c.expected_output && <p className="text-xs text-gray-500"><span className="font-medium">Expected:</span> {c.expected_output}</p>}
-          {c.grading_criteria && <p className="text-xs text-gray-500"><span className="font-medium">Criteria:</span> {c.grading_criteria}</p>}
+          <p className="text-sm text-gray-900 dark:text-gray-100 line-clamp-2">{c.input}</p>
+          {c.expected_output && <p className="text-xs text-gray-500 dark:text-gray-400"><span className="font-medium">Expected:</span> {c.expected_output}</p>}
+          {c.grading_criteria && <p className="text-xs text-gray-500 dark:text-gray-400"><span className="font-medium">Criteria:</span> {c.grading_criteria}</p>}
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          <button onClick={() => setEditing(true)} className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-          <button onClick={onDeleted} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+          <button onClick={() => setEditing(true)} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+          <button onClick={onDeleted} className="p-1 rounded hover:bg-red-50 text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
         </div>
       </div>
     </div>
@@ -108,7 +108,7 @@ function AddCaseForm({ suiteId, onCreated }: { suiteId: string; onCreated: () =>
     return (
       <button
         onClick={() => setOpen(true)}
-        className="w-full border-2 border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-400 hover:border-purple-300 hover:text-purple-500 transition-colors flex items-center justify-center gap-2"
+        className="w-full border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg py-3 text-sm text-gray-400 dark:text-gray-500 hover:border-purple-300 hover:text-purple-500 transition-colors flex items-center justify-center gap-2"
       >
         <Plus className="w-4 h-4" /> Add test case
       </button>
@@ -118,21 +118,21 @@ function AddCaseForm({ suiteId, onCreated }: { suiteId: string; onCreated: () =>
   return (
     <div className="border border-purple-200 rounded-lg p-4 space-y-3 bg-purple-50/30">
       <div>
-        <label className="text-xs font-medium text-gray-600 block mb-1">Input <span className="text-red-500">*</span></label>
+        <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Input <span className="text-red-500">*</span></label>
         <textarea className="w-full border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500" rows={3} value={input} onChange={e => setInput(e.target.value)} placeholder="The message to send to the agent" />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="text-xs font-medium text-gray-600 block mb-1">Expected output <span className="text-gray-400 font-normal">(optional)</span></label>
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Expected output <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span></label>
           <textarea className="w-full border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500" rows={2} value={expected} onChange={e => setExpected(e.target.value)} placeholder="Reference answer" />
         </div>
         <div>
-          <label className="text-xs font-medium text-gray-600 block mb-1">Grading criteria <span className="text-gray-400 font-normal">(optional)</span></label>
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Grading criteria <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span></label>
           <textarea className="w-full border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500" rows={2} value={criteria} onChange={e => setCriteria(e.target.value)} placeholder="What should the LLM judge look for?" />
         </div>
       </div>
       <div className="flex justify-end gap-2">
-        <button onClick={() => setOpen(false)} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors">Cancel</button>
+        <button onClick={() => setOpen(false)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 transition-colors">Cancel</button>
         <button onClick={submit} disabled={saving || !input} className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50">
           {saving ? 'Adding…' : 'Add case'}
         </button>
@@ -199,26 +199,26 @@ function GenerateCasesModal({ suiteId, agentProvider, agentModel, onDone }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-purple-500" />
-            <h2 className="font-semibold text-gray-900 text-sm">Generate test cases</h2>
+            <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Generate test cases</h2>
           </div>
-          <button onClick={onDone} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X className="w-4 h-4" /></button>
+          <button onClick={onDone} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="p-4 space-y-4 overflow-y-auto flex-1">
           {!generated ? (
             <>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 The AI will analyse the agent&apos;s system prompt, tools, skills, and knowledge bases to suggest realistic test cases.
               </p>
 
               {/* Provider + model row */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-600 block mb-1">Provider</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Provider</label>
                   <select
                     className="w-full border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                     value={selectedProvider}
@@ -231,7 +231,7 @@ function GenerateCasesModal({ suiteId, agentProvider, agentModel, onDone }: {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600 block mb-1">Model</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-1">Model</label>
                   <select
                     className="w-full border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                     value={selectedModel}
@@ -252,13 +252,13 @@ function GenerateCasesModal({ suiteId, agentProvider, agentModel, onDone }: {
 
               {/* Count selector */}
               <div>
-                <label className="text-xs font-medium text-gray-600 block mb-2">Number of cases to generate</label>
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-400 block mb-2">Number of cases to generate</label>
                 <div className="flex gap-2">
                   {[5, 10, 15, 20].map(n => (
                     <button
                       key={n}
                       onClick={() => setCount(n)}
-                      className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${count === n ? 'bg-purple-600 text-white border-purple-600' : 'border-gray-200 text-gray-600 hover:border-purple-300'}`}
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${count === n ? 'bg-purple-600 text-white border-purple-600' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-purple-300'}`}
                     >
                       {n}
                     </button>
@@ -266,16 +266,16 @@ function GenerateCasesModal({ suiteId, agentProvider, agentModel, onDone }: {
                 </div>
               </div>
 
-              {error && <p className="text-sm text-red-600">{error}</p>}
+              {error && <p className="text-sm text-red-600 dark:text-red-300">{error}</p>}
             </>
           ) : (
             <>
-              <p className="text-sm text-green-600 font-medium">{generated.length} cases generated</p>
+              <p className="text-sm text-green-600 dark:text-green-300 font-medium">{generated.length} cases generated</p>
               <div className="space-y-2">
                 {generated.map((c, i) => (
-                  <div key={i} className="border border-gray-100 rounded-lg p-3 text-xs space-y-1">
-                    <p className="text-gray-900 font-medium line-clamp-2">{c.input}</p>
-                    {c.grading_criteria && <p className="text-gray-400 line-clamp-1"><span className="font-medium">Criteria:</span> {c.grading_criteria}</p>}
+                  <div key={i} className="border border-gray-100 dark:border-gray-800 rounded-lg p-3 text-xs space-y-1">
+                    <p className="text-gray-900 dark:text-gray-100 font-medium line-clamp-2">{c.input}</p>
+                    {c.grading_criteria && <p className="text-gray-400 dark:text-gray-500 line-clamp-1"><span className="font-medium">Criteria:</span> {c.grading_criteria}</p>}
                   </div>
                 ))}
               </div>
@@ -284,7 +284,7 @@ function GenerateCasesModal({ suiteId, agentProvider, agentModel, onDone }: {
         </div>
 
         <div className="p-4 border-t flex justify-end gap-2">
-          <button onClick={onDone} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+          <button onClick={onDone} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 transition-colors">
             {generated ? 'Done' : 'Cancel'}
           </button>
           {!generated && (
@@ -343,30 +343,30 @@ function ImportModal({ suiteId, onDone }: { suiteId: string; onDone: () => void 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-2">
-            <Upload className="w-4 h-4 text-gray-500" />
-            <h2 className="font-semibold text-gray-900 text-sm">Import test cases</h2>
+            <Upload className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Import test cases</h2>
           </div>
-          <button onClick={onDone} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X className="w-4 h-4" /></button>
+          <button onClick={onDone} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="p-4 space-y-3 overflow-y-auto flex-1">
           {result ? (
-            <p className="text-sm text-green-600 font-medium">{result.imported} cases imported successfully.</p>
+            <p className="text-sm text-green-600 dark:text-green-300 font-medium">{result.imported} cases imported successfully.</p>
           ) : (
             <>
-              <p className="text-xs text-gray-500">Paste a JSON array or upload a file exported from this page.</p>
-              <p className="text-xs text-gray-400 font-mono">{`[{"input":"...","expected_output":"...","grading_criteria":"..."}]`}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Paste a JSON array or upload a file exported from this page.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{`[{"input":"...","expected_output":"...","grading_criteria":"..."}]`}</p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => fileRef.current?.click()}
-                  className="text-xs px-3 py-1.5 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors text-gray-600"
+                  className="text-xs px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-400"
                 >
                   Choose file…
                 </button>
-                <span className="text-xs text-gray-400">or paste below</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">or paste below</span>
                 <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleFile} />
               </div>
               <textarea
@@ -378,15 +378,15 @@ function ImportModal({ suiteId, onDone }: { suiteId: string; onDone: () => void 
               {text.trim() && (
                 parseError
                   ? <p className="text-xs text-red-500">{parseError}</p>
-                  : <p className="text-xs text-green-600">{parsed?.length} case{parsed?.length === 1 ? '' : 's'} ready to import</p>
+                  : <p className="text-xs text-green-600 dark:text-green-300">{parsed?.length} case{parsed?.length === 1 ? '' : 's'} ready to import</p>
               )}
-              {error && <p className="text-xs text-red-600">{error}</p>}
+              {error && <p className="text-xs text-red-600 dark:text-red-300">{error}</p>}
             </>
           )}
         </div>
 
         <div className="p-4 border-t flex justify-end gap-2">
-          <button onClick={onDone} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+          <button onClick={onDone} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 transition-colors">
             {result ? 'Done' : 'Cancel'}
           </button>
           {!result && (
@@ -432,14 +432,14 @@ function EditSuiteModal({ suite, onSaved, onClose }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg mx-4">
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="font-semibold text-gray-900 text-sm">Edit eval suite</h2>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X className="w-4 h-4" /></button>
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Edit eval suite</h2>
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500"><X className="w-4 h-4" /></button>
         </div>
         <div className="p-4 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Name</label>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
             <input
               className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               value={name}
@@ -447,7 +447,7 @@ function EditSuiteModal({ suite, onSaved, onClose }: {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Grading mode</label>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Grading mode</label>
             <select
               className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               value={mode}
@@ -459,7 +459,7 @@ function EditSuiteModal({ suite, onSaved, onClose }: {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Description (optional)</label>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description (optional)</label>
             <textarea
               className="w-full border rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
               rows={2}
@@ -467,10 +467,10 @@ function EditSuiteModal({ suite, onSaved, onClose }: {
               onChange={e => setDesc(e.target.value)}
             />
           </div>
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && <p className="text-xs text-red-600 dark:text-red-300">{error}</p>}
         </div>
         <div className="px-4 pb-4 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 transition-colors">Cancel</button>
           <button
             onClick={submit}
             disabled={saving || !name.trim()}
@@ -568,8 +568,8 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
     }
   }
 
-  if (loading) return <div className="p-6 text-sm text-gray-400">Loading…</div>
-  if (!suite) return <div className="p-6 text-sm text-gray-500">Suite not found.</div>
+  if (loading) return <div className="p-6 text-sm text-gray-400 dark:text-gray-500">Loading…</div>
+  if (!suite) return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Suite not found.</div>
 
   return (
     <div className="p-4 sm:p-6">
@@ -597,29 +597,29 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
 
       <div className="flex flex-wrap items-center gap-3 justify-between mb-6">
         <div>
-          <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
-            <Link href="/evals" className="hover:text-gray-600 transition-colors">Evals</Link>
+          <div className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-500 mb-1">
+            <Link href="/evals" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Evals</Link>
             <span>/</span>
-            <span className="text-gray-600">{suite.name}</span>
+            <span className="text-gray-600 dark:text-gray-400">{suite.name}</span>
           </div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold text-gray-900">{suite.name}</h1>
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{suite.name}</h1>
             <button
               onClick={() => setShowEdit(true)}
-              className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
               title="Edit suite"
             >
               <Pencil className="w-4 h-4" />
             </button>
           </div>
-          <p className="text-sm text-gray-500 mt-0.5">{suite.agent_name} · {suite.grading_mode === 'llm_judge' ? 'LLM Judge' : suite.grading_mode === 'contains' ? 'Contains' : 'Exact Match'}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{suite.agent_name} · {suite.grading_mode === 'llm_judge' ? 'LLM Judge' : suite.grading_mode === 'contains' ? 'Contains' : 'Exact Match'}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleToggleAutoRun}
             disabled={togglingAutoRun}
             title={suite.auto_run ? 'Auto-run on agent save (on)' : 'Auto-run on agent save (off)'}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border transition-colors disabled:opacity-50 ${suite.auto_run ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border transition-colors disabled:opacity-50 ${suite.auto_run ? 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-200' : 'bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}
           >
             {suite.auto_run ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
             Auto-run
@@ -636,12 +636,12 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-200 mb-6 overflow-x-auto whitespace-nowrap">
+      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700 mb-6 overflow-x-auto whitespace-nowrap">
         {(['cases', 'runs'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? 'border-purple-600 text-purple-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? 'border-purple-600 text-purple-600 dark:text-purple-300' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
           >
             {t === 'cases' ? `Cases (${cases.length})` : `Run history (${runs.length})`}
           </button>
@@ -651,24 +651,24 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
       {tab === 'cases' && (
         <div className="max-w-3xl space-y-4">
           <div className="flex flex-wrap items-center gap-2 justify-between">
-            <span className="text-xs text-gray-400">{cases.length} case{cases.length === 1 ? '' : 's'}</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">{cases.length} case{cases.length === 1 ? '' : 's'}</span>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setShowImport(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 rounded-md hover:bg-gray-50 text-gray-600 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors"
               >
                 <Upload className="w-3.5 h-3.5" /> Import
               </button>
               <button
                 onClick={handleExport}
                 disabled={exporting || cases.length === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 rounded-md hover:bg-gray-50 text-gray-600 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 transition-colors disabled:opacity-50"
               >
                 <Download className="w-3.5 h-3.5" /> {exporting ? 'Exporting…' : 'Export'}
               </button>
               <button
                 onClick={() => setShowGenerate(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-md transition-colors font-medium"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-purple-50 dark:bg-purple-500/10 hover:bg-purple-100 text-purple-700 dark:text-purple-300 border border-purple-200 rounded-md transition-colors font-medium"
               >
                 <Sparkles className="w-3.5 h-3.5" /> Generate
               </button>
@@ -694,13 +694,13 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
         <div>
           {runs.length === 0 ? (
             <div className="py-12 text-center">
-              <p className="text-sm text-gray-400">No runs yet. Add test cases and click &ldquo;Run eval&rdquo;.</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500">No runs yet. Add test cases and click &ldquo;Run eval&rdquo;.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-[540px] w-full text-sm">
                 <thead>
-                  <tr className="border-b text-xs text-gray-500 uppercase tracking-wide">
+                  <tr className="border-b text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                     <th className="text-left py-2 pr-4 font-medium">Started</th>
                     <th className="text-left py-2 pr-4 font-medium">Status</th>
                     <th className="text-left py-2 pr-4 font-medium">Score</th>
@@ -709,22 +709,22 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
                     <th />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                   {runs.map(r => {
                     const dur = r.started_at && r.completed_at
                       ? Math.round((new Date(r.completed_at).getTime() - new Date(r.started_at).getTime()) / 1000) + 's'
                       : '—'
                     return (
-                      <tr key={r.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="py-3 pr-4 text-gray-600">{new Date(r.created_at).toLocaleString()}</td>
+                      <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                        <td className="py-3 pr-4 text-gray-600 dark:text-gray-400">{new Date(r.created_at).toLocaleString()}</td>
                         <td className="py-3 pr-4"><RunStatusBadge status={r.status} /></td>
                         <td className="py-3 pr-4"><ScorePct score={r.score} status={r.status} /></td>
-                        <td className="py-3 pr-4 text-gray-500">
+                        <td className="py-3 pr-4 text-gray-500 dark:text-gray-400">
                           {r.status !== 'pending' ? `${r.passed}/${r.total_cases} passed` : `${r.total_cases} cases`}
                         </td>
-                        <td className="py-3 text-gray-400">{dur}</td>
+                        <td className="py-3 text-gray-400 dark:text-gray-500">{dur}</td>
                         <td className="py-3 pl-2">
-                          <Link href={`/evals/${id}/runs/${r.id}`} className="text-purple-600 hover:text-purple-700 transition-colors">
+                          <Link href={`/evals/${id}/runs/${r.id}`} className="text-purple-600 dark:text-purple-300 hover:text-purple-700 transition-colors">
                             <ChevronRight className="w-4 h-4" />
                           </Link>
                         </td>

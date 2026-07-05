@@ -52,7 +52,7 @@ function ToolCard({ msg }: { msg: NexusMessage }) {
 
   return (
     <div className={`flex items-start gap-3 px-3.5 py-2.5 rounded-lg border text-sm
-      ${isError ? 'bg-red-50 border-red-200' : started ? 'bg-purple-50 border-purple-200' : 'bg-green-50 border-green-200'}`}
+      ${isError ? 'bg-red-50 dark:bg-red-500/10 border-red-200' : started ? 'bg-purple-50 dark:bg-purple-500/10 border-purple-200' : 'bg-green-50 dark:bg-green-500/10 border-green-200'}`}
     >
       <div className="mt-0.5 shrink-0">
         {isError ? <AlertCircle size={15} className="text-red-500" />
@@ -60,14 +60,14 @@ function ToolCard({ msg }: { msg: NexusMessage }) {
           : <CheckCircle2 size={15} className="text-green-500" />}
       </div>
       <div className="flex-1 min-w-0">
-        <p className={`font-medium text-[13px] ${isError ? 'text-red-700' : started ? 'text-purple-700' : 'text-green-700'}`}>
+        <p className={`font-medium text-[13px] ${isError ? 'text-red-700 dark:text-red-300' : started ? 'text-purple-700 dark:text-purple-300' : 'text-green-700 dark:text-green-300'}`}>
           {ev.label}
         </p>
         {ev.error && <p className="text-red-500 text-xs mt-0.5">{ev.error}</p>}
-        {ev.result && !started && <p className="text-gray-500 text-xs mt-0.5">{ev.result.name}</p>}
+        {ev.result && !started && <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">{ev.result.name}</p>}
       </div>
       {ev.link && !started && !isError && (
-        <Link href={ev.link} className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700 font-medium shrink-0">
+        <Link href={ev.link} className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-300 hover:text-purple-700 font-medium shrink-0">
           Open <ExternalLink size={11} />
         </Link>
       )}
@@ -93,11 +93,11 @@ function MessageBubble({ msg, isStreaming }: { msg: NexusMessage; isStreaming: b
   return (
     <div className="flex gap-2.5 items-start">
       <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center">
-        <Sparkles size={12} className="text-purple-600" />
+        <Sparkles size={12} className="text-purple-600 dark:text-purple-300" />
       </div>
-      <div className="flex-1 text-sm text-gray-800 leading-relaxed min-w-0">
+      <div className="flex-1 text-sm text-gray-800 dark:text-gray-200 leading-relaxed min-w-0">
         {isStreaming && msg.content === '' ? (
-          <span className="flex items-center gap-1.5 text-gray-400">
+          <span className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500">
             <Loader2 size={13} className="animate-spin" /><span>thinking…</span>
           </span>
         ) : (
@@ -108,7 +108,7 @@ function MessageBubble({ msg, isStreaming }: { msg: NexusMessage; isStreaming: b
                 p: ({ children }: { children?: React.ReactNode }) => <p className="mb-2 last:mb-0">{children}</p>,
                 a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
                   <a href={href} target="_blank" rel="noopener noreferrer"
-                    className="text-purple-600 hover:text-purple-700 underline underline-offset-2">
+                    className="text-purple-600 dark:text-purple-300 hover:text-purple-700 underline underline-offset-2">
                     {children}
                   </a>
                 ),
@@ -118,13 +118,13 @@ function MessageBubble({ msg, isStreaming }: { msg: NexusMessage; isStreaming: b
                 code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
                   const isBlock = className?.includes('language-')
                   return isBlock
-                    ? <code className="block bg-gray-100 rounded px-3 py-2 text-xs font-mono overflow-x-auto mb-2">{children}</code>
-                    : <code className="bg-gray-100 rounded px-1 py-0.5 text-xs font-mono">{children}</code>
+                    ? <code className="block bg-gray-100 dark:bg-gray-800 rounded px-3 py-2 text-xs font-mono overflow-x-auto mb-2">{children}</code>
+                    : <code className="bg-gray-100 dark:bg-gray-800 rounded px-1 py-0.5 text-xs font-mono">{children}</code>
                 },
-                strong: ({ children }: { children?: React.ReactNode }) => <strong className="font-semibold text-gray-900">{children}</strong>,
-                h1: ({ children }: { children?: React.ReactNode }) => <h1 className="text-base font-semibold text-gray-900 mb-1 mt-2">{children}</h1>,
-                h2: ({ children }: { children?: React.ReactNode }) => <h2 className="text-sm font-semibold text-gray-900 mb-1 mt-2">{children}</h2>,
-                h3: ({ children }: { children?: React.ReactNode }) => <h3 className="text-sm font-medium text-gray-900 mb-1 mt-2">{children}</h3>,
+                strong: ({ children }: { children?: React.ReactNode }) => <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>,
+                h1: ({ children }: { children?: React.ReactNode }) => <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1 mt-2">{children}</h1>,
+                h2: ({ children }: { children?: React.ReactNode }) => <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1 mt-2">{children}</h2>,
+                h3: ({ children }: { children?: React.ReactNode }) => <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1 mt-2">{children}</h3>,
               }}
             >
               {msg.content}
@@ -326,7 +326,7 @@ export default function NexusAIPage() {
   if (providersLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 size={20} className="animate-spin text-gray-400" />
+        <Loader2 size={20} className="animate-spin text-gray-400 dark:text-gray-500" />
       </div>
     )
   }
@@ -336,12 +336,12 @@ export default function NexusAIPage() {
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto">
       {/* Header */}
-      <div className="px-4 sm:px-6 py-3.5 border-b border-gray-100 flex flex-wrap items-center gap-3 flex-shrink-0">
+      <div className="px-4 sm:px-6 py-3.5 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-3 flex-shrink-0">
         <div className="flex items-center gap-2 flex-shrink-0">
           <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center">
-            <Sparkles size={14} className="text-purple-600" />
+            <Sparkles size={14} className="text-purple-600 dark:text-purple-300" />
           </div>
-          <span className="text-[15px] font-semibold text-gray-900">Nexus AI</span>
+          <span className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Nexus AI</span>
         </div>
 
         {/* Provider + model selectors */}
@@ -356,7 +356,7 @@ export default function NexusAIPage() {
                   setSelectedModel('')
                 }}
                 disabled={isRunning}
-                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 cursor-pointer"
+                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 cursor-pointer"
               >
                 {activeProviders.map(p => (
                   <option key={p.id} value={p.provider}>
@@ -364,7 +364,7 @@ export default function NexusAIPage() {
                   </option>
                 ))}
               </select>
-              <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
             </div>
 
             {/* Model selector */}
@@ -373,7 +373,7 @@ export default function NexusAIPage() {
                 value={selectedModel}
                 onChange={e => setSelectedModel(e.target.value)}
                 disabled={isRunning || modelsLoading || availableModels.length === 0}
-                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-700 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 cursor-pointer min-w-0 w-full sm:min-w-[160px] sm:w-auto"
+                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 cursor-pointer min-w-0 w-full sm:min-w-[160px] sm:w-auto"
               >
                 {modelsLoading && <option value="">Loading models…</option>}
                 {!modelsLoading && availableModels.length === 0 && (
@@ -383,7 +383,7 @@ export default function NexusAIPage() {
                   <option key={m.id} value={m.id}>{m.name || m.id}</option>
                 ))}
               </select>
-              <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
             </div>
           </div>
         )}
@@ -391,9 +391,9 @@ export default function NexusAIPage() {
 
       {/* No-provider banner */}
       {!hasProvider && (
-        <div className="mx-4 sm:mx-6 mt-4 flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 flex-shrink-0">
+        <div className="mx-4 sm:mx-6 mt-4 flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 flex-shrink-0">
           <AlertCircle size={15} className="text-amber-500 shrink-0" />
-          <p className="text-sm text-amber-800">
+          <p className="text-sm text-amber-800 dark:text-amber-300">
             Nexus AI uses your own LLM provider. Add one in{' '}
             <Link href="/settings/providers" className="font-medium underline hover:text-amber-900">
               Settings → Providers
@@ -408,10 +408,10 @@ export default function NexusAIPage() {
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
             <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center mb-4">
-              <Sparkles size={20} className="text-purple-600" />
+              <Sparkles size={20} className="text-purple-600 dark:text-purple-300" />
             </div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-1">Nexus AI</h2>
-            <p className="text-sm text-gray-500 mb-8 text-center">Ask me to build agents, create workflows, or manage your workspace</p>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">Nexus AI</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-8 text-center">Ask me to build agents, create workflows, or manage your workspace</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
               {[
                 { label: 'Create a research agent', desc: 'With web search and report generation' },
@@ -422,10 +422,10 @@ export default function NexusAIPage() {
                 <button
                   key={item.label}
                   onClick={() => setInput(item.label)}
-                  className="text-left p-3.5 rounded-xl border border-gray-100 hover:border-purple-200 hover:bg-purple-50/30 transition-all"
+                  className="text-left p-3.5 rounded-xl border border-gray-100 dark:border-gray-800 hover:border-purple-200 hover:bg-purple-50/30 transition-all"
                 >
-                  <p className="text-sm font-medium text-gray-800">{item.label}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{item.desc}</p>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{item.label}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{item.desc}</p>
                 </button>
               ))}
             </div>
@@ -450,14 +450,14 @@ export default function NexusAIPage() {
               <button
                 key={t.title}
                 onClick={() => setInput(t.prompt)}
-                className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border border-gray-200 bg-white text-left hover:border-purple-300 hover:bg-purple-50 transition-colors flex-1 min-w-0"
+                className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-left hover:border-purple-300 hover:bg-purple-50 transition-colors flex-1 min-w-0"
               >
                 <div className="w-6 h-6 rounded-md bg-purple-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <Zap size={12} className="text-purple-600" />
+                  <Zap size={12} className="text-purple-600 dark:text-purple-300" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[12px] font-semibold text-gray-800 truncate">{t.title}</p>
-                  <p className="text-[11px] text-gray-400 truncate">{t.desc}</p>
+                  <p className="text-[12px] font-semibold text-gray-800 dark:text-gray-200 truncate">{t.title}</p>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">{t.desc}</p>
                 </div>
               </button>
             ))}
@@ -468,9 +468,9 @@ export default function NexusAIPage() {
               <button
                 key={s}
                 onClick={() => setInput(s)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs text-gray-600 hover:border-purple-300 hover:text-purple-700 hover:bg-purple-50 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-600 dark:text-gray-400 hover:border-purple-300 hover:text-purple-700 hover:bg-purple-50 transition-colors"
               >
-                <ArrowRight size={11} className="text-gray-400" />
+                <ArrowRight size={11} className="text-gray-400 dark:text-gray-500" />
                 {s.length > 60 ? s.slice(0, 60) + '…' : s}
               </button>
             ))}
@@ -480,8 +480,8 @@ export default function NexusAIPage() {
 
       {/* Input bar */}
       <div className="px-4 sm:px-6 pb-5 pt-1 flex-shrink-0">
-        <div className={`flex items-end gap-2.5 border rounded-xl bg-white transition-colors
-          ${isRunning ? 'border-gray-200' : 'border-gray-200 focus-within:border-purple-300 focus-within:ring-2 focus-within:ring-purple-100'}`}
+        <div className={`flex items-end gap-2.5 border rounded-xl bg-white dark:bg-gray-900 transition-colors
+          ${isRunning ? 'border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-700 focus-within:border-purple-300 focus-within:ring-2 focus-within:ring-purple-100'}`}
         >
           <textarea
             ref={textareaRef}
@@ -495,7 +495,7 @@ export default function NexusAIPage() {
                 : 'Describe the agent or workflow you want…  (Enter to send, Shift+Enter for newline)'
             }
             disabled={!hasProvider || isRunning}
-            className="flex-1 px-4 py-3 bg-transparent resize-none outline-none text-sm text-gray-800 placeholder-gray-400 disabled:opacity-50 min-h-[44px] max-h-[160px] leading-relaxed"
+            className="flex-1 px-4 py-3 bg-transparent resize-none outline-none text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-50 min-h-[44px] max-h-[160px] leading-relaxed"
           />
           <div className="pb-2 pr-2">
             <button
@@ -509,7 +509,7 @@ export default function NexusAIPage() {
             </button>
           </div>
         </div>
-        <p className="text-center text-gray-400 text-[11px] mt-2">
+        <p className="text-center text-gray-400 dark:text-gray-500 text-[11px] mt-2">
           Nexus AI creates agents and workflows directly in your workspace. Review before running in production.
         </p>
       </div>

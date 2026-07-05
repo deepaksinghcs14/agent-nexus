@@ -571,6 +571,11 @@ export interface WorkflowGraph {
   edges: WorkflowEdge[]
 }
 
+export interface SaveGraphResponse {
+  ok: boolean
+  warnings?: string[]
+}
+
 export interface WebhookTrigger {
   id: string
   workspace_id: string

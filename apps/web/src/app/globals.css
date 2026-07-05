@@ -14,6 +14,16 @@
     --radius: 0.5rem;
   }
 
+  .dark {
+    --background: 240 10% 6%;
+    --foreground: 210 20% 96%;
+    --muted: 240 6% 16%;
+    --muted-foreground: 215 14% 65%;
+    --border: 240 6% 20%;
+    --input: 240 6% 20%;
+    --ring: 248 63% 63%;
+  }
+
   * { @apply border-border; }
   body { @apply bg-background text-foreground; }
 }

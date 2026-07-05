@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -167,7 +168,7 @@ func (h *InvokeHandler) Group(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		emit := func(s string) { fmt.Fprintf(w, "data: %s\n\n", s); f.Flush() }
-		h.executeGroupRun(r.Context(), groupID, ws, uid, runID, convID, req.Input, emit)
+		h.executeGroupRun(r.Context(), groupID, ws, uid, runID, convID, req.Input, nil, emit)
 		return
 	}
 
@@ -180,7 +181,7 @@ func (h *InvokeHandler) Group(w http.ResponseWriter, r *http.Request) {
 		"status":          "running",
 	})
 
-	go h.executeGroupRun(context.Background(), groupID, ws, uid, runID, convID, req.Input, nil)
+	go h.executeGroupRun(context.Background(), groupID, ws, uid, runID, convID, req.Input, nil, nil)
 }
 
 // ensureConversation returns an existing conversation by ID or creates a new one.
@@ -413,7 +414,7 @@ func (h *InvokeHandler) runWorkflowInline(ctx context.Context, ws, uid, workflow
 		runID, ws, convID, uid, input, parentRunID); err != nil {
 		return "", fmt.Errorf("create run: %w", err)
 	}
-	go h.executeGroupRun(context.Background(), workflowID, ws, uid, runID, convID, input, nil)
+	go h.executeGroupRun(context.Background(), workflowID, ws, uid, runID, convID, input, nil, nil)
 	return runID, nil
 }
 
@@ -1334,12 +1335,41 @@ type wfEdge struct {
 	Label  string
 }
 
+// workflowCheckpoint holds the resumable progress of a workflow run: the
+// output of every node that has fully completed, and the iteration count of
+// every loop node. It is persisted to workflow_checkpoints after each node
+// finishes so a crashed run can be resumed without re-executing finished
+// agent/supervisor nodes.
+type workflowCheckpoint struct {
+	NodeOutputs    map[string]string
+	LoopIterations map[string]int
+}
+
+// loadWorkflowCheckpoint loads the last persisted checkpoint for a workflow
+// run, or nil if none exists (e.g. the run never got past its first node).
+func (h *InvokeHandler) loadWorkflowCheckpoint(ctx context.Context, runID string) *workflowCheckpoint {
+	var noStr, liStr string
+	err := h.pool.QueryRow(ctx,
+		`SELECT node_outputs::text, loop_iterations::text FROM workflow_checkpoints WHERE run_id=$1::uuid`,
+		runID).Scan(&noStr, &liStr)
+	if err != nil {
+		return nil
+	}
+	cp := &workflowCheckpoint{NodeOutputs: map[string]string{}, LoopIterations: map[string]int{}}
+	_ = json.Unmarshal([]byte(noStr), &cp.NodeOutputs)
+	_ = json.Unmarshal([]byte(liStr), &cp.LoopIterations)
+	return cp
+}
+
 // executeGroupRun walks the workflow graph starting from the start node and
 // runs each agent node in sequence, branching on condition / parallel nodes.
 // SSE events are emitted via emit (may be nil for background runs).
+// resume, when non-nil, seeds nodeOutputs/loopIterations from a prior
+// checkpoint so already-completed agent/supervisor nodes are not re-run.
 func (h *InvokeHandler) executeGroupRun(
 	ctx context.Context,
 	workflowID, ws, uid, parentRunID, convID, input string,
+	resume *workflowCheckpoint,
 	emit func(string),
 ) {
 	var emitMu sync.Mutex
@@ -1352,6 +1382,10 @@ func (h *InvokeHandler) executeGroupRun(
 	}
 
 	// Ensure the run is always marked terminal, even on unexpected exit / panic.
+	// The checkpoint row is deleted here too — reached on every in-process
+	// terminal path (success, explicit fail, panic), so it is only ever left
+	// behind when the process itself dies mid-run, which is exactly the
+	// signal RecoverInterruptedWorkflowRuns needs to know a resume is possible.
 	runMarked := false
 	defer func() {
 		if r := recover(); r != nil {
@@ -1360,6 +1394,7 @@ func (h *InvokeHandler) executeGroupRun(
 		if !runMarked {
 			h.runs.failRun(context.Background(), parentRunID, "workflow terminated unexpectedly") //nolint:errcheck
 		}
+		h.pool.Exec(context.Background(), `DELETE FROM workflow_checkpoints WHERE run_id=$1::uuid`, parentRunID) //nolint:errcheck
 		h.cleanupEphemeralResources(context.Background(), parentRunID)
 	}()
 
@@ -1410,6 +1445,34 @@ func (h *InvokeHandler) executeGroupRun(
 			n.Config = map[string]any{}
 		}
 		nodeMap[n.ID] = &n
+	}
+
+	// Resolve agent display names once up front instead of per node-visit —
+	// a per-visit query re-ran on every loop iteration for no reason.
+	agentNames := map[string]string{}
+	{
+		agentIDs := make([]string, 0, len(nodeMap))
+		seen := map[string]bool{}
+		for _, n := range nodeMap {
+			if n.AgentID != "" && !seen[n.AgentID] {
+				seen[n.AgentID] = true
+				agentIDs = append(agentIDs, n.AgentID)
+			}
+		}
+		if len(agentIDs) > 0 {
+			rows, err := h.pool.Query(ctx,
+				`SELECT id::text, name FROM agents WHERE workspace_id=$1::uuid AND id = ANY($2::uuid[])`,
+				ws, agentIDs)
+			if err == nil {
+				for rows.Next() {
+					var id, name string
+					if rows.Scan(&id, &name) == nil {
+						agentNames[id] = name
+					}
+				}
+				rows.Close()
+			}
+		}
 	}
 
 	edgeRows, err := h.pool.Query(ctx,
@@ -1469,6 +1532,47 @@ func (h *InvokeHandler) executeGroupRun(
 	loopIterations := map[string]int{} // nodeID → iteration count
 	originalInput := input
 	var outputMu sync.Mutex // guards nodeOutputs for concurrent parallel branches
+	var loopMu sync.Mutex   // guards loopIterations for concurrent parallel branches
+
+	// resumedOutputs/consumedResume implement the resume-from-checkpoint fast
+	// path: a completed agent/supervisor node's output is reused exactly once
+	// per resumed run, then normal execution takes over (so a loop node
+	// revisited a second time always re-executes rather than reusing stale
+	// output from before the crash).
+	resumedOutputs := map[string]string{}
+	consumedResume := map[string]bool{}
+	if resume != nil {
+		for k, v := range resume.NodeOutputs {
+			resumedOutputs[k] = v
+		}
+		for k, v := range resume.LoopIterations {
+			loopIterations[k] = v
+		}
+	}
+
+	// saveCheckpoint upserts the current progress so a crash mid-run can be
+	// resumed by RecoverInterruptedWorkflowRuns instead of losing all work.
+	saveCheckpoint := func() {
+		outputMu.Lock()
+		noSnapshot := make(map[string]string, len(nodeOutputs))
+		for k, v := range nodeOutputs {
+			noSnapshot[k] = v
+		}
+		outputMu.Unlock()
+		loopMu.Lock()
+		liSnapshot := make(map[string]int, len(loopIterations))
+		for k, v := range loopIterations {
+			liSnapshot[k] = v
+		}
+		loopMu.Unlock()
+		noJSON, _ := json.Marshal(noSnapshot)
+		liJSON, _ := json.Marshal(liSnapshot)
+		h.pool.Exec(context.Background(), //nolint:errcheck
+			`INSERT INTO workflow_checkpoints(run_id, workflow_id, node_outputs, loop_iterations, updated_at)
+			 VALUES($1::uuid,$2::uuid,$3::jsonb,$4::jsonb,NOW())
+			 ON CONFLICT (run_id) DO UPDATE SET node_outputs=$3::jsonb, loop_iterations=$4::jsonb, updated_at=NOW()`,
+			parentRunID, workflowID, string(noJSON), string(liJSON))
+	}
 
 	// walkBranch performs a BFS walk from the given start node.
 	// stopAt is a set of node IDs where this branch must stop without processing
@@ -1512,11 +1616,7 @@ func (h *InvokeHandler) executeGroupRun(
 
 			nodeName := node.Type
 			if node.AgentID != "" {
-				// Try to fetch the agent name for richer events
-				var aName string
-				if err := h.pool.QueryRow(ctx,
-					`SELECT name FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid`,
-					node.AgentID, ws).Scan(&aName); err == nil {
+				if aName, ok := agentNames[node.AgentID]; ok {
 					nodeName = aName
 				}
 			}
@@ -1543,6 +1643,22 @@ func (h *InvokeHandler) executeGroupRun(
 				if node.AgentID == "" {
 					sseEmit(fmt.Sprintf(`{"type":"error","error":"agent node %s has no agent_id"}`, node.ID))
 					continue
+				}
+
+				if cached, ok := resumedOutputs[node.ID]; ok && !consumedResume[node.ID] {
+					consumedResume[node.ID] = true
+					outputMu.Lock()
+					nodeOutputs[node.ID] = cached
+					outputMu.Unlock()
+					lastOutput = cached
+					prevNodeName = nodeName
+					sseEmit(fmt.Sprintf(`{"type":"node_resumed","node_id":%q,"node_name":%q}`, node.ID, nodeName))
+					for _, e := range adj[node.ID] {
+						if next, ok := nodeMap[e.Target]; ok {
+							queue = append(queue, next)
+						}
+					}
+					break
 				}
 
 				agents := repository.NewAgentRepository(h.pool)
@@ -1655,6 +1771,11 @@ func (h *InvokeHandler) executeGroupRun(
 					}
 				}
 
+				if nextID == "" {
+					sseEmit(fmt.Sprintf(`{"type":"error","error":"condition node %s has no matching or fallback edge — branch stopped"}`, node.ID))
+					continue
+				}
+
 				sseEmit(fmt.Sprintf(`{"type":"node_routed","node_id":%q,"result":%q,"next_node_id":%q}`,
 					node.ID, matched, nextID))
 
@@ -1709,7 +1830,15 @@ func (h *InvokeHandler) executeGroupRun(
 				wg.Wait()
 
 				// Enqueue the join node(s) to be processed in order by this branch.
+				// Sorted for deterministic ordering — Go map iteration order is
+				// randomized, which previously made downstream execution order
+				// non-deterministic when a fan-out had multiple distinct joins.
+				joinIDs := make([]string, 0, len(stopNodeIDs))
 				for joinID := range stopNodeIDs {
+					joinIDs = append(joinIDs, joinID)
+				}
+				sort.Strings(joinIDs)
+				for _, joinID := range joinIDs {
 					if joinNode, ok := nodeMap[joinID]; ok {
 						queue = append(queue, joinNode)
 					}
@@ -1747,16 +1876,21 @@ func (h *InvokeHandler) executeGroupRun(
 				if v, ok := node.Config["max_iterations"].(float64); ok {
 					maxIter = int(v)
 				}
+				loopMu.Lock()
 				loopIterations[node.ID]++
+				iteration := loopIterations[node.ID]
+				loopMu.Unlock()
 
 				condMet := evaluateExpression(exitCond, lastOutput)
-				done := loopIterations[node.ID] >= maxIter || condMet
+				done := iteration >= maxIter || condMet
 				sseEmit(fmt.Sprintf(`{"type":"node_routed","node_id":%q,"result":%q,"iteration":%d,"max":%d}`,
-					node.ID, map[bool]string{true: "exit", false: "continue"}[done], loopIterations[node.ID], maxIter))
+					node.ID, map[bool]string{true: "exit", false: "continue"}[done], iteration, maxIter))
 				if done {
 					// Reset the counter so this loop can be re-entered later (e.g.
 					// when a condition node's "no" branch circles back through it).
+					loopMu.Lock()
 					loopIterations[node.ID] = 0
+					loopMu.Unlock()
 					// Forward: enqueue successors labeled "exit" or any non-loop edge.
 					for _, e := range adj[node.ID] {
 						if e.Label == "loop" {
@@ -1791,6 +1925,24 @@ func (h *InvokeHandler) executeGroupRun(
 					continue
 				}
 
+				if cached, ok := resumedOutputs[node.ID]; ok && !consumedResume[node.ID] {
+					consumedResume[node.ID] = true
+					outputMu.Lock()
+					nodeOutputs[node.ID] = cached
+					outputMu.Unlock()
+					lastOutput = cached
+					prevNodeName = nodeName
+					sseEmit(fmt.Sprintf(`{"type":"node_resumed","node_id":%q,"node_name":%q}`, node.ID, nodeName))
+					for _, e := range adj[node.ID] {
+						if e.Label != "delegate" {
+							if next, ok := nodeMap[e.Target]; ok {
+								queue = append(queue, next)
+							}
+						}
+					}
+					break
+				}
+
 				// Pre-declare the supervisor sub-run ID so delegate handlers can use it
 				// as their parent_run_id, establishing the correct trace hierarchy.
 				supervisorSubRunID := uuid.NewString()
@@ -1812,6 +1964,16 @@ func (h *InvokeHandler) executeGroupRun(
 						continue
 					}
 					toolName := "delegate_" + sanitizeToolName(da.Name)
+					// Disambiguate collisions: two team agents whose names sanitize to
+					// the same string would otherwise silently overwrite each other's
+					// entry in delegateHandlers, making one agent uncallable.
+					if _, exists := delegateHandlers[toolName]; exists {
+						suffix := dn.ID
+						if len(suffix) > 8 {
+							suffix = suffix[:8]
+						}
+						toolName = toolName + "_" + suffix
+					}
 					// Prefer the one-sentence Description field; fall back to first line
 					// of Instructions; then fall back to a generic sentinel.
 					desc := strings.TrimSpace(da.Description)
@@ -1949,6 +2111,7 @@ func (h *InvokeHandler) executeGroupRun(
 
 			sseEmit(fmt.Sprintf(`{"type":"node_completed","node_id":%q,"node_name":%q}`,
 				node.ID, nodeName))
+			saveCheckpoint()
 		}
 	}
 
@@ -1979,6 +2142,58 @@ func (h *InvokeHandler) executeGroupRun(
 
 	sseEmit(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`,
 		parentRunID, totalInputTokens, totalOutputTokens, totalCostUSD))
+}
+
+// RecoverInterruptedWorkflowRuns resumes top-level workflow runs that were
+// still 'running' when the API process restarted (their goroutines are
+// gone). Mirrors ConnectorsHandler.RecoverInterruptedSyncs: called once from
+// main.go a couple of seconds after boot. Runs with a workflow_checkpoints
+// row are relaunched from that checkpoint; runs that crashed before their
+// first node finished (no checkpoint) are simply marked failed.
+func (h *InvokeHandler) RecoverInterruptedWorkflowRuns(ctx context.Context) {
+	rows, err := h.pool.Query(ctx, `
+		SELECT r.id::text, c.workflow_id::text, r.conversation_id::text, r.user_id::text, r.workspace_id::text, r.input
+		FROM runs r
+		JOIN conversations c ON c.id = r.conversation_id
+		WHERE r.status = 'running' AND r.parent_run_id IS NULL AND c.workflow_id IS NOT NULL
+	`)
+	if err != nil {
+		slog.Warn("workflow recovery: failed to query interrupted workflow runs", "error", err)
+		return
+	}
+	type resumable struct{ runID, workflowID, convID, uid, ws, input string }
+	var candidates []resumable
+	for rows.Next() {
+		var r resumable
+		if rows.Scan(&r.runID, &r.workflowID, &r.convID, &r.uid, &r.ws, &r.input) == nil {
+			candidates = append(candidates, r)
+		}
+	}
+	rows.Close()
+	if len(candidates) == 0 {
+		return
+	}
+	slog.Info("workflow recovery: found interrupted workflow runs", "count", len(candidates))
+
+	for _, r := range candidates {
+		// Sub-runs of this workflow (individual agent/supervisor node
+		// executions) cannot resume mid-LLM-call — fail them so the resumed
+		// walk re-executes those nodes from scratch. Their output was never
+		// checkpointed since checkpointing only happens on node completion.
+		h.pool.Exec(ctx, //nolint:errcheck
+			`UPDATE runs SET status='failed', completed_at=NOW(), error_message='Server restarted while run was active'
+			 WHERE parent_run_id=$1::uuid AND status='running'`,
+			r.runID)
+
+		cp := h.loadWorkflowCheckpoint(ctx, r.runID)
+		if cp == nil {
+			slog.Info("workflow recovery: no checkpoint, failing run", "run_id", r.runID)
+			h.runs.failRun(ctx, r.runID, "server restarted before workflow made progress") //nolint:errcheck
+			continue
+		}
+		slog.Info("workflow recovery: resuming workflow run", "run_id", r.runID, "workflow_id", r.workflowID)
+		go h.executeGroupRun(context.Background(), r.workflowID, r.ws, r.uid, r.runID, r.convID, r.input, cp, nil)
+	}
 }
 
 // edgesTargeting returns all edges in adj whose target is targetNodeID.

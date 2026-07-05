@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ThemeProvider } from 'next-themes'
 import { useAuthStore } from '@/store/auth'
 import { authAPI } from '@/lib/api'
 import type { User, Workspace, WorkspaceWithRole } from '@/types'
@@ -62,9 +63,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
   )
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthInitializer />
-      {children}
-    </QueryClientProvider>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+      <QueryClientProvider client={queryClient}>
+        <AuthInitializer />
+        {children}
+      </QueryClientProvider>
+    </ThemeProvider>
   )
 }

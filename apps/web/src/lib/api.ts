@@ -1,5 +1,5 @@
 // src/lib/api.ts — all API calls go through this wrapper
-import type { WorkspaceWithRole, Workspace, APIToken, CreatedAPIToken, InvokeRunResponse, WorkflowGraph } from '@/types'
+import type { WorkspaceWithRole, Workspace, APIToken, CreatedAPIToken, InvokeRunResponse, WorkflowGraph, SaveGraphResponse } from '@/types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
@@ -284,7 +284,7 @@ export const workflowsAPI = {
   delete: (id: string) => api.delete(`/workflows/${id}`),
   run: (id: string, body?: unknown) => api.post(`/workflows/${id}/runs`, body),
   getGraph: (id: string) => api.get<WorkflowGraph>(`/workflows/${id}/graph`),
-  saveGraph: (id: string, body: WorkflowGraph) => api.put<WorkflowGraph>(`/workflows/${id}/graph`, body),
+  saveGraph: (id: string, body: WorkflowGraph) => api.put<SaveGraphResponse>(`/workflows/${id}/graph`, body),
 }
 
 // Backward-compat alias — prefer workflowsAPI in new code

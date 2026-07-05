@@ -161,6 +161,11 @@ export default function WhatIsAnAgentGroupDoc() {
         <code>ESCALATE</code>, <code>QUALITY_PASS</code>). This makes condition routing reliable and
         avoids fragile substring matching inside long outputs.
       </Callout>
+      <Callout type="warning">
+        Always draw a <Badge label="no" color="red" /> (or wildcard <code>*</code>) fallback edge. A
+        Condition node with no matching or fallback edge stops that branch with an explicit error
+        instead of silently doing nothing — the builder also warns about this when you save.
+      </Callout>
 
       {/* PARALLEL */}
       <h3>⫼ Parallel</h3>
@@ -254,10 +259,43 @@ export default function WhatIsAnAgentGroupDoc() {
         <li>Execute the node&apos;s logic (agent call, condition check, fan-out, etc.).</li>
         <li>Enqueue successor nodes based on the node&apos;s logic and edge labels.</li>
         <li>Emit SSE <code>node_started</code> / <code>node_completed</code> events so the canvas updates in real time.</li>
+        <li>Checkpoint the node&apos;s output (and current loop iteration counts) to the database.</li>
       </ol>
       <p>
         A global circuit breaker stops execution after 100 total node visits to prevent runaway graphs.
       </p>
+
+      <h3>Crash Resilience</h3>
+      <p>
+        Every completed node&apos;s output is persisted as part of the run — not just held in memory. If
+        the API process restarts while a workflow is mid-run, it is automatically resumed on the next
+        boot from its last checkpoint: nodes that already finished are not re-executed (their cached
+        output is reused and the run continues from there), and only the node that was in flight when
+        the restart happened is re-run. Sub-runs that were themselves mid-execution at the moment of the
+        crash are marked failed and re-run from scratch as part of the resume. A workflow that crashes
+        before its very first node finishes has nothing to resume from and is simply marked failed, same
+        as before.
+      </p>
+      <Callout type="info">
+        Resumed nodes emit a <code>node_resumed</code> SSE event instead of <code>node_started</code> /{' '}
+        <code>node_completed</code> — see the <Link href="/docs/sse-events">SSE Events</Link> reference.
+      </Callout>
+
+      <h2>Saving &amp; Validation</h2>
+      <p>
+        Saving a workflow no longer resets the canvas — node IDs are stable across saves, so your
+        selection and open config panel are preserved. Every save also runs a set of non-blocking
+        checks and shows any issues found in a dismissible banner, so you find out about a broken graph
+        immediately instead of only when you run it:
+      </p>
+      <ul>
+        <li>No Start node present</li>
+        <li>An Agent or Supervisor node with no agent assigned</li>
+        <li>A Condition node with no fallback (<code>no</code>) edge</li>
+        <li>A Loop node with no loop-back edge, or no Max Iterations set</li>
+        <li>A node that isn&apos;t reachable from the Start node</li>
+      </ul>
+      <p>These are warnings, not hard errors — the graph still saves so you can fix them at your own pace.</p>
 
       <h2>Example Workflow Patterns</h2>
       <div className="table-scroll">

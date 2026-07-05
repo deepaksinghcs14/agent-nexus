@@ -23,6 +23,12 @@ export default function DocsOverview() {
           badge: 'Concept',
         },
         {
+          title: 'Workflow Node Types',
+          href: '/docs/workflows',
+          desc: 'Start, Agent, Supervisor, Condition, Parallel, Join, and Loop nodes, plus save-time validation and crash-resumable runs.',
+          badge: 'Reference',
+        },
+        {
           title: 'What is a Tool?',
           href: '/docs/what-is-a-tool',
           desc: 'Give agents the ability to take action — read files, call APIs, search the web.',
@@ -102,6 +108,12 @@ export default function DocsOverview() {
           title: 'Run States',
           href: '/docs/run-states',
           desc: 'Understand the run lifecycle and handle approval gates.',
+          badge: 'Reference',
+        },
+        {
+          title: 'Agent Configuration',
+          href: '/docs/agent-configuration',
+          desc: 'Every field on an agent — model, memory, guardrails, tools, and context retrieval.',
           badge: 'Reference',
         },
         {

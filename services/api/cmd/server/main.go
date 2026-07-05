@@ -79,12 +79,22 @@ func main() {
 	// approval decision or the runner's session callback (see handler.ResumeApprovedRun
 	// / handler.ResumeSessionRun). Only waiting runs WITHOUT persisted state
 	// (e.g. nested sub-runs, whose parent stack cannot be restored) are failed.
+	// Top-level workflow runs (conversation has a workflow_id, no parent_run_id)
+	// are excluded from the blanket fail — handler.RecoverInterruptedWorkflowRuns
+	// below resumes them from their workflow_checkpoints row instead.
 	if t, err := pool.Exec(ctx, `
 		UPDATE runs
 		SET status='failed', completed_at=NOW(), error_message='Server restarted while run was active'
-		WHERE status IN ('running','pending','user_input_wait')
-		   OR (status IN ('approval_wait','session_wait') AND NOT EXISTS (
-		         SELECT 1 FROM run_wait_states w WHERE w.run_id = runs.id))
+		WHERE (
+			status IN ('running','pending','user_input_wait')
+			OR (status IN ('approval_wait','session_wait') AND NOT EXISTS (
+			      SELECT 1 FROM run_wait_states w WHERE w.run_id = runs.id))
+		)
+		AND NOT (
+			status = 'running' AND parent_run_id IS NULL AND EXISTS (
+				SELECT 1 FROM conversations c WHERE c.id = runs.conversation_id AND c.workflow_id IS NOT NULL
+			)
+		)
 	`); err != nil {
 		slog.Warn("failed to mark orphaned runs as failed", "error", err)
 	} else if t.RowsAffected() > 0 {
@@ -261,6 +271,13 @@ func main() {
 	go func() {
 		time.Sleep(2 * time.Second)
 		h.Connectors.RecoverInterruptedSyncs(context.Background())
+	}()
+
+	// Resume workflow runs that were in-flight when the pod restarted, using
+	// their last persisted workflow_checkpoints row.
+	go func() {
+		time.Sleep(2 * time.Second)
+		invoke.RecoverInterruptedWorkflowRuns(context.Background())
 	}()
 
 	// Fire pending WhatsApp reminders as they come due.
