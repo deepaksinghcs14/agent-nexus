@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Activity, Square, Zap, Loader2 } from 'lucide-react'
 import { agentsAPI, runsAPI, webhookTriggersAPI, workflowsAPI } from '@/lib/api'
 import { formatCost, formatTokens, relativeTime, statusColor } from '@/lib/utils'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { Agent, PaginatedRuns, Run, WebhookTrigger, Workflow } from '@/types'
 
 const ACTIVE = new Set(['pending', 'running', 'approval_wait', 'session_wait'])
@@ -113,15 +114,15 @@ export default function RunsPage() {
     <div className="p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-4">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Runs</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Monitor all agent and workflow runs</p>
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Runs</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Monitor all agent and workflow runs</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select value={agent} onChange={(e) => setAgent(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white">
+          <select value={agent} onChange={(e) => setAgent(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
             <option value="">All agents</option>
             {agents.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white">
+          <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
             <option value="">All statuses</option>
             {['pending', 'running', 'success', 'failed', 'cancelled', 'approval_wait'].map((s) => <option key={s}>{s}</option>)}
           </select>
@@ -134,42 +135,57 @@ export default function RunsPage() {
           { label: 'Success rate', value: completed.length ? `${Math.round(successCount / completed.length * 100)}%` : '—' },
           { label: 'Total tokens', value: formatTokens(totalTokens) },
           { label: 'Estimated cost', value: formatCost(totalCost) },
-        ].map((item) => <div key={item.label} className="bg-white border border-gray-100 rounded-xl p-4"><p className="text-[11px] text-gray-400 mb-1">{item.label}</p><p className="text-2xl font-bold text-gray-900">{item.value}</p></div>)}
+        ].map((item) => <div key={item.label} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl p-4"><p className="text-[11px] text-gray-400 dark:text-gray-500 mb-1">{item.label}</p><p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{item.value}</p></div>)}
       </div>
 
-      {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">{error}</div>}
-      {initialLoading && <div className="py-12 text-center text-sm text-gray-400">Loading runs…</div>}
+      {error && <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">{error}</div>}
+      {initialLoading && (
+        <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-x-auto">
+          <div className="min-w-[600px] divide-y divide-gray-50 dark:divide-gray-800">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-32" />
+                <Skeleton className="h-4 w-16 rounded-full" />
+                <Skeleton className="h-3 w-14" />
+                <Skeleton className="h-3 w-10 ml-auto" />
+                <Skeleton className="h-3 w-14" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {!initialLoading && !error && runs.length === 0 && (
-        <div className="border border-dashed border-gray-200 rounded-xl py-12 text-center">
-          <Activity className="mx-auto text-gray-300 mb-3" />
-          <p className="text-sm text-gray-500">No runs match these filters.</p>
+        <div className="border border-dashed border-gray-200 dark:border-gray-700 rounded-xl py-12 text-center">
+          <Activity className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+          <p className="text-sm text-gray-500 dark:text-gray-400">No runs match these filters.</p>
         </div>
       )}
 
       {runs.length > 0 && (
-        <div className="bg-white border border-gray-100 rounded-xl overflow-x-auto">
+        <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-x-auto">
           <div className="min-w-[600px]">
           <table className="w-full text-[12px]">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
+              <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
                 {['Run ID', 'Agent / Workflow', 'Status', 'Source', 'Tokens', 'Cost', 'Started', ''].map((h) => (
-                  <th key={h} className="text-left px-4 py-2 text-[10px] font-medium text-gray-400 uppercase">{h}</th>
+                  <th key={h} className="text-left px-4 py-2 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {runs.map((run) => (
-                <tr key={run.id} className="border-b last:border-b-0 border-gray-50 hover:bg-purple-50/30">
-                  <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500">{run.id.slice(0, 12)}</td>
+                <tr key={run.id} className="border-b last:border-b-0 border-gray-50 hover:bg-purple-50">
+                  <td className="px-4 py-2.5 font-mono text-[11px] text-gray-500 dark:text-gray-400">{run.id.slice(0, 12)}</td>
                   <td className="px-4 py-2.5">
                     {(() => {
                       const { name, type } = runLabel(run)
                       return (
                         <div className="flex items-center gap-1.5">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${type === 'workflow' ? 'bg-purple-50 text-purple-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${type === 'workflow' ? 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-300' : 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300'}`}>
                             {type === 'workflow' ? 'WF' : 'AG'}
                           </span>
-                          <span className="text-[12px] font-medium text-gray-900">{name}</span>
+                          <span className="text-[12px] font-medium text-gray-900 dark:text-gray-100">{name}</span>
                         </div>
                       )
                     })()}
@@ -179,19 +195,19 @@ export default function RunsPage() {
                   </td>
                   <td className="px-4 py-2.5">
                     {run.trigger_id ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 font-medium">
+                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-300 font-medium">
                         <Zap className="w-2.5 h-2.5" /> Webhook
                       </span>
                     ) : (
-                      <span className="text-[10px] text-gray-400">Manual</span>
+                      <span className="text-[10px] text-gray-400 dark:text-gray-500">Manual</span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-gray-500">{formatTokens(run.total_input_tokens + run.total_output_tokens)}</td>
-                  <td className="px-4 py-2.5 text-gray-500">{formatCost(run.cost_estimate)}</td>
-                  <td className="px-4 py-2.5 text-gray-400">{relativeTime(run.started_at)}</td>
+                  <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400">{formatTokens(run.total_input_tokens + run.total_output_tokens)}</td>
+                  <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400">{formatCost(run.cost_estimate)}</td>
+                  <td className="px-4 py-2.5 text-gray-400 dark:text-gray-500">{relativeTime(run.started_at)}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2">
-                      <Link href={`/runs/${run.id}`} className="text-[11px] px-2.5 py-1 border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50">
+                      <Link href={`/runs/${run.id}`} className="text-[11px] px-2.5 py-1 border border-gray-200 dark:border-gray-700 rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">
                         Trace
                       </Link>
                       {ACTIVE.has(run.status) && (
@@ -218,17 +234,17 @@ export default function RunsPage() {
       <div ref={sentinelRef} className="h-4" />
       {loadingMore && (
         <div className="py-4 flex justify-center">
-          <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+          <Loader2 className="w-4 h-4 text-gray-400 dark:text-gray-500 animate-spin" />
         </div>
       )}
       {!hasMore && runs.length > 0 && (
-        <p className="text-center text-[11px] text-gray-300 py-4">All runs loaded</p>
+        <p className="text-center text-[11px] text-gray-300 dark:text-gray-600 py-4">All runs loaded</p>
       )}
 
-      <div className="mt-4 p-4 rounded-lg bg-gray-50 border border-gray-200">
-        <p className="text-sm text-gray-600">
+      <div className="mt-4 p-4 rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
+        <p className="text-sm text-gray-600 dark:text-gray-400">
           Learn about run statuses, approval gates, and polling in the{' '}
-          <Link href="/docs/run-states" className="text-purple-600 hover:underline">
+          <Link href="/docs/run-states" className="text-purple-600 dark:text-purple-300 hover:underline">
             documentation
           </Link>.
         </p>

@@ -108,16 +108,16 @@ export function ConceptGrid({ items }: {
         <a
           key={c.href}
           href={c.href}
-          className="flex gap-4 items-start p-4 rounded-xl border border-gray-200 bg-white no-underline transition-[border-color,box-shadow] duration-150 hover:border-violet-600 hover:shadow-[0_0_0_3px_rgba(83,74,183,0.08)]"
+          className="flex gap-4 items-start p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 no-underline transition-[border-color,box-shadow] duration-150 hover:border-violet-600 hover:shadow-[0_0_0_3px_rgba(83,74,183,0.08)]"
         >
           {c.badge && (
-            <span className="shrink-0 mt-0.5 bg-violet-50 text-violet-700 text-[0.7rem] font-bold px-1.5 py-0.5 rounded whitespace-nowrap tracking-wide">
+            <span className="shrink-0 mt-0.5 bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 text-[0.7rem] font-bold px-1.5 py-0.5 rounded whitespace-nowrap tracking-wide">
               {c.badge}
             </span>
           )}
           <div>
-            <div className="font-semibold text-[0.9375rem] text-gray-900 mb-0.5">{c.title}</div>
-            <div className="text-sm text-gray-500 leading-snug">{c.desc}</div>
+            <div className="font-semibold text-[0.9375rem] text-gray-900 dark:text-gray-100 mb-0.5">{c.title}</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400 leading-snug">{c.desc}</div>
           </div>
         </a>
       ))}

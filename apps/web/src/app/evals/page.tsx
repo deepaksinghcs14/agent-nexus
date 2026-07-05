@@ -13,9 +13,9 @@ const GRADING_LABELS: Record<string, string> = {
 }
 
 function ScoreBadge({ score }: { score?: number }) {
-  if (score == null) return <span className="text-xs text-gray-400">No runs</span>
+  if (score == null) return <span className="text-xs text-gray-400 dark:text-gray-500">No runs</span>
   const pct = Math.round(score * 100)
-  const color = pct >= 80 ? 'text-green-600 bg-green-50' : pct >= 50 ? 'text-amber-600 bg-amber-50' : 'text-red-600 bg-red-50'
+  const color = pct >= 80 ? 'text-green-600 dark:text-green-300 bg-green-50 dark:bg-green-500/10' : pct >= 50 ? 'text-amber-600 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10' : 'text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10'
   return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${color}`}>{pct}%</span>
 }
 
@@ -41,20 +41,20 @@ function CreateSuiteModal({ agents, onCreated, onClose }: {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-lg mx-4">
         <div className="px-6 py-4 border-b">
-          <h2 className="text-base font-semibold text-gray-900">New eval suite</h2>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">New eval suite</h2>
         </div>
         <div className="px-6 py-4 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
             <input
               className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Customer Support QA"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Agent</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Agent</label>
             <select
               className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               value={agentId} onChange={e => setAgentId(e.target.value)}
@@ -63,7 +63,7 @@ function CreateSuiteModal({ agents, onCreated, onClose }: {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Grading mode</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Grading mode</label>
             <select
               className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
               value={mode} onChange={e => setMode(e.target.value)}
@@ -74,7 +74,7 @@ function CreateSuiteModal({ agents, onCreated, onClose }: {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description (optional)</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description (optional)</label>
             <textarea
               className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
               rows={2} value={desc} onChange={e => setDesc(e.target.value)}
@@ -82,7 +82,7 @@ function CreateSuiteModal({ agents, onCreated, onClose }: {
           </div>
         </div>
         <div className="px-6 py-4 border-t flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 transition-colors">Cancel</button>
           <button
             onClick={submit} disabled={saving || !name || !agentId}
             className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
@@ -120,8 +120,8 @@ export default function EvalsPage() {
     <div className="p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-8">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Evals</h1>
-          <p className="text-sm text-gray-500 mt-1">Test suites that run your agents against known inputs and grade their outputs.</p>
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Evals</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Test suites that run your agents against known inputs and grade their outputs.</p>
         </div>
         <button
           onClick={() => setShowCreate(true)}
@@ -133,12 +133,12 @@ export default function EvalsPage() {
       </div>
 
       {loading ? (
-        <div className="py-10 text-center text-sm text-gray-400">Loading…</div>
+        <div className="py-10 text-center text-sm text-gray-400 dark:text-gray-500">Loading…</div>
       ) : suites.length === 0 ? (
         <div className="py-16 text-center">
-          <FlaskConical className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-sm font-medium text-gray-500">No eval suites yet</p>
-          <p className="text-sm text-gray-400 mt-1">Create a suite to start testing your agents systematically.</p>
+          <FlaskConical className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">No eval suites yet</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Create a suite to start testing your agents systematically.</p>
           <button
             onClick={() => setShowCreate(true)}
             className="mt-4 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors"
@@ -149,20 +149,20 @@ export default function EvalsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {suites.map(s => (
-            <div key={s.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors group">
+            <div key={s.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:border-gray-300 transition-colors group">
               <div className="flex items-start justify-between gap-2 mb-3">
                 <div className="min-w-0 flex-1">
-                  <Link href={`/evals/${s.id}`} className="text-sm font-medium text-gray-900 hover:text-purple-700 transition-colors line-clamp-1">
+                  <Link href={`/evals/${s.id}`} className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-purple-700 transition-colors line-clamp-1">
                     {s.name}
                   </Link>
-                  <p className="text-xs text-gray-500 mt-0.5">{s.agent_name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{s.agent_name}</p>
                 </div>
                 <ScoreBadge score={s.last_score} />
               </div>
               {s.description && (
-                <p className="text-xs text-gray-500 line-clamp-2 mb-3">{s.description}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mb-3">{s.description}</p>
               )}
-              <div className="flex items-center justify-between text-xs text-gray-400">
+              <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500">
                 <div className="flex items-center gap-3">
                   <span>{s.case_count ?? 0} cases</span>
                   <span>{GRADING_LABELS[s.grading_mode] ?? s.grading_mode}</span>
@@ -175,7 +175,7 @@ export default function EvalsPage() {
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
-                  <Link href={`/evals/${s.id}`} className="p-1 rounded hover:bg-gray-100 transition-colors">
+                  <Link href={`/evals/${s.id}`} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                     <ChevronRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
@@ -190,10 +190,10 @@ export default function EvalsPage() {
       )}
       {showCreate && agents.length === 0 && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm mx-4 p-6 text-center">
-            <p className="text-sm text-gray-700 mb-4">You need at least one agent before creating an eval suite.</p>
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+            <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">You need at least one agent before creating an eval suite.</p>
             <div className="flex gap-3 justify-center">
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">Close</button>
+              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 transition-colors">Close</button>
               <Link href="/agents" className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors">Create agent</Link>
             </div>
           </div>

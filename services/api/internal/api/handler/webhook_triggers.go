@@ -343,7 +343,7 @@ func (h *WebhookIngressHandler) dispatchRun(trig domain.WebhookTrigger, input st
 		runID, trig.WorkspaceID, convID, trig.CreatedBy, input, trig.ID); e != nil {
 		return "", "", e
 	}
-	go h.invoke.executeGroupRun(ctx, trig.TargetID, trig.WorkspaceID, trig.CreatedBy, runID, convID, input, nil)
+	go h.invoke.executeGroupRun(ctx, trig.TargetID, trig.WorkspaceID, trig.CreatedBy, runID, convID, input, nil, nil)
 	return runID, convID, nil
 }
 

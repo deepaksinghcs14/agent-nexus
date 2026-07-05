@@ -502,6 +502,28 @@ any `session_wait` run whose callback never arrives within
 GitHub token, stored encrypted in `runner_credentials`) are injected per launch
 and never persisted by the runner.
 
+### Workflow Runs (Agent Groups)
+
+`executeGroupRun` (`invoke.go`) walks a workflow's `workflow_nodes`/`workflow_edges` graph as an
+in-process BFS, dispatching on node type (`start`, `agent`, `supervisor`, `condition`, `parallel`,
+`join`, `loop`, `end`). Unlike a single agent run, the walk's progress is checkpointed rather than
+snapshotted-then-parked:
+
+- After every node completes, its output (and each loop node's iteration count) is upserted into
+  `workflow_checkpoints` (`run_id` PK). The row is deleted whenever the run finishes in-process
+  (success, explicit failure, panic) — it only survives an actual process crash.
+- On boot, `InvokeHandler.RecoverInterruptedWorkflowRuns` (mirroring `RecoverInterruptedSyncs` for
+  connector jobs) finds top-level workflow runs still `status='running'`, fails any of their
+  individual node sub-runs that were themselves mid-execution, and relaunches `executeGroupRun` with
+  the checkpoint preloaded. Nodes whose output is already in the checkpoint are replayed once
+  (`node_resumed` SSE event) instead of re-executed; anything that hadn't finished runs normally.
+  A run that crashes before its first node completes has no checkpoint to resume from and is simply
+  marked failed, same as any other orphaned run.
+- `SaveGraph` (`groups.go`) upserts nodes by their existing id instead of deleting and reinserting
+  with fresh UUIDs, so node identity — and the canvas's local selection state — survives a save. It
+  also returns non-blocking `warnings` (missing start node, unassigned agent node, condition node
+  with no fallback edge, loop node with no loop-back edge or iteration cap, unreachable nodes).
+
 ### Memory Review Policy
 
 When `MemoryReviewPolicy = "agent_review"`, memories created during a run are stored with `status = "pending_review"`. The agent can call `native_list_memories`, `native_approve_memory`, or `native_reject_memory` to manage them. Memories with `status = "pending_review"` are not used in retrieval until approved.
@@ -640,6 +662,9 @@ Key tables:
 | `conversations`, `messages` | Chat history; conversation carries `compaction` JSON summary |
 | `runs`, `run_steps` | Execution records + trace steps; runs carry `parent_run_id`, `trace_id`, `workflow_node_id`, `channel_session_id` |
 | `webhook_triggers` | Persistent inbound HTTP endpoints; each tied to an agent or workflow |
+| `workflows`, `workflow_members` | Workflow (agent group) metadata; pipeline/supervisor mode |
+| `workflow_nodes`, `workflow_edges` | Visual canvas graph — typed nodes with JSONB `config`, labelled edges |
+| `workflow_checkpoints` | Per-run node outputs + loop iteration counts, upserted after every node completes; enables crash-resumable workflow runs |
 | `memories` | Vector memory (pgvector embedding column); carries `status`, `importance_score`, `save_source` |
 | `connectors`, `connector_documents`, `connector_chunks` | Indexed external context |
 | `context_retrieval_logs` | Which chunks were used in which run |

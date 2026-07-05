@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { DocPage, Callout } from '@/components/docs/DocPage'
 
 export const metadata = { title: 'SSE Events — Docs' }
@@ -37,6 +38,29 @@ const EVENTS = [
     type: 'error',
     payload: '{"type":"error","error":"model returned an empty response"}',
     desc: 'An error occurred. The run has been marked as failed. This is the final event.',
+  },
+]
+
+const WORKFLOW_EVENTS = [
+  {
+    type: 'node_started',
+    payload: '{"type":"node_started","node_id":"n_1","node_type":"agent","node_name":"Researcher"}',
+    desc: 'A workflow node has started executing. Use node_id to highlight the corresponding node on the canvas.',
+  },
+  {
+    type: 'node_completed',
+    payload: '{"type":"node_completed","node_id":"n_1","node_name":"Researcher"}',
+    desc: 'A workflow node finished. Its output is checkpointed at this point — if the API process restarts after this event, the node will not be re-run when the workflow resumes.',
+  },
+  {
+    type: 'node_resumed',
+    payload: '{"type":"node_resumed","node_id":"n_1","node_name":"Researcher"}',
+    desc: 'The workflow run was resumed after a server restart, and this node’s output was replayed from its last checkpoint instead of being re-executed.',
+  },
+  {
+    type: 'node_routed',
+    payload: '{"type":"node_routed","node_id":"n_2","result":"yes","next_node_id":"n_3"}',
+    desc: 'A condition or loop node evaluated its expression and chose the next node. Loop nodes also include "iteration" and "max".',
   },
 ]
 
@@ -91,6 +115,28 @@ while (true) {
           <pre><code>{e.payload}</code></pre>
         </div>
       ))}
+
+      <h2>Workflow-Specific Events</h2>
+      <p>
+        Invoking a workflow (<code>POST /api/v1/invoke/workflows/:id</code> with <code>stream: true</code>)
+        emits these events in addition to the ones above — <code>delta</code>, <code>tool_call</code>, and
+        <code>step_completed</code> events from each node&apos;s underlying agent run are also forwarded,
+        tagged with <code>node_id</code>/<code>node_name</code> so you can attribute them to the right node.
+      </p>
+
+      {WORKFLOW_EVENTS.map((e) => (
+        <div key={e.type}>
+          <h3><code>{e.type}</code></h3>
+          <p>{e.desc}</p>
+          <pre><code>{e.payload}</code></pre>
+        </div>
+      ))}
+
+      <Callout type="info">
+        Workflow runs checkpoint their progress after every <code>node_completed</code> event. If the API
+        process restarts mid-run, it resumes automatically from the last checkpoint on boot instead of
+        losing progress — see <Link href="/docs/workflows">Workflows &amp; Node Types</Link> for details.
+      </Callout>
     </DocPage>
   )
 }

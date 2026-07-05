@@ -14,32 +14,32 @@ export default function ArchitecturePage() {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-gray-100 bg-white flex-shrink-0 flex-wrap">
+      <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex-shrink-0 flex-wrap">
         <div className="min-w-0">
-          <h1 className="text-base font-semibold text-gray-900">System Architecture</h1>
-          <p className="text-[11px] text-gray-400 mt-0.5 hidden sm:block">
+          <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">System Architecture</h1>
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 hidden sm:block">
             Agent Nexus — component overview, data flows, and infrastructure
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={zoomOut}
-            className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600"
+            className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
             title="Zoom out"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
-          <span className="text-[12px] text-gray-500 w-10 text-center">{zoom}%</span>
+          <span className="text-[12px] text-gray-500 dark:text-gray-400 w-10 text-center">{zoom}%</span>
           <button
             onClick={zoomIn}
-            className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600"
+            className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
             title="Zoom in"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
           <button
             onClick={reset}
-            className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 ml-1"
+            className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 ml-1"
             title="Reset zoom"
           >
             <Maximize2 className="w-4 h-4" />

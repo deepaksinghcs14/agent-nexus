@@ -73,8 +73,8 @@ export default function APITokensPage() {
     <div className="p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-8">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">API Tokens</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">API Tokens</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Use tokens to access the Agent Nexus API from scripts, CI/CD, or integrations.
           </p>
         </div>
@@ -91,20 +91,20 @@ export default function APITokensPage() {
 
       {/* New token revealed */}
       {newToken && (
-        <div className="mb-6 p-4 rounded-lg border border-green-200 bg-green-50">
+        <div className="mb-6 p-4 rounded-lg border border-green-200 bg-green-50 dark:bg-green-500/10">
           <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-green-600 dark:text-green-300 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-green-800 mb-2">
+              <p className="text-sm font-medium text-green-800 dark:text-green-300 mb-2">
                 Token created — copy it now. You won&apos;t see it again.
               </p>
               <div className="flex items-center gap-2 min-w-0">
-                <code className="flex-1 min-w-0 px-3 py-1.5 rounded bg-white border border-green-200 text-sm font-mono text-gray-800 truncate">
+                <code className="flex-1 min-w-0 px-3 py-1.5 rounded bg-white dark:bg-gray-900 border border-green-200 text-sm font-mono text-gray-800 dark:text-gray-200 truncate">
                   {newToken.token}
                 </code>
                 <button
                   onClick={handleCopy}
-                  className="shrink-0 p-1.5 rounded hover:bg-green-100 text-green-700"
+                  className="shrink-0 p-1.5 rounded hover:bg-green-100 text-green-700 dark:text-green-300"
                 >
                   {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 </button>
@@ -116,27 +116,27 @@ export default function APITokensPage() {
 
       {/* Create form */}
       {showCreate && (
-        <div className="mb-6 p-4 rounded-lg border border-gray-200 bg-white space-y-4">
-          <h3 className="font-medium text-gray-900">New API Token</h3>
+        <div className="mb-6 p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 space-y-4">
+          <h3 className="font-medium text-gray-900 dark:text-gray-100">New API Token</h3>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Name</label>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. CI Pipeline, Slack Bot"
-              className="w-full px-3 py-2 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+              className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">
-              Expiration <span className="text-gray-400">(optional — leave blank for no expiry)</span>
+            <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">
+              Expiration <span className="text-gray-400 dark:text-gray-500">(optional — leave blank for no expiry)</span>
             </label>
             <input
               type="date"
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value ? new Date(e.target.value).toISOString() : '')}
-              className="px-3 py-2 rounded border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+              className="px-3 py-2 rounded border border-gray-300 dark:border-gray-600 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
             />
           </div>
           {createError && <p className="text-sm text-red-500">{createError}</p>}
@@ -150,7 +150,7 @@ export default function APITokensPage() {
             </button>
             <button
               onClick={() => setShowCreate(false)}
-              className="px-4 py-2 rounded-md border border-gray-300 text-sm text-gray-600 hover:bg-gray-50"
+              className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               Cancel
             </button>
@@ -160,22 +160,22 @@ export default function APITokensPage() {
 
       {/* Token list */}
       {loading ? (
-        <div className="py-10 text-center text-sm text-gray-400">Loading…</div>
+        <div className="py-10 text-center text-sm text-gray-400 dark:text-gray-500">Loading…</div>
       ) : tokens.length === 0 ? (
         <div className="py-12 text-center">
-          <Key className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-sm text-gray-500">No API tokens yet. Create one to get started.</p>
+          <Key className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+          <p className="text-sm text-gray-500 dark:text-gray-400">No API tokens yet. Create one to get started.</p>
         </div>
       ) : (
-        <div className="rounded-lg border border-gray-200 overflow-hidden divide-y divide-gray-100">
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
           {tokens.map((t) => (
-            <div key={t.id} className="flex items-center justify-between px-4 py-3 bg-white">
+            <div key={t.id} className="flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-900">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-gray-900">{t.name}</p>
-                  <code className="text-xs text-gray-400 font-mono">{t.token_prefix}…</code>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{t.name}</p>
+                  <code className="text-xs text-gray-400 dark:text-gray-500 font-mono">{t.token_prefix}…</code>
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                   Created {formatDate(t.created_at)}
                   {t.last_used_at ? ` · Last used ${formatDate(t.last_used_at)}` : ' · Never used'}
                   {t.expires_at ? ` · Expires ${formatDate(t.expires_at)}` : ''}
@@ -183,7 +183,7 @@ export default function APITokensPage() {
               </div>
               <button
                 onClick={() => handleRevoke(t.id)}
-                className="ml-4 p-1.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                className="ml-4 p-1.5 rounded text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 transition-colors"
                 title="Revoke token"
               >
                 <Trash2 className="w-4 h-4" />
@@ -193,10 +193,10 @@ export default function APITokensPage() {
         </div>
       )}
 
-      <div className="mt-6 p-4 rounded-lg bg-gray-50 border border-gray-200">
-        <p className="text-sm text-gray-600">
+      <div className="mt-6 p-4 rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
+        <p className="text-sm text-gray-600 dark:text-gray-400">
           Use your token in the{' '}
-          <a href="/docs/api-tokens" className="text-purple-600 hover:underline">
+          <a href="/docs/api-tokens" className="text-purple-600 dark:text-purple-300 hover:underline">
             interactive documentation
           </a>{' '}
           to test API calls directly in the browser.

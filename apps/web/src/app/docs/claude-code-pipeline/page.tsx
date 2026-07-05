@@ -8,6 +8,13 @@ export default function ClaudeCodePipelineDoc() {
       title="Autonomous Jira → PR Pipeline"
       subtitle="A Jira ticket labeled for automation is driven to reviewed pull requests: repo selection over your repo catalog, headless Claude Code sessions in the runner service, an automated review pass, PR creation, and Jira updates."
     >
+      <Callout type="info">
+        The pipeline&apos;s controls are split across two pages: <strong>Settings → Claude Code</strong> holds
+        credentials only (Claude account, GitHub token, Jira), and the <strong>Claude Code</strong> page
+        (Build section of the sidebar) holds everything else — the repo allowlist, the readiness
+        checklist, and recent session activity.
+      </Callout>
+
       <h2>How a ticket becomes a PR</h2>
       <pre><code>{`Jira webhook ─▶ Orchestrator agent run
   (label filter)   │ 1. read ticket (Atlassian MCP, optional)
@@ -42,7 +49,7 @@ export default function ClaudeCodePipelineDoc() {
           </tr>
           <tr>
             <td><Badge label="sessions on" color="green" /></td>
-            <td>Flip the <em>enable sessions</em> toggle (Settings → Claude Code → Repositories), or onboard explicitly via <em>Add repository</em></td>
+            <td>Flip the <em>enable sessions</em> toggle (Claude Code → Repositories tab), or onboard explicitly via <em>Add repository</em></td>
             <td>Coding sessions may clone it, write code on a <code>nexus/&lt;ticket&gt;</code> branch, push, and open PRs</td>
           </tr>
         </tbody>
@@ -103,7 +110,7 @@ export default function ClaudeCodePipelineDoc() {
       </p>
 
       <h2>Setup checklist</h2>
-      <p>The readiness panel on Settings → Claude Code tracks all of this live:</p>
+      <p>The readiness strip at the top of the Claude Code page tracks all of this live:</p>
       <ol>
         <li>Runner reachable and in the mode you expect (stub vs claude)</li>
         <li>Claude account + GitHub token connected</li>

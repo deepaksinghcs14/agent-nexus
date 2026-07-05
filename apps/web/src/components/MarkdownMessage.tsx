@@ -51,7 +51,7 @@ function renderInline(text: string, baseKey: string) {
     const key = `${baseKey}-${i++}`
     if (full.startsWith('`')) {
       nodes.push(
-        <code key={key} className="bg-gray-100 rounded px-1 py-0.5 font-mono text-xs text-rose-600 whitespace-nowrap">
+        <code key={key} className="bg-gray-100 dark:bg-gray-800 rounded px-1 py-0.5 font-mono text-xs text-rose-600 dark:text-rose-300 whitespace-nowrap">
           {full.slice(1, -1)}
         </code>
       )
@@ -61,7 +61,7 @@ function renderInline(text: string, baseKey: string) {
       nodes.push(<em key={key}>{full.slice(1, -1)}</em>)
     } else if (m[2] && m[3]) {
       nodes.push(
-        <a key={key} href={m[3]} target="_blank" rel="noopener noreferrer" className="text-purple-600 underline hover:text-purple-800">
+        <a key={key} href={m[3]} target="_blank" rel="noopener noreferrer" className="text-purple-600 dark:text-purple-300 underline hover:text-purple-800">
           {m[2]}
         </a>
       )
@@ -129,7 +129,7 @@ function renderTextBlock(text: string): React.ReactNode[] {
 
     // Horizontal rule
     if (/^---+$/.test(line.trim())) {
-      elements.push(<hr key={i} className="my-3 border-gray-200" />)
+      elements.push(<hr key={i} className="my-3 border-gray-200 dark:border-gray-700" />)
       i++
       continue
     }
@@ -178,7 +178,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
 
   return (
     <div className="my-3 rounded-lg overflow-hidden border border-gray-700 text-sm">
-      <div className="flex items-center justify-between px-4 py-1.5 bg-gray-800 text-xs text-gray-400">
+      <div className="flex items-center justify-between px-4 py-1.5 bg-gray-800 text-xs text-gray-400 dark:text-gray-500">
         <span className="font-mono">{lang || 'code'}</span>
         <button onClick={copy} className="flex items-center gap-1 hover:text-white transition-colors">
           {copied ? <Check size={11} /> : <Copy size={11} />}

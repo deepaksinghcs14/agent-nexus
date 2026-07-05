@@ -1434,6 +1434,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   const [runOutput, setRunOutput] = useState<Record<string, string>>({})
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done'>('idle')
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveWarnings, setSaveWarnings] = useState<string[]>([])
   const [runError, setRunError] = useState<string | null>(null)
 
   // Fetch group
@@ -1634,10 +1635,11 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
           label: (e.label as string) ?? null,
         })),
       }
-      await workflowsAPI.saveGraph(groupId, graph)
-      // Reset so the useEffect re-syncs node IDs from DB (server assigns new UUIDs).
-      // Without this, canvas nodes keep client-side IDs that don't match SSE events.
-      setGraphInitialised(false)
+      const res = await workflowsAPI.saveGraph(groupId, graph)
+      // Node ids are stable across saves now (the server upserts by id
+      // instead of reminting), so the canvas doesn't need to discard local
+      // state (selection, panel) and re-sync from a refetch.
+      setSaveWarnings(res.warnings ?? [])
       queryClient.invalidateQueries({ queryKey: ['workflow-graph', groupId] })
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 2000)
@@ -1813,6 +1815,28 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
           <Play size={13} /> Run
         </button>
       </div>
+
+      {/* Save validation warnings */}
+      {saveWarnings.length > 0 && (
+        <div style={{
+          flexShrink: 0, background: '#fffbeb', borderBottom: '1px solid #fde68a',
+          padding: '8px 16px', display: 'flex', alignItems: 'flex-start', gap: 8,
+          flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#92400e', flexShrink: 0 }}>Save warnings:</span>
+          <ul style={{ margin: 0, padding: 0, listStyle: 'none', flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {saveWarnings.map((warning, i) => (
+              <li key={i} style={{ fontSize: 12, color: '#92400e' }}>{warning}</li>
+            ))}
+          </ul>
+          <button
+            onClick={() => setSaveWarnings([])}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400e', fontSize: 12, fontWeight: 600, flexShrink: 0 }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Body */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>

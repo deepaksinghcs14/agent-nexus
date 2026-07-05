@@ -23,18 +23,18 @@ export default function NewWorkflowPage() {
   return (
     <div className="p-4 sm:p-6 max-w-2xl">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">Create Workflow</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Create Workflow</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
           Set up a name and mode, then build your workflow visually on the canvas.
         </p>
       </div>
-      <div className="bg-white border border-gray-100 rounded-xl p-6 space-y-4">
-        {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">{error}</div>}
+      <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl p-6 space-y-4">
+        {error && <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-2">{error}</div>}
         <Field label="Workflow name">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg"
+            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg"
             placeholder="e.g. Research pipeline"
           />
         </Field>
@@ -42,7 +42,7 @@ export default function NewWorkflowPage() {
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg resize-none"
+            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg resize-none"
             rows={2}
             placeholder="What does this workflow do?"
           />
@@ -51,14 +51,14 @@ export default function NewWorkflowPage() {
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value as typeof mode)}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white"
+            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900"
           >
             <option value="pipeline">Pipeline — nodes execute sequentially</option>
             <option value="supervisor">Supervisor — one agent coordinates others</option>
           </select>
         </Field>
         <div className="pt-2 flex gap-2 justify-end">
-          <Link href="/workflows" className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg">
+          <Link href="/workflows" className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg">
             Cancel
           </Link>
           <button
@@ -77,7 +77,7 @@ export default function NewWorkflowPage() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>
       {children}
     </div>
   )

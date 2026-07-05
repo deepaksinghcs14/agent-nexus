@@ -125,10 +125,12 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Conversation compaction** — long conversations are automatically compressed into a rolling LLM-generated summary after a configurable message or token threshold; only the last 4 turns are replayed verbatim, drastically reducing input token cost on extended sessions; runs asynchronously after each reply with a subtle "Compacting…" indicator in the playground; threshold is configurable per agent (default: 6 messages or 3,000 input tokens)
 
 ### Multi-Agent Workflows
-- **Visual canvas editor** — drag-and-drop workflow builder powered by React Flow; add agent nodes, condition branches, parallel fans, join gates, and loop nodes
+- **Visual canvas editor** — drag-and-drop workflow builder powered by React Flow; add agent nodes, condition branches, parallel fans, join gates, and loop nodes; saving preserves node identity and canvas selection instead of resetting the editor
 - **Pipeline mode** — agents execute in sequence, each receiving the previous agent's output
 - **Supervisor mode** — a supervisor LLM routes tasks dynamically to specialist sub-agents; full BFS executor with conditional routing and parallel execution
 - **Workflow SSE** — live node status updates streamed to the canvas as a workflow run executes
+- **Crash-resumable runs** — every node's output is checkpointed as it completes; if the API restarts mid-run, the workflow resumes automatically on boot from the last checkpoint instead of losing progress or requiring a manual re-run
+- **Save-time validation** — saving a graph surfaces non-blocking warnings for a missing Start node, an unassigned Agent/Supervisor node, a Condition node with no fallback edge, a Loop node with no loop-back edge or iteration cap, and unreachable nodes
 - **Invoke API** — trigger any agent or workflow statelessly via `POST /api/v1/invoke/agents/:id` or `/invoke/workflows/:id`; returns an SSE stream; no conversation needed; runs appear in the Runs view with full trace detail
 
 ### Tools & MCP
@@ -455,6 +457,8 @@ What's working today vs. what's coming next:
 | Agentic RAG — `native_retrieve_context` tool, per-agent `max_chunks` / `min_score`, configurable via UI and Nexus AI | ✅ Done |
 | Eval framework — suites, cases, parallel runs, LLM judge, AI analysis, manual overrides, case fix, export/import | ✅ Done |
 | Durable waits — approval/session runs survive restarts and resume (`run_wait_states`) | ✅ Done |
+| Crash-resumable workflow runs — per-node checkpointing, automatic resume on API restart | ✅ Done |
+| Workflow save-time validation (missing start node, unreachable nodes, etc.) | ✅ Done |
 | Repo-session runner — headless Claude Code coding sessions as a service | ✅ Done |
 | Autonomous Jira→PR pipeline (repo catalog RAG, review agent, PR creation, docs maps) | ✅ Done |
 | OAuth 2.1 for remote MCP servers (hosted Atlassian: discovery, DCR, PKCE, refresh) | ✅ Done |

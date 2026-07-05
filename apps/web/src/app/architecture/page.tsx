@@ -12,23 +12,19 @@ export default function ArchitecturePage() {
   const reset   = () => setZoom(85)
 
   return (
-    <div className="flex flex-col" style={{ height: '100vh', background: '#040C1A' }}>
+    <div className="flex flex-col h-screen bg-[#040C1A]">
       {/* Toolbar */}
-      <div
-        className="flex items-center justify-between px-5 py-2.5 flex-shrink-0"
-        style={{ background: '#0B0E24', borderBottom: '1px solid rgba(255,255,255,0.07)' }}
-      >
+      <div className="flex items-center justify-between px-5 py-2.5 flex-shrink-0 bg-[#0B0E24] border-b border-white/[0.07] flex-wrap gap-2">
         <div className="flex items-center gap-4">
           <Link
             href="/docs"
-            className="flex items-center gap-1.5 text-[11px] transition-opacity hover:opacity-100 opacity-50"
-            style={{ color: '#A78BFA' }}
+            className="flex items-center gap-1.5 text-[11px] text-[#A78BFA] transition-opacity hover:opacity-100 opacity-50"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Docs
           </Link>
           <div>
-            <span className="text-sm font-semibold" style={{ color: '#e2e8f0' }}>System Architecture</span>
-            <span className="text-[11px] ml-2" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            <span className="text-sm font-semibold text-[#e2e8f0]">System Architecture</span>
+            <span className="text-[11px] ml-2 text-white/30 hidden sm:inline">
               Agent Nexus · component overview · data flows
             </span>
           </div>
@@ -36,25 +32,22 @@ export default function ArchitecturePage() {
         <div className="flex items-center gap-1.5">
           <button
             onClick={zoomOut}
-            className="p-1.5 rounded-lg transition-colors"
-            style={{ border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8' }}
+            className="p-1.5 rounded-lg border border-white/10 text-slate-400 transition-colors hover:text-slate-200"
             title="Zoom out (−10%)"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
-          <span className="text-[11px] w-10 text-center" style={{ color: '#64748b' }}>{zoom}%</span>
+          <span className="text-[11px] w-10 text-center text-slate-500">{zoom}%</span>
           <button
             onClick={zoomIn}
-            className="p-1.5 rounded-lg transition-colors"
-            style={{ border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8' }}
+            className="p-1.5 rounded-lg border border-white/10 text-slate-400 transition-colors hover:text-slate-200"
             title="Zoom in (+10%)"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={reset}
-            className="p-1.5 rounded-lg ml-1 transition-colors"
-            style={{ border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8' }}
+            className="p-1.5 rounded-lg ml-1 border border-white/10 text-slate-400 transition-colors hover:text-slate-200"
             title="Reset zoom"
           >
             <Maximize2 className="w-3.5 h-3.5" />
@@ -63,17 +56,10 @@ export default function ArchitecturePage() {
       </div>
 
       {/* Diagram canvas */}
-      <div className="flex-1 overflow-auto" style={{ cursor: 'grab' }}>
+      <div className="flex-1 overflow-auto cursor-grab">
         <div
-          style={{
-            transformOrigin: 'top center',
-            transform: `scale(${zoom / 100})`,
-            width: 'max-content',
-            minWidth: '100%',
-            padding: '32px 48px',
-            display: 'flex',
-            justifyContent: 'center',
-          }}
+          className="flex justify-center px-6 py-8 sm:px-12"
+          style={{ transformOrigin: 'top center', transform: `scale(${zoom / 100})`, width: 'max-content', minWidth: '100%' }}
         >
           <ArchitectureDiagram />
         </div>

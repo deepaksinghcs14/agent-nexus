@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import { Check, Copy, Plus, Trash2, X, Zap } from 'lucide-react'
 import { webhookTriggersAPI } from '@/lib/api'
 import type { WebhookTrigger } from '@/types'
+import { cn } from '@/lib/utils'
+import { Switch } from '@/components/ui/switch'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
 function webhookURL(id: string) { return `${API_URL}/webhook/${id}` }
@@ -19,7 +21,11 @@ function CopyButton({ text }: { text: string }) {
     })
   }
   return (
-    <button onClick={handle} title="Copy URL" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: copied ? '#22c55e' : '#9ca3af' }}>
+    <button
+      onClick={handle}
+      title="Copy URL"
+      className={cn('bg-transparent border-none cursor-pointer p-0.5', copied ? 'text-green-500' : 'text-gray-400')}
+    >
       {copied ? <Check size={12} /> : <Copy size={12} />}
     </button>
   )
@@ -59,36 +65,31 @@ export function TriggersPanel({ workflowId, onClose }: Props) {
   }
 
   return (
-    <div style={{
-      width: 280, flexShrink: 0, background: '#fff', borderLeft: '1px solid #e5e7eb',
-      display: 'flex', flexDirection: 'column', overflowY: 'auto',
-    }}>
+    <div className="w-full sm:w-72 flex-shrink-0 bg-white border-l border-gray-200 flex flex-col overflow-y-auto">
       {/* Header */}
-      <div style={{ padding: '12px 14px 10px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Zap size={13} color="#7c3aed" />
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Webhook Triggers
-          </span>
+      <div className="px-3.5 py-2.5 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-1.5">
+          <Zap size={13} className="text-accent" />
+          <span className="text-xs font-bold text-gray-700 uppercase tracking-wide">Webhook Triggers</span>
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
+        <button onClick={onClose} className="bg-transparent border-none cursor-pointer text-gray-400">
           <X size={14} />
         </button>
       </div>
 
       {/* Body */}
-      <div style={{ flex: 1, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="flex-1 p-3.5 flex flex-col gap-2">
         {isLoading && (
-          <p style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', paddingTop: 24 }}>Loading…</p>
+          <p className="text-xs text-gray-400 text-center pt-6">Loading…</p>
         )}
 
         {!isLoading && triggers.length === 0 && (
-          <div style={{ textAlign: 'center', paddingTop: 32 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#f1f0ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}>
-              <Zap size={16} color="#7c3aed" />
+          <div className="text-center pt-8">
+            <div className="w-9 h-9 rounded-full bg-accent-light flex items-center justify-center mx-auto mb-2.5">
+              <Zap size={16} className="text-accent" />
             </div>
-            <p style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>No triggers yet</p>
-            <p style={{ fontSize: 11, color: '#9ca3af', marginBottom: 16, lineHeight: 1.5 }}>
+            <p className="text-xs font-semibold text-gray-700 mb-1">No triggers yet</p>
+            <p className="text-[11px] text-gray-400 mb-4 leading-relaxed">
               Add a webhook to fire this workflow from GitHub, Zapier, or any HTTP source.
             </p>
           </div>
@@ -97,12 +98,12 @@ export function TriggersPanel({ workflowId, onClose }: Props) {
         {triggers.map(t => {
           const url = webhookURL(t.id)
           return (
-            <div key={t.id} style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px', background: '#fafafa' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, marginBottom: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#111827', flex: 1, wordBreak: 'break-word' }}>{t.name}</span>
+            <div key={t.id} className="border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50">
+              <div className="flex items-start justify-between gap-1.5 mb-1.5">
+                <span className="text-xs font-semibold text-gray-900 flex-1 break-words">{t.name}</span>
                 <button
                   onClick={() => handleDelete(t)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', padding: 2, flexShrink: 0 }}
+                  className="bg-transparent border-none cursor-pointer text-gray-300 p-0.5 flex-shrink-0"
                   title="Delete trigger"
                 >
                   <Trash2 size={12} />
@@ -110,33 +111,25 @@ export function TriggersPanel({ workflowId, onClose }: Props) {
               </div>
 
               {/* Active toggle */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <button
-                  onClick={() => toggleActive.mutate(t)}
-                  style={{
-                    width: 28, height: 16, borderRadius: 8, border: 'none', cursor: 'pointer',
-                    background: t.is_active ? '#7c3aed' : '#d1d5db', position: 'relative', flexShrink: 0,
-                  }}
-                >
-                  <span style={{
-                    position: 'absolute', top: 2, left: t.is_active ? 14 : 2,
-                    width: 12, height: 12, borderRadius: '50%', background: '#fff',
-                    transition: 'left 0.15s',
-                  }} />
-                </button>
-                <span style={{ fontSize: 10, color: t.is_active ? '#7c3aed' : '#9ca3af', fontWeight: 600 }}>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Switch
+                  checked={t.is_active}
+                  onCheckedChange={() => toggleActive.mutate(t)}
+                  className="data-[state=checked]:bg-accent"
+                />
+                <span className={cn('text-[10px] font-semibold', t.is_active ? 'text-accent' : 'text-gray-400')}>
                   {t.is_active ? 'Active' : 'Inactive'}
                 </span>
                 {t.trigger_count > 0 && (
-                  <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto' }}>
+                  <span className="text-[10px] text-gray-400 ml-auto">
                     {t.trigger_count} {t.trigger_count === 1 ? 'fire' : 'fires'}
                   </span>
                 )}
               </div>
 
               {/* URL */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#f3f4f6', borderRadius: 6, padding: '4px 8px' }}>
-                <code style={{ fontSize: 9, color: '#6b7280', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div className="flex items-center gap-1 bg-gray-100 rounded-md px-2 py-1">
+                <code className="text-[9px] text-gray-500 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
                   {url}
                 </code>
                 <CopyButton text={url} />
@@ -147,14 +140,10 @@ export function TriggersPanel({ workflowId, onClose }: Props) {
       </div>
 
       {/* Footer: add trigger */}
-      <div style={{ padding: '10px 14px', borderTop: '1px solid #f3f4f6', flexShrink: 0 }}>
+      <div className="px-3.5 py-2.5 border-t border-gray-100 flex-shrink-0">
         <button
           onClick={() => router.push(`/triggers/new?target_type=workflow&target_id=${workflowId}`)}
-          style={{
-            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            background: '#7c3aed', color: '#fff', border: 'none',
-          }}
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold cursor-pointer bg-accent text-white border-none hover:bg-accent-hover transition-colors"
         >
           <Plus size={12} /> Add trigger
         </button>

@@ -22,8 +22,8 @@ export default function AdminPoliciesPage() {
     <div className="p-4 sm:p-6 max-w-2xl">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Platform policies</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Global policy values used by the runtime</p>
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Platform policies</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Global policy values used by the runtime</p>
         </div>
         <button
           onClick={() => {
@@ -41,26 +41,26 @@ export default function AdminPoliciesPage() {
         </button>
       </div>
       {(error || actionError) && (
-        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">
           {actionError || (error as Error).message}
         </div>
       )}
-      {isLoading && <div className="py-12 text-center text-sm text-gray-400">Loading policies…</div>}
+      {isLoading && <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">Loading policies…</div>}
       {!isLoading && !error && policies.length === 0 && (
-        <div className="border border-dashed border-gray-200 rounded-xl py-12 text-center">
-          <Shield className="mx-auto text-gray-300 mb-3" />
-          <p className="text-sm text-gray-500">No policies configured.</p>
+        <div className="border border-dashed border-gray-200 dark:border-gray-700 rounded-xl py-12 text-center">
+          <Shield className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+          <p className="text-sm text-gray-500 dark:text-gray-400">No policies configured.</p>
         </div>
       )}
       <div className="space-y-3">
         {policies.map((policy) => (
-          <div key={policy.id || policy.key} className="bg-white border border-gray-100 rounded-xl p-4">
-            <label className="text-[12px] font-medium text-gray-800 block mb-2">{policy.key}</label>
+          <div key={policy.id || policy.key} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl p-4">
+            <label className="text-[12px] font-medium text-gray-800 dark:text-gray-200 block mb-2">{policy.key}</label>
             <textarea
               value={values[policy.key] ?? ''}
               onChange={(e) => setValues({ ...values, [policy.key]: e.target.value })}
               rows={3}
-              className="w-full text-xs font-mono px-3 py-2 border border-gray-200 rounded-lg"
+              className="w-full text-xs font-mono px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg"
             />
           </div>
         ))}

@@ -46,19 +46,21 @@ Jira webhook ──▶ /webhook/{id} ──▶ Orchestrator agent run
    - **GitHub token** — scoped to the workspace's repositories; used for
      clone/push in sessions and the PR/diff tools. Fallback: `GITHUB_TOKEN`
      env on API + runner (single-tenant only — a workspace token always wins).
-   The tab also shows a pipeline-readiness checklist (agents, catalog, triggers).
+   Settings → Claude Code is credentials only — repositories, the readiness
+   checklist, and recent session activity live on the **Claude Code** page
+   (Build section of the sidebar).
 3. **Onboard repos** — two paths, one rule: *indexed ≠ writeable*.
    - Sync a **GitHub connector**: every synced repo is adopted into the
      catalog automatically, with sessions **disabled** — flip the
-     *enable sessions* toggle (Settings → Claude Code → Repositories) for
-     each repo the pipeline may modify.
-   - Or **Add repository** on the same card: explicit onboarding clones and
+     *enable sessions* toggle (Claude Code → Repositories tab) for each repo
+     the pipeline may modify.
+   - Or **Add repository** on the same tab: explicit onboarding clones and
      indexes server-side with the workspace GitHub token and enables sessions
      directly. CLI alternative for headless installs:
      `DATABASE_URL=… GITHUB_TOKEN=… go run ./services/api/cmd/catalog-ingest -repo owner/name -workspace <uuid>`
-   The readiness panel shows the runner's executor mode — **stub mode is
-   simulation only** (no code written, fake branches); set
-   `RUNNER_EXECUTOR=claude` for real sessions.
+   The readiness strip at the top of the Claude Code page shows the runner's
+   executor mode — **stub mode is simulation only** (no code written, fake
+   branches); set `RUNNER_EXECUTOR=claude` for real sessions.
 4. **Assemble the pipeline**:
    `NEXUS_API=… NEXUS_TOKEN=… PROVIDER=anthropic MODEL=claude-sonnet-4-6 ./infra/scripts/setup_pipeline.sh`
    — prints the Jira and GitHub webhook URLs to configure.

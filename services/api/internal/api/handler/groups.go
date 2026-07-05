@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -262,9 +263,97 @@ func (h *WorkflowsHandler) GetGraph(w http.ResponseWriter, r *http.Request) {
 	errs.WriteJSON(w, 200, map[string]any{"nodes": nodes, "edges": edges})
 }
 
+// validateWorkflowGraph runs non-blocking sanity checks on a graph before
+// it's saved. Returned as "warnings" in the SaveGraph response — the save
+// still succeeds — so builders learn about a broken graph immediately
+// instead of only discovering it the first time the workflow is run.
+func validateWorkflowGraph(nodes []saveGraphNode, edges []saveGraphEdge) []string {
+	var warnings []string
+
+	adj := map[string][]saveGraphEdge{}
+	for _, e := range edges {
+		adj[e.SourceNodeID] = append(adj[e.SourceNodeID], e)
+	}
+
+	var startID string
+	hasStart := false
+	for _, n := range nodes {
+		if n.NodeType == "start" {
+			hasStart = true
+			startID = n.ID
+			break
+		}
+	}
+	if !hasStart {
+		warnings = append(warnings, "workflow has no start node")
+	}
+
+	for _, n := range nodes {
+		switch n.NodeType {
+		case "agent", "supervisor":
+			if n.AgentID == nil || *n.AgentID == "" {
+				warnings = append(warnings, fmt.Sprintf("%s node %q has no agent assigned", n.NodeType, n.ID))
+			}
+		case "condition":
+			hasFallback := false
+			for _, e := range adj[n.ID] {
+				if e.Label == "no" || e.Label == "false" || e.Label == "" || e.Label == "*" {
+					hasFallback = true
+					break
+				}
+			}
+			if !hasFallback {
+				warnings = append(warnings, fmt.Sprintf("condition node %q has no fallback edge (\"no\") — it can silently stop at runtime", n.ID))
+			}
+		case "loop":
+			hasLoopEdge := false
+			for _, e := range adj[n.ID] {
+				if e.Label == "loop" {
+					hasLoopEdge = true
+					break
+				}
+			}
+			if !hasLoopEdge {
+				warnings = append(warnings, fmt.Sprintf("loop node %q has no loop-back edge", n.ID))
+			}
+			var cfg map[string]any
+			_ = json.Unmarshal(n.Config, &cfg)
+			if _, ok := cfg["max_iterations"]; !ok {
+				warnings = append(warnings, fmt.Sprintf("loop node %q has no max_iterations set", n.ID))
+			}
+		}
+	}
+
+	if hasStart {
+		reachable := map[string]bool{startID: true}
+		queue := []string{startID}
+		for len(queue) > 0 {
+			cur := queue[0]
+			queue = queue[1:]
+			for _, e := range adj[cur] {
+				if !reachable[e.TargetNodeID] {
+					reachable[e.TargetNodeID] = true
+					queue = append(queue, e.TargetNodeID)
+				}
+			}
+		}
+		for _, n := range nodes {
+			if !reachable[n.ID] {
+				warnings = append(warnings, fmt.Sprintf("%s node %q is unreachable from the start node", n.NodeType, n.ID))
+			}
+		}
+	}
+
+	return warnings
+}
+
 // SaveGraph handles PUT /api/v1/workflows/{id}/graph
-// Replaces the entire node/edge set for the workflow in a single transaction.
-// Client-side IDs in edges are mapped to the newly generated server-side UUIDs.
+// Upserts nodes by their client-supplied id (the frontend always sends valid
+// UUIDs — crypto.randomUUID() for new nodes, the server id for existing
+// ones) instead of deleting and reinserting with freshly minted ids. This
+// keeps node identity stable across saves, so canvas selection state isn't
+// lost and SSE node_id events from a run always match what's on screen.
+// Edges have no identity the frontend relies on, so they're fully replaced.
 func (h *WorkflowsHandler) SaveGraph(w http.ResponseWriter, r *http.Request) {
 	workflowID := chi.URLParam(r, "id")
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
@@ -284,6 +373,8 @@ func (h *WorkflowsHandler) SaveGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	warnings := validateWorkflowGraph(req.Nodes, req.Edges)
+
 	tx, err := h.pool.Begin(r.Context())
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to start transaction"))
@@ -291,21 +382,34 @@ func (h *WorkflowsHandler) SaveGraph(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
 
-	// Delete existing graph — cascade removes edges too
+	// Resolve each incoming node to the id it will be stored under: reuse the
+	// client-supplied id when it's a valid UUID, otherwise mint one.
+	resolvedID := make(map[string]string, len(req.Nodes))
+	nodeIDs := make([]string, 0, len(req.Nodes))
+	for _, n := range req.Nodes {
+		id := n.ID
+		if _, perr := uuid.Parse(id); perr != nil {
+			id = uuid.NewString()
+		}
+		resolvedID[n.ID] = id
+		nodeIDs = append(nodeIDs, id)
+	}
+
+	// Remove nodes that existed for this workflow but are absent from the
+	// incoming set — cascades to their edges.
 	if _, err := tx.Exec(r.Context(),
-		`DELETE FROM workflow_nodes WHERE workflow_id=$1::uuid`, workflowID); err != nil {
-		errs.Write(w, errs.Internal("failed to clear existing graph"))
+		`DELETE FROM workflow_nodes WHERE workflow_id=$1::uuid AND NOT (id = ANY($2::uuid[]))`,
+		workflowID, nodeIDs); err != nil {
+		errs.Write(w, errs.Internal("failed to prune removed nodes"))
 		return
 	}
 
-	// Insert nodes and build client_id → server_id map
-	clientToServer := make(map[string]string, len(req.Nodes))
+	// Upsert each node by its resolved id. The WHERE guard on the UPDATE
+	// branch means a spoofed id that already belongs to a different workflow
+	// silently fails to update (and was never eligible for INSERT, since the
+	// id already exists) rather than hijacking another workflow's node.
 	for _, n := range req.Nodes {
-		serverID := uuid.NewString()
-		if n.ID != "" {
-			clientToServer[n.ID] = serverID
-		}
-
+		id := resolvedID[n.ID]
 		configJSON := n.Config
 		if len(configJSON) == 0 {
 			configJSON = json.RawMessage(`{}`)
@@ -314,24 +418,37 @@ func (h *WorkflowsHandler) SaveGraph(w http.ResponseWriter, r *http.Request) {
 		if n.AgentID != nil && *n.AgentID != "" {
 			_, err = tx.Exec(r.Context(),
 				`INSERT INTO workflow_nodes(id,workflow_id,node_type,agent_id,position_x,position_y,config)
-				 VALUES($1::uuid,$2::uuid,$3,$4::uuid,$5,$6,$7::jsonb)`,
-				serverID, workflowID, n.NodeType, *n.AgentID, n.PositionX, n.PositionY, string(configJSON))
+				 VALUES($1::uuid,$2::uuid,$3,$4::uuid,$5,$6,$7::jsonb)
+				 ON CONFLICT (id) DO UPDATE SET
+				   node_type=EXCLUDED.node_type, agent_id=EXCLUDED.agent_id,
+				   position_x=EXCLUDED.position_x, position_y=EXCLUDED.position_y, config=EXCLUDED.config
+				 WHERE workflow_nodes.workflow_id = EXCLUDED.workflow_id`,
+				id, workflowID, n.NodeType, *n.AgentID, n.PositionX, n.PositionY, string(configJSON))
 		} else {
 			_, err = tx.Exec(r.Context(),
 				`INSERT INTO workflow_nodes(id,workflow_id,node_type,position_x,position_y,config)
-				 VALUES($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)`,
-				serverID, workflowID, n.NodeType, n.PositionX, n.PositionY, string(configJSON))
+				 VALUES($1::uuid,$2::uuid,$3,$4,$5,$6::jsonb)
+				 ON CONFLICT (id) DO UPDATE SET
+				   node_type=EXCLUDED.node_type, agent_id=NULL,
+				   position_x=EXCLUDED.position_x, position_y=EXCLUDED.position_y, config=EXCLUDED.config
+				 WHERE workflow_nodes.workflow_id = EXCLUDED.workflow_id`,
+				id, workflowID, n.NodeType, n.PositionX, n.PositionY, string(configJSON))
 		}
 		if err != nil {
-			errs.Write(w, errs.Internal("failed to insert node"))
+			errs.Write(w, errs.Internal("failed to save node"))
 			return
 		}
 	}
 
-	// Insert edges using mapped server-side UUIDs
+	// Edges: fully replace using the resolved (stable) node ids.
+	if _, err := tx.Exec(r.Context(),
+		`DELETE FROM workflow_edges WHERE workflow_id=$1::uuid`, workflowID); err != nil {
+		errs.Write(w, errs.Internal("failed to clear existing edges"))
+		return
+	}
 	for _, e := range req.Edges {
-		srcID, srcOK := clientToServer[e.SourceNodeID]
-		tgtID, tgtOK := clientToServer[e.TargetNodeID]
+		srcID, srcOK := resolvedID[e.SourceNodeID]
+		tgtID, tgtOK := resolvedID[e.TargetNodeID]
 		if !srcOK || !tgtOK {
 			errs.Write(w, errs.BadRequest("edge references unknown node id"))
 			return
@@ -360,5 +477,5 @@ func (h *WorkflowsHandler) SaveGraph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	errs.WriteJSON(w, 200, map[string]any{"ok": true})
+	errs.WriteJSON(w, 200, map[string]any{"ok": true, "warnings": warnings})
 }

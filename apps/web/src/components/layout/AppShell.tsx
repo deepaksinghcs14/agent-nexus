@@ -30,7 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <DemoModeContext.Provider value={demoMode}>
-      <div className="flex h-[100dvh] bg-white overflow-hidden flex-col">
+      <div className="flex h-[100dvh] bg-background overflow-hidden flex-col">
         {demoMode && <DemoBanner />}
         <div className="flex flex-1 overflow-hidden min-h-0">
 
@@ -57,26 +57,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-            <header className="h-12 border-b border-gray-100 flex items-center justify-between px-4 bg-white flex-shrink-0">
+            <header className="h-12 border-b border-border flex items-center justify-between px-4 bg-background flex-shrink-0">
               {/* Hamburger — mobile only */}
               <button
-                className="md:hidden p-1.5 -ml-1 rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
+                className="md:hidden p-1.5 -ml-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                 onClick={() => setMobileNavOpen(true)}
                 aria-label="Open navigation"
               >
                 <Menu className="w-5 h-5" />
               </button>
 
-              <span className="text-[13px] font-medium text-gray-800 md:block hidden">
+              <span className="text-[13px] font-medium text-foreground md:block hidden">
                 {isAdmin ? 'Administration' : 'Agent Nexus'}
               </span>
-              <span className="text-[13px] font-medium text-gray-800 md:hidden">
+              <span className="text-[13px] font-medium text-foreground md:hidden">
                 {isAdmin ? 'Administration' : 'Agent Nexus'}
               </span>
 
               <UserMenu />
             </header>
-            <main className="flex-1 overflow-auto bg-white">
+            <main className="flex-1 overflow-auto bg-background">
               {children}
             </main>
           </div>

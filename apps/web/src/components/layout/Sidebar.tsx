@@ -10,6 +10,7 @@ import {
   Key, Settings, BookOpen,
   LayoutDashboard, Users, Building2, Shield, ClipboardList,
   Hexagon, ShieldCheck, PanelLeftClose, PanelLeftOpen, SquareTerminal, X,
+  ChevronDown, ChevronRight,
 } from 'lucide-react'
 import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import { cn } from '@/lib/utils'
@@ -26,16 +27,22 @@ const userNav: NavGroup[] = [
       { label: 'Nexus AI',      href: '/nexus-ai',     icon: Sparkles },
       { label: 'Agents',        href: '/agents',        icon: Bot },
       { label: 'Workflows',     href: '/workflows',     icon: GitBranch },
-      { label: 'Tools',         href: '/tools',         icon: Wrench },
-      { label: 'MCP Servers',   href: '/mcp-servers',   icon: Plug },
-      { label: 'Connectors',    href: '/connectors',    icon: Link2 },
-      { label: 'Triggers',      href: '/triggers',      icon: Zap },
-      { label: 'Gateway',       href: '/gateway',       icon: Radio },
-      { label: 'Skills',        href: '/skills',        icon: BookMarked },
+      { label: 'Claude Code',   href: '/claude-code',   icon: SquareTerminal },
     ],
   },
   {
-    label: 'Run',
+    label: 'Integrations',
+    items: [
+      { label: 'Tools',         href: '/tools',         icon: Wrench },
+      { label: 'MCP Servers',   href: '/mcp-servers',   icon: Plug },
+      { label: 'Connectors',    href: '/connectors',    icon: Link2 },
+      { label: 'Skills',        href: '/skills',        icon: BookMarked },
+      { label: 'Gateway',       href: '/gateway',       icon: Radio },
+      { label: 'Triggers',      href: '/triggers',      icon: Zap },
+    ],
+  },
+  {
+    label: 'Chat',
     items: [
       { label: 'Playground',    href: '/playground',    icon: MessageSquare },
       { label: 'Conversations', href: '/conversations', icon: History },
@@ -45,8 +52,8 @@ const userNav: NavGroup[] = [
     label: 'Observe',
     items: [
       { label: 'Runs & Traces', href: '/runs',          icon: Activity },
-      { label: 'Memory',        href: '/memory',        icon: Brain },
       { label: 'Evals',         href: '/evals',         icon: FlaskConical },
+      { label: 'Memory',        href: '/memory',        icon: Brain },
       { label: 'Usage',         href: '/usage',         icon: BarChart2 },
       { label: 'Latency',       href: '/observability', icon: Timer },
     ],
@@ -73,7 +80,7 @@ const adminNav: NavGroup[] = [
     label: 'Admin',
     items: [
       { label: 'Overview',    href: '/admin/overview',    icon: LayoutDashboard },
-      { label: 'Pipeline',    href: '/admin/pipeline',    icon: SquareTerminal },
+      { label: 'Claude Code', href: '/admin/claude-code', icon: SquareTerminal },
       { label: 'Users',       href: '/admin/users',       icon: Users },
       { label: 'Workspaces',  href: '/admin/workspaces',  icon: Building2 },
       { label: 'Policies',    href: '/admin/policies',    icon: Shield },
@@ -102,18 +109,30 @@ function NavTip({ label, collapsed, children }: { label: string; collapsed: bool
   )
 }
 
-function NavGroupSection({ group, pathname, collapsed }: { group: NavGroup; pathname: string; collapsed: boolean }) {
+function NavGroupSection({
+  group, pathname, collapsed, isOpen, onToggle,
+}: {
+  group: NavGroup
+  pathname: string
+  collapsed: boolean
+  isOpen: boolean
+  onToggle: () => void
+}) {
   return (
     <div className="mb-1">
       {collapsed
         ? <div className="pt-3 border-t border-white/[0.04] mt-1 first:border-0 first:mt-0" />
         : (
-          <p className="px-4 pt-3 pb-1 text-[10px] font-medium text-white/30 uppercase tracking-wider">
+          <button
+            onClick={onToggle}
+            className="w-full flex items-center gap-1 px-4 pt-3 pb-1 text-[10px] font-medium text-white/30 hover:text-white/50 uppercase tracking-wider transition-colors"
+          >
+            {isOpen ? <ChevronDown className="w-2.5 h-2.5 flex-shrink-0" /> : <ChevronRight className="w-2.5 h-2.5 flex-shrink-0" />}
             {group.label}
-          </p>
+          </button>
         )
       }
-      {group.items.map((item) => {
+      {(collapsed || isOpen) && group.items.map((item) => {
         const active = pathname === item.href || pathname.startsWith(item.href + '/')
         return (
           <NavTip key={item.href + item.label} label={item.label} collapsed={collapsed}>
@@ -144,9 +163,15 @@ export function Sidebar({ isAdmin = false, onClose }: { isAdmin?: boolean; onClo
   const groups = isAdmin ? adminNav : userNav
 
   const [collapsed, setCollapsed] = useState(false)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     setCollapsed(localStorage.getItem('sidebar-collapsed') === 'true')
+    try {
+      setCollapsedGroups(JSON.parse(localStorage.getItem('sidebar-group-collapsed') ?? '{}'))
+    } catch {
+      setCollapsedGroups({})
+    }
   }, [])
 
   const toggle = () => {
@@ -155,6 +180,21 @@ export function Sidebar({ isAdmin = false, onClose }: { isAdmin?: boolean; onClo
       return !v
     })
   }
+
+  const toggleGroup = (label: string) => {
+    setCollapsedGroups((prev) => {
+      const next = { ...prev, [label]: !prev[label] }
+      localStorage.setItem('sidebar-group-collapsed', JSON.stringify(next))
+      return next
+    })
+  }
+
+  // A group containing the active route is always shown expanded, regardless
+  // of its persisted collapsed state, so navigating never hides the page
+  // you're currently on.
+  const activeGroupLabel = groups.find((g) =>
+    g.items.some((item) => pathname === item.href || pathname.startsWith(item.href + '/'))
+  )?.label
 
   return (
     <TooltipPrimitive.Provider delayDuration={400}>
@@ -206,7 +246,14 @@ export function Sidebar({ isAdmin = false, onClose }: { isAdmin?: boolean; onClo
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-2">
           {groups.map((group) => (
-            <NavGroupSection key={group.label} group={group} pathname={pathname} collapsed={collapsed} />
+            <NavGroupSection
+              key={group.label}
+              group={group}
+              pathname={pathname}
+              collapsed={collapsed}
+              isOpen={group.label === activeGroupLabel || !collapsedGroups[group.label]}
+              onToggle={() => toggleGroup(group.label)}
+            />
           ))}
         </nav>
 

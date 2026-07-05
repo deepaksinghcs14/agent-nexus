@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation'
 import { authAPI } from '@/lib/api'
 import { useAuthStore } from '@/store/auth'
 import type { User, Workspace } from '@/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -51,134 +55,80 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#0f0e17',
-    }}>
-      <div style={{
-        width: 400,
-        padding: 40,
-        backgroundColor: '#1a1825',
-        borderRadius: 12,
-        border: '1px solid #2d2b3d',
-      }}>
-        <div style={{ marginBottom: 32 }}>
-          <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 700, margin: 0 }}>Agent Nexus</h1>
-          <p style={{ color: '#9ca3af', marginTop: 4, marginBottom: 0 }}>
+    <div className="min-h-screen flex items-center justify-center bg-[#0f0e17] p-4">
+      <Card className="w-full max-w-[400px] border-[#2d2b3d] bg-[#1a1825] p-8 sm:p-10">
+        <CardHeader className="p-0 mb-8">
+          <h1 className="text-white text-2xl font-bold m-0">Agent Nexus</h1>
+          <p className="text-gray-400 mt-1 mb-0">
             {mode === 'login' ? 'Sign in to your account' : 'Create a new account'}
           </p>
-        </div>
+        </CardHeader>
 
-        <form onSubmit={handleSubmit}>
-          {mode === 'register' && (
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', color: '#d1d5db', marginBottom: 6, fontSize: 14 }}>
-                Full Name
-              </label>
-              <input
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+        <CardContent className="p-0">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {mode === 'register' && (
+              <div>
+                <Label htmlFor="fullName" className="text-gray-300">Full Name</Label>
+                <Input
+                  id="fullName"
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  required
+                  placeholder="Jane Smith"
+                  className="bg-[#0f0e17] border-[#2d2b3d] text-white placeholder:text-gray-500"
+                />
+              </div>
+            )}
+
+            <div>
+              <Label htmlFor="email" className="text-gray-300">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
-                placeholder="Jane Smith"
-                style={inputStyle}
+                placeholder="you@example.com"
+                className="bg-[#0f0e17] border-[#2d2b3d] text-white placeholder:text-gray-500"
               />
             </div>
-          )}
 
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', color: '#d1d5db', marginBottom: 6, fontSize: 14 }}>
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="you@example.com"
-              style={inputStyle}
-            />
-          </div>
-
-          <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', color: '#d1d5db', marginBottom: 6, fontSize: 14 }}>
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="••••••••"
-              style={inputStyle}
-            />
-          </div>
-
-          {error && (
-            <div style={{
-              marginBottom: 16,
-              padding: '10px 14px',
-              backgroundColor: '#3d1a1a',
-              border: '1px solid #7f1d1d',
-              borderRadius: 6,
-              color: '#f87171',
-              fontSize: 14,
-            }}>
-              {error}
+            <div>
+              <Label htmlFor="password" className="text-gray-300">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="••••••••"
+                className="bg-[#0f0e17] border-[#2d2b3d] text-white placeholder:text-gray-500"
+              />
             </div>
-          )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: '100%',
-              padding: '10px 0',
-              backgroundColor: loading ? '#6d28d9' : '#7c3aed',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 6,
-              fontSize: 15,
-              fontWeight: 600,
-              cursor: loading ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {loading ? 'Please wait…' : mode === 'login' ? 'Sign In' : 'Create Account'}
-          </button>
-        </form>
+            {error && (
+              <div className="px-3.5 py-2.5 bg-[#3d1a1a] border border-red-900 rounded-md text-red-400 text-sm">
+                {error}
+              </div>
+            )}
 
-        <p style={{ marginTop: 20, textAlign: 'center', color: '#6b7280', fontSize: 14 }}>
-          {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-          <button
-            onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError('') }}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#8b83e0',
-              cursor: 'pointer',
-              fontSize: 14,
-              textDecoration: 'underline',
-            }}
-          >
-            {mode === 'login' ? 'Sign up' : 'Sign in'}
-          </button>
-        </p>
-      </div>
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? 'Please wait…' : mode === 'login' ? 'Sign In' : 'Create Account'}
+            </Button>
+          </form>
+
+          <p className="mt-5 text-center text-gray-500 text-sm">
+            {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
+            <button
+              onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError('') }}
+              className="bg-transparent border-none text-accent-muted cursor-pointer text-sm underline"
+            >
+              {mode === 'login' ? 'Sign up' : 'Sign in'}
+            </button>
+          </p>
+        </CardContent>
+      </Card>
     </div>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '10px 14px',
-  backgroundColor: '#0f0e17',
-  border: '1px solid #2d2b3d',
-  borderRadius: 6,
-  color: '#fff',
-  fontSize: 14,
-  outline: 'none',
-  boxSizing: 'border-box',
 }

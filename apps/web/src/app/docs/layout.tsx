@@ -11,7 +11,8 @@ const NAV = [
     items: [
       { label: 'Overview',          href: '/docs' },
       { label: 'What is an Agent',  href: '/docs/what-is-an-agent' },
-      { label: 'Workflows',          href: '/docs/what-is-an-agent-group' },
+      { label: 'What is a Workflow', href: '/docs/what-is-an-agent-group' },
+      { label: 'Workflow Node Types', href: '/docs/workflows' },
     ],
   },
   {
@@ -21,6 +22,8 @@ const NAV = [
       { label: 'MCP Servers', href: '/docs/mcp-servers' },
       { label: 'Connectors', href: '/docs/what-is-a-connector' },
       { label: 'Skills',     href: '/docs/skills' },
+      { label: 'Evals',      href: '/docs/evals' },
+      { label: 'Claude Code Pipeline', href: '/docs/claude-code-pipeline' },
     ],
   },
   {
@@ -127,7 +130,7 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
       </aside>
 
       {/* Right panel */}
-      <div className="flex-1 flex flex-col min-w-0 bg-white">
+      <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-gray-900">
 
         {/* Token bar */}
         <div
