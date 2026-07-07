@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { usePathname } from 'next/navigation'
-import { Menu, X } from 'lucide-react'
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
+import { Menu, Sparkles } from 'lucide-react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { DemoBanner } from '@/components/layout/DemoBanner'
 import { UserMenu } from '@/components/UserMenu'
@@ -12,6 +13,7 @@ import { configAPI } from '@/lib/api'
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
   const [demoMode, setDemoMode] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
@@ -21,6 +23,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Close mobile nav on route change
   useEffect(() => { setMobileNavOpen(false) }, [pathname])
+
+  // ⌘K / Ctrl+K → jump to Nexus AI (the command bar shortcut).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        router.push('/nexus-ai')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [router])
 
   if (pathname.startsWith('/login') || pathname.startsWith('/docs')) {
     return <>{children}</>
@@ -57,7 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-            <header className="h-12 border-b border-border flex items-center justify-between px-4 bg-background flex-shrink-0">
+            <header className="h-14 border-b border-border flex items-center gap-3 px-4 bg-surface/80 backdrop-blur flex-shrink-0 sticky top-0 z-10">
               {/* Hamburger — mobile only */}
               <button
                 className="md:hidden p-1.5 -ml-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -67,12 +81,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Menu className="w-5 h-5" />
               </button>
 
-              <span className="text-[13px] font-medium text-foreground md:block hidden">
-                {isAdmin ? 'Administration' : 'Agent Nexus'}
-              </span>
-              <span className="text-[13px] font-medium text-foreground md:hidden">
-                {isAdmin ? 'Administration' : 'Agent Nexus'}
-              </span>
+              {isAdmin && (
+                <span className="text-[13px] font-medium text-foreground hidden md:block">Administration</span>
+              )}
+
+              {/* Command bar — jumps to Nexus AI (also ⌘K) */}
+              <Link
+                href="/nexus-ai"
+                className="ml-auto md:ml-2 flex items-center gap-2.5 min-w-0 flex-1 max-w-md px-3 py-2 border border-border rounded-[10px] bg-surface-2 text-muted-foreground text-[13px] hover:border-border-strong transition-colors"
+              >
+                <Sparkles className="w-4 h-4 text-accent dark:text-accent-bright flex-shrink-0" />
+                <span className="truncate">Ask Nexus AI…</span>
+                <span className="ml-auto font-mono text-[10.5px] border border-border rounded px-1.5 py-0.5 text-faint bg-surface hidden sm:block">⌘K</span>
+              </Link>
 
               <UserMenu />
             </header>

@@ -55,11 +55,15 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f0e17] p-4">
-      <Card className="w-full max-w-[400px] border-[#2d2b3d] bg-[#1a1825] p-8 sm:p-10">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-[400px] border-border bg-surface shadow-card p-8 sm:p-10">
         <CardHeader className="p-0 mb-8">
-          <h1 className="text-white text-2xl font-bold m-0">Agent Nexus</h1>
-          <p className="text-gray-400 mt-1 mb-0">
+          <div className="flex items-center gap-2.5 mb-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icon.svg" alt="Agent Nexus" className="w-9 h-9 rounded-lg shadow-sm" />
+          </div>
+          <h1 className="text-foreground text-2xl font-bold tracking-tight m-0">Agent Nexus</h1>
+          <p className="text-muted-foreground mt-1 mb-0 text-sm">
             {mode === 'login' ? 'Sign in to your account' : 'Create a new account'}
           </p>
         </CardHeader>
@@ -68,7 +72,7 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'register' && (
               <div>
-                <Label htmlFor="fullName" className="text-gray-300">Full Name</Label>
+                <Label htmlFor="fullName" className="text-muted-foreground">Full Name</Label>
                 <Input
                   id="fullName"
                   type="text"
@@ -76,13 +80,13 @@ export default function LoginPage() {
                   onChange={(e) => setFullName(e.target.value)}
                   required
                   placeholder="Jane Smith"
-                  className="bg-[#0f0e17] border-[#2d2b3d] text-white placeholder:text-gray-500"
+                  className="bg-surface-2 border-border-strong text-foreground placeholder:text-faint"
                 />
               </div>
             )}
 
             <div>
-              <Label htmlFor="email" className="text-gray-300">Email</Label>
+              <Label htmlFor="email" className="text-muted-foreground">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -90,12 +94,12 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 placeholder="you@example.com"
-                className="bg-[#0f0e17] border-[#2d2b3d] text-white placeholder:text-gray-500"
+                className="bg-surface-2 border-border-strong text-foreground placeholder:text-faint"
               />
             </div>
 
             <div>
-              <Label htmlFor="password" className="text-gray-300">Password</Label>
+              <Label htmlFor="password" className="text-muted-foreground">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -103,26 +107,26 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 placeholder="••••••••"
-                className="bg-[#0f0e17] border-[#2d2b3d] text-white placeholder:text-gray-500"
+                className="bg-surface-2 border-border-strong text-foreground placeholder:text-faint"
               />
             </div>
 
             {error && (
-              <div className="px-3.5 py-2.5 bg-[#3d1a1a] border border-red-900 rounded-md text-red-400 text-sm">
+              <div className="px-3.5 py-2.5 bg-crit/10 border border-crit/30 rounded-md text-crit text-sm">
                 {error}
               </div>
             )}
 
-            <Button type="submit" disabled={loading} className="w-full">
+            <Button type="submit" disabled={loading} className="w-full bg-gradient-to-br from-accent to-accent-ink text-white hover:opacity-95">
               {loading ? 'Please wait…' : mode === 'login' ? 'Sign In' : 'Create Account'}
             </Button>
           </form>
 
-          <p className="mt-5 text-center text-gray-500 text-sm">
+          <p className="mt-5 text-center text-muted-foreground text-sm">
             {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
             <button
               onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError('') }}
-              className="bg-transparent border-none text-accent-muted cursor-pointer text-sm underline"
+              className="bg-transparent border-none text-accent dark:text-accent-bright cursor-pointer text-sm underline"
             >
               {mode === 'login' ? 'Sign up' : 'Sign in'}
             </button>
