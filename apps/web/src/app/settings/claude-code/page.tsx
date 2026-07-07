@@ -38,25 +38,25 @@ function CredentialCard(props: {
 }) {
   const [token, setToken] = useState('')
   return (
-    <div className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-xl px-4 py-3">
+    <div className="border border-border-strong bg-surface rounded-xl px-4 py-3">
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div className="flex items-center gap-2.5">
           {props.icon}
           <div>
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{props.title}</p>
+            <p className="text-sm font-medium text-foreground">{props.title}</p>
             {props.connected ? (
               <p className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1">
                 <Check size={11} /> {props.connectedNote}
               </p>
             ) : (
-              <p className="text-xs text-gray-500 dark:text-gray-400">{props.disconnectedNote}</p>
+              <p className="text-xs text-muted-foreground">{props.disconnectedNote}</p>
             )}
           </div>
         </div>
         {props.connected && (
           <button
             onClick={props.onDisconnect}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 text-xs text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-border-strong text-xs text-foreground rounded-lg hover:bg-muted"
           >
             <Unplug size={12} /> Disconnect
           </button>
@@ -69,19 +69,19 @@ function CredentialCard(props: {
             value={token}
             onChange={(e) => setToken(e.target.value)}
             placeholder={props.placeholder}
-            className="flex-1 min-w-[220px] px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+            className="flex-1 min-w-[220px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
           />
           <button
             onClick={() => { props.onSave(token.trim()); setToken('') }}
             disabled={!token.trim() || props.saving}
-            className="px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg font-medium disabled:opacity-50"
+            className="px-3 py-1.5 bg-accent text-white text-xs rounded-lg font-medium disabled:opacity-50"
           >
             {props.saving ? 'Saving…' : 'Connect'}
           </button>
         </div>
       )}
       {props.error && <p className="text-xs text-red-600 dark:text-red-300 mt-2">{props.error}</p>}
-      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">{props.footnote}</p>
+      <p className="text-[11px] text-faint mt-2">{props.footnote}</p>
     </div>
   )
 }
@@ -104,19 +104,19 @@ function JiraCredentialCard(props: {
   const [token, setToken] = useState('')
   const canSave = baseURL.trim() !== '' && token.trim() !== ''
   return (
-    <div className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-xl px-4 py-3">
+    <div className="border border-border-strong bg-surface rounded-xl px-4 py-3">
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div className="flex items-center gap-2.5">
           <ClipboardList size={16} className="text-blue-700 dark:text-blue-300" />
           <div>
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Jira</p>
+            <p className="text-sm font-medium text-foreground">Jira</p>
             {props.connected ? (
               <p className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1">
                 <Check size={11} /> Connected · {props.baseURL}
                 {props.updatedAt ? ` · updated ${relativeTime(props.updatedAt)}` : ''}
               </p>
             ) : (
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 API-token auth for the native Jira tools (issues, JQL search, comments, transitions)
                 {props.envFallback ? ' — instance-level JIRA_* env is active as fallback' : ''}
               </p>
@@ -126,7 +126,7 @@ function JiraCredentialCard(props: {
         {props.connected && (
           <button
             onClick={props.onDisconnect}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 text-xs text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-border-strong text-xs text-foreground rounded-lg hover:bg-muted"
           >
             <Unplug size={12} /> Disconnect
           </button>
@@ -139,7 +139,7 @@ function JiraCredentialCard(props: {
             value={baseURL}
             onChange={(e) => setBaseURL(e.target.value)}
             placeholder="https://yourorg.atlassian.net"
-            className="w-full px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+            className="w-full px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
           />
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -147,14 +147,14 @@ function JiraCredentialCard(props: {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@org.com (leave empty for Data Center PAT)"
-              className="flex-1 min-w-[220px] px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+              className="flex-1 min-w-[220px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
             />
             <input
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="API token"
-              className="flex-1 min-w-[180px] px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+              className="flex-1 min-w-[180px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
             />
             <button
               onClick={() => {
@@ -162,7 +162,7 @@ function JiraCredentialCard(props: {
                 setToken('')
               }}
               disabled={!canSave || props.saving}
-              className="px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg font-medium disabled:opacity-50"
+              className="px-3 py-1.5 bg-accent text-white text-xs rounded-lg font-medium disabled:opacity-50"
             >
               {props.saving ? 'Saving…' : 'Connect'}
             </button>
@@ -170,7 +170,7 @@ function JiraCredentialCard(props: {
         </div>
       )}
       {props.error && <p className="text-xs text-red-600 dark:text-red-300 mt-2">{props.error}</p>}
-      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
+      <p className="text-[11px] text-faint mt-2">
         Cloud: create an API token at id.atlassian.com → Security → API tokens, and enter your account email.
         Data Center: use a personal access token and leave email empty.
       </p>
@@ -201,8 +201,8 @@ export default function ClaudeCodePage() {
   return (
     <div className="p-4 sm:p-6 max-w-2xl">
       <div className="mb-5">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Claude Code</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+        <h1 className="text-xl font-semibold text-foreground">Claude Code</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
           Credentials for autonomous repo coding sessions (Jira → PR pipeline). Encrypted at rest and
           injected per session.
         </p>
@@ -215,7 +215,7 @@ export default function ClaudeCodePage() {
           connected={!!creds?.claude_connected}
           connectedNote={`Connected · subscription billing${creds?.updated_at ? ` · updated ${relativeTime(creds.updated_at)}` : ''}`}
           disconnectedNote={
-            <>Run <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">claude setup-token</code> in your terminal (opens the usual Claude login), then paste the token</>
+            <>Run <code className="bg-muted px-1 rounded">claude setup-token</code> in your terminal (opens the usual Claude login), then paste the token</>
           }
           placeholder="sk-ant-oat…"
           footnote="Authenticates the coding sessions. Without it, the runner falls back to its own ANTHROPIC_API_KEY."
@@ -225,12 +225,12 @@ export default function ClaudeCodePage() {
           error={error}
         />
         <CredentialCard
-          icon={<GitBranch size={16} className="text-gray-800 dark:text-gray-200" />}
+          icon={<GitBranch size={16} className="text-foreground" />}
           title="GitHub token"
           connected={!!creds?.github_connected}
           connectedNote={`Connected · used for clone, push, and PRs${creds?.updated_at ? ` · updated ${relativeTime(creds.updated_at)}` : ''}`}
           disconnectedNote={
-            <>Fine-grained PAT or classic token with <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">repo</code> scope for the repositories this workspace works on</>
+            <>Fine-grained PAT or classic token with <code className="bg-muted px-1 rounded">repo</code> scope for the repositories this workspace works on</>
           }
           placeholder="ghp_… or github_pat_…"
           footnote="Scoped to this workspace — other workspaces never see it. Takes precedence over any instance-level GITHUB_TOKEN."
@@ -251,9 +251,9 @@ export default function ClaudeCodePage() {
         />
       </div>
 
-      <p className="text-[12px] text-gray-500 dark:text-gray-400">
+      <p className="text-[12px] text-muted-foreground">
         Manage repositories and see pipeline readiness / session activity on the{' '}
-        <Link href="/claude-code" className="text-purple-600 dark:text-purple-300 hover:underline">Claude Code</Link> page.
+        <Link href="/claude-code" className="text-accent dark:text-accent-bright hover:underline">Claude Code</Link> page.
       </p>
     </div>
   )

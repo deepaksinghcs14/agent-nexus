@@ -168,8 +168,8 @@ export default function ClaudeCodePage() {
     <TooltipProvider delayDuration={200}>
       <div className="p-4 sm:p-6 max-w-3xl">
         <div className="mb-4">
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Claude Code</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          <h1 className="text-xl font-semibold text-foreground">Claude Code</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             Autonomous repo coding sessions (Jira → PR pipeline) for this workspace.
           </p>
         </div>
@@ -188,7 +188,7 @@ export default function ClaudeCodePage() {
           </TabsList>
 
           <TabsContent value="repos">
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-3">
+            <p className="text-[11px] text-faint mb-3">
               Coding sessions can only target repositories onboarded here. Private repos use this workspace&apos;s
               GitHub token{creds?.github_connected ? '' : ' — connect one in Settings → Claude Code first'}.
             </p>
@@ -199,12 +199,12 @@ export default function ClaudeCodePage() {
                     key={r.repo}
                     className={cn(
                       'flex flex-wrap items-center gap-2 text-[12px] border rounded-lg px-2.5 py-1.5',
-                      r.sessions_enabled ? 'border-green-200 bg-green-50/40' : 'border-gray-100 dark:border-gray-800'
+                      r.sessions_enabled ? 'border-green-200 bg-green-50/40' : 'border-border'
                     )}
                   >
-                    <GitBranch size={12} className={r.sessions_enabled ? 'text-green-600 dark:text-green-300' : 'text-gray-400 dark:text-gray-500'} />
-                    <span className="font-mono text-gray-800 dark:text-gray-200 break-all">{r.repo}</span>
-                    <span className="text-gray-400 dark:text-gray-500">
+                    <GitBranch size={12} className={r.sessions_enabled ? 'text-green-600 dark:text-green-300' : 'text-faint'} />
+                    <span className="font-mono text-foreground break-all">{r.repo}</span>
+                    <span className="text-faint">
                       {r.documents} docs · indexed {relativeTime(r.updated_at)}
                     </span>
                     <div className="ml-auto flex items-center gap-2">
@@ -216,14 +216,14 @@ export default function ClaudeCodePage() {
                           'px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors disabled:opacity-50',
                           r.sessions_enabled
                             ? 'bg-green-100 text-green-800 dark:text-green-300 border-green-300 hover:bg-green-200'
-                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-200'
+                            : 'bg-muted text-muted-foreground border-border-strong hover:bg-gray-200'
                         )}
                       >
                         {r.sessions_enabled ? 'sessions on' : 'enable sessions'}
                       </button>
                       <button
                         onClick={() => { if (confirm(`Remove ${r.repo} from the catalog entirely?`)) removeRepo.mutate(r.repo) }}
-                        className="p-1 text-gray-300 dark:text-gray-600 hover:text-red-500"
+                        className="p-1 text-faint hover:text-red-500"
                       >
                         <Trash2 size={12} />
                       </button>
@@ -237,13 +237,13 @@ export default function ClaudeCodePage() {
                 value={newRepo}
                 onChange={(e) => setNewRepo(e.target.value)}
                 placeholder="owner/repo"
-                className="flex-1 min-w-[200px] px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="flex-1 min-w-[200px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
                 onKeyDown={(e) => { if (e.key === 'Enter' && newRepo.trim() && !onboard.isPending) onboard.mutate(newRepo.trim()) }}
               />
               <button
                 onClick={() => onboard.mutate(newRepo.trim())}
                 disabled={!newRepo.trim() || onboard.isPending}
-                className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg font-medium disabled:opacity-50"
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-accent text-white text-xs rounded-lg font-medium disabled:opacity-50"
               >
                 {onboard.isPending ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
                 {onboard.isPending ? 'Cloning & indexing…' : 'Add repository'}
@@ -254,16 +254,16 @@ export default function ClaudeCodePage() {
 
           <TabsContent value="sessions">
             {!orchestrator ? (
-              <p className="text-[12px] text-gray-400 dark:text-gray-500 py-3">
+              <p className="text-[12px] text-faint py-3">
                 The Jira Pipeline Orchestrator agent hasn&apos;t been seeded for this workspace yet.
               </p>
             ) : sessionsLoading ? (
-              <p className="text-[12px] text-gray-400 dark:text-gray-500 py-3">Loading…</p>
+              <p className="text-[12px] text-faint py-3">Loading…</p>
             ) : sessions.length === 0 ? (
-              <p className="text-[12px] text-gray-400 dark:text-gray-500 py-3 flex items-center gap-1">
+              <p className="text-[12px] text-faint py-3 flex items-center gap-1">
                 <Activity size={12} />
                 No sessions yet — trigger one from Jira{pipelineTrigger ? '' : ', or '}
-                {!pipelineTrigger && <Link href="/triggers/new" className="text-purple-600 dark:text-purple-300 hover:underline">create a webhook trigger</Link>}
+                {!pipelineTrigger && <Link href="/triggers/new" className="text-accent dark:text-accent-bright hover:underline">create a webhook trigger</Link>}
                 {!pipelineTrigger ? ' for the orchestrator agent.' : '.'}
               </p>
             ) : (
@@ -272,11 +272,11 @@ export default function ClaudeCodePage() {
                   <Link
                     key={run.id}
                     href={`/runs/${run.id}`}
-                    className="flex items-center gap-2.5 text-[12px] border border-gray-100 dark:border-gray-800 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    className="flex items-center gap-2.5 text-[12px] border border-border rounded-lg px-2.5 py-1.5 hover:bg-muted"
                   >
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusColor(run.status)}`}>{run.status}</span>
-                    <span className="font-mono text-gray-500 dark:text-gray-400">{run.id.slice(0, 8)}</span>
-                    <span className="text-gray-400 dark:text-gray-500 ml-auto">{relativeTime(run.started_at)}</span>
+                    <span className="font-mono text-muted-foreground">{run.id.slice(0, 8)}</span>
+                    <span className="text-faint ml-auto">{relativeTime(run.started_at)}</span>
                   </Link>
                 ))}
               </div>
@@ -284,10 +284,10 @@ export default function ClaudeCodePage() {
           </TabsContent>
         </Tabs>
 
-        <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-5">
-          Missing a credential? <Link href="/settings/claude-code" className="text-purple-600 dark:text-purple-300 hover:underline">Settings → Claude Code</Link>.
+        <p className="text-[11px] text-faint mt-5">
+          Missing a credential? <Link href="/settings/claude-code" className="text-accent dark:text-accent-bright hover:underline">Settings → Claude Code</Link>.
           {user?.is_admin && (
-            <> Instance-wide health: <Link href="/admin/claude-code" className="text-purple-600 dark:text-purple-300 hover:underline">Admin → Claude Code</Link>.</>
+            <> Instance-wide health: <Link href="/admin/claude-code" className="text-accent dark:text-accent-bright hover:underline">Admin → Claude Code</Link>.</>
           )}
         </p>
       </div>

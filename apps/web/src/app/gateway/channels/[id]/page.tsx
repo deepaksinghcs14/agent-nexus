@@ -15,7 +15,7 @@ type Tab = typeof WA_TABS[number]
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   return (
-    <button onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600) }} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300" title="Copy">
+    <button onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600) }} className="p-1 rounded hover:bg-muted text-faint hover:text-gray-600 dark:hover:text-gray-300" title="Copy">
       {copied ? <Check className="w-3.5 h-3.5 text-green-600 dark:text-green-300" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
   )
@@ -488,28 +488,28 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
     }
   }
 
-  if (!channel) return <div className="p-6 text-sm text-gray-400 dark:text-gray-500">{error || 'Loading…'}</div>
+  if (!channel) return <div className="p-6 text-sm text-faint">{error || 'Loading…'}</div>
 
   const isHTTP = channel.channel_type === 'http'
   const tabs = isHTTP ? HTTP_TABS : WA_TABS
 
   return (
     <div className="p-4 sm:p-6">
-      <div className="flex items-center gap-2 text-[12px] text-gray-400 dark:text-gray-500 mb-5">
+      <div className="flex items-center gap-2 text-[12px] text-faint mb-5">
         <Link href="/gateway/channels" className="hover:text-gray-600 dark:hover:text-gray-300">Gateway</Link>
         <ChevronRight className="w-3 h-3" />
-        <span className="text-gray-700 dark:text-gray-300 font-medium">{channel.name}</span>
+        <span className="text-foreground font-medium">{channel.name}</span>
       </div>
       <div className="flex flex-wrap items-start gap-3 justify-between mb-5">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{channel.name}</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{channel.description || 'Channel runtime and delivery controls.'}</p>
+          <h1 className="text-xl font-semibold text-foreground">{channel.name}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{channel.description || 'Channel runtime and delivery controls.'}</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={openEdit} className="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-[12px] rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
+          <button onClick={openEdit} className="inline-flex items-center gap-2 px-3 py-1.5 border border-border-strong text-muted-foreground text-[12px] rounded-lg hover:bg-muted">
             <Pencil className="w-3.5 h-3.5" /> Edit
           </button>
-          <button onClick={load} className="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-[12px] rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
+          <button onClick={load} className="inline-flex items-center gap-2 px-3 py-1.5 border border-border-strong text-muted-foreground text-[12px] rounded-lg hover:bg-muted">
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </button>
         </div>
@@ -517,40 +517,40 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
       {error && <div className="mb-4 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
 
       {editMode && (
-        <div className="mb-5 rounded-xl border border-purple-200 bg-purple-50 dark:bg-purple-500/10 p-4">
+        <div className="mb-5 rounded-xl border border-accent/40 bg-accent/10 p-4">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-semibold text-purple-900">Edit Channel Settings</p>
             <button onClick={() => setEditMode(false)} className="p-1 rounded hover:bg-purple-100 text-purple-400"><X className="w-4 h-4" /></button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Name</label>
-              <input value={editName} onChange={e => setEditName(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+              <label className="block text-[11px] font-medium text-muted-foreground mb-1">Name</label>
+              <input value={editName} onChange={e => setEditName(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-border-strong rounded-lg bg-surface" />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Description</label>
-              <input value={editDesc} onChange={e => setEditDesc(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+              <label className="block text-[11px] font-medium text-muted-foreground mb-1">Description</label>
+              <input value={editDesc} onChange={e => setEditDesc(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-border-strong rounded-lg bg-surface" />
             </div>
             <div>
-              <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Agent</label>
-              <select value={editAgentId} onChange={e => setEditAgentId(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+              <label className="block text-[11px] font-medium text-muted-foreground mb-1">Agent</label>
+              <select value={editAgentId} onChange={e => setEditAgentId(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-border-strong rounded-lg bg-surface">
                 {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
             <div className="flex items-center gap-3 pt-4">
-              <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400">Active</label>
+              <label className="text-[11px] font-medium text-muted-foreground">Active</label>
               <button
                 onClick={() => setEditIsActive(v => !v)}
                 className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editIsActive ? 'bg-green-500' : 'bg-gray-200'}`}
               >
-                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white dark:bg-gray-900 shadow transition-transform ${editIsActive ? 'translate-x-4' : 'translate-x-1'}`} />
+                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow transition-transform ${editIsActive ? 'translate-x-4' : 'translate-x-1'}`} />
               </button>
             </div>
             {channel.channel_type === 'whatsapp' && (
               <>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">DM Policy</label>
-                  <select value={editDmPolicy} onChange={e => setEditDmPolicy(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">DM Policy</label>
+                  <select value={editDmPolicy} onChange={e => setEditDmPolicy(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-border-strong rounded-lg bg-surface">
                     <option value="">— keep existing —</option>
                     <option value="pairing">pairing</option>
                     <option value="allowlist">allowlist</option>
@@ -559,8 +559,8 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Group Policy</label>
-                  <select value={editGroupPolicy} onChange={e => setEditGroupPolicy(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">Group Policy</label>
+                  <select value={editGroupPolicy} onChange={e => setEditGroupPolicy(e.target.value)} className="w-full text-sm px-3 py-1.5 border border-border-strong rounded-lg bg-surface">
                     <option value="">— keep existing —</option>
                     <option value="disabled">disabled</option>
                     <option value="allowlist">allowlist</option>
@@ -568,41 +568,41 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">History Limit</label>
-                  <input type="number" value={editHistoryLimit} onChange={e => setEditHistoryLimit(e.target.value)} placeholder="e.g. 20" className="w-full text-sm px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">History Limit</label>
+                  <input type="number" value={editHistoryLimit} onChange={e => setEditHistoryLimit(e.target.value)} placeholder="e.g. 20" className="w-full text-sm px-3 py-1.5 border border-border-strong rounded-lg bg-surface" />
                 </div>
                 <div className="flex items-center gap-3 pt-4">
-                  <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400">Chat Approvals</label>
+                  <label className="text-[11px] font-medium text-muted-foreground">Chat Approvals</label>
                   <button
                     onClick={() => setEditChatApprovals(v => !v)}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editChatApprovals ? 'bg-green-500' : 'bg-gray-200'}`}
                   >
-                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white dark:bg-gray-900 shadow transition-transform ${editChatApprovals ? 'translate-x-4' : 'translate-x-1'}`} />
+                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow transition-transform ${editChatApprovals ? 'translate-x-4' : 'translate-x-1'}`} />
                   </button>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Adapter URL</label>
-                  <input value={editAdapterUrl} onChange={e => setEditAdapterUrl(e.target.value)} placeholder="http://localhost:3001" className="w-full text-sm px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">Adapter URL</label>
+                  <input value={editAdapterUrl} onChange={e => setEditAdapterUrl(e.target.value)} placeholder="http://localhost:3001" className="w-full text-sm px-3 py-1.5 border border-border-strong rounded-lg bg-surface" />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Device name</label>
-                  <input value={editBrowserName} onChange={e => setEditBrowserName(e.target.value)} placeholder="Agent Nexus" className="w-full text-sm px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Shown in WhatsApp → Linked Devices. Re-link to apply.</p>
+                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">Device name</label>
+                  <input value={editBrowserName} onChange={e => setEditBrowserName(e.target.value)} placeholder="Agent Nexus" className="w-full text-sm px-3 py-1.5 border border-border-strong rounded-lg bg-surface" />
+                  <p className="text-[10px] text-faint mt-0.5">Shown in WhatsApp → Linked Devices. Re-link to apply.</p>
                 </div>
               </>
             )}
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={saveEdit} disabled={editSaving || !editName.trim()} className="px-4 py-1.5 bg-purple-600 text-white text-[12px] font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50">
+            <button onClick={saveEdit} disabled={editSaving || !editName.trim()} className="px-4 py-1.5 bg-accent text-white text-[12px] font-medium rounded-lg hover:bg-accent-hover disabled:opacity-50">
               {editSaving ? 'Saving…' : 'Save changes'}
             </button>
-            <button onClick={() => setEditMode(false)} className="px-4 py-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-[12px] font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Cancel</button>
+            <button onClick={() => setEditMode(false)} className="px-4 py-1.5 border border-border-strong text-muted-foreground text-[12px] font-medium rounded-lg hover:bg-muted">Cancel</button>
           </div>
         </div>
       )}
-      <div className="flex border-b border-gray-100 dark:border-gray-800 mb-5 bg-gray-50 dark:bg-gray-800/60 rounded-t-lg overflow-x-auto">
+      <div className="flex border-b border-border mb-5 bg-muted rounded-t-lg overflow-x-auto">
         {tabs.map((t) => (
-          <button key={t} onClick={() => setTab(t as Tab)} className={`px-4 py-2 text-[12px] whitespace-nowrap ${tab === t ? 'bg-white dark:bg-gray-900 text-purple-600 dark:text-purple-300 font-medium border-b-2 border-purple-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>{t}</button>
+          <button key={t} onClick={() => setTab(t as Tab)} className={`px-4 py-2 text-[12px] whitespace-nowrap ${tab === t ? 'bg-surface text-accent dark:text-accent-bright font-medium border-b-2 border-purple-500' : 'text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'}`}>{t}</button>
         ))}
       </div>
 
@@ -625,21 +625,21 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
             checked={!!channel.config?.bot_mode_enabled}
             onChange={(checked) => updateChannelConfig({ bot_mode_enabled: checked })}
           />
-          <div className="col-span-1 sm:col-span-2 rounded-lg border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-900">
-            <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300 mb-2">Ingress URL</p>
+          <div className="col-span-1 sm:col-span-2 rounded-lg border border-border-strong p-4 bg-surface">
+            <p className="text-[12px] font-medium text-foreground mb-2">Ingress URL</p>
             <div className="flex items-center gap-1">
-              <code className="text-xs text-gray-500 dark:text-gray-400 font-mono bg-gray-50 dark:bg-gray-800/60 px-2 py-1 rounded truncate">{ingressURL}</code>
+              <code className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded truncate">{ingressURL}</code>
               <CopyButton text={ingressURL} />
             </div>
           </div>
-          <div className="col-span-1 sm:col-span-2 rounded-lg border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-900">
-            <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300 mb-1">Contact LID Sync</p>
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-3">Push in-memory LID→phone mappings to the database so the pairing policy can match @lid senders to existing contacts.</p>
+          <div className="col-span-1 sm:col-span-2 rounded-lg border border-border-strong p-4 bg-surface">
+            <p className="text-[12px] font-medium text-foreground mb-1">Contact LID Sync</p>
+            <p className="text-[11px] text-faint mb-3">Push in-memory LID→phone mappings to the database so the pairing policy can match @lid senders to existing contacts.</p>
             <div className="flex items-center gap-3">
-              <button onClick={syncLIDs} disabled={syncLIDsLoading} className="px-3 py-1.5 bg-purple-600 text-white text-[12px] font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50">
+              <button onClick={syncLIDs} disabled={syncLIDsLoading} className="px-3 py-1.5 bg-accent text-white text-[12px] font-medium rounded-lg hover:bg-accent-hover disabled:opacity-50">
                 {syncLIDsLoading ? 'Syncing…' : 'Sync LIDs'}
               </button>
-              {syncLIDsResult && <span className="text-[11px] text-gray-500 dark:text-gray-400">{syncLIDsResult}</span>}
+              {syncLIDsResult && <span className="text-[11px] text-muted-foreground">{syncLIDsResult}</span>}
             </div>
           </div>
         </div>
@@ -666,60 +666,60 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
               onChange={(checked) => updateChannelConfig({ bot_mode_enabled: checked })}
             />
           </div>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-900">
+          <div className="rounded-lg border border-border-strong p-4 bg-surface">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-100">POST</span>
-              <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300">Inbound Webhook URL</p>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent/10 text-accent dark:text-accent-bright border border-accent/25">POST</span>
+              <p className="text-[12px] font-medium text-foreground">Inbound Webhook URL</p>
             </div>
             <div className="flex items-center gap-1">
-              <code className="text-xs text-gray-500 dark:text-gray-400 font-mono bg-gray-50 dark:bg-gray-800/60 px-2 py-1 rounded truncate flex-1">{ingressURL}</code>
+              <code className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded truncate flex-1">{ingressURL}</code>
               <CopyButton text={ingressURL} />
             </div>
           </div>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
-            <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300">Request format</p>
-            <pre className="text-xs bg-gray-50 dark:bg-gray-800/60 rounded p-3 overflow-x-auto text-gray-600 dark:text-gray-400"><code>{`POST /gateway/http/${channel.id}
+          <div className="rounded-lg border border-border-strong bg-surface p-4 space-y-3">
+            <p className="text-[12px] font-medium text-foreground">Request format</p>
+            <pre className="text-xs bg-muted rounded p-3 overflow-x-auto text-muted-foreground"><code>{`POST /gateway/http/${channel.id}
 Content-Type: application/json
 
 {
   "input": "your message here",
   "session_id": "optional-session-id"
 }`}</code></pre>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400"><code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">session_id</code> is optional — the same value groups requests into one conversation thread. Omit it to start a fresh conversation on every call.</p>
-            <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300 pt-1">Response — 202 Accepted</p>
-            <pre className="text-xs bg-gray-50 dark:bg-gray-800/60 rounded p-3 overflow-x-auto text-gray-600 dark:text-gray-400"><code>{`{
+            <p className="text-[11px] text-muted-foreground"><code className="bg-muted px-1 rounded">session_id</code> is optional — the same value groups requests into one conversation thread. Omit it to start a fresh conversation on every call.</p>
+            <p className="text-[12px] font-medium text-foreground pt-1">Response — 202 Accepted</p>
+            <pre className="text-xs bg-muted rounded p-3 overflow-x-auto text-muted-foreground"><code>{`{
   "run_id": "...",
   "session_id": "...",
   "conversation_id": "...",
   "status": "running"
 }`}</code></pre>
           </div>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
-            <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300">Send a test message</p>
+          <div className="rounded-lg border border-border-strong bg-surface p-4 space-y-3">
+            <p className="text-[12px] font-medium text-foreground">Send a test message</p>
             <div className="flex flex-wrap gap-2">
               <input
                 value={testInput}
                 onChange={(e) => setTestInput(e.target.value)}
                 placeholder="Message to send…"
-                className="flex-1 min-w-[160px] text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg"
+                className="flex-1 min-w-[160px] text-[13px] px-3 py-2 border border-border-strong rounded-lg"
                 onKeyDown={(e) => { if (e.key === 'Enter') sendTestMessage() }}
               />
               <input
                 value={testSessionId}
                 onChange={(e) => setTestSessionId(e.target.value)}
                 placeholder="session_id (optional)"
-                className="w-full sm:w-44 text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg"
+                className="w-full sm:w-44 text-[13px] px-3 py-2 border border-border-strong rounded-lg"
               />
               <button
                 onClick={sendTestMessage}
                 disabled={testLoading || !testInput.trim()}
-                className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-md bg-accent text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {testLoading ? 'Sending…' : 'Send'}
               </button>
             </div>
             {testResponse && (
-              <pre className="text-xs bg-gray-50 dark:bg-gray-800/60 rounded p-3 overflow-x-auto text-gray-600 dark:text-gray-400">{testResponse}</pre>
+              <pre className="text-xs bg-muted rounded p-3 overflow-x-auto text-muted-foreground">{testResponse}</pre>
             )}
           </div>
         </div>
@@ -732,59 +732,59 @@ Content-Type: application/json
             <button
               onClick={startLogin}
               disabled={loginLoading}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-purple-600 text-sm text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-accent text-sm text-white hover:bg-accent-hover disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loginLoading ? <Spinner /> : <QrCode className="w-4 h-4" />}
               {loginLoading ? 'Connecting…' : 'Start login'}
             </button>
             <button
               onClick={refreshAdapter}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border-strong text-sm text-foreground hover:bg-muted"
             >
               <RefreshCw className="w-4 h-4" /> Refresh status
             </button>
             <button
               onClick={async () => { await gatewayAPI.logout(channelId).catch(() => {}); setQR(null); await refreshAdapter() }}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border-strong text-sm text-foreground hover:bg-muted"
             >
               <LogOut className="w-4 h-4" /> Logout
             </button>
           </div>
           <QRPanel value={qr} loading={loginLoading && !qr} />
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
-            <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Link via phone number (no QR)</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Instead of scanning a QR code, get an 8-digit code and enter it on your phone: WhatsApp → Linked Devices → Link a Device → Link with phone number instead.</p>
+          <div className="rounded-lg border border-border-strong bg-surface p-4 space-y-3">
+            <p className="text-sm font-medium text-foreground">Link via phone number (no QR)</p>
+            <p className="text-xs text-muted-foreground">Instead of scanning a QR code, get an 8-digit code and enter it on your phone: WhatsApp → Linked Devices → Link a Device → Link with phone number instead.</p>
             <div className="flex flex-wrap gap-2 items-center">
               <input
                 value={pairingPhone}
                 onChange={(e) => setPairingPhone(e.target.value)}
                 placeholder="e.g. 917599223966 (no + or spaces)"
-                className="flex-1 min-w-[200px] text-sm border border-gray-200 dark:border-gray-700 rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="flex-1 min-w-[200px] text-sm border border-border-strong rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
               />
               <button
                 onClick={getPairingCode}
                 disabled={pairingLoading || !pairingPhone.trim()}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-purple-600 text-sm text-white hover:bg-purple-700 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-accent text-sm text-white hover:bg-accent-hover disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
               >
                 {pairingLoading ? <Spinner /> : null}
                 {pairingLoading ? 'Getting code…' : 'Get code'}
               </button>
             </div>
             {pairingCode && (
-              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2">
-                <span className="font-mono text-lg font-semibold tracking-widest text-purple-700 dark:text-purple-300">{pairingCode}</span>
+              <div className="flex items-center gap-2 bg-muted border border-border-strong rounded-md px-3 py-2">
+                <span className="font-mono text-lg font-semibold tracking-widest text-accent dark:text-accent-bright">{pairingCode}</span>
                 <CopyButton text={pairingCode} />
               </div>
             )}
           </div>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 flex items-center justify-between">
+          <div className="rounded-lg border border-border-strong bg-surface p-4 flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">Self-chat replies</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">When enabled, messages sent from the linked number to itself will be processed by the agent.</p>
+              <p className="text-sm font-medium text-foreground">Self-chat replies</p>
+              <p className="text-xs text-muted-foreground mt-1">When enabled, messages sent from the linked number to itself will be processed by the agent.</p>
             </div>
             <label className="inline-flex items-center cursor-pointer">
               <input type="checkbox" checked={!!channel.config?.self_chat_enabled} onChange={(e) => updateSelfChat(e.target.checked)} className="sr-only peer" />
-              <span className="relative w-10 h-5 rounded-full bg-gray-200 peer-checked:bg-purple-600 after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
+              <span className="relative w-10 h-5 rounded-full bg-gray-200 peer-checked:bg-accent after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
             </label>
           </div>
         </div>
@@ -793,44 +793,44 @@ Content-Type: application/json
       {tab === 'Sessions' && <Table rows={sessions} empty="No sessions yet" columns={['peer_kind', 'peer_id', 'external_sender_id', 'conversation_id', 'last_active_at']} />}
       {tab === 'Reminders' && (
         <div className="space-y-4">
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+          <div className="rounded-lg border border-border-strong bg-surface p-4">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{remEditId ? 'Edit reminder' : 'New reminder'}</p>
-              {remEditId && <button onClick={resetReminderForm} className="text-[12px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">Cancel edit</button>}
+              <p className="text-sm font-medium text-foreground">{remEditId ? 'Edit reminder' : 'New reminder'}</p>
+              {remEditId && <button onClick={resetReminderForm} className="text-[12px] text-faint hover:text-gray-600 dark:hover:text-gray-300">Cancel edit</button>}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
-                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Title <span className="text-red-400">*</span></label>
-                <input value={remTitle} onChange={(e) => setRemTitle(e.target.value)} placeholder="e.g. Follow up on invoice" className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Title <span className="text-red-400">*</span></label>
+                <input value={remTitle} onChange={(e) => setRemTitle(e.target.value)} placeholder="e.g. Follow up on invoice" className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">{remUseAgent ? 'Prompt for agent' : 'Message'} <span className="font-normal text-gray-400">(optional — defaults to title)</span></label>
-                <input value={remMsg} onChange={(e) => setRemMsg(e.target.value)} placeholder={remUseAgent ? 'What should the agent say?' : 'Reminder text to send…'} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">{remUseAgent ? 'Prompt for agent' : 'Message'} <span className="font-normal text-gray-400">(optional — defaults to title)</span></label>
+                <input value={remMsg} onChange={(e) => setRemMsg(e.target.value)} placeholder={remUseAgent ? 'What should the agent say?' : 'Reminder text to send…'} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Contact <span className="font-normal text-gray-400">(optional)</span></label>
-                <select value={remContact} onChange={(e) => setRemContact(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Contact <span className="font-normal text-gray-400">(optional)</span></label>
+                <select value={remContact} onChange={(e) => setRemContact(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface">
                   <option value="">No specific contact</option>
                   {(pickerContacts.length ? pickerContacts : contacts).map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Due at <span className="text-red-400">*</span> <span className="font-normal text-gray-400">(your local time)</span></label>
-                <input type="datetime-local" value={remDueAt} onChange={(e) => setRemDueAt(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Due at <span className="text-red-400">*</span> <span className="font-normal text-gray-400">(your local time)</span></label>
+                <input type="datetime-local" value={remDueAt} onChange={(e) => setRemDueAt(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
               </div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={remUseAgent} onChange={(e) => setRemUseAgent(e.target.checked)} className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-purple-600 dark:text-purple-300 focus:ring-purple-500" />
-                <span className="text-[13px] text-gray-600 dark:text-gray-400">Generate with agent</span>
+                <input type="checkbox" checked={remUseAgent} onChange={(e) => setRemUseAgent(e.target.checked)} className="h-4 w-4 rounded border-border-strong text-accent dark:text-accent-bright focus:ring-accent" />
+                <span className="text-[13px] text-muted-foreground">Generate with agent</span>
               </label>
-              <button onClick={saveReminder} className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium">{remEditId ? 'Save changes' : 'Create reminder'}</button>
+              <button onClick={saveReminder} className="px-4 py-2 rounded-md bg-accent text-white text-sm font-medium">{remEditId ? 'Save changes' : 'Create reminder'}</button>
             </div>
           </div>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
-            {reminders.length === 0 ? <div className="p-8 text-center text-sm text-gray-400 dark:text-gray-500">No reminders yet</div> : (
+          <div className="rounded-lg border border-border-strong overflow-hidden bg-surface">
+            {reminders.length === 0 ? <div className="p-8 text-center text-sm text-faint">No reminders yet</div> : (
               <div className="overflow-x-auto"><table className="w-full text-sm min-w-[640px]">
-                <thead><tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 text-left text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                <thead><tr className="border-b border-border bg-muted text-left text-[11px] text-muted-foreground uppercase tracking-wide">
                   <th className="px-4 py-2">Title</th>
                   <th className="px-4 py-2">Message</th>
                   <th className="px-4 py-2">Contact</th>
@@ -841,22 +841,22 @@ Content-Type: application/json
                 <tbody>
                   {reminders.map((m) => {
                     const contact = (pickerContacts.length ? pickerContacts : contacts).find((c) => c.id === m.contact_id)
-                    const statusColor = m.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : m.status === 'completed' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400'
+                    const statusColor = m.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : m.status === 'completed' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'
                     return (
-                      <tr key={m.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{m.title}</td>
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-xs truncate" title={m.message}>
-                          {m.use_agent && <span className="mr-1.5 inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-300 font-medium">agent</span>}
+                      <tr key={m.id} className="border-b border-border last:border-0 hover:bg-muted">
+                        <td className="px-4 py-3 text-foreground">{m.title}</td>
+                        <td className="px-4 py-3 text-muted-foreground max-w-xs truncate" title={m.message}>
+                          {m.use_agent && <span className="mr-1.5 inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent dark:text-accent-bright font-medium">agent</span>}
                           {m.message}
                         </td>
-                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{contact?.display_name || '—'}</td>
-                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">{m.due_at ? new Date(m.due_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{contact?.display_name || '—'}</td>
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{m.due_at ? new Date(m.due_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
                         <td className="px-4 py-3"><span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusColor}`}>{m.status}</span></td>
                         <td className="px-4 py-3">
                           {m.status === 'pending' && (
                             <div className="flex items-center gap-2">
-                              <button onClick={() => startEditReminder(m)} className="text-[11px] px-2 py-1 rounded bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:bg-purple-50 hover:text-purple-600">Edit</button>
-                              <button onClick={() => cancelReminder(m.id)} className="text-[11px] px-2 py-1 rounded bg-gray-50 dark:bg-gray-800/60 text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-600">Cancel</button>
+                              <button onClick={() => startEditReminder(m)} className="text-[11px] px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-purple-50 hover:text-accent dark:text-accent-bright">Edit</button>
+                              <button onClick={() => cancelReminder(m.id)} className="text-[11px] px-2 py-1 rounded bg-muted text-faint hover:bg-red-50 hover:text-red-600">Cancel</button>
                             </div>
                           )}
                         </td>
@@ -871,33 +871,33 @@ Content-Type: application/json
       )}
       {tab === 'Scheduled' && (
         <div className="space-y-4">
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+          <div className="rounded-lg border border-border-strong bg-surface p-4">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{schedEditId ? 'Edit scheduled message' : 'Schedule a message'}</p>
-              {schedEditId && <button onClick={resetSchedForm} className="text-[12px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">Cancel edit</button>}
+              <p className="text-sm font-medium text-foreground">{schedEditId ? 'Edit scheduled message' : 'Schedule a message'}</p>
+              {schedEditId && <button onClick={resetSchedForm} className="text-[12px] text-faint hover:text-gray-600 dark:hover:text-gray-300">Cancel edit</button>}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Send to <span className="text-red-400">*</span></label>
-                <select value={schedContact} onChange={(e) => setSchedContact(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Send to <span className="text-red-400">*</span></label>
+                <select value={schedContact} onChange={(e) => setSchedContact(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface">
                   <option value="">Pick contact…</option>
                   {(pickerContacts.length ? pickerContacts : contacts).map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Send at <span className="text-red-400">*</span> <span className="font-normal text-gray-400">(your local time)</span></label>
-                <input type="datetime-local" value={schedSendAt} onChange={(e) => setSchedSendAt(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Send at <span className="text-red-400">*</span> <span className="font-normal text-gray-400">(your local time)</span></label>
+                <input type="datetime-local" value={schedSendAt} onChange={(e) => setSchedSendAt(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">{schedUseAgent ? 'Prompt for agent' : 'Message'} <span className="text-red-400">*</span></label>
-                <input value={schedMsg} onChange={(e) => setSchedMsg(e.target.value)} placeholder={schedUseAgent ? 'What should the agent say?' : 'Message to send…'} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">{schedUseAgent ? 'Prompt for agent' : 'Message'} <span className="text-red-400">*</span></label>
+                <input value={schedMsg} onChange={(e) => setSchedMsg(e.target.value)} placeholder={schedUseAgent ? 'What should the agent say?' : 'Message to send…'} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
               </div>
             </div>
 
-            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+            <div className="mt-4 pt-4 border-t border-border">
               <div className="flex items-center gap-3 flex-wrap">
-                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400">Repeat</label>
-                <select value={schedFreq} onChange={(e) => setSchedFreq(e.target.value)} className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+                <label className="block text-[11px] font-medium text-muted-foreground">Repeat</label>
+                <select value={schedFreq} onChange={(e) => setSchedFreq(e.target.value)} className="text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface">
                   <option value="">Doesn&apos;t repeat (one-time)</option>
                   <option value="daily">Daily</option>
                   <option value="weekdays">Weekdays (Mon–Fri)</option>
@@ -909,37 +909,37 @@ Content-Type: application/json
               {schedFreq && (
                 <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Every</label>
+                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">Every</label>
                     <div className="flex items-center gap-2">
-                      <input type="number" min={1} value={schedInterval} onChange={(e) => setSchedInterval(parseInt(e.target.value) || 1)} className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg w-20 bg-white dark:bg-gray-900" />
-                      <span className="text-[13px] text-gray-500 dark:text-gray-400">{schedFreq === 'daily' || schedFreq === 'weekdays' ? 'day(s)' : schedFreq === 'weekly' ? 'week(s)' : schedFreq === 'monthly' ? 'month(s)' : 'year(s)'}</span>
+                      <input type="number" min={1} value={schedInterval} onChange={(e) => setSchedInterval(parseInt(e.target.value) || 1)} className="text-[13px] px-3 py-2 border border-border-strong rounded-lg w-20 bg-surface" />
+                      <span className="text-[13px] text-muted-foreground">{schedFreq === 'daily' || schedFreq === 'weekdays' ? 'day(s)' : schedFreq === 'weekly' ? 'week(s)' : schedFreq === 'monthly' ? 'month(s)' : 'year(s)'}</span>
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Ends on <span className="font-normal text-gray-400">(optional)</span></label>
-                    <input type="date" value={schedEndAt} onChange={(e) => setSchedEndAt(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">Ends on <span className="font-normal text-gray-400">(optional)</span></label>
+                    <input type="date" value={schedEndAt} onChange={(e) => setSchedEndAt(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Max sends <span className="font-normal text-gray-400">(optional)</span></label>
-                    <input type="number" min={1} value={schedMaxOcc} onChange={(e) => setSchedMaxOcc(e.target.value)} placeholder="Unlimited" className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">Max sends <span className="font-normal text-gray-400">(optional)</span></label>
+                    <input type="number" min={1} value={schedMaxOcc} onChange={(e) => setSchedMaxOcc(e.target.value)} placeholder="Unlimited" className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
                   </div>
-                  <p className="sm:col-span-3 text-[11px] text-gray-400 dark:text-gray-500">The message keeps repeating at the time you set above until the end date or max sends is reached (whichever comes first).</p>
+                  <p className="sm:col-span-3 text-[11px] text-faint">The message keeps repeating at the time you set above until the end date or max sends is reached (whichever comes first).</p>
                 </div>
               )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-border">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={schedUseAgent} onChange={(e) => setSchedUseAgent(e.target.checked)} className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-purple-600 dark:text-purple-300 focus:ring-purple-500" />
-                <span className="text-[13px] text-gray-600 dark:text-gray-400">Generate with agent</span>
+                <input type="checkbox" checked={schedUseAgent} onChange={(e) => setSchedUseAgent(e.target.checked)} className="h-4 w-4 rounded border-border-strong text-accent dark:text-accent-bright focus:ring-accent" />
+                <span className="text-[13px] text-muted-foreground">Generate with agent</span>
               </label>
-              <button onClick={scheduleMessage} className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium">{schedEditId ? 'Save changes' : 'Schedule'}</button>
+              <button onClick={scheduleMessage} className="px-4 py-2 rounded-md bg-accent text-white text-sm font-medium">{schedEditId ? 'Save changes' : 'Schedule'}</button>
             </div>
           </div>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
-            {scheduledMessages.length === 0 ? <div className="p-8 text-center text-sm text-gray-400 dark:text-gray-500">No scheduled messages yet</div> : (
+          <div className="rounded-lg border border-border-strong overflow-hidden bg-surface">
+            {scheduledMessages.length === 0 ? <div className="p-8 text-center text-sm text-faint">No scheduled messages yet</div> : (
               <div className="overflow-x-auto"><table className="w-full text-sm min-w-[640px]">
-                <thead><tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 text-left text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                <thead><tr className="border-b border-border bg-muted text-left text-[11px] text-muted-foreground uppercase tracking-wide">
                   <th className="px-4 py-2">Contact / Recipient</th>
                   <th className="px-4 py-2">Message</th>
                   <th className="px-4 py-2">Send at</th>
@@ -951,26 +951,26 @@ Content-Type: application/json
                 <tbody>
                   {scheduledMessages.map((m) => {
                     const contact = (pickerContacts.length ? pickerContacts : contacts).find((c) => c.id === m.contact_id)
-                    const statusColor = m.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : m.status === 'sent' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : m.status === 'failed' ? 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300' : 'bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400'
+                    const statusColor = m.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : m.status === 'sent' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : m.status === 'failed' ? 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300' : 'bg-muted text-muted-foreground'
                     const recLabel = m.recurrence_rule
                       ? `${m.recurrence_rule.interval && m.recurrence_rule.interval > 1 ? `Every ${m.recurrence_rule.interval} ` : ''}${m.recurrence_rule.frequency}${m.recurrence_rule.max_occurrences ? ` (${m.recurrence_rule.max_occurrences}×)` : ''}`
                       : '—'
                     return (
-                      <tr key={m.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{contact?.display_name || m.peer_id}</td>
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-xs truncate" title={m.message}>
-                          {m.use_agent && <span className="mr-1.5 inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-300 font-medium">agent</span>}
+                      <tr key={m.id} className="border-b border-border last:border-0 hover:bg-muted">
+                        <td className="px-4 py-3 text-foreground">{contact?.display_name || m.peer_id}</td>
+                        <td className="px-4 py-3 text-muted-foreground max-w-xs truncate" title={m.message}>
+                          {m.use_agent && <span className="mr-1.5 inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent dark:text-accent-bright font-medium">agent</span>}
                           {m.message}
                         </td>
-                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">{new Date(m.send_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</td>
-                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{recLabel}</td>
-                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{m.occurrence_count}</td>
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{new Date(m.send_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{recLabel}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{m.occurrence_count}</td>
                         <td className="px-4 py-3"><span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusColor}`}>{m.status}</span></td>
                         <td className="px-4 py-3">
                           {m.status === 'pending' && (
                             <div className="flex items-center gap-2">
-                              <button onClick={() => startEditSchedule(m)} className="text-[11px] px-2 py-1 rounded bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:bg-purple-50 hover:text-purple-600">Edit</button>
-                              <button onClick={() => cancelScheduledMessage(m.id)} className="text-[11px] px-2 py-1 rounded bg-gray-50 dark:bg-gray-800/60 text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-600">Cancel</button>
+                              <button onClick={() => startEditSchedule(m)} className="text-[11px] px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-purple-50 hover:text-accent dark:text-accent-bright">Edit</button>
+                              <button onClick={() => cancelScheduledMessage(m.id)} className="text-[11px] px-2 py-1 rounded bg-muted text-faint hover:bg-red-50 hover:text-red-600">Cancel</button>
                             </div>
                           )}
                         </td>
@@ -984,20 +984,20 @@ Content-Type: application/json
         </div>
       )}
       {tab === 'Escalations' && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
-          {escalations.length === 0 ? <div className="p-8 text-center text-sm text-gray-400 dark:text-gray-500">No escalations yet</div> : escalations.map((e) => (
-            <div key={e.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0 flex items-center justify-between gap-4">
+        <div className="rounded-lg border border-border-strong overflow-hidden bg-surface">
+          {escalations.length === 0 ? <div className="p-8 text-center text-sm text-faint">No escalations yet</div> : escalations.map((e) => (
+            <div key={e.id} className="px-4 py-3 border-b border-border last:border-b-0 flex items-center justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{e.action_type || 'WhatsApp action'}</span>
+                  <span className="text-sm font-medium text-foreground">{e.action_type || 'WhatsApp action'}</span>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${e.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : e.status === 'approved' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300'}`}>{e.status}</span>
-                  {e.approval_code && <code className="text-[11px] px-1.5 py-0.5 rounded bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400">{e.approval_code}</code>}
+                  {e.approval_code && <code className="text-[11px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{e.approval_code}</code>}
                 </div>
-                <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                <div className="text-xs text-faint mt-1">
                   {e.recipient ? `Recipient ${e.recipient} · ` : ''}{e.reason || 'No reason provided'} · {new Date(e.created_at).toLocaleString()}
                 </div>
-                {e.message && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate max-w-3xl">{e.message}</div>}
-                {e.resolved_at && <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">Resolved {new Date(e.resolved_at).toLocaleString()}{e.resolved_by_sender_id ? ` by ${e.resolved_by_sender_id}` : ''}</div>}
+                {e.message && <div className="text-xs text-muted-foreground mt-1 truncate max-w-3xl">{e.message}</div>}
+                {e.resolved_at && <div className="text-[11px] text-faint mt-1">Resolved {new Date(e.resolved_at).toLocaleString()}{e.resolved_by_sender_id ? ` by ${e.resolved_by_sender_id}` : ''}</div>}
               </div>
               {e.status === 'pending' && (
                 <div className="flex gap-2 shrink-0">
@@ -1013,30 +1013,30 @@ Content-Type: application/json
       {tab === 'Outbox' && <Table rows={outbox} empty="No outbound messages yet" columns={['peer_id', 'status', 'attempts', 'last_error', 'created_at']} />}
       {tab === 'Contacts' && (
         <div className="space-y-4">
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-            <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300 mb-3">Add WhatsApp contact</p>
+          <div className="rounded-lg border border-border-strong bg-surface p-4">
+            <p className="text-[12px] font-medium text-foreground mb-3">Add WhatsApp contact</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_130px_160px_auto] gap-3">
-              <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Aayushi" className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg" />
-              <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+91..." className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg" />
-              <select value={contactRole} onChange={(e) => setContactRole(e.target.value as 'owner' | 'trusted' | 'blocked')} className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+              <input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Aayushi" className="text-[13px] px-3 py-2 border border-border-strong rounded-lg" />
+              <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+91..." className="text-[13px] px-3 py-2 border border-border-strong rounded-lg" />
+              <select value={contactRole} onChange={(e) => setContactRole(e.target.value as 'owner' | 'trusted' | 'blocked')} className="text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface">
                 <option value="trusted">Trusted</option>
                 <option value="owner">Owner</option>
                 <option value="blocked">Blocked</option>
               </select>
-              <select value={contactAgentId} onChange={(e) => setContactAgentId(e.target.value)} className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+              <select value={contactAgentId} onChange={(e) => setContactAgentId(e.target.value)} className="text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface">
                 <option value="">Channel default</option>
                 {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
-              <button onClick={addContact} className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium">Add</button>
+              <button onClick={addContact} className="px-4 py-2 rounded-md bg-accent text-white text-sm font-medium">Add</button>
             </div>
           </div>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="rounded-lg border border-border-strong bg-surface p-4 flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300">Sync contacts from WhatsApp</p>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">Import all phone contacts from the connected device. New contacts are added with auto-reply off; existing contacts get their LID updated.</p>
+              <p className="text-[12px] font-medium text-foreground">Sync contacts from WhatsApp</p>
+              <p className="text-[11px] text-faint mt-0.5">Import all phone contacts from the connected device. New contacts are added with auto-reply off; existing contacts get their LID updated.</p>
               {syncContactsResult && <p className="text-[11px] text-emerald-600 dark:text-emerald-300 mt-1">{syncContactsResult}</p>}
             </div>
-            <button onClick={syncContacts} disabled={syncContactsLoading} className="shrink-0 px-3 py-1.5 bg-purple-600 text-white text-[12px] font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50">
+            <button onClick={syncContacts} disabled={syncContactsLoading} className="shrink-0 px-3 py-1.5 bg-accent text-white text-[12px] font-medium rounded-lg hover:bg-accent-hover disabled:opacity-50">
               {syncContactsLoading ? 'Syncing…' : 'Sync Contacts'}
             </button>
           </div>
@@ -1045,32 +1045,32 @@ Content-Type: application/json
               value={contactSearchInput}
               onChange={(e) => setContactSearchInput(e.target.value)}
               placeholder="Search by name, phone, or alias…"
-              className="flex-1 text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg"
+              className="flex-1 text-[13px] px-3 py-2 border border-border-strong rounded-lg"
             />
             {contactSearchInput && (
-              <button onClick={() => { setContactSearchInput(''); setContactSearch(''); setContactPage(1) }} className="px-3 py-2 text-[12px] text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Clear</button>
+              <button onClick={() => { setContactSearchInput(''); setContactSearch(''); setContactPage(1) }} className="px-3 py-2 text-[12px] text-muted-foreground border border-border-strong rounded-lg hover:bg-muted">Clear</button>
             )}
-            <span className="text-[12px] text-gray-400 dark:text-gray-500 shrink-0">{contactTotal} contact{contactTotal !== 1 ? 's' : ''}</span>
+            <span className="text-[12px] text-faint shrink-0">{contactTotal} contact{contactTotal !== 1 ? 's' : ''}</span>
           </div>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
-            {contacts.length === 0 ? <div className="p-8 text-center text-sm text-gray-400 dark:text-gray-500">{contactSearch ? 'No contacts match your search' : 'No contacts yet'}</div> : contacts.map((c) => (
-              <div key={c.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0 flex items-center justify-between gap-4">
+          <div className="rounded-lg border border-border-strong overflow-hidden bg-surface">
+            {contacts.length === 0 ? <div className="p-8 text-center text-sm text-faint">{contactSearch ? 'No contacts match your search' : 'No contacts yet'}</div> : contacts.map((c) => (
+              <div key={c.id} className="px-4 py-3 border-b border-border last:border-b-0 flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{c.display_name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${c.role === 'owner' ? 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300' : c.role === 'blocked' ? 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300' : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>{c.role}</span>
+                    <span className="text-sm font-medium text-foreground">{c.display_name}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${c.role === 'owner' ? 'bg-accent/10 text-accent dark:text-accent-bright' : c.role === 'blocked' ? 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300' : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>{c.role}</span>
                     {!c.auto_reply_enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300">auto-reply off</span>}
                   </div>
                   <div className="flex items-center gap-3 mt-1">
-                    <span className="text-xs text-gray-400 dark:text-gray-500">{c.phone_number || c.whatsapp_jid} · {c.alias || 'no alias'} · last matched {c.last_matched_at ? new Date(c.last_matched_at).toLocaleString() : 'never'}</span>
-                  {c.whatsapp_lid && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-50 dark:bg-gray-800/60 text-gray-400 dark:text-gray-500 border border-gray-100 dark:border-gray-800" title="WhatsApp LID (Linked Device ID)">{c.whatsapp_lid.split('@')[0]}</span>}
+                    <span className="text-xs text-faint">{c.phone_number || c.whatsapp_jid} · {c.alias || 'no alias'} · last matched {c.last_matched_at ? new Date(c.last_matched_at).toLocaleString() : 'never'}</span>
+                  {c.whatsapp_lid && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted text-faint border border-border" title="WhatsApp LID (Linked Device ID)">{c.whatsapp_lid.split('@')[0]}</span>}
                     <select
                       value={c.agent_id ?? ''}
                       onChange={async (e) => {
                         await gatewayAPI.updateContact(c.id, { ...c, agent_id: e.target.value || undefined }).catch(() => {})
                         load()
                       }}
-                      className="text-[11px] px-1.5 py-0.5 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 cursor-pointer"
+                      className="text-[11px] px-1.5 py-0.5 border border-border-strong rounded bg-surface text-muted-foreground cursor-pointer"
                     >
                       <option value="">Channel default</option>
                       {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -1079,7 +1079,7 @@ Content-Type: application/json
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <label className="inline-flex items-center gap-1.5 cursor-pointer" title={c.auto_reply_enabled ? 'Auto-reply on — click to disable' : 'Auto-reply off — click to enable'}>
-                    <span className="text-[11px] text-gray-400 dark:text-gray-500">{c.auto_reply_enabled ? 'on' : 'off'}</span>
+                    <span className="text-[11px] text-faint">{c.auto_reply_enabled ? 'on' : 'off'}</span>
                     <input
                       type="checkbox"
                       checked={!!c.auto_reply_enabled}
@@ -1089,9 +1089,9 @@ Content-Type: application/json
                       }}
                       className="sr-only peer"
                     />
-                    <span className="relative w-8 h-4 rounded-full bg-gray-200 peer-checked:bg-purple-600 after:absolute after:top-0.5 after:left-0.5 after:h-3 after:w-3 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
+                    <span className="relative w-8 h-4 rounded-full bg-gray-200 peer-checked:bg-accent after:absolute after:top-0.5 after:left-0.5 after:h-3 after:w-3 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
                   </label>
-                  <button onClick={() => deleteContact(c.id)} className="px-3 py-1 text-xs rounded bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:bg-red-50 hover:text-red-600">Delete</button>
+                  <button onClick={() => deleteContact(c.id)} className="px-3 py-1 text-xs rounded bg-muted text-muted-foreground hover:bg-red-50 hover:text-red-600">Delete</button>
                 </div>
               </div>
             ))}
@@ -1101,27 +1101,27 @@ Content-Type: application/json
               <button
                 onClick={() => setContactPage((p) => Math.max(1, p - 1))}
                 disabled={contactPage === 1}
-                className="px-3 py-1.5 text-[12px] border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-[12px] border border-border-strong rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
               >← Prev</button>
-              <span className="text-[12px] text-gray-400 dark:text-gray-500">
+              <span className="text-[12px] text-faint">
                 Page {contactPage} of {Math.ceil(contactTotal / 20)}
               </span>
               <button
                 onClick={() => setContactPage((p) => p + 1)}
                 disabled={contactPage >= Math.ceil(contactTotal / 20)}
-                className="px-3 py-1.5 text-[12px] border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 text-[12px] border border-border-strong rounded-lg text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
               >Next →</button>
             </div>
           )}
         </div>
       )}
       {tab === 'Pairing' && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
-          {pairings.length === 0 ? <div className="p-8 text-center text-sm text-gray-400 dark:text-gray-500">No pairing requests yet</div> : pairings.map((p) => (
-            <div key={p.id} className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0 flex items-center justify-between">
+        <div className="rounded-lg border border-border-strong overflow-hidden bg-surface">
+          {pairings.length === 0 ? <div className="p-8 text-center text-sm text-faint">No pairing requests yet</div> : pairings.map((p) => (
+            <div key={p.id} className="px-4 py-3 border-b border-border last:border-b-0 flex items-center justify-between">
               <div>
-                <div className="text-sm font-medium text-gray-800 dark:text-gray-200">{p.sender_id}</div>
-                <div className="text-xs text-gray-400 dark:text-gray-500">Code {p.code} · {p.status} · expires {new Date(p.expires_at).toLocaleString()}</div>
+                <div className="text-sm font-medium text-foreground">{p.sender_id}</div>
+                <div className="text-xs text-faint">Code {p.code} · {p.status} · expires {new Date(p.expires_at).toLocaleString()}</div>
               </div>
               {p.status === 'pending' && (
                 <div className="flex gap-2">
@@ -1138,19 +1138,19 @@ Content-Type: application/json
 }
 
 function Info({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-900"><p className="text-[12px] text-gray-400 dark:text-gray-500 mb-1">{label}</p><p className="text-sm font-medium text-gray-800 dark:text-gray-200">{value}</p></div>
+  return <div className="rounded-lg border border-border-strong p-4 bg-surface"><p className="text-[12px] text-faint mb-1">{label}</p><p className="text-sm font-medium text-foreground">{value}</p></div>
 }
 
 function ToggleCard({ title, description, checked, onChange }: { title: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-900 flex items-center justify-between gap-4">
+    <div className="rounded-lg border border-border-strong p-4 bg-surface flex items-center justify-between gap-4">
       <div>
-        <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300">{title}</p>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{description}</p>
+        <p className="text-[12px] font-medium text-foreground">{title}</p>
+        <p className="text-xs text-faint mt-1">{description}</p>
       </div>
       <label className="inline-flex items-center cursor-pointer shrink-0">
         <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only peer" />
-        <span className="relative w-10 h-5 rounded-full bg-gray-200 peer-checked:bg-purple-600 after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
+        <span className="relative w-10 h-5 rounded-full bg-gray-200 peer-checked:bg-accent after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
       </label>
     </div>
   )
@@ -1168,11 +1168,11 @@ function Spinner() {
 function AdapterStatusCard({ adapter }: { adapter: Record<string, unknown> | null }) {
   if (!adapter) {
     return (
-      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 flex items-center gap-3">
+      <div className="rounded-lg border border-border-strong bg-surface p-4 flex items-center gap-3">
         <div className="w-2.5 h-2.5 rounded-full bg-gray-300 shrink-0" />
         <div>
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Adapter status</p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Click &quot;Refresh status&quot; to load.</p>
+          <p className="text-sm font-medium text-foreground">Adapter status</p>
+          <p className="text-xs text-faint mt-0.5">Click &quot;Refresh status&quot; to load.</p>
         </div>
       </div>
     )
@@ -1197,22 +1197,22 @@ function AdapterStatusCard({ adapter }: { adapter: Record<string, unknown> | nul
   const phone = selfId ? selfId.split('@')[0].split(':')[0] : null
 
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-3">
+    <div className="rounded-lg border border-border-strong bg-surface p-4 space-y-3">
       <div className="flex items-center gap-3">
         <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot[status] ?? 'bg-gray-300'}`} />
-        <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{label[status] ?? status}</p>
+        <p className="text-sm font-medium text-foreground">{label[status] ?? status}</p>
       </div>
       {phone && (
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <span className="font-medium text-gray-700 dark:text-gray-300">Linked number:</span>
-          <code className="bg-gray-50 dark:bg-gray-800/60 px-2 py-0.5 rounded text-gray-600 dark:text-gray-400">+{phone}</code>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Linked number:</span>
+          <code className="bg-muted px-2 py-0.5 rounded text-muted-foreground">+{phone}</code>
         </div>
       )}
       {lastError && status !== 'connected' && (
         <p className="text-xs text-red-500 bg-red-50 dark:bg-red-500/10 border border-red-100 rounded px-2 py-1">{lastError}</p>
       )}
       {typeof lidMapSize === 'number' && lidMapSize > 0 && (
-        <p className="text-xs text-gray-400 dark:text-gray-500">{lidMapSize} contact LID{lidMapSize !== 1 ? 's' : ''} resolved</p>
+        <p className="text-xs text-faint">{lidMapSize} contact LID{lidMapSize !== 1 ? 's' : ''} resolved</p>
       )}
     </div>
   )
@@ -1222,10 +1222,10 @@ function QRPanel({ value, loading }: { value: Record<string, unknown> | null; lo
   const dataURL = typeof value?.qr_data_url === 'string' ? value.qr_data_url : ''
   if (!dataURL && !loading) return null
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-      <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300 mb-3">Scan in WhatsApp</p>
+    <div className="rounded-lg border border-border-strong bg-surface p-4">
+      <p className="text-[12px] font-medium text-foreground mb-3">Scan in WhatsApp</p>
       {loading && !dataURL ? (
-        <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400 py-4">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground py-4">
           <svg className="w-5 h-5 animate-spin text-purple-500" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
@@ -1234,16 +1234,16 @@ function QRPanel({ value, loading }: { value: Record<string, unknown> | null; lo
         </div>
       ) : (
         <div className="flex items-start gap-5">
-          <Image src={dataURL} alt="WhatsApp QR code" width={220} height={220} unoptimized className="border border-gray-100 dark:border-gray-800 rounded-lg" />
-          <div className="text-sm text-gray-600 dark:text-gray-400 pt-1">
-            <p className="font-medium text-gray-800 dark:text-gray-200 mb-2">Link this channel to WhatsApp</p>
-            <ol className="text-xs text-gray-500 dark:text-gray-400 space-y-1 list-decimal list-inside">
+          <Image src={dataURL} alt="WhatsApp QR code" width={220} height={220} unoptimized className="border border-border rounded-lg" />
+          <div className="text-sm text-muted-foreground pt-1">
+            <p className="font-medium text-foreground mb-2">Link this channel to WhatsApp</p>
+            <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
               <li>Open WhatsApp on your phone</li>
               <li>Tap <strong>Linked Devices</strong></li>
               <li>Tap <strong>Link a device</strong></li>
               <li>Scan this QR code</li>
             </ol>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">Status updates automatically after scanning.</p>
+            <p className="text-xs text-faint mt-3">Status updates automatically after scanning.</p>
           </div>
         </div>
       )}
@@ -1263,19 +1263,19 @@ function fmtCell(col: string, val: unknown): string {
 }
 
 function Table({ rows, columns, empty }: { rows: object[]; columns: string[]; empty: string }) {
-  if (rows.length === 0) return <div className="p-8 text-center text-sm text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">{empty}</div>
+  if (rows.length === 0) return <div className="p-8 text-center text-sm text-faint border border-border-strong rounded-lg bg-surface">{empty}</div>
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-x-auto bg-white dark:bg-gray-900">
+    <div className="rounded-lg border border-border-strong overflow-x-auto bg-surface">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 dark:bg-gray-800/60 text-xs text-gray-500 dark:text-gray-400">
+        <thead className="bg-muted text-xs text-muted-foreground">
           <tr>{columns.map((c) => <th key={c} className="text-left font-medium px-3 py-2">{c.replaceAll('_', ' ')}</th>)}</tr>
         </thead>
-        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+        <tbody className="divide-y divide-border">
           {rows.map((r, i) => {
             const row = r as Record<string, unknown>
             return (
             <tr key={String(row.id ?? i)}>
-              {columns.map((c) => <td key={c} className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 max-w-xs truncate">{fmtCell(c, row[c])}</td>)}
+              {columns.map((c) => <td key={c} className="px-3 py-2 text-xs text-muted-foreground max-w-xs truncate">{fmtCell(c, row[c])}</td>)}
             </tr>
           )})}
         </tbody>

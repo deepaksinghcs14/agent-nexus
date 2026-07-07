@@ -11,11 +11,11 @@ const PROVIDER_OPTIONS = [
   { value: 'anthropic', label: 'Anthropic', color: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' },
   { value: 'openai', label: 'OpenAI', color: 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300' },
   { value: 'gemini', label: 'Google Gemini', color: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300' },
-  { value: 'ollama', label: 'Ollama (local)', color: 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300' },
+  { value: 'ollama', label: 'Ollama (local)', color: 'bg-accent/10 text-accent dark:text-accent-bright' },
 ]
 
 function providerColor(provider: string) {
-  return PROVIDER_OPTIONS.find((p) => p.value === provider)?.color ?? 'bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-400'
+  return PROVIDER_OPTIONS.find((p) => p.value === provider)?.color ?? 'bg-muted text-muted-foreground'
 }
 
 function tokenExpiryLabel(expiry?: string) {
@@ -99,12 +99,12 @@ export default function ProvidersPage() {
     <div className="p-4 sm:p-6 max-w-2xl">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Providers</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">API keys are encrypted at rest with AES-256-GCM</p>
+          <h1 className="text-xl font-semibold text-foreground">Providers</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">API keys are encrypted at rest with AES-256-GCM</p>
         </div>
         <button
           onClick={() => { setAdding(true); setFormError('') }}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white text-sm rounded-lg hover:bg-accent-hover"
         >
           <Plus size={13} /> Add Key
         </button>
@@ -128,9 +128,9 @@ export default function ProvidersPage() {
       )}
 
       {/* Pipeline credentials (Claude account, GitHub token) moved to their own tab */}
-      <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-4">
+      <p className="text-[11px] text-faint mb-4">
         Looking for repo coding session credentials?{' '}
-        <Link href="/settings/claude-code" className="text-purple-600 dark:text-purple-300 hover:underline">Settings → Claude Code</Link>
+        <Link href="/settings/claude-code" className="text-accent dark:text-accent-bright hover:underline">Settings → Claude Code</Link>
       </p>
 
       {/* Google OAuth quick-connect for Gemini */}
@@ -153,47 +153,47 @@ export default function ProvidersPage() {
       )}
 
       {adding && (
-        <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-4 mb-4 bg-gray-50 dark:bg-gray-800/60 space-y-3">
-          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">Add API Key</h3>
+        <div className="border border-border-strong rounded-xl p-4 mb-4 bg-muted space-y-3">
+          <h3 className="text-sm font-medium text-foreground">Add API Key</h3>
           {formError && (
             <div className="text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded px-2 py-1">{formError}</div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Provider</label>
+              <label className="block text-xs text-muted-foreground mb-1">Provider</label>
               <select
                 value={form.provider}
                 onChange={e => setForm(f => ({ ...f, provider: e.target.value }))}
-                className="w-full text-xs px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400"
               >
                 {PROVIDER_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Display name (optional)</label>
+              <label className="block text-xs text-muted-foreground mb-1">Display name (optional)</label>
               <input
                 type="text"
                 value={form.display_name}
                 onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))}
                 placeholder="e.g. Production key"
-                className="w-full text-xs px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400"
               />
             </div>
           </div>
           {form.provider === 'gemini' ? (
             <div className="space-y-2">
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">API Key</label>
+                <label className="block text-xs text-muted-foreground mb-1">API Key</label>
                 <input
                   type="password"
                   value={form.api_key}
                   onChange={e => setForm(f => ({ ...f, api_key: e.target.value }))}
                   placeholder="AIza..."
-                  className="w-full text-xs px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                  className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400"
                 />
               </div>
               <div className="flex items-center gap-2 pt-1">
-                <span className="text-xs text-gray-400 dark:text-gray-500">or</span>
+                <span className="text-xs text-faint">or</span>
                 <button
                   type="button"
                   onClick={handleGoogleOAuth}
@@ -205,28 +205,28 @@ export default function ProvidersPage() {
             </div>
           ) : (
             <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">API Key</label>
+              <label className="block text-xs text-muted-foreground mb-1">API Key</label>
               <input
                 type="password"
                 value={form.api_key}
                 onChange={e => setForm(f => ({ ...f, api_key: e.target.value }))}
                 placeholder="sk-..."
-                className="w-full text-xs px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400"
               />
               {form.provider !== 'gemini' && form.provider !== 'ollama' && (
-                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">API key required — OAuth is not supported for {form.provider}.</p>
+                <p className="text-[10px] text-faint mt-1">API key required — OAuth is not supported for {form.provider}.</p>
               )}
             </div>
           )}
           {(form.provider === 'ollama') && (
             <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Base URL</label>
+              <label className="block text-xs text-muted-foreground mb-1">Base URL</label>
               <input
                 type="text"
                 value={form.base_url}
                 onChange={e => setForm(f => ({ ...f, base_url: e.target.value }))}
                 placeholder="http://localhost:11434"
-                className="w-full text-xs px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400"
               />
             </div>
           )}
@@ -234,13 +234,13 @@ export default function ProvidersPage() {
             <button
               onClick={() => createMutation.mutate()}
               disabled={createMutation.isPending || (!form.api_key && form.provider !== 'ollama')}
-              className="px-3 py-1.5 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              className="px-3 py-1.5 bg-accent text-white text-xs rounded-lg hover:bg-accent-hover disabled:opacity-50"
             >
               {createMutation.isPending ? 'Saving…' : 'Save Key'}
             </button>
             <button
               onClick={() => { setAdding(false); setFormError('') }}
-              className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-xs rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800"
+              className="px-3 py-1.5 border border-border-strong text-muted-foreground text-xs rounded-lg hover:bg-muted"
             >
               Cancel
             </button>
@@ -248,28 +248,28 @@ export default function ProvidersPage() {
         </div>
       )}
 
-      {isLoading && <div className="text-sm text-gray-400 dark:text-gray-500 py-8 text-center">Loading…</div>}
+      {isLoading && <div className="text-sm text-faint py-8 text-center">Loading…</div>}
 
       {!isLoading && providers.length === 0 && !adding && (
-        <div className="border border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center">
-          <Key size={28} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-          <p className="text-gray-500 dark:text-gray-400 text-sm">No API keys configured yet.</p>
+        <div className="border border-dashed border-border-strong rounded-xl p-8 text-center">
+          <Key size={28} className="mx-auto text-faint mb-3" />
+          <p className="text-muted-foreground text-sm">No API keys configured yet.</p>
         </div>
       )}
 
       <div className="space-y-2">
         {providers.map((p) => (
-          <div key={p.id} className="flex flex-wrap items-center gap-3 justify-between border border-gray-100 dark:border-gray-800 rounded-xl p-4 bg-white dark:bg-gray-900">
+          <div key={p.id} className="flex flex-wrap items-center gap-3 justify-between border border-border rounded-xl p-4 bg-surface">
             <div className="flex items-center gap-3">
               <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${providerColor(p.provider)}`}>
                 {p.provider}
               </span>
               <div>
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{p.display_name}</p>
+                <p className="text-sm font-medium text-foreground">{p.display_name}</p>
                 {p.auth_type === 'oauth' ? (
                   <p className="text-xs text-blue-600 dark:text-blue-300">{tokenExpiryLabel(p.oauth_token_expiry) ?? 'Connected via Google OAuth'}</p>
                 ) : (
-                  <p className="text-xs text-gray-400 dark:text-gray-500">••••••••••••••••</p>
+                  <p className="text-xs text-faint">••••••••••••••••</p>
                 )}
               </div>
             </div>
@@ -277,12 +277,12 @@ export default function ProvidersPage() {
               {p.auth_type === 'oauth' && (
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300">OAuth</span>
               )}
-              <span className={`text-[11px] px-2 py-0.5 rounded-full ${p.is_active ? 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300' : 'bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400'}`}>
+              <span className={`text-[11px] px-2 py-0.5 rounded-full ${p.is_active ? 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300' : 'bg-muted text-muted-foreground'}`}>
                 {p.is_active ? 'active' : 'inactive'}
               </span>
               <button
                 onClick={() => { if (confirm('Delete this credential?')) deleteMutation.mutate(p.id) }}
-                className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                className="p-1.5 text-faint hover:text-red-500 hover:bg-red-50 rounded-lg"
               >
                 <Trash2 size={14} />
               </button>

@@ -50,8 +50,8 @@ export default function NewWorkspacePage() {
   return (
     <div className="max-w-xl mx-auto p-4 sm:p-8">
       <div className="mb-8">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">New workspace</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        <h1 className="text-xl font-semibold text-foreground">New workspace</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           You can create up to 5 workspaces. You can be a member of unlimited workspaces others create.
         </p>
         {!canCreate && (
@@ -63,7 +63,7 @@ export default function NewWorkspacePage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-1.5">
-          <label htmlFor="display_name" className="text-sm font-medium text-gray-700 dark:text-gray-300">Workspace name</label>
+          <label htmlFor="display_name" className="text-sm font-medium text-foreground">Workspace name</label>
           <input
             id="display_name"
             type="text"
@@ -71,12 +71,12 @@ export default function NewWorkspacePage() {
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={!canCreate || loading}
-            className="w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50"
+            className="w-full rounded-lg border border-border-strong px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-50"
           />
         </div>
 
         <div className="space-y-1.5">
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Type</p>
+          <p className="text-sm font-medium text-foreground">Type</p>
           <div className="grid grid-cols-1 gap-2">
             {TYPES.map(({ value, label, description, icon: Icon }) => (
               <button
@@ -87,21 +87,21 @@ export default function NewWorkspacePage() {
                 className={cn(
                   'flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all',
                   wsType === value
-                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-500/10 ring-1 ring-purple-500/40'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    ? 'border-purple-500 bg-accent/10 ring-1 ring-purple-500/40'
+                    : 'border-border-strong hover:border-gray-300 hover:bg-muted'
                 )}
               >
                 <div className={cn(
                   'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
-                  wsType === value ? 'bg-purple-100' : 'bg-gray-100 dark:bg-gray-800'
+                  wsType === value ? 'bg-purple-100' : 'bg-muted'
                 )}>
-                  <Icon className={cn('w-4 h-4', wsType === value ? 'text-purple-600 dark:text-purple-300' : 'text-gray-500 dark:text-gray-400')} />
+                  <Icon className={cn('w-4 h-4', wsType === value ? 'text-accent dark:text-accent-bright' : 'text-muted-foreground')} />
                 </div>
                 <div>
-                  <p className={cn('text-sm font-medium', wsType === value ? 'text-purple-900' : 'text-gray-800 dark:text-gray-200')}>
+                  <p className={cn('text-sm font-medium', wsType === value ? 'text-purple-900' : 'text-foreground')}>
                     {label}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{description}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
                 </div>
               </button>
             ))}
@@ -116,7 +116,7 @@ export default function NewWorkspacePage() {
           <button
             type="submit"
             disabled={!displayName.trim() || !canCreate || loading}
-            className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {loading ? 'Creating…' : 'Create workspace'}
           </button>
@@ -124,7 +124,7 @@ export default function NewWorkspacePage() {
             type="button"
             onClick={() => router.back()}
             disabled={loading}
-            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+            className="px-4 py-2 rounded-lg border border-border-strong text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>

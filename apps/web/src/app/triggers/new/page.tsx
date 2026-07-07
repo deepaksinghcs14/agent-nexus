@@ -18,14 +18,14 @@ export default function NewTriggerPage() {
     <div className="p-4 sm:p-6">
       <Link
         href="/triggers"
-        className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 mb-6 transition-colors"
+        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300 mb-6 transition-colors"
       >
         <ChevronLeft className="w-4 h-4" />
         Webhook Triggers
       </Link>
 
-      <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-0.5">New Webhook Trigger</h1>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
+      <h1 className="text-xl font-semibold text-foreground mb-0.5">New Webhook Trigger</h1>
+      <p className="text-sm text-muted-foreground mb-8">
         Create an inbound HTTP endpoint that fires an agent or workflow run.
       </p>
 

@@ -28,15 +28,15 @@ const riskBadge = (r: string) => {
     low: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300', medium: 'bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300',
     high: 'bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300', critical: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300',
   }
-  return `text-[10px] font-medium px-2 py-0.5 rounded-full ${map[r] ?? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`
+  return `text-[10px] font-medium px-2 py-0.5 rounded-full ${map[r] ?? 'bg-muted text-muted-foreground'}`
 }
 
 function Toggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
   return (
     <button onClick={onToggle} disabled={disabled}
-      className={`w-8 h-4.5 rounded-full transition-colors relative flex-shrink-0 ${on ? 'bg-purple-600' : 'bg-gray-200'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      className={`w-8 h-4.5 rounded-full transition-colors relative flex-shrink-0 ${on ? 'bg-accent' : 'bg-gray-200'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       style={{ width: 32, height: 18 }}>
-      <span className={`absolute top-0.5 w-3.5 h-3.5 bg-white dark:bg-gray-900 rounded-full transition-all ${on ? 'left-[14px]' : 'left-0.5'}`} />
+      <span className={`absolute top-0.5 w-3.5 h-3.5 bg-surface rounded-full transition-all ${on ? 'left-[14px]' : 'left-0.5'}`} />
     </button>
   )
 }
@@ -325,30 +325,30 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl">
-      {isEdit && isLoadingAgent && <div className="text-sm text-gray-400 dark:text-gray-500 py-8 text-center">Loading agent…</div>}
+      {isEdit && isLoadingAgent && <div className="text-sm text-faint py-8 text-center">Loading agent…</div>}
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
-        <div className="flex items-center gap-2 text-[12px] text-gray-400 dark:text-gray-500">
+        <div className="flex items-center gap-2 text-[12px] text-faint">
           <span className="hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer" onClick={() => router.push('/agents')}>Agents</span>
           <ChevronRight className="w-3 h-3" />
-          <span className="text-gray-700 dark:text-gray-300 font-medium">{isEdit ? 'Edit agent' : 'New agent'}</span>
+          <span className="text-foreground font-medium">{isEdit ? 'Edit agent' : 'New agent'}</span>
         </div>
         <div className="flex gap-2">
           <button onClick={() => router.push('/agents')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 text-[12px] rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border-strong text-muted-foreground text-[12px] rounded-lg hover:bg-muted">
             <X className="w-3.5 h-3.5" /> Discard
           </button>
           <button
             onClick={() => { if (!name.trim()) { setSaveError('Agent name is required'); setTab('Basics'); return; } saveMutation.mutate() }}
             disabled={saveMutation.isPending}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-[12px] rounded-lg hover:bg-purple-700 disabled:opacity-60">
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white text-[12px] rounded-lg hover:bg-accent-hover disabled:opacity-60">
             <Save className="w-3.5 h-3.5" /> {saveMutation.isPending ? 'Saving…' : 'Save Agent'}
           </button>
         </div>
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-gray-100 dark:border-gray-800 mb-5 bg-gray-50 dark:bg-gray-800/60 rounded-t-lg overflow-x-auto"
+      <div className="flex border-b border-border mb-5 bg-muted rounded-t-lg overflow-x-auto"
         style={{ scrollbarWidth: 'none' }}>
         {TABS.map(t => {
           const badge = t === 'Tools' && enabledToolCount > 0 ? enabledToolCount
@@ -357,10 +357,10 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           return (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2 text-[12px] transition-colors whitespace-nowrap flex items-center gap-1.5
-                ${tab === t ? 'bg-white dark:bg-gray-900 text-purple-600 dark:text-purple-300 font-medium border-b-2 border-purple-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                ${tab === t ? 'bg-surface text-accent dark:text-accent-bright font-medium border-b-2 border-purple-500' : 'text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'}`}>
               {t}
               {badge !== null && (
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:text-purple-300 leading-none">{badge}</span>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-100 text-accent dark:text-accent-bright leading-none">{badge}</span>
               )}
             </button>
           )
@@ -376,17 +376,17 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Agent name" hint="Shown in the sidebar and run history">
               <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Backend Architect"
-                className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400" />
             </Field>
             <Field label="Status">
-              <select value={status} onChange={e => setStatus(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none">
+              <select value={status} onChange={e => setStatus(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none">
                 <option value="active">Active</option><option value="paused">Paused</option><option value="archived">Archived</option>
               </select>
             </Field>
           </div>
           <Field label="Description" hint="Brief summary shown on agent cards">
             <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="What does this agent do?"
-              className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+              className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400" />
           </Field>
         </div>
       )}
@@ -397,14 +397,14 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Provider">
               <select value={provider} onChange={e => { setProvider(e.target.value); setModel('') }}
-                className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none">
+                className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none">
                 {PROVIDERS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
               </select>
             </Field>
             <Field label="Model" hint={!activeCred ? `Add a ${provider} API key in Settings → Providers` : undefined}>
               <select value={model} onChange={e => setModel(e.target.value)}
                 disabled={isLoadingModels || availableModels.length === 0}
-                className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none disabled:opacity-50">
+                className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none disabled:opacity-50">
                 {isLoadingModels && <option>Loading models…</option>}
                 {!isLoadingModels && availableModels.length === 0 && !activeCred && (
                   <option value="">No provider configured</option>
@@ -421,7 +421,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
             </Field>
             <Field label="Max tokens">
               <input type="number" value={maxTokens} onChange={e => setMaxTokens(Number(e.target.value))} min={256} max={128000}
-                className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+                className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
             </Field>
           </div>
           <Field label="Model capabilities">
@@ -431,7 +431,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
                   <Check className="w-3 h-3" />{c}
                 </span>
               ))}
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">Vision</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Vision</span>
             </div>
           </Field>
         </div>
@@ -443,7 +443,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           <Field label="System prompt" hint="This is the core instruction sent to the model on every run.">
             <textarea rows={12} value={instructions} onChange={e => setInstructions(e.target.value)}
               placeholder="You are a ..."
-              className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400 font-mono resize-y" />
+              className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400 font-mono resize-y" />
           </Field>
         </div>
       )}
@@ -451,20 +451,20 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
       {/* ── SKILLS ── */}
       {tab === 'Skills' && (
         <div className="space-y-3">
-          <p className="text-[12px] text-gray-500 dark:text-gray-400">Attach reusable prompt instructions injected after the system prompt. <span className="text-gray-400 dark:text-gray-500">Always-on skills inject their content every run; on-demand skills are listed as callable tools the model can invoke when relevant.</span></p>
+          <p className="text-[12px] text-muted-foreground">Attach reusable prompt instructions injected after the system prompt. <span className="text-faint">Always-on skills inject their content every run; on-demand skills are listed as callable tools the model can invoke when relevant.</span></p>
 
           {/* Search + summary + bulk action */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-gray-500 pointer-events-none" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-faint pointer-events-none" />
               <input
                 type="text" value={skillSearch} onChange={e => setSkillSearch(e.target.value)}
                 placeholder="Search skills…"
-                className="w-full text-[12px] pl-8 pr-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                className="w-full text-[12px] pl-8 pr-3 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400" />
             </div>
             {enabledSkillCount > 0 && (
               <>
-                <span className="text-[11px] text-purple-700 dark:text-purple-300 font-medium whitespace-nowrap">
+                <span className="text-[11px] text-accent dark:text-accent-bright font-medium whitespace-nowrap">
                   {enabledSkillCount} of {availableSkills.length} enabled
                 </span>
                 <button
@@ -488,7 +488,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
                     })
                     setSkillActivationMode(prev => ({ ...prev, ...next }))
                   }}
-                  className="text-[11px] px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 whitespace-nowrap transition-colors">
+                  className="text-[11px] px-2.5 py-1 rounded-lg border border-border-strong bg-surface text-muted-foreground hover:bg-muted whitespace-nowrap transition-colors">
                   All always
                 </button>
               </>
@@ -496,7 +496,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           </div>
 
           {availableSkills.length === 0 && (
-            <div className="p-8 text-center text-[12px] text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl">No skills available.</div>
+            <div className="p-8 text-center text-[12px] text-faint bg-surface border border-border rounded-xl">No skills available.</div>
           )}
 
           {/* Managed skills */}
@@ -536,7 +536,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           )}
 
           {availableSkills.length > 0 && filteredSkills.length === 0 && (
-            <div className="p-6 text-center text-[12px] text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl">No skills match your search.</div>
+            <div className="p-6 text-center text-[12px] text-faint bg-surface border border-border rounded-xl">No skills match your search.</div>
           )}
         </div>
       )}
@@ -544,26 +544,26 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
       {/* ── TOOLS ── */}
       {tab === 'Tools' && (
         <div className="space-y-3">
-          <p className="text-[12px] text-gray-500 dark:text-gray-400">Enable tools this agent can use. High-risk tools require approval by default.</p>
+          <p className="text-[12px] text-muted-foreground">Enable tools this agent can use. High-risk tools require approval by default.</p>
 
           {/* Search + summary */}
           <div className="flex items-center gap-3">
             <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-gray-500 pointer-events-none" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-faint pointer-events-none" />
               <input
                 type="text" value={toolSearch} onChange={e => setToolSearch(e.target.value)}
                 placeholder="Search tools…"
-                className="w-full text-[12px] pl-8 pr-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                className="w-full text-[12px] pl-8 pr-3 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400" />
             </div>
             {enabledToolCount > 0 && (
-              <span className="text-[11px] text-purple-700 dark:text-purple-300 font-medium whitespace-nowrap">
+              <span className="text-[11px] text-accent dark:text-accent-bright font-medium whitespace-nowrap">
                 {enabledToolCount} of {availableTools.length} enabled
               </span>
             )}
           </div>
 
           {availableTools.length === 0 && (
-            <div className="p-8 text-center text-[12px] text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl">No tools registered.</div>
+            <div className="p-8 text-center text-[12px] text-faint bg-surface border border-border rounded-xl">No tools registered.</div>
           )}
 
           {TOOL_GROUP_ORDER.map(group => {
@@ -572,16 +572,16 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
             const groupEnabled = tools.filter(t => enabledTools[t.name] || skillLockedTools.has(t.name)).length
             const collapsed = collapsedToolGroups.has(group)
             return (
-              <div key={group} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+              <div key={group} className="bg-surface border border-border rounded-xl overflow-hidden">
                 {/* Group header */}
                 <button
                   onClick={() => toggleToolGroup(group)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-b border-gray-100 dark:border-gray-800">
+                  className="w-full flex items-center justify-between px-4 py-2.5 bg-muted hover:bg-muted transition-colors border-b border-border">
                   <div className="flex items-center gap-2">
-                    <span className="text-[12px] font-semibold text-gray-700 dark:text-gray-300">{group}</span>
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500">{groupEnabled > 0 ? `${groupEnabled} / ${tools.length} enabled` : `${tools.length} tools`}</span>
+                    <span className="text-[12px] font-semibold text-foreground">{group}</span>
+                    <span className="text-[10px] text-faint">{groupEnabled > 0 ? `${groupEnabled} / ${tools.length} enabled` : `${tools.length} tools`}</span>
                   </div>
-                  <ChevronDown className={`w-3.5 h-3.5 text-gray-400 dark:text-gray-500 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+                  <ChevronDown className={`w-3.5 h-3.5 text-faint transition-transform ${collapsed ? '-rotate-90' : ''}`} />
                 </button>
 
                 {/* Tool rows */}
@@ -590,14 +590,14 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
                   return (
                     <div key={tool.id} className={`flex items-center justify-between px-4 py-3 ${i < tools.length - 1 ? 'border-b border-gray-50' : ''}`}>
                       <div className="min-w-0 mr-3">
-                        <p className="text-[13px] font-medium text-gray-900 dark:text-gray-100">{tool.name}</p>
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{tool.description}</p>
-                        {lockedBySkill && <p className="text-[10px] text-purple-600 dark:text-purple-300 mt-0.5">Required by: {lockedBySkill}</p>}
+                        <p className="text-[13px] font-medium text-foreground">{tool.name}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{tool.description}</p>
+                        {lockedBySkill && <p className="text-[10px] text-accent dark:text-accent-bright mt-0.5">Required by: {lockedBySkill}</p>}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className={riskBadge(tool.risk_level)}>{tool.risk_level}</span>
                         {tool.requires_approval && (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300">approval</span>
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent dark:text-accent-bright">approval</span>
                         )}
                         <Toggle
                           on={!!enabledTools[tool.name] || !!lockedBySkill}
@@ -613,7 +613,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           })}
 
           {availableTools.length > 0 && filteredTools.length === 0 && (
-            <div className="p-6 text-center text-[12px] text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl">No tools match your search.</div>
+            <div className="p-6 text-center text-[12px] text-faint bg-surface border border-border rounded-xl">No tools match your search.</div>
           )}
         </div>
       )}
@@ -621,30 +621,30 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
       {/* ── CONTEXT ── */}
       {tab === 'Context' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-muted border border-border rounded-lg">
             <div>
-              <p className="text-[13px] font-medium text-gray-900 dark:text-gray-100">Enable context retrieval</p>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400">Retrieve relevant docs from connected sources before each run</p>
+              <p className="text-[13px] font-medium text-foreground">Enable context retrieval</p>
+              <p className="text-[11px] text-muted-foreground">Retrieve relevant docs from connected sources before each run</p>
             </div>
             <Toggle on={contextEnabled} onToggle={() => setContextEnabled(v => !v)} />
           </div>
           {contextEnabled && (
             <>
-              <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300">Allowed sources</p>
-              <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+              <p className="text-[12px] font-medium text-foreground">Allowed sources</p>
+              <div className="bg-surface border border-border rounded-xl overflow-hidden">
                 {availableConnectors.map((connector, i) => (
                   <div key={connector.id} className={`flex items-center justify-between px-4 py-2.5 ${i < availableConnectors.length - 1 ? 'border-b border-gray-50' : ''}`}>
-                    <p className="text-[13px] text-gray-800 dark:text-gray-200">{connector.name}</p>
+                    <p className="text-[13px] text-foreground">{connector.name}</p>
                     <Toggle on={!!enabledConnectors[connector.id]}
                       onToggle={() => setEnabledConnectors(prev => ({ ...prev, [connector.id]: !prev[connector.id] }))} />
                   </div>
                 ))}
-                {availableConnectors.length === 0 && <div className="p-8 text-center text-[12px] text-gray-400 dark:text-gray-500">No connectors configured.</div>}
+                {availableConnectors.length === 0 && <div className="p-8 text-center text-[12px] text-faint">No connectors configured.</div>}
               </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 rounded-lg">
+              <div className="flex items-center justify-between p-3 bg-muted border border-border rounded-lg">
                 <div>
-                  <p className="text-[13px] font-medium text-gray-900 dark:text-gray-100">Agentic RAG</p>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Let the agent decide when and what to retrieve — uses <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">native_retrieve_context</code> tool instead of pre-run injection</p>
+                  <p className="text-[13px] font-medium text-foreground">Agentic RAG</p>
+                  <p className="text-[11px] text-muted-foreground">Let the agent decide when and what to retrieve — uses <code className="bg-muted px-1 rounded">native_retrieve_context</code> tool instead of pre-run injection</p>
                 </div>
                 <Toggle on={agenticRAG} onToggle={() => setAgenticRAG(v => !v)} />
               </div>
@@ -653,12 +653,12 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
                   <Field label="Max chunks per run">
                     <input type="number" value={maxChunks} min={1} max={100}
                       onChange={e => setMaxChunks(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+                      className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
                   </Field>
                   <Field label="Min relevance score">
                     <input type="number" value={minScore} step={0.05} min={0} max={1}
                       onChange={e => setMinScore(Math.min(1, Math.max(0, parseFloat(e.target.value) || 0)))}
-                      className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+                      className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
                   </Field>
                 </div>
               )}
@@ -670,24 +670,24 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
       {/* ── MEMORY ── */}
       {tab === 'Memory' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 rounded-lg">
+          <div className="flex items-center justify-between p-3 bg-muted border border-border rounded-lg">
             <div>
-              <p className="text-[13px] font-medium text-gray-900 dark:text-gray-100">Enable memory</p>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400">Store and retrieve long-term memories between runs</p>
+              <p className="text-[13px] font-medium text-foreground">Enable memory</p>
+              <p className="text-[11px] text-muted-foreground">Store and retrieve long-term memories between runs</p>
             </div>
             <Toggle on={memoryEnabled} onToggle={() => setMemoryEnabled(v => !v)} />
           </div>
           {memoryEnabled && (
             <>
               <Field label="Memory scope">
-                <select value={memoryScope} onChange={e => setMemoryScope(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none">
+                <select value={memoryScope} onChange={e => setMemoryScope(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none">
                   <option value="agent">Agent memory (this agent only)</option>
                   <option value="workspace">Workspace memory (shared across agents)</option>
                   <option value="conversation">Conversation only (no persistence)</option>
                 </select>
               </Field>
               <Field label="Retrieval strategy">
-                <select className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none">
+                <select className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none">
                   <option>Vector search + summary</option>
                   <option>Vector search only</option>
                   <option>Summary only</option>
@@ -695,14 +695,14 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
               </Field>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Save mode">
-                  <select value={memorySaveMode} onChange={e => setMemorySaveMode(e.target.value as 'tool' | 'extractor' | 'hybrid')} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none">
+                  <select value={memorySaveMode} onChange={e => setMemorySaveMode(e.target.value as 'tool' | 'extractor' | 'hybrid')} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none">
                     <option value="hybrid">Hybrid</option>
                     <option value="tool">Tool only</option>
                     <option value="extractor">Extractor only</option>
                   </select>
                 </Field>
                 <Field label="Review policy">
-                  <select value={memoryReviewPolicy} onChange={e => setMemoryReviewPolicy(e.target.value as 'none' | 'uncertain' | 'all')} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none">
+                  <select value={memoryReviewPolicy} onChange={e => setMemoryReviewPolicy(e.target.value as 'none' | 'uncertain' | 'all')} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none">
                     <option value="uncertain">Review uncertain</option>
                     <option value="all">Review all saves</option>
                     <option value="none">No review</option>
@@ -711,16 +711,16 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Max memories per run">
-                  <input type="number" value={maxMemories} onChange={e => setMaxMemories(Number(e.target.value))} min={1} max={50} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+                  <input type="number" value={maxMemories} onChange={e => setMaxMemories(Number(e.target.value))} min={1} max={50} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
                 </Field>
                 <Field label="Min relevance score">
-                  <input type="number" value={minRelevanceScore} onChange={e => setMinRelevanceScore(Number(e.target.value))} step={0.05} min={0} max={1} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+                  <input type="number" value={minRelevanceScore} onChange={e => setMinRelevanceScore(Number(e.target.value))} step={0.05} min={0} max={1} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
                 </Field>
                 <Field label="Min save importance">
-                  <input type="number" value={memoryMinImportance} onChange={e => setMemoryMinImportance(Number(e.target.value))} step={0.05} min={0} max={1} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+                  <input type="number" value={memoryMinImportance} onChange={e => setMemoryMinImportance(Number(e.target.value))} step={0.05} min={0} max={1} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
                 </Field>
                 <Field label="Dedupe threshold">
-                  <input type="number" value={memoryDedupeThreshold} onChange={e => setMemoryDedupeThreshold(Number(e.target.value))} step={0.01} min={0} max={1} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+                  <input type="number" value={memoryDedupeThreshold} onChange={e => setMemoryDedupeThreshold(Number(e.target.value))} step={0.01} min={0} max={1} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
                 </Field>
               </div>
             </>
@@ -733,38 +733,38 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Max steps">
-              <input type="number" value={maxSteps} onChange={e => setMaxSteps(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+              <input type="number" value={maxSteps} onChange={e => setMaxSteps(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
             </Field>
             <Field label="Max tool calls per run">
-              <input type="number" value={maxToolCalls} onChange={e => setMaxToolCalls(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+              <input type="number" value={maxToolCalls} onChange={e => setMaxToolCalls(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
             </Field>
             <Field label="Max run duration (sec)">
-              <input type="number" value={maxDurationSecs} onChange={e => setMaxDurationSecs(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+              <input type="number" value={maxDurationSecs} onChange={e => setMaxDurationSecs(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
             </Field>
             <Field label="Max history messages" hint="Verbatim turns kept when compaction is active. Default 20 (no compaction).">
-              <input type="number" min={1} max={100} value={maxHistoryMessages} onChange={e => setMaxHistoryMessages(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+              <input type="number" min={1} max={100} value={maxHistoryMessages} onChange={e => setMaxHistoryMessages(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
             </Field>
             <Field label="Compact after N messages" hint="Older turns are summarised once this many messages accumulate. Default 6.">
-              <input type="number" min={2} value={compactionThreshold} onChange={e => setCompactionThreshold(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+              <input type="number" min={2} value={compactionThreshold} onChange={e => setCompactionThreshold(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
             </Field>
             <Field label="Compact after N input tokens" hint="Compacts on first run where input tokens exceed this value. Default 3000.">
-              <input type="number" min={500} value={compactionTokenThreshold} onChange={e => setCompactionTokenThreshold(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 focus:outline-none" />
+              <input type="number" min={500} value={compactionTokenThreshold} onChange={e => setCompactionTokenThreshold(Number(e.target.value))} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none" />
             </Field>
           </div>
-          <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden mt-2">
+          <div className="bg-surface border border-border rounded-xl overflow-hidden mt-2">
             <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[13px] text-gray-800 dark:text-gray-200">Lazy tool loading</p>
-                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">Tools are activated on demand — reduces token cost, adds 1 turn latency on first tool use per run.</p>
+                <p className="text-[13px] text-foreground">Lazy tool loading</p>
+                <p className="text-[11px] text-faint mt-0.5">Tools are activated on demand — reduces token cost, adds 1 turn latency on first tool use per run.</p>
               </div>
               <Toggle on={lazyToolLoading} onToggle={() => setLazyToolLoading(v => !v)} />
             </div>
           </div>
-          <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300 mt-2">Require approval for</p>
-          <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+          <p className="text-[12px] font-medium text-foreground mt-2">Require approval for</p>
+          <div className="bg-surface border border-border rounded-xl overflow-hidden">
             {['File write operations', 'Outbound HTTP requests', 'Shell / command execution', 'Email / send actions'].map((item, i, arr) => (
               <div key={item} className={`flex items-center justify-between px-4 py-3 ${i < arr.length - 1 ? 'border-b border-gray-50' : ''}`}>
-                <p className="text-[13px] text-gray-800 dark:text-gray-200">{item}</p>
+                <p className="text-[13px] text-foreground">{item}</p>
                 <Toggle on={item !== 'Shell / command execution' ? true : false} onToggle={() => {}} />
               </div>
             ))}
@@ -790,18 +790,18 @@ function SkillSection({
 }) {
   const enabledCount = skills.filter(s => enabledSkills[s.id]).length
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
       <button
         onClick={onToggleCollapse}
-        className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-b border-gray-100 dark:border-gray-800">
+        className="w-full flex items-center justify-between px-4 py-2.5 bg-muted hover:bg-muted transition-colors border-b border-border">
         <div className="flex items-center gap-2">
-          <span className="text-[12px] font-semibold text-gray-700 dark:text-gray-300">{label}</span>
-          <span className="text-[10px] text-gray-400 dark:text-gray-500">{description}</span>
+          <span className="text-[12px] font-semibold text-foreground">{label}</span>
+          <span className="text-[10px] text-faint">{description}</span>
           {enabledCount > 0 && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:text-purple-300 leading-none">{enabledCount} on</span>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-100 text-accent dark:text-accent-bright leading-none">{enabledCount} on</span>
           )}
         </div>
-        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 dark:text-gray-500 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+        <ChevronDown className={`w-3.5 h-3.5 text-faint transition-transform ${collapsed ? '-rotate-90' : ''}`} />
       </button>
       {!collapsed && skills.map((skill, i) => {
         const isEnabled = !!enabledSkills[skill.id]
@@ -809,15 +809,15 @@ function SkillSection({
         return (
           <div key={skill.id} className={`flex items-center justify-between gap-3 px-4 py-3 ${i < skills.length - 1 ? 'border-b border-gray-50' : ''}`}>
             <div className="flex items-center gap-2 min-w-0">
-              <GripVertical className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 shrink-0" />
+              <GripVertical className="w-3.5 h-3.5 text-faint shrink-0" />
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-[13px] font-medium text-gray-900 dark:text-gray-100">{skill.name}</p>
+                  <p className="text-[13px] font-medium text-foreground">{skill.name}</p>
                   {skill.required_tool_names && skill.required_tool_names.length > 0 && (
                     <span className="text-[10px] text-amber-600 dark:text-amber-300">Requires: {skill.required_tool_names.join(', ')}</span>
                   )}
                 </div>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{skill.description}</p>
+                <p className="text-[11px] text-muted-foreground truncate">{skill.description}</p>
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -846,8 +846,8 @@ function SkillSection({
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400">{label}</label>
-      {hint && <p className="text-[10px] text-gray-400 dark:text-gray-500 -mt-1">{hint}</p>}
+      <label className="text-[11px] font-medium text-muted-foreground">{label}</label>
+      {hint && <p className="text-[10px] text-faint -mt-1">{hint}</p>}
       {children}
     </div>
   )
