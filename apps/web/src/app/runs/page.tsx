@@ -7,6 +7,7 @@ import { Activity, Square, Zap, Loader2 } from 'lucide-react'
 import { agentsAPI, runsAPI, webhookTriggersAPI, workflowsAPI } from '@/lib/api'
 import { formatCost, formatTokens, relativeTime, statusColor } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
+import { PageHeader } from '@/components/ui/PageHeader'
 import type { Agent, PaginatedRuns, Run, WebhookTrigger, Workflow } from '@/types'
 
 const ACTIVE = new Set(['pending', 'running', 'approval_wait', 'session_wait'])
@@ -111,23 +112,24 @@ export default function RunsPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6">
-      <div className="flex flex-wrap items-center gap-3 justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Runs</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Monitor all agent and workflow runs</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <select value={agent} onChange={(e) => setAgent(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-border-strong rounded-lg bg-surface">
-            <option value="">All agents</option>
-            {agents.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-border-strong rounded-lg bg-surface">
-            <option value="">All statuses</option>
-            {['pending', 'running', 'success', 'failed', 'cancelled', 'approval_wait'].map((s) => <option key={s}>{s}</option>)}
-          </select>
-        </div>
-      </div>
+    <div className="p-4 sm:p-6 max-w-6xl">
+      <PageHeader
+        eyebrow="Observe"
+        title="Runs & Traces"
+        subtitle="Every agent and workflow execution, fully traced."
+        actions={
+          <>
+            <select value={agent} onChange={(e) => setAgent(e.target.value)} className="text-[12px] px-2.5 py-2 border border-border-strong rounded-[10px] bg-surface">
+              <option value="">All agents</option>
+              {agents.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+            <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-[12px] px-2.5 py-2 border border-border-strong rounded-[10px] bg-surface">
+              <option value="">All statuses</option>
+              {['pending', 'running', 'success', 'failed', 'cancelled', 'approval_wait'].map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         {[

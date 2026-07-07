@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Bot, ArrowRight, Cpu, MessageSquare } from 'lucide-react'
 import { agentsAPI, conversationsAPI } from '@/lib/api'
+import { PageHeader } from '@/components/ui/PageHeader'
 import type { Agent } from '@/types'
 
 function modelShort(model: string) {
@@ -47,10 +48,11 @@ function PlaygroundInner() {
 
   return (
     <div className="p-4 sm:p-6 max-w-2xl">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-foreground">Playground</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Start a conversation with an agent</p>
-      </div>
+      <PageHeader
+        eyebrow="Chat"
+        title="Playground"
+        subtitle="Test an agent and watch its trace in real time."
+      />
 
       <div className="space-y-5">
         {/* Agent selection */}

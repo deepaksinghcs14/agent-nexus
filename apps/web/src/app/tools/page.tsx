@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp, ExternalLink, Globe, Lock, Pencil, Play, Plus, 
 import Link from 'next/link'
 import { toolsAPI } from '@/lib/api'
 import { riskColor } from '@/lib/utils'
+import { PageHeader } from '@/components/ui/PageHeader'
 import type { Tool } from '@/types'
 
 // ─── CodeMirror (dynamic — client only, avoids SSR window references) ────────
@@ -680,12 +681,13 @@ export default function ToolsPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-foreground">Tools</h1>
-        <p className="text-[12px] text-faint mt-0.5">
-          Tools let agents take actions beyond text — run code, call APIs, search the web.
-        </p>
-        <div className="flex flex-wrap items-center gap-2 text-[11px] mt-3">
+      <PageHeader
+        eyebrow="Integrations"
+        title="Tools"
+        subtitle="Tools let agents take actions beyond text — run code, call APIs, search the web."
+      />
+      <div className="mb-6 -mt-2">
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
           <span className="text-faint">Risk levels:</span>
           {([
             { level: 'low',      cls: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-100' },

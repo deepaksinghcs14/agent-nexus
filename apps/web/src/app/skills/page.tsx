@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { BookMarked, Lock, Pencil, Plus, Trash2 } from 'lucide-react'
 import { skillsAPI } from '@/lib/api'
+import { PageHeader } from '@/components/ui/PageHeader'
 import type { Skill } from '@/types'
 
 export default function SkillsPage() {
@@ -27,16 +28,17 @@ export default function SkillsPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6">
-      <div className="flex flex-wrap items-center gap-3 justify-between mb-8">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Skills</h1>
-          <p className="text-sm text-muted-foreground mt-1">Reusable prompt instructions that can be attached to agents.</p>
-        </div>
-        <Link href="/skills/new" className="flex items-center gap-2 px-4 py-2 rounded-md bg-accent hover:bg-accent-hover text-white text-sm font-medium">
-          <Plus className="w-4 h-4" /> New skill
-        </Link>
-      </div>
+    <div className="p-4 sm:p-6 max-w-6xl">
+      <PageHeader
+        eyebrow="Integrations"
+        title="Skills"
+        subtitle="Reusable instruction blocks with the tools they need — attach them to any agent."
+        actions={
+          <Link href="/skills/new" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] bg-gradient-to-br from-accent to-accent-ink hover:opacity-95 text-white text-[13px] font-semibold shadow-card">
+            <Plus className="w-4 h-4" /> New skill
+          </Link>
+        }
+      />
       {loading ? (
         <div className="py-10 text-center text-sm text-faint">Loading…</div>
       ) : skills.length === 0 ? (
