@@ -81,14 +81,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Menu className="w-5 h-5" />
               </button>
 
-              {isAdmin && (
-                <span className="text-[13px] font-medium text-foreground hidden md:block">Administration</span>
-              )}
+              {/* Page label (left) */}
+              <span className="text-[13px] font-medium text-foreground hidden md:block">
+                {(() => {
+                  if (isAdmin) return 'Administration'
+                  const seg = pathname.split('/')[1] || ''
+                  if (!seg || seg === 'dashboard') return 'Overview'
+                  return seg.charAt(0).toUpperCase() + seg.slice(1).replace(/-/g, ' ')
+                })()}
+              </span>
 
-              {/* Command bar — jumps to Nexus AI (also ⌘K) */}
+              {/* Command bar — right-aligned, jumps to Nexus AI (also ⌘K) */}
               <Link
                 href="/nexus-ai"
-                className="ml-auto md:ml-2 flex items-center gap-2.5 min-w-0 flex-1 max-w-md px-3 py-2 border border-border rounded-[10px] bg-surface-2 text-muted-foreground text-[13px] hover:border-border-strong transition-colors"
+                className="ml-auto flex items-center gap-2.5 w-full max-w-xs px-3 py-2 border border-border rounded-[10px] bg-surface-2 text-muted-foreground text-[13px] hover:border-border-strong transition-colors"
               >
                 <Sparkles className="w-4 h-4 text-accent dark:text-accent-bright flex-shrink-0" />
                 <span className="truncate">Ask Nexus AI…</span>

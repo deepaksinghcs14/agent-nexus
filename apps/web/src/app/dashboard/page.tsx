@@ -10,7 +10,7 @@ import { formatTokens, relativeTime, cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { KpiTile } from '@/components/ui/KpiTile'
-import type { Connector, Run, WebhookTrigger } from '@/types'
+import type { Agent, Connector, Run, WebhookTrigger } from '@/types'
 
 const quickActions = [
   { label: 'Create agent', desc: 'Build a new AI agent', href: '/agents/new', icon: Bot },
@@ -53,6 +53,11 @@ function statusStripe(status: string) {
   if (status === 'running' || status === 'pending' || status === 'approval_wait') return 'bg-accent dark:bg-accent-bright'
   return 'bg-faint'
 }
+function agentStatusChip(status: string) {
+  if (status === 'active') return 'text-good border-good/40'
+  if (status === 'paused') return 'text-warn border-warn/40'
+  return 'text-muted-foreground border-border'
+}
 
 function greeting() {
   const h = new Date().getHours()
@@ -64,7 +69,7 @@ function greeting() {
 export default function DashboardPage() {
   const { user, workspace } = useAuthStore()
 
-  const { data: agentsData, isLoading: agentsLoading } = useQuery({ queryKey: ['agents'], queryFn: () => agentsAPI.list() as Promise<{ data: unknown[] }> })
+  const { data: agentsData, isLoading: agentsLoading } = useQuery({ queryKey: ['agents'], queryFn: () => agentsAPI.list() as Promise<{ data: Agent[] }> })
   const { data: providersData, isLoading: providersLoading } = useQuery({ queryKey: ['providers'], queryFn: () => providersAPI.list() as Promise<{ data: unknown[] }> })
   const { data: runsData, isLoading: runsLoading } = useQuery({ queryKey: ['runs'], queryFn: () => runsAPI.list() as Promise<{ data: Run[] }> })
   const { data: triggersData } = useQuery({ queryKey: ['webhook-triggers'], queryFn: () => webhookTriggersAPI.list() as Promise<{ data: WebhookTrigger[] }> })
@@ -75,7 +80,8 @@ export default function DashboardPage() {
 
   const statsLoading = agentsLoading || providersLoading || runsLoading
 
-  const agentCount = agentsData?.data?.length ?? 0
+  const agents = agentsData?.data ?? []
+  const agentCount = agents.length
   const providerCount = providersData?.data?.length ?? 0
   const runs = useMemo(() => runsData?.data ?? [], [runsData])
   const activeRuns = runs.filter((r) => ['pending', 'running', 'approval_wait'].includes(r.status)).length
@@ -186,41 +192,44 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-5">
-        {/* Quick actions */}
-        <div>
-          <span className="eyebrow block mb-3">Quick actions</span>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {quickActions.map((a) => (
-              <Link key={a.label} href={a.href} className="flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-4 shadow-card hover:border-border-strong hover:-translate-y-0.5 transition-all">
-                <div className="w-9 h-9 rounded-lg bg-accent/10 dark:bg-accent-bright/10 text-accent dark:text-accent-bright flex items-center justify-center">
-                  <a.icon size={17} />
-                </div>
-                <div>
-                  <p className="text-[13px] font-semibold text-foreground">{a.label}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{a.desc}</p>
-                </div>
-              </Link>
-            ))}
-            {/* Nexus fast-track promo */}
-            <Link href="/agents/new" className="flex flex-col gap-2.5 rounded-xl border border-accent/30 bg-accent/[0.06] p-4 shadow-card hover:-translate-y-0.5 transition-all">
-              <div className="w-9 h-9 rounded-lg bg-accent text-white flex items-center justify-center">
-                <Sparkles size={17} />
-              </div>
-              <div>
-                <p className="text-[13px] font-semibold text-foreground">Describe an agent</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">Let Nexus draft it for you</p>
-              </div>
-            </Link>
+        {/* Agents */}
+        <section className="rounded-xl border border-border bg-surface shadow-card overflow-hidden self-start">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-foreground">Agents</h3>
+            <Link href="/agents" className="font-mono text-[11px] text-accent dark:text-accent-bright hover:underline">view all →</Link>
           </div>
-        </div>
+          {agentCount === 0 ? (
+            <div className="px-4 py-10 text-center text-[13px] text-muted-foreground">No agents yet.</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4">
+              {agents.slice(0, 6).map((a) => (
+                <Link key={a.id} href={`/agents/${a.id}/edit`} className="rounded-xl border border-border bg-surface-2 p-3 flex flex-col gap-2.5 hover:border-border-strong hover:-translate-y-0.5 transition-all">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-accent/10 dark:bg-accent-bright/10 text-accent dark:text-accent-bright grid place-items-center flex-shrink-0">
+                      <Bot size={15} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-foreground truncate">{a.name}</div>
+                      <div className="font-mono text-[10px] text-faint truncate">{a.model}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className={cn('font-mono text-[10px] px-2 py-0.5 rounded-full border', agentStatusChip(a.status))}>{a.status}</span>
+                    <span className="font-mono text-[10px] text-muted-foreground">{a.provider}</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
 
-        {/* Live activity */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <span className="eyebrow">Live activity</span>
-            <Link href="/runs" className="font-mono text-[11px] text-accent dark:text-accent-bright hover:underline">runs & traces →</Link>
-          </div>
-          <div className="rounded-xl border border-border bg-surface shadow-card overflow-hidden">
+        {/* Right column: live activity + describe panel */}
+        <div className="flex flex-col gap-5">
+          <section className="rounded-xl border border-border bg-surface shadow-card overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <h3 className="text-sm font-semibold text-foreground">Live activity</h3>
+              <Link href="/runs" className="font-mono text-[11px] text-accent dark:text-accent-bright hover:underline">runs &amp; traces →</Link>
+            </div>
             {recentRuns.length === 0 ? (
               <div className="px-4 py-10 text-center text-[13px] text-muted-foreground">No runs yet.</div>
             ) : recentRuns.map((run) => (
@@ -233,7 +242,42 @@ export default function DashboardPage() {
                 <span className={cn('font-mono text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap', statusChip(run.status))}>{run.status}</span>
               </Link>
             ))}
-          </div>
+          </section>
+
+          {/* Describe your agent */}
+          <section className="rounded-xl border border-accent/30 shadow-card p-4" style={{ background: 'radial-gradient(120% 100% at 100% 0%, rgba(83,74,183,0.08), transparent 60%)' }}>
+            <div className="flex items-center gap-2 mb-2.5">
+              <Sparkles className="w-4 h-4 text-accent dark:text-accent-bright" />
+              <h3 className="text-sm font-semibold text-foreground">Describe your agent</h3>
+              <span className="ml-auto font-mono text-[10px] px-2 py-0.5 rounded-full border border-good/40 text-good">Nexus AI</span>
+            </div>
+            <Link href="/agents/new" className="block rounded-[10px] border border-border-strong bg-surface px-3 py-3 text-[13px] text-muted-foreground hover:border-accent/50 transition-colors">
+              An agent that triages my support inbox, tags urgency, and drafts replies…
+            </Link>
+            <div className="flex justify-end mt-3">
+              <Link href="/agents/new" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-br from-accent to-accent-ink text-white text-[12px] font-semibold rounded-[10px] shadow-card hover:opacity-95">
+                <Sparkles size={13} /> Draft it
+              </Link>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/* Quick actions */}
+      <div className="mt-6">
+        <span className="eyebrow block mb-3">Quick actions</span>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {quickActions.map((a) => (
+            <Link key={a.label} href={a.href} className="flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-4 shadow-card hover:border-border-strong hover:-translate-y-0.5 transition-all">
+              <div className="w-9 h-9 rounded-lg bg-accent/10 dark:bg-accent-bright/10 text-accent dark:text-accent-bright flex items-center justify-center">
+                <a.icon size={17} />
+              </div>
+              <div>
+                <p className="text-[13px] font-semibold text-foreground">{a.label}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{a.desc}</p>
+              </div>
+            </Link>
+          ))}
         </div>
       </div>
 
