@@ -106,14 +106,15 @@ export default function AdminServiceLogsPage() {
     <div className="p-4 sm:p-6 h-full flex flex-col min-h-0">
       <div className="flex flex-wrap items-start gap-3 justify-between mb-4">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Service logs</h1>
+          <span className="eyebrow block mb-1">Admin</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Service logs</h1>
           <p className="text-[11px] text-faint mt-0.5">{filtered.length.toLocaleString()} visible / {logs.length.toLocaleString()} captured</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setAutoScroll((v) => !v)}
             className={`inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border ${
-              autoScroll ? 'bg-gray-900 text-white border-gray-900' : 'bg-surface text-muted-foreground border-border-strong'
+              autoScroll ? 'bg-accent text-white border-gray-900' : 'bg-surface text-muted-foreground border-border-strong'
             }`}
           >
             <ChevronDown className="w-3.5 h-3.5" />

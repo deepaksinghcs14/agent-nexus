@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Timer } from 'lucide-react'
 import { observabilityAPI } from '@/lib/api'
+import { PageHeader } from '@/components/ui/PageHeader'
 import type { LatencyData, LatencyByAgent, LatencyByModel, LatencyTrendDay } from '@/types'
 
 function latencyColor(secs: number): string {
@@ -48,28 +49,28 @@ export default function ObservabilityPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Observability</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Latency and performance metrics for your agents</p>
-        </div>
+      <PageHeader
+        eyebrow="Observe"
+        title="Latency"
+        subtitle="Latency and performance metrics for your agents."
+        actions={
         <div className="flex gap-1">
           {DAYS_OPTIONS.map((d) => (
             <button
               key={d}
               onClick={() => setDays(d)}
-              className={`text-[12px] px-3 py-1 rounded-md border transition-colors ${
+              className={`text-[12px] px-3 py-1.5 rounded-lg border transition-colors ${
                 days === d
-                  ? 'bg-gray-900 text-white border-gray-900'
-                  : 'bg-surface text-muted-foreground border-border-strong hover:border-gray-400'
+                  ? 'bg-accent text-white border-accent'
+                  : 'bg-surface text-muted-foreground border-border-strong hover:border-accent/50'
               }`}
             >
               {d}d
             </button>
           ))}
         </div>
-      </div>
+        }
+      />
 
       {error && (
         <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">
@@ -189,7 +190,7 @@ export default function ObservabilityPage() {
                     P50
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-purple-400 opacity-70 inline-block" />
+                    <span className="w-2.5 h-2.5 rounded-sm bg-accent opacity-70 inline-block" />
                     P95
                   </span>
                 </div>
@@ -205,7 +206,7 @@ export default function ObservabilityPage() {
                         />
                         <div
                           title={`P95: ${fmt(d.p95_secs)} | ${d.run_count} runs`}
-                          className="w-3 bg-purple-400 rounded-t opacity-70 cursor-default"
+                          className="w-3 bg-accent rounded-t opacity-70 cursor-default"
                           style={{ height: `${Math.max((d.p95_secs / maxP95) * 100, 2)}%` }}
                         />
                       </div>

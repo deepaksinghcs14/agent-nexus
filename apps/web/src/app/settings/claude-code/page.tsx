@@ -69,7 +69,7 @@ function CredentialCard(props: {
             value={token}
             onChange={(e) => setToken(e.target.value)}
             placeholder={props.placeholder}
-            className="flex-1 min-w-[220px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+            className="flex-1 min-w-[220px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
           />
           <button
             onClick={() => { props.onSave(token.trim()); setToken('') }}
@@ -139,7 +139,7 @@ function JiraCredentialCard(props: {
             value={baseURL}
             onChange={(e) => setBaseURL(e.target.value)}
             placeholder="https://yourorg.atlassian.net"
-            className="w-full px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+            className="w-full px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
           />
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -147,14 +147,14 @@ function JiraCredentialCard(props: {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@org.com (leave empty for Data Center PAT)"
-              className="flex-1 min-w-[220px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+              className="flex-1 min-w-[220px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <input
               type="password"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="API token"
-              className="flex-1 min-w-[180px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+              className="flex-1 min-w-[180px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <button
               onClick={() => {
@@ -201,7 +201,8 @@ export default function ClaudeCodePage() {
   return (
     <div className="p-4 sm:p-6 max-w-2xl">
       <div className="mb-5">
-        <h1 className="text-xl font-semibold text-foreground">Claude Code</h1>
+        <span className="eyebrow block mb-1">Settings</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Claude Code</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           Credentials for autonomous repo coding sessions (Jira → PR pipeline). Encrypted at rest and
           injected per session.

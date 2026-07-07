@@ -86,7 +86,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. GitHub PR Reviewer"
-          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
         />
       </div>
 
@@ -98,7 +98,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Optional — what does this trigger do?"
-          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
         />
       </div>
 
@@ -113,7 +113,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
               onClick={() => handleTargetTypeChange(type)}
               className={`px-4 py-2 rounded-md border text-sm font-medium transition-colors capitalize ${
                 targetType === type
-                  ? 'bg-accent border-purple-400 text-white'
+                  ? 'bg-accent border-accent/50 text-white'
                   : 'border-border-strong text-muted-foreground hover:border-gray-400'
               }`}
             >
@@ -131,7 +131,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
         <select
           value={targetId}
           onChange={(e) => setTargetId(e.target.value)}
-          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
         >
           <option value="">Select a {targetType}…</option>
           {targets.map((t) => (
@@ -147,7 +147,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
           value={inputTemplate}
           onChange={(e) => setInputTemplate(e.target.value)}
           rows={3}
-          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
         />
         <p className="mt-1.5 text-xs text-faint space-y-0.5">
           Go template evaluated against the inbound request. Available variables:
@@ -170,7 +170,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
           placeholder="Leave blank for no signature verification"
-          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
         />
         <p className="mt-1 text-xs text-faint">
           When set, inbound requests must include a valid{' '}
@@ -183,7 +183,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
         <button
           type="button"
           onClick={() => setIsActive(!isActive)}
-          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isActive ? 'bg-accent' : 'bg-gray-200'}`}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isActive ? 'bg-accent' : 'bg-muted'}`}
         >
           <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow transition-transform ${isActive ? 'translate-x-4' : 'translate-x-1'}`} />
         </button>

@@ -73,7 +73,8 @@ export default function APITokensPage() {
     <div className="p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-8">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">API Tokens</h1>
+          <span className="eyebrow block mb-1">Settings</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">API Tokens</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Use tokens to access the Agent Nexus API from scripts, CI/CD, or integrations.
           </p>
@@ -125,7 +126,7 @@ export default function APITokensPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. CI Pipeline, Slack Bot"
-              className="w-full px-3 py-2 rounded border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+              className="w-full px-3 py-2 rounded border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
             />
           </div>
           <div>
@@ -136,7 +137,7 @@ export default function APITokensPage() {
               type="date"
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value ? new Date(e.target.value).toISOString() : '')}
-              className="px-3 py-2 rounded border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+              className="px-3 py-2 rounded border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
             />
           </div>
           {createError && <p className="text-sm text-red-500">{createError}</p>}

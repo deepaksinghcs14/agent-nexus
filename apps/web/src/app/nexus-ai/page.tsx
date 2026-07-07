@@ -56,7 +56,7 @@ function ToolCard({ msg }: { msg: NexusMessage }) {
     >
       <div className="mt-0.5 shrink-0">
         {isError ? <AlertCircle size={15} className="text-red-500" />
-          : started ? <Loader2 size={15} className="animate-spin text-purple-500" />
+          : started ? <Loader2 size={15} className="animate-spin text-accent dark:text-accent-bright" />
           : <CheckCircle2 size={15} className="text-green-500" />}
       </div>
       <div className="flex-1 min-w-0">
@@ -67,7 +67,7 @@ function ToolCard({ msg }: { msg: NexusMessage }) {
         {ev.result && !started && <p className="text-muted-foreground text-xs mt-0.5">{ev.result.name}</p>}
       </div>
       {ev.link && !started && !isError && (
-        <Link href={ev.link} className="flex items-center gap-1 text-xs text-accent dark:text-accent-bright hover:text-purple-700 font-medium shrink-0">
+        <Link href={ev.link} className="flex items-center gap-1 text-xs text-accent dark:text-accent-bright hover:text-accent dark:text-accent-bright font-medium shrink-0">
           Open <ExternalLink size={11} />
         </Link>
       )}
@@ -92,7 +92,7 @@ function MessageBubble({ msg, isStreaming }: { msg: NexusMessage; isStreaming: b
   }
   return (
     <div className="flex gap-2.5 items-start">
-      <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center">
+      <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-accent/15 flex items-center justify-center">
         <Sparkles size={12} className="text-accent dark:text-accent-bright" />
       </div>
       <div className="flex-1 text-sm text-foreground leading-relaxed min-w-0">
@@ -108,7 +108,7 @@ function MessageBubble({ msg, isStreaming }: { msg: NexusMessage; isStreaming: b
                 p: ({ children }: { children?: React.ReactNode }) => <p className="mb-2 last:mb-0">{children}</p>,
                 a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
                   <a href={href} target="_blank" rel="noopener noreferrer"
-                    className="text-accent dark:text-accent-bright hover:text-purple-700 underline underline-offset-2">
+                    className="text-accent dark:text-accent-bright hover:text-accent dark:text-accent-bright underline underline-offset-2">
                     {children}
                   </a>
                 ),
@@ -130,7 +130,7 @@ function MessageBubble({ msg, isStreaming }: { msg: NexusMessage; isStreaming: b
               {msg.content}
             </ReactMarkdown>
             {isStreaming && (
-              <span className="inline-block w-0.5 h-3.5 bg-purple-500 animate-pulse ml-0.5 align-middle" />
+              <span className="inline-block w-0.5 h-3.5 bg-accent animate-pulse ml-0.5 align-middle" />
             )}
           </>
         )}
@@ -338,7 +338,7 @@ export default function NexusAIPage() {
       {/* Header */}
       <div className="px-4 sm:px-6 py-3.5 border-b border-border flex flex-wrap items-center gap-3 flex-shrink-0">
         <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-accent/15 flex items-center justify-center">
             <Sparkles size={14} className="text-accent dark:text-accent-bright" />
           </div>
           <span className="text-[15px] font-semibold text-foreground">Nexus AI</span>
@@ -356,7 +356,7 @@ export default function NexusAIPage() {
                   setSelectedModel('')
                 }}
                 disabled={isRunning}
-                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-border-strong bg-surface text-sm text-foreground focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-accent/20 disabled:opacity-50 cursor-pointer"
+                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-border-strong bg-surface text-sm text-foreground focus:outline-none focus:border-accent/50 focus:ring-2 focus:ring-accent/20 disabled:opacity-50 cursor-pointer"
               >
                 {activeProviders.map(p => (
                   <option key={p.id} value={p.provider}>
@@ -373,7 +373,7 @@ export default function NexusAIPage() {
                 value={selectedModel}
                 onChange={e => setSelectedModel(e.target.value)}
                 disabled={isRunning || modelsLoading || availableModels.length === 0}
-                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-border-strong bg-surface text-sm text-foreground focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-accent/20 disabled:opacity-50 cursor-pointer min-w-0 w-full sm:min-w-[160px] sm:w-auto"
+                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-border-strong bg-surface text-sm text-foreground focus:outline-none focus:border-accent/50 focus:ring-2 focus:ring-accent/20 disabled:opacity-50 cursor-pointer min-w-0 w-full sm:min-w-[160px] sm:w-auto"
               >
                 {modelsLoading && <option value="">Loading models…</option>}
                 {!modelsLoading && availableModels.length === 0 && (
@@ -407,7 +407,7 @@ export default function NexusAIPage() {
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4">
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
-            <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center mb-4">
+            <div className="w-10 h-10 rounded-full bg-accent/15 flex items-center justify-center mb-4">
               <Sparkles size={20} className="text-accent dark:text-accent-bright" />
             </div>
             <h2 className="text-lg font-semibold text-foreground mb-1">Nexus AI</h2>
@@ -422,7 +422,7 @@ export default function NexusAIPage() {
                 <button
                   key={item.label}
                   onClick={() => setInput(item.label)}
-                  className="text-left p-3.5 rounded-xl border border-border hover:border-border-strong hover:bg-purple-50/30 transition-all"
+                  className="text-left p-3.5 rounded-xl border border-border hover:border-border-strong hover:bg-accent/10/30 transition-all"
                 >
                   <p className="text-sm font-medium text-foreground">{item.label}</p>
                   <p className="text-xs text-faint mt-0.5">{item.desc}</p>
@@ -450,9 +450,9 @@ export default function NexusAIPage() {
               <button
                 key={t.title}
                 onClick={() => setInput(t.prompt)}
-                className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border border-border-strong bg-surface text-left hover:border-purple-300 hover:bg-purple-50 transition-colors flex-1 min-w-0"
+                className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border border-border-strong bg-surface text-left hover:border-accent/50 hover:bg-accent/10 transition-colors flex-1 min-w-0"
               >
-                <div className="w-6 h-6 rounded-md bg-purple-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <div className="w-6 h-6 rounded-md bg-accent/15 flex items-center justify-center flex-shrink-0 mt-0.5">
                   <Zap size={12} className="text-accent dark:text-accent-bright" />
                 </div>
                 <div className="min-w-0">
@@ -468,7 +468,7 @@ export default function NexusAIPage() {
               <button
                 key={s}
                 onClick={() => setInput(s)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-strong bg-surface text-xs text-muted-foreground hover:border-purple-300 hover:text-purple-700 hover:bg-purple-50 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-strong bg-surface text-xs text-muted-foreground hover:border-accent/50 hover:text-accent dark:text-accent-bright hover:bg-accent/10 transition-colors"
               >
                 <ArrowRight size={11} className="text-faint" />
                 {s.length > 60 ? s.slice(0, 60) + '…' : s}
@@ -481,7 +481,7 @@ export default function NexusAIPage() {
       {/* Input bar */}
       <div className="px-4 sm:px-6 pb-5 pt-1 flex-shrink-0">
         <div className={`flex items-end gap-2.5 border rounded-xl bg-surface transition-colors
-          ${isRunning ? 'border-border-strong' : 'border-border-strong focus-within:border-purple-300 focus-within:ring-2 focus-within:ring-accent/20'}`}
+          ${isRunning ? 'border-border-strong' : 'border-border-strong focus-within:border-accent/50 focus-within:ring-2 focus-within:ring-accent/20'}`}
         >
           <textarea
             ref={textareaRef}

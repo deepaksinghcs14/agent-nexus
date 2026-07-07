@@ -61,7 +61,7 @@ function renderInline(text: string, baseKey: string) {
       nodes.push(<em key={key}>{full.slice(1, -1)}</em>)
     } else if (m[2] && m[3]) {
       nodes.push(
-        <a key={key} href={m[3]} target="_blank" rel="noopener noreferrer" className="text-accent dark:text-accent-bright underline hover:text-purple-800">
+        <a key={key} href={m[3]} target="_blank" rel="noopener noreferrer" className="text-accent dark:text-accent-bright underline hover:text-accent dark:text-accent-bright">
           {m[2]}
         </a>
       )

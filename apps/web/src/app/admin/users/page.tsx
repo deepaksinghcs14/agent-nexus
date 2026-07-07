@@ -16,7 +16,8 @@ export default function AdminUsersPage() {
   return (
     <div className="p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-4">
-        <h1 className="text-xl font-semibold text-foreground">Users ({users.length})</h1>
+        <span className="eyebrow block mb-1">Admin</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Users ({users.length})</h1>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -31,7 +32,7 @@ export default function AdminUsersPage() {
         <div className="min-w-[600px] px-4 sm:px-0">
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             {users.map((user) => (
-              <div key={user.id} className="grid grid-cols-12 items-center px-4 py-3 border-b last:border-b-0 border-gray-50 text-[12px]">
+              <div key={user.id} className="grid grid-cols-12 items-center px-4 py-3 border-b last:border-b-0 border-border text-[12px]">
                 <div className="col-span-5">
                   <p className="font-medium text-foreground">{user.full_name || user.email}</p>
                   <p className="text-[10px] text-faint">{user.email}</p>

@@ -2,9 +2,11 @@
 
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Building2, ClipboardList, Users, Zap, Coins, BarChart2, SquareTerminal, Bot, Database, Radio, FlaskConical } from 'lucide-react'
+import { Activity, Building2, ClipboardList, Users, Zap, SquareTerminal, Bot, Database, Radio, FlaskConical } from 'lucide-react'
 import { adminAPI } from '@/lib/api'
 import { relativeTime, formatTokens } from '@/lib/utils'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { KpiTile } from '@/components/ui/KpiTile'
 import type { AuditLog, User } from '@/types'
 
 interface WorkspaceUsage { id: string; display_name: string; runs: number; tokens: number; cost: number }
@@ -26,10 +28,8 @@ export default function AdminOverviewPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">Admin Overview</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Platform-wide stats and recent activity</p>
-      </div>
+      <PageHeader eyebrow="Admin" title="Platform overview" subtitle="Platform-wide stats and recent activity across all workspaces." />
+
 
       {errors.length > 0 && (
         <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3">
@@ -53,9 +53,9 @@ export default function AdminOverviewPage() {
             { label: 'Audit events', value: logs.length > 0 ? `${logs.length}+` : (audit.isLoading ? '—' : '0'), icon: ClipboardList, href: '/admin/audit-logs' },
           ].map((item) => (
             <Link key={item.label} href={item.href}
-              className="bg-muted border border-border rounded-xl p-4 hover:bg-muted transition-colors">
+              className="bg-surface border border-border shadow-card rounded-xl p-4 hover:border-border-strong transition-colors">
               <item.icon className="w-4 h-4 text-accent dark:text-accent-bright mb-3" />
-              <p className="text-2xl font-semibold text-foreground">{item.value}</p>
+              <p className="text-2xl font-bold tabular-nums text-foreground">{item.value}</p>
               <p className="text-[11px] text-faint mt-1">{item.label}</p>
             </Link>
           ))}
@@ -65,18 +65,10 @@ export default function AdminOverviewPage() {
       {/* Usage stats */}
       <div>
         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-3">Usage (all time)</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {[
-            { label: 'Agent runs', value: u ? u.runs.toLocaleString() : '—', icon: Zap, color: 'text-amber-500' },
-            { label: 'Tokens used', value: u ? formatTokens(u.tokens) : '—', icon: BarChart2, color: 'text-blue-500' },
-            { label: 'Est. cost', value: u ? `$${u.cost.toFixed(4)}` : '—', icon: Coins, color: 'text-green-600 dark:text-green-300' },
-          ].map((item) => (
-            <div key={item.label} className="bg-muted border border-border rounded-xl p-4">
-              <item.icon className={`w-4 h-4 mb-3 ${item.color}`} />
-              <p className="text-2xl font-semibold text-foreground">{item.value}</p>
-              <p className="text-[11px] text-faint mt-1">{item.label}</p>
-            </div>
-          ))}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <KpiTile label="Agent runs" value={u ? u.runs.toLocaleString() : '—'} tone="accent" />
+          <KpiTile label="Tokens used" value={u ? formatTokens(u.tokens) : '—'} tone="good" />
+          <KpiTile label="Est. cost" value={u ? `$${u.cost.toFixed(4)}` : '—'} tone="warn" />
         </div>
       </div>
 
@@ -89,7 +81,7 @@ export default function AdminOverviewPage() {
           </div>
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             {u.top_workspaces.map((ws, i) => (
-              <div key={ws.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-b-0 border-gray-50">
+              <div key={ws.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-b-0 border-border">
                 <span className="text-[11px] font-semibold text-faint w-4">{i + 1}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] font-medium text-foreground truncate">{ws.display_name}</p>
@@ -113,8 +105,8 @@ export default function AdminOverviewPage() {
             <div className="p-6 text-center text-[12px] text-faint">Loading…</div>
           )}
           {logs.map((log) => (
-            <div key={log.id} className="flex gap-3 px-4 py-3 border-b last:border-b-0 border-gray-50">
-              <Activity className="w-3.5 h-3.5 text-purple-500 mt-0.5 flex-shrink-0" />
+            <div key={log.id} className="flex gap-3 px-4 py-3 border-b last:border-b-0 border-border">
+              <Activity className="w-3.5 h-3.5 text-accent dark:text-accent-bright mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-[12px] text-foreground truncate">
                   <span className="font-medium text-foreground">{log.actor_email || 'system'}</span>

@@ -91,7 +91,8 @@ export default function WorkspaceSettingsPage() {
   return (
     <div className="p-4 sm:p-6 max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-foreground">Workspace</h1>
+        <span className="eyebrow block mb-1">Settings</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Workspace</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Manage your workspace settings and members</p>
       </div>
 
@@ -125,7 +126,7 @@ export default function WorkspaceSettingsPage() {
                 onClick={() => setWsType(value)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50 ${
                   wsType === value
-                    ? 'border-purple-500 bg-accent/10 text-accent dark:text-accent-bright'
+                    ? 'border-accent bg-accent/10 text-accent dark:text-accent-bright'
                     : 'border-border-strong text-muted-foreground hover:border-gray-300 hover:bg-muted'
                 }`}
               >
@@ -169,7 +170,7 @@ export default function WorkspaceSettingsPage() {
               <button
                 onClick={() => addMember.mutate()}
                 disabled={!email.trim() || addMember.isPending}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-accent text-white text-sm rounded-lg disabled:opacity-50"
               >
                 <Plus className="w-3.5 h-3.5" /> Add
               </button>

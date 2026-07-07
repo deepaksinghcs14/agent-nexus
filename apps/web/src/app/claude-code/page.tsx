@@ -168,7 +168,8 @@ export default function ClaudeCodePage() {
     <TooltipProvider delayDuration={200}>
       <div className="p-4 sm:p-6 max-w-3xl">
         <div className="mb-4">
-          <h1 className="text-xl font-semibold text-foreground">Claude Code</h1>
+          <span className="eyebrow block mb-1">Build</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Claude Code</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Autonomous repo coding sessions (Jira → PR pipeline) for this workspace.
           </p>
@@ -216,7 +217,7 @@ export default function ClaudeCodePage() {
                           'px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors disabled:opacity-50',
                           r.sessions_enabled
                             ? 'bg-green-100 text-green-800 dark:text-green-300 border-green-300 hover:bg-green-200'
-                            : 'bg-muted text-muted-foreground border-border-strong hover:bg-gray-200'
+                            : 'bg-muted text-muted-foreground border-border-strong hover:bg-muted'
                         )}
                       >
                         {r.sessions_enabled ? 'sessions on' : 'enable sessions'}
@@ -237,7 +238,7 @@ export default function ClaudeCodePage() {
                 value={newRepo}
                 onChange={(e) => setNewRepo(e.target.value)}
                 placeholder="owner/repo"
-                className="flex-1 min-w-[200px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="flex-1 min-w-[200px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
                 onKeyDown={(e) => { if (e.key === 'Enter' && newRepo.trim() && !onboard.isPending) onboard.mutate(newRepo.trim()) }}
               />
               <button

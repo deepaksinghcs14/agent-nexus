@@ -87,7 +87,7 @@ export default function NewGatewayChannelPage() {
       <div className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(['whatsapp', 'http'] as const).map((t) => (
-            <button key={t} onClick={() => setChannelType(t)} className={`text-left border rounded-lg p-4 ${channelType === t ? 'border-purple-400 bg-accent/10' : 'border-border-strong bg-surface'}`}>
+            <button key={t} onClick={() => setChannelType(t)} className={`text-left border rounded-lg p-4 ${channelType === t ? 'border-accent/50 bg-accent/10' : 'border-border-strong bg-surface'}`}>
               <div className="text-sm font-medium text-foreground">{t === 'whatsapp' ? 'WhatsApp' : 'HTTP'}</div>
               <div className="text-xs text-muted-foreground mt-1">{t === 'whatsapp' ? 'Gateway-owned WhatsApp Web adapter.' : 'Generic session-aware HTTP ingress.'}</div>
             </button>

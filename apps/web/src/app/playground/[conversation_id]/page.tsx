@@ -79,7 +79,7 @@ function ToolTrace({ traces, open }: { traces: TraceEvent[]; open?: boolean }) {
       <details open={open}>
         <summary className="flex items-center gap-2 cursor-pointer list-none select-none group py-1">
           <div className="flex items-center gap-1.5">
-            <Wrench size={12} className="text-purple-400" />
+            <Wrench size={12} className="text-accent dark:text-accent-bright" />
             <span className="text-[11px] font-medium text-muted-foreground group-hover:text-gray-700 dark:hover:text-gray-300">
               {traces.length} tool call{traces.length !== 1 ? 's' : ''}
             </span>
@@ -489,7 +489,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
     <div className="flex flex-col h-full bg-surface">
       {/* Header */}
       <div className="border-b border-border px-5 py-3 flex items-center gap-3 flex-shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+        <div className="w-8 h-8 rounded-lg bg-accent/15 flex items-center justify-center flex-shrink-0">
           <Bot size={16} className="text-accent dark:text-accent-bright" />
         </div>
         <div className="flex-1 min-w-0">
@@ -512,7 +512,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             href={`/runs/${activeRunId}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[11px] text-purple-500 hover:text-purple-700 flex-shrink-0"
+            className="flex items-center gap-1 text-[11px] text-accent dark:text-accent-bright hover:text-accent dark:text-accent-bright flex-shrink-0"
           >
             View run <ExternalLink size={11} />
           </a>
@@ -532,8 +532,8 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
 
         {!isLoading && messages.length === 0 && !streaming && (
           <div className="text-center py-16">
-            <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center mx-auto mb-3">
-              <Bot size={22} className="text-purple-500" />
+            <div className="w-12 h-12 rounded-full bg-accent/15 flex items-center justify-center mx-auto mb-3">
+              <Bot size={22} className="text-accent dark:text-accent-bright" />
             </div>
             <p className="text-sm font-medium text-foreground">{agent?.name ?? 'Agent'}</p>
             <p className="text-xs text-faint mt-1">Send a message to start the conversation.</p>
@@ -556,7 +556,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
           return (
             <div key={msg.id} className={`flex gap-2.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
               {!isUser && (
-                <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <div className="w-7 h-7 rounded-full bg-accent/15 flex items-center justify-center flex-shrink-0 mt-0.5">
                   <Bot size={13} className="text-accent dark:text-accent-bright" />
                 </div>
               )}
@@ -570,7 +570,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
                 ) : (
                   <MarkdownMessage content={msg.content} />
                 )}
-                <p className={`text-[10px] mt-1.5 ${isUser ? 'text-purple-200' : 'text-faint'}`}>
+                <p className={`text-[10px] mt-1.5 ${isUser ? 'text-accent-bright' : 'text-faint'}`}>
                   {relativeTime(msg.created_at)}
                 </p>
               </div>
@@ -586,7 +586,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
         {/* Thinking indicator — before first delta */}
         {thinking && (
           <div className="flex gap-2.5 justify-start">
-            <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+            <div className="w-7 h-7 rounded-full bg-accent/15 flex items-center justify-center flex-shrink-0">
               <Bot size={13} className="text-accent dark:text-accent-bright" />
             </div>
             <div className="bg-muted border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5">
@@ -600,7 +600,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
         {/* Streaming response */}
         {streamBuffer && (
           <div className="flex gap-2.5 justify-start">
-            <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <div className="w-7 h-7 rounded-full bg-accent/15 flex items-center justify-center flex-shrink-0 mt-0.5">
               <Bot size={13} className="text-accent dark:text-accent-bright" />
             </div>
             <div className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm leading-relaxed bg-muted border border-border text-foreground">
@@ -682,7 +682,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             <AlertCircle size={13} /><span>{errorMessage}</span>
           </div>
         )}
-        <div className="flex items-end gap-2 rounded-xl border border-border-strong bg-muted px-3 py-2 focus-within:border-purple-300 focus-within:bg-white transition-colors">
+        <div className="flex items-end gap-2 rounded-xl border border-border-strong bg-muted px-3 py-2 focus-within:border-accent/50 focus-within:bg-white transition-colors">
           <textarea
             ref={textareaRef}
             value={input}

@@ -120,7 +120,8 @@ export default function EvalsPage() {
     <div className="p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-8">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Evals</h1>
+          <span className="eyebrow block mb-1">Observe</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Evals</h1>
           <p className="text-sm text-muted-foreground mt-1">Test suites that run your agents against known inputs and grade their outputs.</p>
         </div>
         <button
@@ -152,7 +153,7 @@ export default function EvalsPage() {
             <div key={s.id} className="bg-surface border border-border-strong rounded-lg p-4 hover:border-gray-300 transition-colors group">
               <div className="flex items-start justify-between gap-2 mb-3">
                 <div className="min-w-0 flex-1">
-                  <Link href={`/evals/${s.id}`} className="text-sm font-medium text-foreground hover:text-purple-700 transition-colors line-clamp-1">
+                  <Link href={`/evals/${s.id}`} className="text-sm font-medium text-foreground hover:text-accent dark:text-accent-bright transition-colors line-clamp-1">
                     {s.name}
                   </Link>
                   <p className="text-xs text-muted-foreground mt-0.5">{s.agent_name}</p>

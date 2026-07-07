@@ -87,7 +87,7 @@ export default function AdminClaudeCodePage() {
           {/* Waiting runs */}
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-              <Clock size={14} className="text-purple-500" />
+              <Clock size={14} className="text-accent dark:text-accent-bright" />
               <p className="text-[13px] font-medium text-foreground">
                 Waiting runs ({waiting.length})
               </p>
@@ -111,7 +111,7 @@ export default function AdminClaudeCodePage() {
                     {waiting.map((r) => {
                       const stale = Date.now() - new Date(r.waiting_since).getTime() > 6 * 3600_000
                       return (
-                        <tr key={r.run_id} className="border-b border-gray-50">
+                        <tr key={r.run_id} className="border-b border-border">
                           <td className="px-4 py-2">
                             <Link href={`/runs/${r.run_id}`} className="font-mono text-accent dark:text-accent-bright hover:underline">
                               {r.run_id.slice(0, 8)}…

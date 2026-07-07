@@ -177,7 +177,7 @@ export default function RunsPage() {
             </thead>
             <tbody>
               {runs.map((run) => (
-                <tr key={run.id} className="border-b last:border-b-0 border-gray-50 hover:bg-purple-50">
+                <tr key={run.id} className="border-b last:border-b-0 border-border hover:bg-accent/10">
                   <td className="px-4 py-2.5 font-mono text-[11px] text-muted-foreground">{run.id.slice(0, 12)}</td>
                   <td className="px-4 py-2.5">
                     {(() => {

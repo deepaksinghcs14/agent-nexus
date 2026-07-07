@@ -99,7 +99,8 @@ export default function ProvidersPage() {
     <div className="p-4 sm:p-6 max-w-2xl">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Providers</h1>
+          <span className="eyebrow block mb-1">Settings</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Providers</h1>
           <p className="text-sm text-muted-foreground mt-0.5">API keys are encrypted at rest with AES-256-GCM</p>
         </div>
         <button
@@ -164,7 +165,7 @@ export default function ProvidersPage() {
               <select
                 value={form.provider}
                 onChange={e => setForm(f => ({ ...f, provider: e.target.value }))}
-                className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 {PROVIDER_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
@@ -176,7 +177,7 @@ export default function ProvidersPage() {
                 value={form.display_name}
                 onChange={e => setForm(f => ({ ...f, display_name: e.target.value }))}
                 placeholder="e.g. Production key"
-                className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-accent"
               />
             </div>
           </div>
@@ -189,7 +190,7 @@ export default function ProvidersPage() {
                   value={form.api_key}
                   onChange={e => setForm(f => ({ ...f, api_key: e.target.value }))}
                   placeholder="AIza..."
-                  className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400"
+                  className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </div>
               <div className="flex items-center gap-2 pt-1">
@@ -211,7 +212,7 @@ export default function ProvidersPage() {
                 value={form.api_key}
                 onChange={e => setForm(f => ({ ...f, api_key: e.target.value }))}
                 placeholder="sk-..."
-                className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-accent"
               />
               {form.provider !== 'gemini' && form.provider !== 'ollama' && (
                 <p className="text-[10px] text-faint mt-1">API key required — OAuth is not supported for {form.provider}.</p>
@@ -226,7 +227,7 @@ export default function ProvidersPage() {
                 value={form.base_url}
                 onChange={e => setForm(f => ({ ...f, base_url: e.target.value }))}
                 placeholder="http://localhost:11434"
-                className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-accent"
               />
             </div>
           )}

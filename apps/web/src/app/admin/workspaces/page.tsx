@@ -38,7 +38,8 @@ export default function AdminWorkspacesPage() {
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="mb-5">
-        <h1 className="text-xl font-semibold text-foreground">Workspaces</h1>
+        <span className="eyebrow block mb-1">Admin</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Workspaces</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Manage all workspaces on this instance</p>
       </div>
       {error && (
@@ -55,7 +56,7 @@ export default function AdminWorkspacesPage() {
         <div className="min-w-[680px] px-4 sm:px-0">
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             {workspaces.map((ws) => (
-              <div key={ws.id} className="flex items-center gap-4 px-4 py-3 border-b last:border-b-0 border-gray-50 text-[12px] hover:bg-gray-50/50">
+              <div key={ws.id} className="flex items-center gap-4 px-4 py-3 border-b last:border-b-0 border-border text-[12px] hover:bg-gray-50/50">
                 {/* Name + slug */}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-foreground truncate">{ws.display_name}</p>

@@ -45,7 +45,7 @@ function CaseRow({ c, suiteId, onDeleted, onUpdated }: {
 
   if (editing) {
     return (
-      <div className="border border-accent/40 rounded-lg p-4 space-y-3 bg-purple-50/30">
+      <div className="border border-accent/40 rounded-lg p-4 space-y-3 bg-accent/10/30">
         <div>
           <label className="text-xs font-medium text-muted-foreground block mb-1">Input</label>
           <textarea className="w-full border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent" rows={3} value={input} onChange={e => setInput(e.target.value)} />
@@ -108,7 +108,7 @@ function AddCaseForm({ suiteId, onCreated }: { suiteId: string; onCreated: () =>
     return (
       <button
         onClick={() => setOpen(true)}
-        className="w-full border-2 border-dashed border-border-strong rounded-lg py-3 text-sm text-faint hover:border-purple-300 hover:text-purple-500 transition-colors flex items-center justify-center gap-2"
+        className="w-full border-2 border-dashed border-border-strong rounded-lg py-3 text-sm text-faint hover:border-accent/50 hover:text-accent dark:text-accent-bright transition-colors flex items-center justify-center gap-2"
       >
         <Plus className="w-4 h-4" /> Add test case
       </button>
@@ -116,7 +116,7 @@ function AddCaseForm({ suiteId, onCreated }: { suiteId: string; onCreated: () =>
   }
 
   return (
-    <div className="border border-accent/40 rounded-lg p-4 space-y-3 bg-purple-50/30">
+    <div className="border border-accent/40 rounded-lg p-4 space-y-3 bg-accent/10/30">
       <div>
         <label className="text-xs font-medium text-muted-foreground block mb-1">Input <span className="text-red-500">*</span></label>
         <textarea className="w-full border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent" rows={3} value={input} onChange={e => setInput(e.target.value)} placeholder="The message to send to the agent" />
@@ -202,7 +202,7 @@ function GenerateCasesModal({ suiteId, agentProvider, agentModel, onDone }: {
       <div className="bg-surface rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-purple-500" />
+            <Sparkles className="w-4 h-4 text-accent dark:text-accent-bright" />
             <h2 className="font-semibold text-foreground text-sm">Generate test cases</h2>
           </div>
           <button onClick={onDone} className="p-1 rounded hover:bg-muted text-faint"><X className="w-4 h-4" /></button>
@@ -258,7 +258,7 @@ function GenerateCasesModal({ suiteId, agentProvider, agentModel, onDone }: {
                     <button
                       key={n}
                       onClick={() => setCount(n)}
-                      className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${count === n ? 'bg-accent text-white border-purple-600' : 'border-border-strong text-muted-foreground hover:border-purple-300'}`}
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${count === n ? 'bg-accent text-white border-accent' : 'border-border-strong text-muted-foreground hover:border-accent/50'}`}
                     >
                       {n}
                     </button>
@@ -641,7 +641,7 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? 'border-purple-600 text-accent dark:text-accent-bright' : 'border-transparent text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'}`}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? 'border-accent text-accent dark:text-accent-bright' : 'border-transparent text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'}`}
           >
             {t === 'cases' ? `Cases (${cases.length})` : `Run history (${runs.length})`}
           </button>
@@ -668,7 +668,7 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
               </button>
               <button
                 onClick={() => setShowGenerate(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-accent/10 hover:bg-purple-100 text-accent dark:text-accent-bright border border-accent/40 rounded-md transition-colors font-medium"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-accent/10 hover:bg-accent/15 text-accent dark:text-accent-bright border border-accent/40 rounded-md transition-colors font-medium"
               >
                 <Sparkles className="w-3.5 h-3.5" /> Generate
               </button>
@@ -724,7 +724,7 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
                         </td>
                         <td className="py-3 text-faint">{dur}</td>
                         <td className="py-3 pl-2">
-                          <Link href={`/evals/${id}/runs/${r.id}`} className="text-accent dark:text-accent-bright hover:text-purple-700 transition-colors">
+                          <Link href={`/evals/${id}/runs/${r.id}`} className="text-accent dark:text-accent-bright hover:text-accent dark:text-accent-bright transition-colors">
                             <ChevronRight className="w-4 h-4" />
                           </Link>
                         </td>

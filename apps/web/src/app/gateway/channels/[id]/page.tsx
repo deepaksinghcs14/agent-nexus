@@ -519,8 +519,8 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
       {editMode && (
         <div className="mb-5 rounded-xl border border-accent/40 bg-accent/10 p-4">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-semibold text-purple-900">Edit Channel Settings</p>
-            <button onClick={() => setEditMode(false)} className="p-1 rounded hover:bg-purple-100 text-purple-400"><X className="w-4 h-4" /></button>
+            <p className="text-sm font-semibold text-accent dark:text-accent-bright">Edit Channel Settings</p>
+            <button onClick={() => setEditMode(false)} className="p-1 rounded hover:bg-accent/15 text-accent dark:text-accent-bright"><X className="w-4 h-4" /></button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -541,7 +541,7 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
               <label className="text-[11px] font-medium text-muted-foreground">Active</label>
               <button
                 onClick={() => setEditIsActive(v => !v)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editIsActive ? 'bg-green-500' : 'bg-gray-200'}`}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editIsActive ? 'bg-green-500' : 'bg-muted'}`}
               >
                 <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow transition-transform ${editIsActive ? 'translate-x-4' : 'translate-x-1'}`} />
               </button>
@@ -575,7 +575,7 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
                   <label className="text-[11px] font-medium text-muted-foreground">Chat Approvals</label>
                   <button
                     onClick={() => setEditChatApprovals(v => !v)}
-                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editChatApprovals ? 'bg-green-500' : 'bg-gray-200'}`}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editChatApprovals ? 'bg-green-500' : 'bg-muted'}`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow transition-transform ${editChatApprovals ? 'translate-x-4' : 'translate-x-1'}`} />
                   </button>
@@ -602,7 +602,7 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
       )}
       <div className="flex border-b border-border mb-5 bg-muted rounded-t-lg overflow-x-auto">
         {tabs.map((t) => (
-          <button key={t} onClick={() => setTab(t as Tab)} className={`px-4 py-2 text-[12px] whitespace-nowrap ${tab === t ? 'bg-surface text-accent dark:text-accent-bright font-medium border-b-2 border-purple-500' : 'text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'}`}>{t}</button>
+          <button key={t} onClick={() => setTab(t as Tab)} className={`px-4 py-2 text-[12px] whitespace-nowrap ${tab === t ? 'bg-surface text-accent dark:text-accent-bright font-medium border-b-2 border-accent' : 'text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'}`}>{t}</button>
         ))}
       </div>
 
@@ -759,7 +759,7 @@ Content-Type: application/json
                 value={pairingPhone}
                 onChange={(e) => setPairingPhone(e.target.value)}
                 placeholder="e.g. 917599223966 (no + or spaces)"
-                className="flex-1 min-w-[200px] text-sm border border-border-strong rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-400"
+                className="flex-1 min-w-[200px] text-sm border border-border-strong rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent"
               />
               <button
                 onClick={getPairingCode}
@@ -784,7 +784,7 @@ Content-Type: application/json
             </div>
             <label className="inline-flex items-center cursor-pointer">
               <input type="checkbox" checked={!!channel.config?.self_chat_enabled} onChange={(e) => updateSelfChat(e.target.checked)} className="sr-only peer" />
-              <span className="relative w-10 h-5 rounded-full bg-gray-200 peer-checked:bg-accent after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
+              <span className="relative w-10 h-5 rounded-full bg-muted peer-checked:bg-accent after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
             </label>
           </div>
         </div>
@@ -855,7 +855,7 @@ Content-Type: application/json
                         <td className="px-4 py-3">
                           {m.status === 'pending' && (
                             <div className="flex items-center gap-2">
-                              <button onClick={() => startEditReminder(m)} className="text-[11px] px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-purple-50 hover:text-accent dark:text-accent-bright">Edit</button>
+                              <button onClick={() => startEditReminder(m)} className="text-[11px] px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-accent/10 hover:text-accent dark:text-accent-bright">Edit</button>
                               <button onClick={() => cancelReminder(m.id)} className="text-[11px] px-2 py-1 rounded bg-muted text-faint hover:bg-red-50 hover:text-red-600">Cancel</button>
                             </div>
                           )}
@@ -969,7 +969,7 @@ Content-Type: application/json
                         <td className="px-4 py-3">
                           {m.status === 'pending' && (
                             <div className="flex items-center gap-2">
-                              <button onClick={() => startEditSchedule(m)} className="text-[11px] px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-purple-50 hover:text-accent dark:text-accent-bright">Edit</button>
+                              <button onClick={() => startEditSchedule(m)} className="text-[11px] px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-accent/10 hover:text-accent dark:text-accent-bright">Edit</button>
                               <button onClick={() => cancelScheduledMessage(m.id)} className="text-[11px] px-2 py-1 rounded bg-muted text-faint hover:bg-red-50 hover:text-red-600">Cancel</button>
                             </div>
                           )}
@@ -1089,7 +1089,7 @@ Content-Type: application/json
                       }}
                       className="sr-only peer"
                     />
-                    <span className="relative w-8 h-4 rounded-full bg-gray-200 peer-checked:bg-accent after:absolute after:top-0.5 after:left-0.5 after:h-3 after:w-3 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
+                    <span className="relative w-8 h-4 rounded-full bg-muted peer-checked:bg-accent after:absolute after:top-0.5 after:left-0.5 after:h-3 after:w-3 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
                   </label>
                   <button onClick={() => deleteContact(c.id)} className="px-3 py-1 text-xs rounded bg-muted text-muted-foreground hover:bg-red-50 hover:text-red-600">Delete</button>
                 </div>
@@ -1150,7 +1150,7 @@ function ToggleCard({ title, description, checked, onChange }: { title: string; 
       </div>
       <label className="inline-flex items-center cursor-pointer shrink-0">
         <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only peer" />
-        <span className="relative w-10 h-5 rounded-full bg-gray-200 peer-checked:bg-accent after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
+        <span className="relative w-10 h-5 rounded-full bg-muted peer-checked:bg-accent after:absolute after:top-0.5 after:left-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
       </label>
     </div>
   )
@@ -1226,7 +1226,7 @@ function QRPanel({ value, loading }: { value: Record<string, unknown> | null; lo
       <p className="text-[12px] font-medium text-foreground mb-3">Scan in WhatsApp</p>
       {loading && !dataURL ? (
         <div className="flex items-center gap-3 text-sm text-muted-foreground py-4">
-          <svg className="w-5 h-5 animate-spin text-purple-500" fill="none" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 animate-spin text-accent dark:text-accent-bright" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
           </svg>

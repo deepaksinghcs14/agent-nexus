@@ -35,7 +35,7 @@ function RunStatusBadge({ status }: { status: EvalRun['status'] }) {
 }
 
 function FixIcon({ type }: { type: EvalAnalysisFix['type'] }) {
-  if (type === 'tool') return <Wrench className="w-4 h-4 text-purple-500 flex-shrink-0" />
+  if (type === 'tool') return <Wrench className="w-4 h-4 text-accent dark:text-accent-bright flex-shrink-0" />
   if (type === 'skill') return <GraduationCap className="w-4 h-4 text-blue-500 flex-shrink-0" />
   return <FileText className="w-4 h-4 text-indigo-500 flex-shrink-0" />
 }
@@ -128,7 +128,7 @@ function AnalysisCard({ analysis, agentId }: { analysis: EvalAnalysis; agentId?:
     <div className="border border-accent/40 rounded-lg overflow-hidden mb-6">
       <div className="bg-accent/10 px-4 py-3 flex items-center gap-2 border-b border-accent/40">
         <Sparkles className="w-4 h-4 text-accent dark:text-accent-bright" />
-        <span className="text-sm font-semibold text-purple-800 dark:text-purple-300">AI Analysis</span>
+        <span className="text-sm font-semibold text-accent dark:text-accent-bright dark:text-accent dark:text-accent-bright">AI Analysis</span>
       </div>
       <div className="p-4 sm:p-5 space-y-4">
         <div>
@@ -313,7 +313,7 @@ function ResultCard({
                 <button
                   onClick={handleFixCase}
                   disabled={fixing}
-                  className="flex items-center gap-1.5 text-xs text-accent dark:text-accent-bright border border-accent/40 rounded px-2.5 py-1.5 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 text-xs text-accent dark:text-accent-bright border border-accent/40 rounded px-2.5 py-1.5 hover:bg-accent/10 transition-colors disabled:opacity-50"
                 >
                   {fixing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                   {fixing ? 'AI is refining the case…' : 'Fix case with AI'}
@@ -452,7 +452,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
             {!analyzing && (
               <button
                 onClick={handleAnalyze}
-                className="flex items-center gap-1.5 text-sm text-accent dark:text-accent-bright border border-purple-300 rounded px-3 py-1.5 hover:bg-purple-50 transition-colors"
+                className="flex items-center gap-1.5 text-sm text-accent dark:text-accent-bright border border-accent/50 rounded px-3 py-1.5 hover:bg-accent/10 transition-colors"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 Retry analysis

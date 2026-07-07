@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Brain, Check, Trash2, X } from 'lucide-react'
 import { agentsAPI, memoryAPI } from '@/lib/api'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { relativeTime } from '@/lib/utils'
 import type { Agent, Memory } from '@/types'
 
@@ -38,16 +39,13 @@ export default function MemoryPage() {
   const agents = agentData?.data ?? []
   const names = Object.fromEntries(agents.map((item) => [item.id, item.name]))
 
-  return <div className="p-4 sm:p-6">
-    <div className="mb-6">
-      <h1 className="text-xl font-semibold text-foreground">Memory</h1>
-      <p className="text-sm text-muted-foreground mt-0.5">Stored facts your agents can recall across conversations</p>
-    </div>
+  return <div className="p-4 sm:p-6 max-w-6xl">
+    <PageHeader eyebrow="Observe" title="Memory" subtitle="Stored facts your agents can recall across conversations." />
     <div className="flex flex-wrap items-start gap-3 mb-4">
       <div className="flex flex-wrap gap-2 flex-1">
         <div className="inline-flex border border-border-strong rounded-lg overflow-hidden bg-surface">
-          <button onClick={() => setTab('active')} className={`px-3 py-1.5 text-[12px] ${tab === 'active' ? 'bg-gray-900 text-white' : 'text-muted-foreground hover:bg-muted'}`}>Active</button>
-          <button onClick={() => setTab('pending')} className={`px-3 py-1.5 text-[12px] ${tab === 'pending' ? 'bg-gray-900 text-white' : 'text-muted-foreground hover:bg-muted'}`}>Pending</button>
+          <button onClick={() => setTab('active')} className={`px-3 py-1.5 text-[12px] ${tab === 'active' ? 'bg-accent text-white' : 'text-muted-foreground hover:bg-muted'}`}>Active</button>
+          <button onClick={() => setTab('pending')} className={`px-3 py-1.5 text-[12px] ${tab === 'pending' ? 'bg-accent text-white' : 'text-muted-foreground hover:bg-muted'}`}>Pending</button>
         </div>
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search memories…" className="text-[12px] px-3 py-1.5 border border-border-strong rounded-lg w-full sm:w-52" />
         <select value={agent} onChange={(e) => setAgent(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-border-strong rounded-lg bg-surface"><option value="">All agents</option>{agents.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
@@ -59,7 +57,7 @@ export default function MemoryPage() {
     {error && <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">{(error as Error).message}</div>}
     {isLoading && <div className="py-12 text-center text-sm text-faint">Loading memories…</div>}
     {!isLoading && !error && memories.length === 0 && <div className="border border-dashed border-border-strong rounded-xl py-12 text-center"><Brain className="mx-auto text-faint mb-3" /><p className="text-sm text-muted-foreground">No {tab} memories match these filters.</p></div>}
-    <div className="bg-surface border border-border rounded-xl overflow-hidden">{memories.map((memory) => <div key={memory.id} className="p-4 border-b last:border-b-0 border-gray-50">
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">{memories.map((memory) => <div key={memory.id} className="p-4 border-b last:border-b-0 border-border">
       <div className="flex items-center gap-2 mb-1.5"><span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${scopeColor(memory.scope)}`}>{memory.scope}</span><span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${sourceColor(memory.save_source)}`}>{memory.save_source}</span>{memory.agent_id && <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{names[memory.agent_id] ?? 'Agent'}</span>}<span className="ml-auto text-[10px] text-faint">{relativeTime(memory.created_at)}</span></div>
       <p className="text-[12px] text-foreground leading-relaxed">{memory.content}</p>
       {memory.metadata?.reason && <p className="mt-1 text-[11px] text-muted-foreground">{String(memory.metadata.reason)}</p>}
@@ -69,7 +67,7 @@ export default function MemoryPage() {
                 return (
                   <span className="flex items-center gap-0.5" title={`importance ${score.toFixed(2)}`}>
                     {Array.from({length: 5}).map((_, i) => (
-                      <span key={i} className={`w-1.5 h-1.5 rounded-full ${i < filled ? 'bg-purple-500' : 'bg-gray-200'}`} />
+                      <span key={i} className={`w-1.5 h-1.5 rounded-full ${i < filled ? 'bg-accent' : 'bg-muted'}`} />
                     ))}
                   </span>
                 )

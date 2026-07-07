@@ -25,7 +25,8 @@ export default function AdminAuditLogsPage() {
   return (
     <div className="p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-4">
-        <h1 className="text-xl font-semibold text-foreground">Audit logs</h1>
+        <span className="eyebrow block mb-1">Admin</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Audit logs</h1>
         <div className="flex flex-wrap gap-2">
           <input
             value={actorEmail}
@@ -55,7 +56,7 @@ export default function AdminAuditLogsPage() {
         <div className="min-w-[600px] px-4 sm:px-0">
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             {logs.map((log) => (
-              <div key={log.id} className="grid grid-cols-12 gap-3 px-4 py-3 border-b last:border-b-0 border-gray-50">
+              <div key={log.id} className="grid grid-cols-12 gap-3 px-4 py-3 border-b last:border-b-0 border-border">
                 <div className="col-span-3">
                   <p className="text-[12px] font-medium text-foreground">{log.actor_email || 'system'}</p>
                   <p className="text-[10px] text-faint">{log.ip_address}</p>

@@ -100,7 +100,7 @@ function TriggerPageInner({ triggerId }: { triggerId: string }) {
             onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors -mb-px ${
               tab === t
-                ? 'border-purple-400 text-accent dark:text-accent-bright'
+                ? 'border-accent/50 text-accent dark:text-accent-bright'
                 : 'border-transparent text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >

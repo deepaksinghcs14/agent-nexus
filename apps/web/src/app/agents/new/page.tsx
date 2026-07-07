@@ -34,7 +34,7 @@ const riskBadge = (r: string) => {
 function Toggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
   return (
     <button onClick={onToggle} disabled={disabled}
-      className={`w-8 h-4.5 rounded-full transition-colors relative flex-shrink-0 ${on ? 'bg-accent' : 'bg-gray-200'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      className={`w-8 h-4.5 rounded-full transition-colors relative flex-shrink-0 ${on ? 'bg-accent' : 'bg-muted'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       style={{ width: 32, height: 18 }}>
       <span className={`absolute top-0.5 w-3.5 h-3.5 bg-surface rounded-full transition-all ${on ? 'left-[14px]' : 'left-0.5'}`} />
     </button>
@@ -357,10 +357,10 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           return (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2 text-[12px] transition-colors whitespace-nowrap flex items-center gap-1.5
-                ${tab === t ? 'bg-surface text-accent dark:text-accent-bright font-medium border-b-2 border-purple-500' : 'text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                ${tab === t ? 'bg-surface text-accent dark:text-accent-bright font-medium border-b-2 border-accent' : 'text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'}`}>
               {t}
               {badge !== null && (
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-100 text-accent dark:text-accent-bright leading-none">{badge}</span>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent dark:text-accent-bright leading-none">{badge}</span>
               )}
             </button>
           )
@@ -376,7 +376,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Agent name" hint="Shown in the sidebar and run history">
               <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Backend Architect"
-                className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-accent" />
             </Field>
             <Field label="Status">
               <select value={status} onChange={e => setStatus(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none">
@@ -386,7 +386,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           </div>
           <Field label="Description" hint="Brief summary shown on agent cards">
             <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="What does this agent do?"
-              className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400" />
+              className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-accent" />
           </Field>
         </div>
       )}
@@ -417,7 +417,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
             <Field label={`Temperature — ${temperature.toFixed(1)}`} hint="Lower = more deterministic">
               <input type="range" min="0" max="2" step="0.1" value={temperature}
                 onChange={e => setTemperature(parseFloat(e.target.value))}
-                className="w-full accent-purple-600" />
+                className="w-full accent-[#534AB7]" />
             </Field>
             <Field label="Max tokens">
               <input type="number" value={maxTokens} onChange={e => setMaxTokens(Number(e.target.value))} min={256} max={128000}
@@ -443,7 +443,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           <Field label="System prompt" hint="This is the core instruction sent to the model on every run.">
             <textarea rows={12} value={instructions} onChange={e => setInstructions(e.target.value)}
               placeholder="You are a ..."
-              className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400 font-mono resize-y" />
+              className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-accent font-mono resize-y" />
           </Field>
         </div>
       )}
@@ -460,7 +460,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
               <input
                 type="text" value={skillSearch} onChange={e => setSkillSearch(e.target.value)}
                 placeholder="Search skills…"
-                className="w-full text-[12px] pl-8 pr-3 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                className="w-full text-[12px] pl-8 pr-3 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-accent" />
             </div>
             {enabledSkillCount > 0 && (
               <>
@@ -553,7 +553,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
               <input
                 type="text" value={toolSearch} onChange={e => setToolSearch(e.target.value)}
                 placeholder="Search tools…"
-                className="w-full text-[12px] pl-8 pr-3 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                className="w-full text-[12px] pl-8 pr-3 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-accent" />
             </div>
             {enabledToolCount > 0 && (
               <span className="text-[11px] text-accent dark:text-accent-bright font-medium whitespace-nowrap">
@@ -588,7 +588,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
                 {!collapsed && tools.map((tool, i) => {
                   const lockedBySkill = skillLockedTools.get(tool.name)
                   return (
-                    <div key={tool.id} className={`flex items-center justify-between px-4 py-3 ${i < tools.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                    <div key={tool.id} className={`flex items-center justify-between px-4 py-3 ${i < tools.length - 1 ? 'border-b border-border' : ''}`}>
                       <div className="min-w-0 mr-3">
                         <p className="text-[13px] font-medium text-foreground">{tool.name}</p>
                         <p className="text-[11px] text-muted-foreground truncate">{tool.description}</p>
@@ -633,7 +633,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
               <p className="text-[12px] font-medium text-foreground">Allowed sources</p>
               <div className="bg-surface border border-border rounded-xl overflow-hidden">
                 {availableConnectors.map((connector, i) => (
-                  <div key={connector.id} className={`flex items-center justify-between px-4 py-2.5 ${i < availableConnectors.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                  <div key={connector.id} className={`flex items-center justify-between px-4 py-2.5 ${i < availableConnectors.length - 1 ? 'border-b border-border' : ''}`}>
                     <p className="text-[13px] text-foreground">{connector.name}</p>
                     <Toggle on={!!enabledConnectors[connector.id]}
                       onToggle={() => setEnabledConnectors(prev => ({ ...prev, [connector.id]: !prev[connector.id] }))} />
@@ -763,7 +763,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           <p className="text-[12px] font-medium text-foreground mt-2">Require approval for</p>
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             {['File write operations', 'Outbound HTTP requests', 'Shell / command execution', 'Email / send actions'].map((item, i, arr) => (
-              <div key={item} className={`flex items-center justify-between px-4 py-3 ${i < arr.length - 1 ? 'border-b border-gray-50' : ''}`}>
+              <div key={item} className={`flex items-center justify-between px-4 py-3 ${i < arr.length - 1 ? 'border-b border-border' : ''}`}>
                 <p className="text-[13px] text-foreground">{item}</p>
                 <Toggle on={item !== 'Shell / command execution' ? true : false} onToggle={() => {}} />
               </div>
@@ -798,7 +798,7 @@ function SkillSection({
           <span className="text-[12px] font-semibold text-foreground">{label}</span>
           <span className="text-[10px] text-faint">{description}</span>
           {enabledCount > 0 && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-100 text-accent dark:text-accent-bright leading-none">{enabledCount} on</span>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent dark:text-accent-bright leading-none">{enabledCount} on</span>
           )}
         </div>
         <ChevronDown className={`w-3.5 h-3.5 text-faint transition-transform ${collapsed ? '-rotate-90' : ''}`} />
@@ -807,7 +807,7 @@ function SkillSection({
         const isEnabled = !!enabledSkills[skill.id]
         const mode = activationModes[skill.id] ?? 'always'
         return (
-          <div key={skill.id} className={`flex items-center justify-between gap-3 px-4 py-3 ${i < skills.length - 1 ? 'border-b border-gray-50' : ''}`}>
+          <div key={skill.id} className={`flex items-center justify-between gap-3 px-4 py-3 ${i < skills.length - 1 ? 'border-b border-border' : ''}`}>
             <div className="flex items-center gap-2 min-w-0">
               <GripVertical className="w-3.5 h-3.5 text-faint shrink-0" />
               <div className="min-w-0">

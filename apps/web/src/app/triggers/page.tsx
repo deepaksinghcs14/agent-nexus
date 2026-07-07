@@ -59,7 +59,8 @@ export default function TriggersPage() {
     <div className="p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-8">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Triggers</h1>
+          <span className="eyebrow block mb-1">Integrations</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Triggers</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Inbound HTTP events that automatically run an agent or workflow.
           </p>
@@ -132,7 +133,7 @@ export default function TriggersPage() {
                     <button
                       onClick={() => handleToggle(t)}
                       title={t.is_active ? 'Deactivate' : 'Activate'}
-                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${t.is_active ? 'bg-accent' : 'bg-gray-200'}`}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${t.is_active ? 'bg-accent' : 'bg-muted'}`}
                     >
                       <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow transition-transform ${t.is_active ? 'translate-x-4' : 'translate-x-1'}`} />
                     </button>

@@ -22,7 +22,8 @@ export default function AdminPoliciesPage() {
     <div className="p-4 sm:p-6 max-w-2xl">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Platform policies</h1>
+          <span className="eyebrow block mb-1">Admin</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Platform policies</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Global policy values used by the runtime</p>
         </div>
         <button

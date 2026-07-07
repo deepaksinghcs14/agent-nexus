@@ -68,7 +68,7 @@ export default function SkillsPage() {
                   <Lock className="w-4 h-4 text-faint" />
                 ) : (
                   <>
-                    <Link href={`/skills/${s.id}/edit`} className="p-1.5 rounded text-faint hover:text-accent dark:text-accent-bright hover:bg-purple-50" title="Edit">
+                    <Link href={`/skills/${s.id}/edit`} className="p-1.5 rounded text-faint hover:text-accent dark:text-accent-bright hover:bg-accent/10" title="Edit">
                       <Pencil className="w-4 h-4" />
                     </Link>
                     <button onClick={() => remove(s)} className="p-1.5 rounded text-faint hover:text-red-500 hover:bg-red-50" title="Delete">

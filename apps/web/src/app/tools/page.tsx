@@ -144,7 +144,7 @@ function KVEditor({ label, rows, onChange }: { label: string; rows: KV[]; onChan
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <button onClick={onToggle} aria-label="toggle"
-      className={`rounded-full relative flex-shrink-0 transition-colors ${on ? 'bg-accent' : 'bg-gray-200'}`}
+      className={`rounded-full relative flex-shrink-0 transition-colors ${on ? 'bg-accent' : 'bg-muted'}`}
       style={{ width: 32, height: 18 }}>
       <span className={`absolute top-0.5 w-3.5 h-3.5 bg-surface rounded-full transition-all ${on ? 'left-[14px]' : 'left-0.5'}`} />
     </button>
@@ -171,7 +171,7 @@ function ToolRow({ tool, onToggle, onDelete, onEdit }: {
 
   return (
     <>
-      <div className="flex items-center justify-between px-4 py-3 border-b last:border-b-0 border-gray-50 hover:bg-gray-50/50">
+      <div className="flex items-center justify-between px-4 py-3 border-b last:border-b-0 border-border hover:bg-muted">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 text-muted-foreground">
             {ti.icon}
@@ -339,7 +339,7 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
               <button key={mode} type="button" onClick={() => set('bodyMode', mode)}
                 className={`px-3 py-1.5 text-[12px] rounded-lg border transition-colors ${
                   form.bodyMode === mode
-                    ? 'bg-accent text-white border-purple-600'
+                    ? 'bg-accent text-white border-accent'
                     : 'bg-surface text-muted-foreground border-border-strong hover:border-gray-300'
                 }`}>
                 {mode === 'template' ? 'Template' : 'Free-form'}

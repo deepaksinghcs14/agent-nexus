@@ -87,18 +87,18 @@ export default function NewWorkspacePage() {
                 className={cn(
                   'flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all',
                   wsType === value
-                    ? 'border-purple-500 bg-accent/10 ring-1 ring-purple-500/40'
+                    ? 'border-accent bg-accent/10 ring-1 ring-accent/40'
                     : 'border-border-strong hover:border-gray-300 hover:bg-muted'
                 )}
               >
                 <div className={cn(
                   'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
-                  wsType === value ? 'bg-purple-100' : 'bg-muted'
+                  wsType === value ? 'bg-accent/15' : 'bg-muted'
                 )}>
                   <Icon className={cn('w-4 h-4', wsType === value ? 'text-accent dark:text-accent-bright' : 'text-muted-foreground')} />
                 </div>
                 <div>
-                  <p className={cn('text-sm font-medium', wsType === value ? 'text-purple-900' : 'text-foreground')}>
+                  <p className={cn('text-sm font-medium', wsType === value ? 'text-accent dark:text-accent-bright' : 'text-foreground')}>
                     {label}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">{description}</p>

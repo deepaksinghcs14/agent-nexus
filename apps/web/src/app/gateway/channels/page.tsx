@@ -53,7 +53,8 @@ export default function GatewayChannelsPage() {
     <div className="p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-8">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Gateway Channels</h1>
+          <span className="eyebrow block mb-1">Integrations</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Gateway Channels</h1>
           <p className="text-sm text-muted-foreground mt-1">Persistent channel entrypoints for always-on agents.</p>
         </div>
         <Link href="/gateway/channels/new" className="flex items-center gap-2 px-4 py-2 rounded-md bg-accent hover:bg-accent-hover text-white text-sm font-medium">
@@ -95,7 +96,7 @@ export default function GatewayChannelsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => toggle(c)} className={`relative inline-flex h-5 w-9 items-center rounded-full ${c.is_active ? 'bg-accent' : 'bg-gray-200'}`} title={c.is_active ? 'Disable' : 'Enable'}>
+                  <button onClick={() => toggle(c)} className={`relative inline-flex h-5 w-9 items-center rounded-full ${c.is_active ? 'bg-accent' : 'bg-muted'}`} title={c.is_active ? 'Disable' : 'Enable'}>
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow transition-transform ${c.is_active ? 'translate-x-4' : 'translate-x-1'}`} />
                   </button>
                   <Link href={`/gateway/channels/${c.id}`} className="p-1.5 rounded text-faint hover:text-gray-600 dark:hover:text-gray-300 hover:bg-muted" title="Open">

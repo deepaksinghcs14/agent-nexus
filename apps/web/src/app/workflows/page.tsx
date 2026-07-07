@@ -48,7 +48,7 @@ export default function WorkflowsPage() {
           <p className="text-[11px] text-muted-foreground mt-3">
             {wf.mode} workflow · {wf.run_count ?? 0} runs
           </p>
-          <div className="flex gap-2 mt-4 pt-3 border-t border-gray-50">
+          <div className="flex gap-2 mt-4 pt-3 border-t border-border">
             <span className="text-[10px] text-faint mr-auto">
               {wf.last_run_at ? `Last run ${relativeTime(wf.last_run_at)}` : 'Never run'}
             </span>

@@ -34,7 +34,7 @@ function SubRunRow({ subRun, agentName }: { subRun: Run; agentName?: string }) {
   const tokens = subRun.total_input_tokens + subRun.total_output_tokens
 
   return (
-    <div className="border-b border-gray-50 last:border-b-0">
+    <div className="border-b border-border last:border-b-0">
       <button
         className={`w-full ${ROW_GRID} ${GRID_COLS} py-2.5 text-left hover:bg-gray-50/60 transition-colors`}
         onClick={() => setOpen(v => !v)}
@@ -175,25 +175,25 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
           {/* Pending approval — shown for waiting runs, including runs parked
               across a server restart (no live playground session exists). */}
           {detail.status === 'approval_wait' && approvalRequest && (
-            <div className="mb-5 rounded-xl border border-accent/40 bg-purple-50/60 p-4">
-              <p className="text-[12px] font-semibold text-purple-900 mb-1">
+            <div className="mb-5 rounded-xl border border-accent/40 bg-accent/10/60 p-4">
+              <p className="text-[12px] font-semibold text-accent dark:text-accent-bright mb-1">
                 Approval required: <span className="font-mono">{approvalRequest.tool_name}</span>
               </p>
-              <pre className="text-[11px] text-purple-900/80 bg-white/70 border border-accent/25 rounded-lg p-2.5 mb-3 max-h-40 overflow-auto whitespace-pre-wrap">
+              <pre className="text-[11px] text-accent dark:text-accent-bright/80 bg-white/70 border border-accent/25 rounded-lg p-2.5 mb-3 max-h-40 overflow-auto whitespace-pre-wrap">
                 {JSON.stringify(approvalRequest.tool_input, null, 2)}
               </pre>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => decide.mutate('approved')}
                   disabled={decide.isPending}
-                  className="px-3 py-1.5 rounded-lg bg-purple-700 text-white text-[12px] font-medium disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-lg bg-accent-hover text-white text-[12px] font-medium disabled:opacity-50"
                 >
                   {decide.isPending ? 'Sending…' : 'Approve & resume'}
                 </button>
                 <button
                   onClick={() => decide.mutate('rejected')}
                   disabled={decide.isPending}
-                  className="px-3 py-1.5 rounded-lg border border-purple-300 text-purple-800 dark:text-purple-300 text-[12px] font-medium disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-lg border border-accent/50 text-accent dark:text-accent-bright dark:text-accent dark:text-accent-bright text-[12px] font-medium disabled:opacity-50"
                 >
                   Reject
                 </button>

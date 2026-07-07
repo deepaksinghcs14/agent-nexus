@@ -111,7 +111,7 @@ function AddServerPanel({
                 key={p.id}
                 onClick={() => pickPreset(active ? null : p)}
                 className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
-                  active ? 'border-purple-300 bg-accent/10' : 'border-border-strong hover:border-gray-300 bg-surface'
+                  active ? 'border-accent/50 bg-accent/10' : 'border-border-strong hover:border-gray-300 bg-surface'
                 }`}
               >
                 <Package size={14} className={`mt-0.5 flex-shrink-0 ${active ? 'text-accent dark:text-accent-bright' : 'text-faint'}`} />
@@ -125,7 +125,7 @@ function AddServerPanel({
           <button
             onClick={() => pickPreset(null)}
             className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
-              preset === null ? 'border-purple-300 bg-accent/10' : 'border-border-strong hover:border-gray-300 bg-surface'
+              preset === null ? 'border-accent/50 bg-accent/10' : 'border-border-strong hover:border-gray-300 bg-surface'
             }`}
           >
             <Wrench size={14} className={`mt-0.5 flex-shrink-0 ${preset === null ? 'text-accent dark:text-accent-bright' : 'text-faint'}`} />
@@ -177,7 +177,7 @@ function AddServerPanel({
               {preset.note ? `${preset.note} ` : ''}
               Credentials are stored encrypted and injected as environment variables into the server process.
               {preset.docsUrl && (
-                <> Docs: <a href={preset.docsUrl} target="_blank" rel="noreferrer" className="text-purple-500 hover:underline break-all">{preset.docsUrl}</a></>
+                <> Docs: <a href={preset.docsUrl} target="_blank" rel="noreferrer" className="text-accent dark:text-accent-bright hover:underline break-all">{preset.docsUrl}</a></>
               )}
             </p>
           </>
@@ -193,7 +193,7 @@ function AddServerPanel({
                 key={id}
                 onClick={() => setForm((f) => ({ ...f, transport: id }))}
                 className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
-                  active ? 'border-purple-300 bg-accent/10' : 'border-border-strong hover:border-gray-300 bg-surface'
+                  active ? 'border-accent/50 bg-accent/10' : 'border-border-strong hover:border-gray-300 bg-surface'
                 }`}
               >
                 <Icon size={14} className={`mt-0.5 flex-shrink-0 ${active ? 'text-accent dark:text-accent-bright' : 'text-faint'}`} />
@@ -287,7 +287,7 @@ function RiskRow({ tool, serverId, onRiskChange }: { tool: MCPTool; serverId: st
   }
 
   return (
-    <tr className="border-b last:border-b-0 border-gray-50 hover:bg-gray-50/50">
+    <tr className="border-b last:border-b-0 border-border hover:bg-gray-50/50">
       <td className="px-4 py-2.5">
         <p className="text-[12px] font-medium text-foreground font-mono">{tool.name}</p>
       </td>
@@ -389,7 +389,8 @@ export default function MCPServersPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">MCP Servers</h1>
+          <span className="eyebrow block mb-1">Integrations</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">MCP Servers</h1>
           <p className="text-[12px] text-faint mt-0.5">
             Connect Model Context Protocol servers to give agents access to external tools.
           </p>
@@ -426,7 +427,7 @@ export default function MCPServersPage() {
       {!isLoading && !error && servers.length === 0 && !showAdd && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 border border-dashed border-border-strong rounded-xl p-8">
           <div>
-            <Plug size={22} className="text-purple-300 mb-3" />
+            <Plug size={22} className="text-accent dark:text-accent-bright mb-3" />
             <p className="text-sm font-medium text-foreground mb-1">What are MCP servers?</p>
             <p className="text-[12px] text-muted-foreground leading-relaxed mb-5">
               MCP (Model Context Protocol) is an open standard for connecting LLMs to external tools and data sources. Any MCP-compatible server exposes a list of tools that agents can discover and call — databases, APIs, file systems, and more.
@@ -438,7 +439,7 @@ export default function MCPServersPage() {
                 { n: '3', title: 'Assign to agents',    desc: 'MCP tools appear in the Tools tab of any agent' },
               ].map((s) => (
                 <div key={s.n} className="flex items-start gap-2.5">
-                  <span className="w-5 h-5 rounded-full bg-purple-100 text-accent dark:text-accent-bright text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="w-5 h-5 rounded-full bg-accent/15 text-accent dark:text-accent-bright text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
                     {s.n}
                   </span>
                   <div>
@@ -479,7 +480,7 @@ export default function MCPServersPage() {
                 onClick={() => setSelected(server.id === selected ? '' : server.id)}
                 className={`bg-surface border rounded-xl p-3.5 cursor-pointer transition-all ${
                   selected === server.id
-                    ? 'border-purple-300 ring-1 ring-accent/20'
+                    ? 'border-accent/50 ring-1 ring-accent/20'
                     : 'border-border hover:border-gray-200'
                 }`}
               >
@@ -591,7 +592,7 @@ export default function MCPServersPage() {
             <div className="overflow-x-auto">
             <table className="w-full min-w-[480px]">
               <thead>
-                <tr className="border-b border-gray-50">
+                <tr className="border-b border-border">
                   <th className="text-left text-[10px] font-medium text-faint px-4 py-2">Tool name</th>
                   <th className="text-left text-[10px] font-medium text-faint px-4 py-2">Description</th>
                   <th className="text-left text-[10px] font-medium text-faint px-4 py-2 w-32">Risk</th>

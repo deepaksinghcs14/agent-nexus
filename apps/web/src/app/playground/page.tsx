@@ -72,13 +72,13 @@ function PlaygroundInner() {
                   onClick={() => setSelectedAgent(agent.id)}
                   className={`text-left p-3 rounded-xl border transition-all ${
                     selectedAgent === agent.id
-                      ? 'border-purple-400 bg-accent/10 ring-1 ring-purple-200'
+                      ? 'border-accent/50 bg-accent/10 ring-1 ring-accent/30'
                       : 'border-border hover:border-gray-200 bg-surface hover:bg-muted'
                   }`}
                 >
                   <div className="flex items-start gap-3">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                      selectedAgent === agent.id ? 'bg-purple-200' : 'bg-muted'
+                      selectedAgent === agent.id ? 'bg-accent/20' : 'bg-muted'
                     }`}>
                       <Bot size={16} className={selectedAgent === agent.id ? 'text-accent dark:text-accent-bright' : 'text-faint'} />
                     </div>
@@ -93,7 +93,7 @@ function PlaygroundInner() {
                       </div>
                     </div>
                     {selectedAgent === agent.id && (
-                      <div className="w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <div className="w-4 h-4 rounded-full bg-accent flex items-center justify-center flex-shrink-0 mt-0.5">
                         <div className="w-1.5 h-1.5 rounded-full bg-surface" />
                       </div>
                     )}
@@ -119,7 +119,7 @@ function PlaygroundInner() {
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && selectedAgent) { e.preventDefault(); createMutation.mutate() } }}
               placeholder="What would you like to ask? Skip to start with an empty conversation."
               rows={3}
-              className="w-full text-sm px-3 py-2.5 border border-border-strong rounded-xl resize-none focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-300 bg-surface placeholder-gray-400 dark:placeholder-gray-500"
+              className="w-full text-sm px-3 py-2.5 border border-border-strong rounded-xl resize-none focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent/50 bg-surface placeholder-gray-400 dark:placeholder-gray-500"
             />
           </div>
         )}
