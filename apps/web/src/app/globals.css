@@ -12,6 +12,11 @@
 */
 @layer base {
   :root {
+    /* Font stacks — no build-time webfont fetch; use the face if installed,
+       otherwise fall back cleanly to system fonts. */
+    --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
     --background: 45 27% 94%;         /* #F4F2EC warm ivory ground */
     --foreground: 210 20% 10%;        /* #151A1F near-ink text */
     --surface: 40 30% 99%;            /* near-white card */
