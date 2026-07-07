@@ -9,7 +9,7 @@ import {
   Activity, Brain, BarChart2, Timer, FlaskConical,
   Key, Settings, BookOpen,
   LayoutDashboard, Users, Building2, Shield, ClipboardList,
-  Hexagon, ShieldCheck, PanelLeftClose, PanelLeftOpen, SquareTerminal, X,
+  ShieldCheck, PanelLeftClose, PanelLeftOpen, SquareTerminal, X,
   ChevronDown, ChevronRight,
 } from 'lucide-react'
 import * as TooltipPrimitive from '@radix-ui/react-tooltip'
@@ -99,10 +99,10 @@ function NavTip({ label, collapsed, children }: { label: string; collapsed: bool
         <TooltipPrimitive.Content
           side="right"
           sideOffset={6}
-          className="z-50 bg-gray-900 text-white text-[11px] px-2 py-1 rounded shadow-lg select-none"
+          className="z-50 bg-foreground text-background text-[11px] px-2 py-1 rounded shadow-lg select-none"
         >
           {label}
-          <TooltipPrimitive.Arrow className="fill-gray-900" />
+          <TooltipPrimitive.Arrow className="fill-[hsl(var(--foreground))]" />
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </TooltipPrimitive.Root>
@@ -121,11 +121,11 @@ function NavGroupSection({
   return (
     <div className="mb-1">
       {collapsed
-        ? <div className="pt-3 border-t border-white/[0.04] mt-1 first:border-0 first:mt-0" />
+        ? <div className="pt-3 border-t border-border mt-1 first:border-0 first:mt-0" />
         : (
           <button
             onClick={onToggle}
-            className="w-full flex items-center gap-1 px-4 pt-3 pb-1 text-[10px] font-medium text-white/30 hover:text-white/50 uppercase tracking-wider transition-colors"
+            className="w-full flex items-center gap-1 px-4 pt-3 pb-1 text-[10px] font-mono font-medium text-faint hover:text-muted-foreground uppercase tracking-[0.14em] transition-colors"
           >
             {isOpen ? <ChevronDown className="w-2.5 h-2.5 flex-shrink-0" /> : <ChevronRight className="w-2.5 h-2.5 flex-shrink-0" />}
             {group.label}
@@ -139,13 +139,16 @@ function NavGroupSection({
             <Link
               href={item.href}
               className={cn(
-                'flex items-center gap-2 py-1.5 text-[13px] transition-colors',
-                collapsed ? 'justify-center mx-1.5 rounded-md px-0 py-2' : 'px-4',
+                'relative flex items-center gap-2.5 py-1.5 text-[13px] transition-colors',
+                collapsed ? 'justify-center mx-1.5 rounded-md px-0 py-2' : 'mx-2 px-2.5 rounded-lg',
                 active
-                  ? 'text-accent-muted bg-white/[0.06] font-medium'
-                  : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'
+                  ? 'text-accent dark:text-accent-bright bg-accent/[0.09] dark:bg-accent-bright/[0.12] font-medium'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               )}
             >
+              {active && !collapsed && (
+                <span className="absolute -left-2 top-1.5 bottom-1.5 w-[2.5px] rounded-full bg-accent dark:bg-accent-bright" />
+              )}
               <item.icon className="w-3.5 h-3.5 flex-shrink-0" />
               {!collapsed && item.label}
             </Link>
@@ -200,39 +203,38 @@ export function Sidebar({ isAdmin = false, onClose }: { isAdmin?: boolean; onClo
     <TooltipPrimitive.Provider delayDuration={400}>
       <aside
         className={cn(
-          'flex flex-col h-full bg-sidebar border-r border-white/[0.06] transition-all duration-200 flex-shrink-0 overflow-hidden',
-          collapsed ? 'w-12' : 'w-48'
+          'flex flex-col h-full bg-surface border-r border-border transition-all duration-200 flex-shrink-0 overflow-hidden',
+          collapsed ? 'w-12' : 'w-52'
         )}
       >
         {/* Logo */}
         <div className={cn(
-          'flex items-center border-b border-white/[0.06] flex-shrink-0',
-          collapsed ? 'justify-center py-3 px-0' : 'px-4 py-3 gap-2'
+          'flex items-center border-b border-border flex-shrink-0',
+          collapsed ? 'justify-center py-3 px-0' : 'px-4 py-3 gap-2.5'
         )}>
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 flex-1 min-w-0 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-2.5 flex-1 min-w-0 hover:opacity-80 transition-opacity"
             aria-label="Open dashboard"
           >
-            <div className="w-6 h-6 bg-accent rounded-md flex items-center justify-center flex-shrink-0">
-              <Hexagon className="w-3.5 h-3.5 text-white" />
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/icon.svg" alt="Agent Nexus" className="w-7 h-7 rounded-lg flex-shrink-0 shadow-sm" />
             {!collapsed && (
-              <>
-                <span className="text-sm font-medium text-white truncate">Agent Nexus</span>
-                {isAdmin && (
-                  <span className="ml-auto text-[9px] bg-accent/30 text-accent-muted px-1.5 py-0.5 rounded font-medium flex-shrink-0">
-                    ADMIN
-                  </span>
-                )}
-              </>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-semibold text-foreground truncate tracking-tight">Agent Nexus</span>
+                  {isAdmin && (
+                    <span className="text-[9px] bg-warn/15 text-warn px-1.5 py-0.5 rounded font-mono font-medium flex-shrink-0">ADMIN</span>
+                  )}
+                </div>
+              </div>
             )}
           </Link>
           {/* Close button — mobile drawer only */}
           {onClose && !collapsed && (
             <button
               onClick={onClose}
-              className="ml-auto p-1 rounded text-white/30 hover:text-white/70 flex-shrink-0"
+              className="ml-auto p-1 rounded text-muted-foreground hover:text-foreground flex-shrink-0"
               aria-label="Close navigation"
             >
               <X className="w-4 h-4" />
@@ -259,16 +261,16 @@ export function Sidebar({ isAdmin = false, onClose }: { isAdmin?: boolean; onClo
 
         {/* Admin link — only for admin users in the regular sidebar */}
         {!isAdmin && userIsAdmin && (
-          <div className="border-t border-white/[0.06] p-1.5">
+          <div className="border-t border-border p-1.5">
             <NavTip label="Admin dashboard" collapsed={collapsed}>
               <Link
                 href="/admin/overview"
                 className={cn(
-                  'flex items-center gap-2 px-3 py-2 rounded-md text-[12px] transition-colors w-full',
+                  'flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] transition-colors w-full',
                   collapsed && 'justify-center px-0',
                   pathname.startsWith('/admin')
-                    ? 'text-amber-300 bg-white/[0.06] font-medium'
-                    : 'text-white/40 hover:text-amber-300 hover:bg-white/[0.04]'
+                    ? 'text-warn bg-warn/10 font-medium'
+                    : 'text-muted-foreground hover:text-warn hover:bg-muted'
                 )}
               >
                 <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
@@ -280,16 +282,17 @@ export function Sidebar({ isAdmin = false, onClose }: { isAdmin?: boolean; onClo
 
         {/* Back to app link when in admin sidebar */}
         {isAdmin && (
-          <div className="border-t border-white/[0.06] p-1.5">
+          <div className="border-t border-border p-1.5">
             <NavTip label="Back to app" collapsed={collapsed}>
               <Link
                 href="/dashboard"
                 className={cn(
-                  'flex items-center gap-2 px-3 py-2 rounded-md text-[12px] text-white/40 hover:text-white/70 hover:bg-white/[0.04] transition-colors w-full',
+                  'flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors w-full',
                   collapsed && 'justify-center px-0'
                 )}
               >
-                <Hexagon className="w-3.5 h-3.5 flex-shrink-0" />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/icon.svg" alt="" className="w-3.5 h-3.5 rounded flex-shrink-0" />
                 {!collapsed && 'Back to app'}
               </Link>
             </NavTip>
@@ -297,12 +300,12 @@ export function Sidebar({ isAdmin = false, onClose }: { isAdmin?: boolean; onClo
         )}
 
         {/* Collapse toggle */}
-        <div className={cn('border-t border-white/[0.06] p-1.5')}>
+        <div className={cn('border-t border-border p-1.5')}>
           <NavTip label="Expand sidebar" collapsed={collapsed}>
             <button
               onClick={toggle}
               className={cn(
-                'flex items-center gap-2 px-3 py-2 rounded-md text-[12px] text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-colors w-full',
+                'flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors w-full',
                 collapsed && 'justify-center px-0'
               )}
             >
