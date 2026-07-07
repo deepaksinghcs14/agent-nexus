@@ -92,20 +92,20 @@ export default function APITokensPage() {
 
       {/* New token revealed */}
       {newToken && (
-        <div className="mb-6 p-4 rounded-lg border border-green-200 bg-green-50 dark:bg-green-500/10">
+        <div className="mb-6 p-4 rounded-lg border border-good/30 bg-good/10">
           <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-green-600 dark:text-green-300 shrink-0 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-good dark:text-good shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-green-800 dark:text-green-300 mb-2">
+              <p className="text-sm font-medium text-good mb-2">
                 Token created — copy it now. You won&apos;t see it again.
               </p>
               <div className="flex items-center gap-2 min-w-0">
-                <code className="flex-1 min-w-0 px-3 py-1.5 rounded bg-surface border border-green-200 text-sm font-mono text-foreground truncate">
+                <code className="flex-1 min-w-0 px-3 py-1.5 rounded bg-surface border border-good/30 text-sm font-mono text-foreground truncate">
                   {newToken.token}
                 </code>
                 <button
                   onClick={handleCopy}
-                  className="shrink-0 p-1.5 rounded hover:bg-green-100 text-green-700 dark:text-green-300"
+                  className="shrink-0 p-1.5 rounded hover:bg-good/15 text-good"
                 >
                   {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 </button>
@@ -140,7 +140,7 @@ export default function APITokensPage() {
               className="px-3 py-2 rounded border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
             />
           </div>
-          {createError && <p className="text-sm text-red-500">{createError}</p>}
+          {createError && <p className="text-sm text-crit">{createError}</p>}
           <div className="flex gap-2">
             <button
               onClick={handleCreate}
@@ -184,7 +184,7 @@ export default function APITokensPage() {
               </div>
               <button
                 onClick={() => handleRevoke(t.id)}
-                className="ml-4 p-1.5 rounded text-faint hover:text-red-500 hover:bg-red-50 transition-colors"
+                className="ml-4 p-1.5 rounded text-faint hover:text-crit hover:bg-crit/10 transition-colors"
                 title="Revoke token"
               >
                 <Trash2 className="w-4 h-4" />

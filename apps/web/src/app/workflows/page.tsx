@@ -27,7 +27,7 @@ export default function WorkflowsPage() {
         </Link>
       }
     />
-    {error && <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">{(error as Error).message}</div>}
+    {error && <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">{(error as Error).message}</div>}
     {isLoading && <div className="py-12 text-center text-sm text-faint">Loading workflows…</div>}
     {!isLoading && !error && workflows.length === 0 && (
       <div className="border border-dashed border-border-strong rounded-xl py-12 text-center">

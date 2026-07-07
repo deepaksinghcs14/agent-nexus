@@ -43,7 +43,7 @@ export default function AdminWorkspacesPage() {
         <p className="text-sm text-muted-foreground mt-0.5">Manage all workspaces on this instance</p>
       </div>
       {error && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">{(error as Error).message}</div>
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">{(error as Error).message}</div>
       )}
       {isLoading && <div className="py-12 text-center text-sm text-faint">Loading…</div>}
       {!isLoading && !error && workspaces.length === 0 && (
@@ -56,7 +56,7 @@ export default function AdminWorkspacesPage() {
         <div className="min-w-[680px] px-4 sm:px-0">
           <div className="bg-surface border border-border rounded-xl overflow-hidden">
             {workspaces.map((ws) => (
-              <div key={ws.id} className="flex items-center gap-4 px-4 py-3 border-b last:border-b-0 border-border text-[12px] hover:bg-gray-50/50">
+              <div key={ws.id} className="flex items-center gap-4 px-4 py-3 border-b last:border-b-0 border-border text-[12px] hover:bg-muted/50">
                 {/* Name + slug */}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-foreground truncate">{ws.display_name}</p>
@@ -78,7 +78,7 @@ export default function AdminWorkspacesPage() {
                 {/* Delete */}
                 <button
                   onClick={() => { setConfirmDelete(ws); setDeleteError('') }}
-                  className="p-1.5 rounded hover:bg-red-50 text-faint hover:text-red-500 transition-colors flex-shrink-0"
+                  className="p-1.5 rounded hover:bg-crit/10 text-faint hover:text-crit transition-colors flex-shrink-0"
                   title="Delete workspace"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -97,11 +97,11 @@ export default function AdminWorkspacesPage() {
             <p className="text-sm text-muted-foreground mb-1">
               You are about to permanently delete <strong>{confirmDelete.display_name}</strong>.
             </p>
-            <p className="text-xs text-amber-600 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-100 rounded-lg p-3 mb-4">
+            <p className="text-xs text-warn dark:text-warn bg-warn/10 border border-warn/30 rounded-lg p-3 mb-4">
               This will cascade-delete all agents, runs, connectors, skills, tools, and data associated with this workspace. This cannot be undone.
             </p>
             {deleteError && (
-              <p className="text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-100 rounded-lg p-2 mb-3">{deleteError}</p>
+              <p className="text-xs text-crit bg-crit/10 border border-crit/30 rounded-lg p-2 mb-3">{deleteError}</p>
             )}
             <div className="flex gap-2 justify-end">
               <button
@@ -113,7 +113,7 @@ export default function AdminWorkspacesPage() {
               <button
                 onClick={() => deleteMut.mutate(confirmDelete.id)}
                 disabled={deleteMut.isPending}
-                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-crit text-white rounded-lg hover:bg-crit disabled:opacity-50"
               >
                 {deleteMut.isPending ? 'Deleting…' : 'Delete workspace'}
               </button>

@@ -18,7 +18,7 @@ export default function NewTriggerPage() {
     <div className="p-4 sm:p-6">
       <Link
         href="/triggers"
-        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300 mb-6 transition-colors"
+        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground dark:hover:text-faint mb-6 transition-colors"
       >
         <ChevronLeft className="w-4 h-4" />
         Webhook Triggers

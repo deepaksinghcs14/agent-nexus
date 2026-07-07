@@ -15,8 +15,8 @@ type Tab = typeof WA_TABS[number]
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   return (
-    <button onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600) }} className="p-1 rounded hover:bg-muted text-faint hover:text-gray-600 dark:hover:text-gray-300" title="Copy">
-      {copied ? <Check className="w-3.5 h-3.5 text-green-600 dark:text-green-300" /> : <Copy className="w-3.5 h-3.5" />}
+    <button onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600) }} className="p-1 rounded hover:bg-muted text-faint hover:text-muted-foreground dark:hover:text-faint" title="Copy">
+      {copied ? <Check className="w-3.5 h-3.5 text-good dark:text-good" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
   )
 }
@@ -496,7 +496,7 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
   return (
     <div className="p-4 sm:p-6">
       <div className="flex items-center gap-2 text-[12px] text-faint mb-5">
-        <Link href="/gateway/channels" className="hover:text-gray-600 dark:hover:text-gray-300">Gateway</Link>
+        <Link href="/gateway/channels" className="hover:text-muted-foreground dark:hover:text-faint">Gateway</Link>
         <ChevronRight className="w-3 h-3" />
         <span className="text-foreground font-medium">{channel.name}</span>
       </div>
@@ -514,7 +514,7 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
           </button>
         </div>
       </div>
-      {error && <div className="mb-4 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+      {error && <div className="mb-4 text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg px-3 py-2">{error}</div>}
 
       {editMode && (
         <div className="mb-5 rounded-xl border border-accent/40 bg-accent/10 p-4">
@@ -541,7 +541,7 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
               <label className="text-[11px] font-medium text-muted-foreground">Active</label>
               <button
                 onClick={() => setEditIsActive(v => !v)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editIsActive ? 'bg-green-500' : 'bg-muted'}`}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editIsActive ? 'bg-good' : 'bg-muted'}`}
               >
                 <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow transition-transform ${editIsActive ? 'translate-x-4' : 'translate-x-1'}`} />
               </button>
@@ -575,7 +575,7 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
                   <label className="text-[11px] font-medium text-muted-foreground">Chat Approvals</label>
                   <button
                     onClick={() => setEditChatApprovals(v => !v)}
-                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editChatApprovals ? 'bg-green-500' : 'bg-muted'}`}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${editChatApprovals ? 'bg-good' : 'bg-muted'}`}
                   >
                     <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow transition-transform ${editChatApprovals ? 'translate-x-4' : 'translate-x-1'}`} />
                   </button>
@@ -602,7 +602,7 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
       )}
       <div className="flex border-b border-border mb-5 bg-muted rounded-t-lg overflow-x-auto">
         {tabs.map((t) => (
-          <button key={t} onClick={() => setTab(t as Tab)} className={`px-4 py-2 text-[12px] whitespace-nowrap ${tab === t ? 'bg-surface text-accent dark:text-accent-bright font-medium border-b-2 border-accent' : 'text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'}`}>{t}</button>
+          <button key={t} onClick={() => setTab(t as Tab)} className={`px-4 py-2 text-[12px] whitespace-nowrap ${tab === t ? 'bg-surface text-accent dark:text-accent-bright font-medium border-b-2 border-accent' : 'text-muted-foreground hover:text-foreground dark:hover:text-faint'}`}>{t}</button>
         ))}
       </div>
 
@@ -796,26 +796,26 @@ Content-Type: application/json
           <div className="rounded-lg border border-border-strong bg-surface p-4">
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm font-medium text-foreground">{remEditId ? 'Edit reminder' : 'New reminder'}</p>
-              {remEditId && <button onClick={resetReminderForm} className="text-[12px] text-faint hover:text-gray-600 dark:hover:text-gray-300">Cancel edit</button>}
+              {remEditId && <button onClick={resetReminderForm} className="text-[12px] text-faint hover:text-muted-foreground dark:hover:text-faint">Cancel edit</button>}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Title <span className="text-red-400">*</span></label>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Title <span className="text-crit">*</span></label>
                 <input value={remTitle} onChange={(e) => setRemTitle(e.target.value)} placeholder="e.g. Follow up on invoice" className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">{remUseAgent ? 'Prompt for agent' : 'Message'} <span className="font-normal text-gray-400">(optional — defaults to title)</span></label>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">{remUseAgent ? 'Prompt for agent' : 'Message'} <span className="font-normal text-faint">(optional — defaults to title)</span></label>
                 <input value={remMsg} onChange={(e) => setRemMsg(e.target.value)} placeholder={remUseAgent ? 'What should the agent say?' : 'Reminder text to send…'} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Contact <span className="font-normal text-gray-400">(optional)</span></label>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Contact <span className="font-normal text-faint">(optional)</span></label>
                 <select value={remContact} onChange={(e) => setRemContact(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface">
                   <option value="">No specific contact</option>
                   {(pickerContacts.length ? pickerContacts : contacts).map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Due at <span className="text-red-400">*</span> <span className="font-normal text-gray-400">(your local time)</span></label>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Due at <span className="text-crit">*</span> <span className="font-normal text-faint">(your local time)</span></label>
                 <input type="datetime-local" value={remDueAt} onChange={(e) => setRemDueAt(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
               </div>
             </div>
@@ -841,7 +841,7 @@ Content-Type: application/json
                 <tbody>
                   {reminders.map((m) => {
                     const contact = (pickerContacts.length ? pickerContacts : contacts).find((c) => c.id === m.contact_id)
-                    const statusColor = m.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : m.status === 'completed' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'
+                    const statusColor = m.status === 'pending' ? 'bg-warn/10 text-warn' : m.status === 'completed' ? 'bg-good/10 text-good' : 'bg-muted text-muted-foreground'
                     return (
                       <tr key={m.id} className="border-b border-border last:border-0 hover:bg-muted">
                         <td className="px-4 py-3 text-foreground">{m.title}</td>
@@ -856,7 +856,7 @@ Content-Type: application/json
                           {m.status === 'pending' && (
                             <div className="flex items-center gap-2">
                               <button onClick={() => startEditReminder(m)} className="text-[11px] px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-accent/10 hover:text-accent dark:text-accent-bright">Edit</button>
-                              <button onClick={() => cancelReminder(m.id)} className="text-[11px] px-2 py-1 rounded bg-muted text-faint hover:bg-red-50 hover:text-red-600">Cancel</button>
+                              <button onClick={() => cancelReminder(m.id)} className="text-[11px] px-2 py-1 rounded bg-muted text-faint hover:bg-crit/10 hover:text-crit">Cancel</button>
                             </div>
                           )}
                         </td>
@@ -874,22 +874,22 @@ Content-Type: application/json
           <div className="rounded-lg border border-border-strong bg-surface p-4">
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm font-medium text-foreground">{schedEditId ? 'Edit scheduled message' : 'Schedule a message'}</p>
-              {schedEditId && <button onClick={resetSchedForm} className="text-[12px] text-faint hover:text-gray-600 dark:hover:text-gray-300">Cancel edit</button>}
+              {schedEditId && <button onClick={resetSchedForm} className="text-[12px] text-faint hover:text-muted-foreground dark:hover:text-faint">Cancel edit</button>}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Send to <span className="text-red-400">*</span></label>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Send to <span className="text-crit">*</span></label>
                 <select value={schedContact} onChange={(e) => setSchedContact(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface">
                   <option value="">Pick contact…</option>
                   {(pickerContacts.length ? pickerContacts : contacts).map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Send at <span className="text-red-400">*</span> <span className="font-normal text-gray-400">(your local time)</span></label>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">Send at <span className="text-crit">*</span> <span className="font-normal text-faint">(your local time)</span></label>
                 <input type="datetime-local" value={schedSendAt} onChange={(e) => setSchedSendAt(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-[11px] font-medium text-muted-foreground mb-1">{schedUseAgent ? 'Prompt for agent' : 'Message'} <span className="text-red-400">*</span></label>
+                <label className="block text-[11px] font-medium text-muted-foreground mb-1">{schedUseAgent ? 'Prompt for agent' : 'Message'} <span className="text-crit">*</span></label>
                 <input value={schedMsg} onChange={(e) => setSchedMsg(e.target.value)} placeholder={schedUseAgent ? 'What should the agent say?' : 'Message to send…'} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
               </div>
             </div>
@@ -916,11 +916,11 @@ Content-Type: application/json
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">Ends on <span className="font-normal text-gray-400">(optional)</span></label>
+                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">Ends on <span className="font-normal text-faint">(optional)</span></label>
                     <input type="date" value={schedEndAt} onChange={(e) => setSchedEndAt(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">Max sends <span className="font-normal text-gray-400">(optional)</span></label>
+                    <label className="block text-[11px] font-medium text-muted-foreground mb-1">Max sends <span className="font-normal text-faint">(optional)</span></label>
                     <input type="number" min={1} value={schedMaxOcc} onChange={(e) => setSchedMaxOcc(e.target.value)} placeholder="Unlimited" className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface" />
                   </div>
                   <p className="sm:col-span-3 text-[11px] text-faint">The message keeps repeating at the time you set above until the end date or max sends is reached (whichever comes first).</p>
@@ -951,7 +951,7 @@ Content-Type: application/json
                 <tbody>
                   {scheduledMessages.map((m) => {
                     const contact = (pickerContacts.length ? pickerContacts : contacts).find((c) => c.id === m.contact_id)
-                    const statusColor = m.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : m.status === 'sent' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : m.status === 'failed' ? 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300' : 'bg-muted text-muted-foreground'
+                    const statusColor = m.status === 'pending' ? 'bg-warn/10 text-warn' : m.status === 'sent' ? 'bg-good/10 text-good' : m.status === 'failed' ? 'bg-crit/10 text-crit dark:text-crit' : 'bg-muted text-muted-foreground'
                     const recLabel = m.recurrence_rule
                       ? `${m.recurrence_rule.interval && m.recurrence_rule.interval > 1 ? `Every ${m.recurrence_rule.interval} ` : ''}${m.recurrence_rule.frequency}${m.recurrence_rule.max_occurrences ? ` (${m.recurrence_rule.max_occurrences}×)` : ''}`
                       : '—'
@@ -970,7 +970,7 @@ Content-Type: application/json
                           {m.status === 'pending' && (
                             <div className="flex items-center gap-2">
                               <button onClick={() => startEditSchedule(m)} className="text-[11px] px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-accent/10 hover:text-accent dark:text-accent-bright">Edit</button>
-                              <button onClick={() => cancelScheduledMessage(m.id)} className="text-[11px] px-2 py-1 rounded bg-muted text-faint hover:bg-red-50 hover:text-red-600">Cancel</button>
+                              <button onClick={() => cancelScheduledMessage(m.id)} className="text-[11px] px-2 py-1 rounded bg-muted text-faint hover:bg-crit/10 hover:text-crit">Cancel</button>
                             </div>
                           )}
                         </td>
@@ -990,7 +990,7 @@ Content-Type: application/json
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-foreground">{e.action_type || 'WhatsApp action'}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${e.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : e.status === 'approved' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300'}`}>{e.status}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${e.status === 'pending' ? 'bg-warn/10 text-warn' : e.status === 'approved' ? 'bg-good/10 text-good' : 'bg-crit/10 text-crit dark:text-crit'}`}>{e.status}</span>
                   {e.approval_code && <code className="text-[11px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{e.approval_code}</code>}
                 </div>
                 <div className="text-xs text-faint mt-1">
@@ -1001,8 +1001,8 @@ Content-Type: application/json
               </div>
               {e.status === 'pending' && (
                 <div className="flex gap-2 shrink-0">
-                  <button onClick={() => approveEscalation(e.id)} className="px-3 py-1 text-xs rounded bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">Approve</button>
-                  <button onClick={() => rejectEscalation(e.id)} className="px-3 py-1 text-xs rounded bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300">Reject</button>
+                  <button onClick={() => approveEscalation(e.id)} className="px-3 py-1 text-xs rounded bg-good/10 text-good">Approve</button>
+                  <button onClick={() => rejectEscalation(e.id)} className="px-3 py-1 text-xs rounded bg-crit/10 text-crit dark:text-crit">Reject</button>
                 </div>
               )}
             </div>
@@ -1034,7 +1034,7 @@ Content-Type: application/json
             <div>
               <p className="text-[12px] font-medium text-foreground">Sync contacts from WhatsApp</p>
               <p className="text-[11px] text-faint mt-0.5">Import all phone contacts from the connected device. New contacts are added with auto-reply off; existing contacts get their LID updated.</p>
-              {syncContactsResult && <p className="text-[11px] text-emerald-600 dark:text-emerald-300 mt-1">{syncContactsResult}</p>}
+              {syncContactsResult && <p className="text-[11px] text-good dark:text-good mt-1">{syncContactsResult}</p>}
             </div>
             <button onClick={syncContacts} disabled={syncContactsLoading} className="shrink-0 px-3 py-1.5 bg-accent text-white text-[12px] font-medium rounded-lg hover:bg-accent-hover disabled:opacity-50">
               {syncContactsLoading ? 'Syncing…' : 'Sync Contacts'}
@@ -1058,8 +1058,8 @@ Content-Type: application/json
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-foreground">{c.display_name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${c.role === 'owner' ? 'bg-accent/10 text-accent dark:text-accent-bright' : c.role === 'blocked' ? 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300' : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'}`}>{c.role}</span>
-                    {!c.auto_reply_enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300">auto-reply off</span>}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${c.role === 'owner' ? 'bg-accent/10 text-accent dark:text-accent-bright' : c.role === 'blocked' ? 'bg-crit/10 text-crit dark:text-crit' : 'bg-good/10 text-good'}`}>{c.role}</span>
+                    {!c.auto_reply_enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-warn/10 text-warn">auto-reply off</span>}
                   </div>
                   <div className="flex items-center gap-3 mt-1">
                     <span className="text-xs text-faint">{c.phone_number || c.whatsapp_jid} · {c.alias || 'no alias'} · last matched {c.last_matched_at ? new Date(c.last_matched_at).toLocaleString() : 'never'}</span>
@@ -1091,7 +1091,7 @@ Content-Type: application/json
                     />
                     <span className="relative w-8 h-4 rounded-full bg-muted peer-checked:bg-accent after:absolute after:top-0.5 after:left-0.5 after:h-3 after:w-3 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
                   </label>
-                  <button onClick={() => deleteContact(c.id)} className="px-3 py-1 text-xs rounded bg-muted text-muted-foreground hover:bg-red-50 hover:text-red-600">Delete</button>
+                  <button onClick={() => deleteContact(c.id)} className="px-3 py-1 text-xs rounded bg-muted text-muted-foreground hover:bg-crit/10 hover:text-crit">Delete</button>
                 </div>
               </div>
             ))}
@@ -1125,8 +1125,8 @@ Content-Type: application/json
               </div>
               {p.status === 'pending' && (
                 <div className="flex gap-2">
-                  <button onClick={() => approve(p.id)} className="px-3 py-1 text-xs rounded bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">Approve</button>
-                  <button onClick={() => reject(p.id)} className="px-3 py-1 text-xs rounded bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300">Reject</button>
+                  <button onClick={() => approve(p.id)} className="px-3 py-1 text-xs rounded bg-good/10 text-good">Approve</button>
+                  <button onClick={() => reject(p.id)} className="px-3 py-1 text-xs rounded bg-crit/10 text-crit dark:text-crit">Reject</button>
                 </div>
               )}
             </div>
@@ -1169,7 +1169,7 @@ function AdapterStatusCard({ adapter }: { adapter: Record<string, unknown> | nul
   if (!adapter) {
     return (
       <div className="rounded-lg border border-border-strong bg-surface p-4 flex items-center gap-3">
-        <div className="w-2.5 h-2.5 rounded-full bg-gray-300 shrink-0" />
+        <div className="w-2.5 h-2.5 rounded-full bg-faint shrink-0" />
         <div>
           <p className="text-sm font-medium text-foreground">Adapter status</p>
           <p className="text-xs text-faint mt-0.5">Click &quot;Refresh status&quot; to load.</p>
@@ -1183,10 +1183,10 @@ function AdapterStatusCard({ adapter }: { adapter: Record<string, unknown> | nul
   const lidMapSize = adapter.lid_map_size as number | undefined
 
   const dot: Record<string, string> = {
-    connected: 'bg-emerald-400',
-    qr: 'bg-amber-400 animate-pulse',
-    connecting: 'bg-amber-400 animate-pulse',
-    disconnected: 'bg-red-400',
+    connected: 'bg-good',
+    qr: 'bg-warn animate-pulse',
+    connecting: 'bg-warn animate-pulse',
+    disconnected: 'bg-crit',
   }
   const label: Record<string, string> = {
     connected: 'Connected',
@@ -1199,7 +1199,7 @@ function AdapterStatusCard({ adapter }: { adapter: Record<string, unknown> | nul
   return (
     <div className="rounded-lg border border-border-strong bg-surface p-4 space-y-3">
       <div className="flex items-center gap-3">
-        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot[status] ?? 'bg-gray-300'}`} />
+        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot[status] ?? 'bg-faint'}`} />
         <p className="text-sm font-medium text-foreground">{label[status] ?? status}</p>
       </div>
       {phone && (
@@ -1209,7 +1209,7 @@ function AdapterStatusCard({ adapter }: { adapter: Record<string, unknown> | nul
         </div>
       )}
       {lastError && status !== 'connected' && (
-        <p className="text-xs text-red-500 bg-red-50 dark:bg-red-500/10 border border-red-100 rounded px-2 py-1">{lastError}</p>
+        <p className="text-xs text-crit bg-crit/10 border border-crit/30 rounded px-2 py-1">{lastError}</p>
       )}
       {typeof lidMapSize === 'number' && lidMapSize > 0 && (
         <p className="text-xs text-faint">{lidMapSize} contact LID{lidMapSize !== 1 ? 's' : ''} resolved</p>

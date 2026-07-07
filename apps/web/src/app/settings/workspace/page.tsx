@@ -99,8 +99,8 @@ export default function WorkspaceSettingsPage() {
       {message && (
         <div className={`text-sm border rounded-lg p-3 mb-4 ${
           message.includes('saved') || message.includes('added') || message.includes('updated') || message.includes('removed')
-            ? 'text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-500/10 border-green-200'
-            : 'text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border-red-200'
+            ? 'text-good bg-good/10 border-good/30'
+            : 'text-crit bg-crit/10 border-crit/30'
         }`}>
           {message}
         </div>
@@ -114,7 +114,7 @@ export default function WorkspaceSettingsPage() {
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={!canManage}
-            className="w-full px-3 py-2 text-sm border border-border-strong rounded-lg disabled:bg-gray-50"
+            className="w-full px-3 py-2 text-sm border border-border-strong rounded-lg disabled:bg-muted"
           />
           <label className="block text-xs font-medium text-foreground mt-4 mb-1.5">Workspace type</label>
           <div className="flex flex-wrap gap-2">
@@ -127,7 +127,7 @@ export default function WorkspaceSettingsPage() {
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors disabled:opacity-50 ${
                   wsType === value
                     ? 'border-accent bg-accent/10 text-accent dark:text-accent-bright'
-                    : 'border-border-strong text-muted-foreground hover:border-gray-300 hover:bg-muted'
+                    : 'border-border-strong text-muted-foreground hover:border-border-strong hover:bg-muted'
                 }`}
               >
                 {label}
@@ -195,7 +195,7 @@ export default function WorkspaceSettingsPage() {
                   value={member.role}
                   disabled={!canManage || member.role === 'owner'}
                   onChange={(e) => updateMember.mutate({ id: member.id, nextRole: e.target.value as WorkspaceRole })}
-                  className="px-2 py-1.5 text-sm border border-border-strong rounded-lg bg-surface disabled:bg-gray-50"
+                  className="px-2 py-1.5 text-sm border border-border-strong rounded-lg bg-surface disabled:bg-muted"
                 >
                   {member.role === 'owner' && <option value="owner">owner</option>}
                   {editableRoles.map((item) => <option key={item} value={item}>{item}</option>)}
@@ -203,7 +203,7 @@ export default function WorkspaceSettingsPage() {
                 <button
                   onClick={() => removeMember.mutate(member.id)}
                   disabled={!canManage || member.role === 'owner'}
-                  className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-faint hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400 sm:justify-self-auto"
+                  className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-faint hover:text-crit hover:bg-crit/10 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-faint sm:justify-self-auto"
                   aria-label={`Remove ${member.email}`}
                 >
                   <Trash2 className="w-4 h-4" />

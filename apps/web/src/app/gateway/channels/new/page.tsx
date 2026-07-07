@@ -70,7 +70,7 @@ export default function NewGatewayChannelPage() {
     <div className="p-4 sm:p-6 max-w-3xl">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div className="flex items-center gap-2 text-[12px] text-faint">
-          <span onClick={() => router.push('/gateway/channels')} className="hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer">Gateway</span>
+          <span onClick={() => router.push('/gateway/channels')} className="hover:text-muted-foreground dark:hover:text-faint cursor-pointer">Gateway</span>
           <ChevronRight className="w-3 h-3" />
           <span className="text-foreground font-medium">New channel</span>
         </div>
@@ -83,7 +83,7 @@ export default function NewGatewayChannelPage() {
           </button>
         </div>
       </div>
-      {error && <div className="mb-4 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+      {error && <div className="mb-4 text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg px-3 py-2">{error}</div>}
       <div className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(['whatsapp', 'http'] as const).map((t) => (

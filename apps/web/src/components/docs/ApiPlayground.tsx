@@ -21,11 +21,11 @@ interface ApiPlaygroundProps {
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
 
 const METHOD_COLOR: Record<string, string> = {
-  GET: 'text-green-400 bg-green-400/10',
-  POST: 'text-blue-400 bg-blue-400/10',
-  PUT: 'text-amber-400 bg-amber-400/10',
-  PATCH: 'text-orange-400 bg-orange-400/10',
-  DELETE: 'text-red-400 bg-red-400/10',
+  GET: 'text-good bg-good/10',
+  POST: 'text-info bg-info/10',
+  PUT: 'text-warn bg-warn/10',
+  PATCH: 'text-warn bg-warn/10',
+  DELETE: 'text-crit bg-crit/10',
 }
 
 export default function ApiPlayground({ method, path, defaultBody, pathParams = [], description }: ApiPlaygroundProps) {
@@ -133,7 +133,7 @@ export default function ApiPlayground({ method, path, defaultBody, pathParams = 
                 spellCheck={false}
                 className="w-full px-3 py-2 text-sm rounded border border-white/10 bg-black/30 text-white/80 font-mono focus:outline-none focus:border-[#534AB7] resize-none"
               />
-              {bodyError && <p className="text-xs text-red-400">{bodyError}</p>}
+              {bodyError && <p className="text-xs text-crit">{bodyError}</p>}
             </div>
           )}
 
@@ -155,10 +155,10 @@ export default function ApiPlayground({ method, path, defaultBody, pathParams = 
                 <span
                   className={`text-xs font-mono px-2 py-0.5 rounded ${
                     response.status >= 200 && response.status < 300
-                      ? 'bg-green-400/10 text-green-400'
+                      ? 'bg-good/10 text-good'
                       : response.status === 0
-                      ? 'bg-red-400/10 text-red-400'
-                      : 'bg-amber-400/10 text-amber-400'
+                      ? 'bg-crit/10 text-crit'
+                      : 'bg-warn/10 text-warn'
                   }`}
                 >
                   {response.status === 0 ? 'Network Error' : `HTTP ${response.status}`}

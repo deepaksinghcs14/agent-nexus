@@ -79,7 +79,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
       {/* Name */}
       <div>
         <label className="block text-sm font-medium text-foreground mb-1">
-          Name <span className="text-red-500">*</span>
+          Name <span className="text-crit">*</span>
         </label>
         <input
           type="text"
@@ -126,7 +126,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
       {/* Target */}
       <div>
         <label className="block text-sm font-medium text-foreground mb-1">
-          Target {targetType} <span className="text-red-500">*</span>
+          Target {targetType} <span className="text-crit">*</span>
         </label>
         <select
           value={targetId}
@@ -190,7 +190,7 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
         <span className="text-sm text-foreground">{isActive ? 'Active' : 'Inactive'}</span>
       </div>
 
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && <p className="text-sm text-crit">{error}</p>}
 
       <div className="flex gap-3 pt-2">
         <button

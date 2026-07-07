@@ -15,7 +15,7 @@ const GRADING_LABELS: Record<string, string> = {
 function ScoreBadge({ score }: { score?: number }) {
   if (score == null) return <span className="text-xs text-faint">No runs</span>
   const pct = Math.round(score * 100)
-  const color = pct >= 80 ? 'text-green-600 dark:text-green-300 bg-green-50 dark:bg-green-500/10' : pct >= 50 ? 'text-amber-600 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10' : 'text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10'
+  const color = pct >= 80 ? 'text-good dark:text-good bg-good/10' : pct >= 50 ? 'text-warn dark:text-warn bg-warn/10' : 'text-crit bg-crit/10'
   return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${color}`}>{pct}%</span>
 }
 
@@ -82,7 +82,7 @@ function CreateSuiteModal({ agents, onCreated, onClose }: {
           </div>
         </div>
         <div className="px-6 py-4 border-t flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground hover:text-gray-900 transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
           <button
             onClick={submit} disabled={saving || !name || !agentId}
             className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50"
@@ -150,7 +150,7 @@ export default function EvalsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {suites.map(s => (
-            <div key={s.id} className="bg-surface border border-border-strong rounded-lg p-4 hover:border-gray-300 transition-colors group">
+            <div key={s.id} className="bg-surface border border-border-strong rounded-lg p-4 hover:border-border-strong transition-colors group">
               <div className="flex items-start justify-between gap-2 mb-3">
                 <div className="min-w-0 flex-1">
                   <Link href={`/evals/${s.id}`} className="text-sm font-medium text-foreground hover:text-accent dark:text-accent-bright transition-colors line-clamp-1">
@@ -171,7 +171,7 @@ export default function EvalsPage() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => handleDelete(s.id)}
-                    className="p-1 rounded hover:bg-red-50 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                    className="p-1 rounded hover:bg-crit/10 hover:text-crit transition-colors opacity-0 group-hover:opacity-100"
                     title="Delete suite"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -194,7 +194,7 @@ export default function EvalsPage() {
           <div className="bg-surface rounded-lg shadow-xl w-full max-w-sm mx-4 p-6 text-center">
             <p className="text-sm text-foreground mb-4">You need at least one agent before creating an eval suite.</p>
             <div className="flex gap-3 justify-center">
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-gray-900 transition-colors">Close</button>
+              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">Close</button>
               <Link href="/agents" className="px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-md transition-colors">Create agent</Link>
             </div>
           </div>

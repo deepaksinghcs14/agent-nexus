@@ -56,7 +56,7 @@ export default function ConversationsPage() {
         }
       />
 
-      {error && <div className="mb-4 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+      {error && <div className="mb-4 text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg px-3 py-2">{error}</div>}
 
       {isLoading && <div className="text-sm text-faint py-12 text-center">Loading…</div>}
 
@@ -74,7 +74,7 @@ export default function ConversationsPage() {
 
       <div className="space-y-2">
         {conversations.map((c) => (
-          <div key={c.id} className="flex items-center justify-between border border-border rounded-xl p-4 bg-surface hover:border-gray-200">
+          <div key={c.id} className="flex items-center justify-between border border-border rounded-xl p-4 bg-surface hover:border-border-strong">
             <Link href={`/playground/${c.id}`} className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">{c.title}</p>
               <p className="text-xs text-faint mt-0.5">
@@ -84,7 +84,7 @@ export default function ConversationsPage() {
             <button
               onClick={() => { if (confirm('Delete this conversation?')) deleteMutation.mutate(c.id) }}
               disabled={deleteMutation.isPending}
-              className="p-1.5 text-faint hover:text-red-500 hover:bg-red-50 rounded-lg ml-3 disabled:opacity-40"
+              className="p-1.5 text-faint hover:text-crit hover:bg-crit/10 rounded-lg ml-3 disabled:opacity-40"
             >
               <Trash2 size={14} />
             </button>

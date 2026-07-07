@@ -45,7 +45,7 @@ function CredentialCard(props: {
           <div>
             <p className="text-sm font-medium text-foreground">{props.title}</p>
             {props.connected ? (
-              <p className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1">
+              <p className="text-xs text-good flex items-center gap-1">
                 <Check size={11} /> {props.connectedNote}
               </p>
             ) : (
@@ -80,7 +80,7 @@ function CredentialCard(props: {
           </button>
         </div>
       )}
-      {props.error && <p className="text-xs text-red-600 dark:text-red-300 mt-2">{props.error}</p>}
+      {props.error && <p className="text-xs text-crit mt-2">{props.error}</p>}
       <p className="text-[11px] text-faint mt-2">{props.footnote}</p>
     </div>
   )
@@ -107,11 +107,11 @@ function JiraCredentialCard(props: {
     <div className="border border-border-strong bg-surface rounded-xl px-4 py-3">
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div className="flex items-center gap-2.5">
-          <ClipboardList size={16} className="text-blue-700 dark:text-blue-300" />
+          <ClipboardList size={16} className="text-info" />
           <div>
             <p className="text-sm font-medium text-foreground">Jira</p>
             {props.connected ? (
-              <p className="text-xs text-green-700 dark:text-green-300 flex items-center gap-1">
+              <p className="text-xs text-good flex items-center gap-1">
                 <Check size={11} /> Connected · {props.baseURL}
                 {props.updatedAt ? ` · updated ${relativeTime(props.updatedAt)}` : ''}
               </p>
@@ -169,7 +169,7 @@ function JiraCredentialCard(props: {
           </div>
         </div>
       )}
-      {props.error && <p className="text-xs text-red-600 dark:text-red-300 mt-2">{props.error}</p>}
+      {props.error && <p className="text-xs text-crit mt-2">{props.error}</p>}
       <p className="text-[11px] text-faint mt-2">
         Cloud: create an API token at id.atlassian.com → Security → API tokens, and enter your account email.
         Data Center: use a personal access token and leave email empty.
@@ -211,7 +211,7 @@ export default function ClaudeCodePage() {
 
       <div className="space-y-3 mb-6">
         <CredentialCard
-          icon={<Terminal size={16} className="text-amber-700 dark:text-amber-300" />}
+          icon={<Terminal size={16} className="text-warn" />}
           title="Claude account"
           connected={!!creds?.claude_connected}
           connectedNote={`Connected · subscription billing${creds?.updated_at ? ` · updated ${relativeTime(creds.updated_at)}` : ''}`}

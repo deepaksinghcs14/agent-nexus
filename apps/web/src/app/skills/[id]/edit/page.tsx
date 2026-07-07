@@ -45,7 +45,7 @@ export default function EditSkillPage() {
     <div className="p-4 sm:p-6 max-w-3xl">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div className="flex items-center gap-2 text-[12px] text-faint">
-          <span onClick={() => router.push('/skills')} className="hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer">Skills</span>
+          <span onClick={() => router.push('/skills')} className="hover:text-muted-foreground dark:hover:text-faint cursor-pointer">Skills</span>
           <ChevronRight className="w-3 h-3" />
           <span className="text-foreground font-medium">Edit skill</span>
         </div>
@@ -58,7 +58,7 @@ export default function EditSkillPage() {
           </button>
         </div>
       </div>
-      {error && <div className="mb-4 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+      {error && <div className="mb-4 text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg px-3 py-2">{error}</div>}
       <div className="space-y-4">
         <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg" /></Field>
         <Field label="Description"><input value={description} onChange={(e) => setDescription(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg" /></Field>

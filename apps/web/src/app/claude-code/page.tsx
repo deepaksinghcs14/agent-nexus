@@ -222,7 +222,7 @@ export default function ClaudeCodePage() {
                       </button>
                       <button
                         onClick={() => { if (confirm(`Remove ${r.repo} from the catalog entirely?`)) removeRepo.mutate(r.repo) }}
-                        className="p-1 text-faint hover:text-red-500"
+                        className="p-1 text-faint hover:text-crit"
                       >
                         <Trash2 size={12} />
                       </button>
@@ -248,7 +248,7 @@ export default function ClaudeCodePage() {
                 {onboard.isPending ? 'Cloning & indexing…' : 'Add repository'}
               </button>
             </div>
-            {repoError && <p className="text-xs text-red-600 dark:text-red-300 mt-2">{repoError}</p>}
+            {repoError && <p className="text-xs text-crit mt-2">{repoError}</p>}
           </TabsContent>
 
           <TabsContent value="sessions">

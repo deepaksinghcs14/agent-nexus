@@ -36,14 +36,14 @@ function SubRunRow({ subRun, agentName }: { subRun: Run; agentName?: string }) {
   return (
     <div className="border-b border-border last:border-b-0">
       <button
-        className={`w-full ${ROW_GRID} ${GRID_COLS} py-2.5 text-left hover:bg-gray-50/60 transition-colors`}
+        className={`w-full ${ROW_GRID} ${GRID_COLS} py-2.5 text-left hover:bg-muted/60 transition-colors`}
         onClick={() => setOpen(v => !v)}
       >
         <span className="flex items-center justify-center text-faint">
           {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         </span>
         <span className="flex items-center gap-1.5 min-w-0">
-          <Sparkles size={11} className="text-indigo-400 flex-shrink-0" />
+          <Sparkles size={11} className="text-accent-bright flex-shrink-0" />
           <span className="text-[12px] font-medium text-foreground truncate">{agentName ?? 'Agent'}</span>
         </span>
         <span className="flex justify-center">
@@ -54,7 +54,7 @@ function SubRunRow({ subRun, agentName }: { subRun: Run; agentName?: string }) {
         <span className="text-[11px] text-faint text-right">{subRun.cost_estimate > 0 ? formatCost(subRun.cost_estimate) : '—'}</span>
       </button>
       {open && (
-        <div className="mx-4 mb-2 rounded-lg border border-border bg-gray-50/50 overflow-hidden">
+        <div className="mx-4 mb-2 rounded-lg border border-border bg-muted/50 overflow-hidden">
           {isFetching && <p className="text-[11px] text-faint text-center py-3">Loading steps…</p>}
           {isActive && (
             <div className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2 text-[11px] text-muted-foreground">
@@ -150,13 +150,13 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
   return (
     <div className="p-4 sm:p-6 max-w-6xl">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
-        <Link href="/runs" className="text-[12px] text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300 inline-flex items-center gap-1">
+        <Link href="/runs" className="text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint inline-flex items-center gap-1">
           <ArrowLeft className="w-3 h-3" /> Runs
         </Link>
         {detail && ['pending', 'running', 'approval_wait', 'session_wait'].includes(detail.status) && (
           <button
             onClick={() => cancel.mutate()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-red-200 text-red-600 dark:text-red-300 text-[12px] rounded-lg"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-crit/30 text-crit text-[12px] rounded-lg"
           >
             <Ban className="w-3.5 h-3.5" /> Cancel run
           </button>
@@ -164,7 +164,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
       </div>
 
       {error && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3">{(error as Error).message}</div>
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3">{(error as Error).message}</div>
       )}
       {isLoading && (
         <div className="py-12 text-center text-sm text-faint">Loading trace…</div>
@@ -198,13 +198,13 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
                   Reject
                 </button>
                 {decide.isError && (
-                  <span className="text-[11px] text-red-600 dark:text-red-300">{(decide.error as Error).message}</span>
+                  <span className="text-[11px] text-crit">{(decide.error as Error).message}</span>
                 )}
               </div>
             </div>
           )}
           {detail.status === 'session_wait' && (
-            <div className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 text-[12px] text-indigo-900">
+            <div className="mb-5 rounded-xl border border-accent/30 bg-accent/10/60 p-4 text-[12px] text-accent dark:text-accent-bright">
               A repo coding session is running for this run. It resumes automatically when the session completes — this can take minutes to hours.
             </div>
           )}

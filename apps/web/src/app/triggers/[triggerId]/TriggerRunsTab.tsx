@@ -31,7 +31,7 @@ export function TriggerRunsTab({ triggerId }: Props) {
   }
 
   if (error) {
-    return <div className="py-6 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 rounded-lg px-4">{(error as Error).message}</div>
+    return <div className="py-6 text-sm text-crit bg-crit/10 rounded-lg px-4">{(error as Error).message}</div>
   }
 
   if (runs.length === 0) {
@@ -60,7 +60,7 @@ export function TriggerRunsTab({ triggerId }: Props) {
         </thead>
         <tbody>
           {runs.map((run) => (
-            <tr key={run.id} className="border-b last:border-b-0 border-border hover:bg-gray-50/50">
+            <tr key={run.id} className="border-b last:border-b-0 border-border hover:bg-muted/50">
               <td className="px-4 py-2.5 font-mono text-[11px] text-muted-foreground">{run.id.slice(0, 12)}</td>
               <td className="px-4 py-2.5">
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusColor(run.status)}`}>

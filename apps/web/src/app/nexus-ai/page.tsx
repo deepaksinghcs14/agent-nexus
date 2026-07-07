@@ -52,18 +52,18 @@ function ToolCard({ msg }: { msg: NexusMessage }) {
 
   return (
     <div className={`flex items-start gap-3 px-3.5 py-2.5 rounded-lg border text-sm
-      ${isError ? 'bg-red-50 dark:bg-red-500/10 border-red-200' : started ? 'bg-accent/10 border-accent/40' : 'bg-green-50 dark:bg-green-500/10 border-green-200'}`}
+      ${isError ? 'bg-crit/10 border-crit/30' : started ? 'bg-accent/10 border-accent/40' : 'bg-good/10 border-good/30'}`}
     >
       <div className="mt-0.5 shrink-0">
-        {isError ? <AlertCircle size={15} className="text-red-500" />
+        {isError ? <AlertCircle size={15} className="text-crit" />
           : started ? <Loader2 size={15} className="animate-spin text-accent dark:text-accent-bright" />
-          : <CheckCircle2 size={15} className="text-green-500" />}
+          : <CheckCircle2 size={15} className="text-good" />}
       </div>
       <div className="flex-1 min-w-0">
-        <p className={`font-medium text-[13px] ${isError ? 'text-red-700 dark:text-red-300' : started ? 'text-accent dark:text-accent-bright' : 'text-green-700 dark:text-green-300'}`}>
+        <p className={`font-medium text-[13px] ${isError ? 'text-crit dark:text-crit' : started ? 'text-accent dark:text-accent-bright' : 'text-good'}`}>
           {ev.label}
         </p>
-        {ev.error && <p className="text-red-500 text-xs mt-0.5">{ev.error}</p>}
+        {ev.error && <p className="text-crit text-xs mt-0.5">{ev.error}</p>}
         {ev.result && !started && <p className="text-muted-foreground text-xs mt-0.5">{ev.result.name}</p>}
       </div>
       {ev.link && !started && !isError && (
@@ -391,11 +391,11 @@ export default function NexusAIPage() {
 
       {/* No-provider banner */}
       {!hasProvider && (
-        <div className="mx-4 sm:mx-6 mt-4 flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 flex-shrink-0">
-          <AlertCircle size={15} className="text-amber-500 shrink-0" />
-          <p className="text-sm text-amber-800 dark:text-amber-300">
+        <div className="mx-4 sm:mx-6 mt-4 flex items-center gap-3 px-4 py-3 rounded-lg bg-warn/10 border border-warn/30 flex-shrink-0">
+          <AlertCircle size={15} className="text-warn shrink-0" />
+          <p className="text-sm text-warn">
             Nexus AI uses your own LLM provider. Add one in{' '}
-            <Link href="/settings/providers" className="font-medium underline hover:text-amber-900">
+            <Link href="/settings/providers" className="font-medium underline hover:text-warn">
               Settings → Providers
             </Link>{' '}
             to get started.
@@ -495,7 +495,7 @@ export default function NexusAIPage() {
                 : 'Describe the agent or workflow you want…  (Enter to send, Shift+Enter for newline)'
             }
             disabled={!hasProvider || isRunning}
-            className="flex-1 px-4 py-3 bg-transparent resize-none outline-none text-sm text-foreground placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-50 min-h-[44px] max-h-[160px] leading-relaxed"
+            className="flex-1 px-4 py-3 bg-transparent resize-none outline-none text-sm text-foreground placeholder-faint disabled:opacity-50 min-h-[44px] max-h-[160px] leading-relaxed"
           />
           <div className="pb-2 pr-2">
             <button

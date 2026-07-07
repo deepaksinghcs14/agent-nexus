@@ -25,8 +25,8 @@ function getToolGroup(tool: Tool): ToolGroup {
 
 const riskBadge = (r: string) => {
   const map: Record<string, string> = {
-    low: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300', medium: 'bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300',
-    high: 'bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300', critical: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300',
+    low: 'bg-info/10 text-info', medium: 'bg-warn/10 text-warn',
+    high: 'bg-warn/10 dark:bg-warn/10 text-warn dark:text-warn', critical: 'bg-crit/10 text-crit dark:text-crit',
   }
   return `text-[10px] font-medium px-2 py-0.5 rounded-full ${map[r] ?? 'bg-muted text-muted-foreground'}`
 }
@@ -329,7 +329,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div className="flex items-center gap-2 text-[12px] text-faint">
-          <span className="hover:text-gray-600 dark:hover:text-gray-300 cursor-pointer" onClick={() => router.push('/agents')}>Agents</span>
+          <span className="hover:text-muted-foreground dark:hover:text-faint cursor-pointer" onClick={() => router.push('/agents')}>Agents</span>
           <ChevronRight className="w-3 h-3" />
           <span className="text-foreground font-medium">{isEdit ? 'Edit agent' : 'New agent'}</span>
         </div>
@@ -357,7 +357,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           return (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2 text-[12px] transition-colors whitespace-nowrap flex items-center gap-1.5
-                ${tab === t ? 'bg-surface text-accent dark:text-accent-bright font-medium border-b-2 border-accent' : 'text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                ${tab === t ? 'bg-surface text-accent dark:text-accent-bright font-medium border-b-2 border-accent' : 'text-muted-foreground hover:text-foreground dark:hover:text-faint'}`}>
               {t}
               {badge !== null && (
                 <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent dark:text-accent-bright leading-none">{badge}</span>
@@ -371,7 +371,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
       {tab === 'Basics' && (
         <div className="space-y-4">
           {saveError && (
-            <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg px-3 py-2">{saveError}</div>
+            <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg px-3 py-2">{saveError}</div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Agent name" hint="Shown in the sidebar and run history">
@@ -427,7 +427,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           <Field label="Model capabilities">
             <div className="flex gap-2 flex-wrap mt-1">
               {['Tool calling', 'Streaming', 'JSON mode'].map(c => (
-                <span key={c} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300">
+                <span key={c} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-good/10 text-good">
                   <Check className="w-3 h-3" />{c}
                 </span>
               ))}
@@ -476,7 +476,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
                     })
                     setSkillActivationMode(prev => ({ ...prev, ...next }))
                   }}
-                  className="text-[11px] px-2.5 py-1 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-100 whitespace-nowrap transition-colors">
+                  className="text-[11px] px-2.5 py-1 rounded-lg border border-warn/30 bg-warn/10 text-warn hover:bg-warn/15 whitespace-nowrap transition-colors">
                   All on-demand
                 </button>
                 <button
@@ -814,7 +814,7 @@ function SkillSection({
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-[13px] font-medium text-foreground">{skill.name}</p>
                   {skill.required_tool_names && skill.required_tool_names.length > 0 && (
-                    <span className="text-[10px] text-amber-600 dark:text-amber-300">Requires: {skill.required_tool_names.join(', ')}</span>
+                    <span className="text-[10px] text-warn dark:text-warn">Requires: {skill.required_tool_names.join(', ')}</span>
                   )}
                 </div>
                 <p className="text-[11px] text-muted-foreground truncate">{skill.description}</p>
@@ -828,8 +828,8 @@ function SkillSection({
                   title={mode === 'on_demand' ? 'On-demand: model calls this skill as a tool' : 'Always: injected into every run'}
                   className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
                     mode === 'on_demand'
-                      ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 text-amber-700 dark:text-amber-300 hover:bg-amber-100'
-                      : 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 text-blue-700 dark:text-blue-300 hover:bg-blue-100'
+                      ? 'bg-warn/10 border-warn/30 text-warn hover:bg-warn/15'
+                      : 'bg-info/10 border-info/30 text-info hover:bg-info/15'
                   }`}>
                   {mode === 'on_demand' ? 'on-demand' : 'always'}
                 </button>

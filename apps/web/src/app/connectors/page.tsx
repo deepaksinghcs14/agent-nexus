@@ -44,7 +44,7 @@ function FolderBrowser({ onSelect, onClose }: { onSelect: (path: string) => void
         </div>
         <div className="overflow-y-auto max-h-72">
           {isLoading && <div className="py-8 text-center text-sm text-faint">Loading…</div>}
-          {error && <div className="py-4 px-4 text-[12px] text-red-600 dark:text-red-300">Cannot read directory.</div>}
+          {error && <div className="py-4 px-4 text-[12px] text-crit">Cannot read directory.</div>}
           {data && (
             <>
               {data.parent !== '' && (
@@ -70,7 +70,7 @@ function FolderBrowser({ onSelect, onClose }: { onSelect: (path: string) => void
                       : 'text-faint cursor-default'
                   }`}
                 >
-                  <FolderOpen size={13} className={entry.is_dir ? 'text-amber-400' : 'text-faint'} />
+                  <FolderOpen size={13} className={entry.is_dir ? 'text-warn' : 'text-faint'} />
                   <span className="text-left truncate flex-1">{entry.name}</span>
                   {entry.is_dir && <ChevronRight size={11} className="text-faint flex-shrink-0" />}
                 </button>
@@ -79,7 +79,7 @@ function FolderBrowser({ onSelect, onClose }: { onSelect: (path: string) => void
           )}
         </div>
         <div className="flex items-center gap-2 px-4 py-3 border-t border-border">
-          <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-gray-800 dark:hover:text-gray-200">
+          <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint">
             Cancel
           </button>
           <button
@@ -155,7 +155,7 @@ function CreatePanel({
                   active
                     ? 'border-accent/50 bg-accent/10'
                     : available
-                    ? 'border-border-strong hover:border-gray-300 bg-surface'
+                    ? 'border-border-strong hover:border-border-strong bg-surface'
                     : 'border-border bg-muted opacity-50 cursor-not-allowed'
                 }`}
               >
@@ -174,7 +174,7 @@ function CreatePanel({
           <div className="border-t border-border pt-4">
             <p className="text-[11px] font-medium text-faint uppercase tracking-wide mb-3">Configure filesystem connector</p>
             {formError && (
-              <p className="text-[12px] text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-100 rounded px-3 py-2 mb-3">{formError}</p>
+              <p className="text-[12px] text-crit bg-crit/10 border border-crit/30 rounded px-3 py-2 mb-3">{formError}</p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
               <div>
@@ -216,7 +216,7 @@ function CreatePanel({
               >
                 {isPending ? 'Connecting…' : 'Connect'}
               </button>
-              <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-gray-800 dark:hover:text-gray-200">
+              <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint">
                 Cancel
               </button>
             </div>
@@ -227,7 +227,7 @@ function CreatePanel({
           <div className="border-t border-border pt-4">
             <p className="text-[11px] font-medium text-faint uppercase tracking-wide mb-3">Configure GitHub connector</p>
             {formError && (
-              <p className="text-[12px] text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-100 rounded px-3 py-2 mb-3">{formError}</p>
+              <p className="text-[12px] text-crit bg-crit/10 border border-crit/30 rounded px-3 py-2 mb-3">{formError}</p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
               <div>
@@ -254,7 +254,7 @@ function CreatePanel({
             <p className="text-[11px] text-faint mb-4">Indexes all text files in the repository. Requires a PAT with <code className="bg-muted px-1 rounded">repo</code> scope (read-only).</p>
             <div className="flex gap-2">
               <button onClick={handleSubmit} disabled={isPending} className="px-4 py-1.5 bg-accent text-white text-[12px] rounded-lg font-medium disabled:opacity-50">{isPending ? 'Connecting…' : 'Connect'}</button>
-              <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-gray-800 dark:hover:text-gray-200">Cancel</button>
+              <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint">Cancel</button>
             </div>
           </div>
         )}
@@ -263,7 +263,7 @@ function CreatePanel({
           <div className="border-t border-border pt-4">
             <p className="text-[11px] font-medium text-faint uppercase tracking-wide mb-3">Configure Confluence connector</p>
             {formError && (
-              <p className="text-[12px] text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-100 rounded px-3 py-2 mb-3">{formError}</p>
+              <p className="text-[12px] text-crit bg-crit/10 border border-crit/30 rounded px-3 py-2 mb-3">{formError}</p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
               <div>
@@ -290,7 +290,7 @@ function CreatePanel({
             <p className="text-[11px] text-faint mb-4">Indexes pages from your Confluence Cloud space(s). Create an API token at <span className="text-accent dark:text-accent-bright">id.atlassian.com</span>.</p>
             <div className="flex gap-2">
               <button onClick={handleSubmit} disabled={isPending} className="px-4 py-1.5 bg-accent text-white text-[12px] rounded-lg font-medium disabled:opacity-50">{isPending ? 'Connecting…' : 'Connect'}</button>
-              <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-gray-800 dark:hover:text-gray-200">Cancel</button>
+              <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint">Cancel</button>
             </div>
           </div>
         )}
@@ -420,7 +420,7 @@ export default function ConnectorsPage() {
       </div>
 
       {(error || actionError) && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">
           {actionError || (error as Error).message}
         </div>
       )}
@@ -528,7 +528,7 @@ export default function ConnectorsPage() {
                   </button>
                   <button
                     onClick={() => { if (confirm('Delete this connector and all indexed documents?')) remove.mutate(connector.id) }}
-                    className="ml-auto p-1 text-faint hover:text-red-500"
+                    className="ml-auto p-1 text-faint hover:text-crit"
                   >
                     <Trash2 size={13} />
                   </button>
@@ -550,7 +550,7 @@ export default function ConnectorsPage() {
                 className={`px-4 py-2.5 text-[12px] font-medium border-b-2 -mb-px transition-colors ${
                   detailTab === tab
                     ? 'border-accent text-accent dark:text-accent-bright'
-                    : 'border-transparent text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'
+                    : 'border-transparent text-muted-foreground hover:text-foreground dark:hover:text-faint'
                 }`}
               >
                 {tab === 'documents' ? 'Documents' : 'Sync history'}
@@ -560,19 +560,19 @@ export default function ConnectorsPage() {
 
           {/* Live progress banner shown while sync is running */}
           {isSyncing && activeJob && (
-            <div className="flex items-center gap-3 px-4 py-2.5 bg-blue-50 dark:bg-blue-500/10 border-b border-blue-100">
-              <RefreshCw size={12} className="animate-spin text-blue-500 flex-shrink-0" />
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-info/10 border-b border-info/30">
+              <RefreshCw size={12} className="animate-spin text-info flex-shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-medium text-blue-700 dark:text-blue-300">Syncing…</span>
-                  <span className="text-[11px] text-blue-600 dark:text-blue-300">
+                  <span className="text-[11px] font-medium text-info">Syncing…</span>
+                  <span className="text-[11px] text-info">
                     {activeJob.documents_indexed} indexed / {activeJob.documents_found} found
                   </span>
                 </div>
                 {activeJob.documents_found > 0 && (
-                  <div className="h-1 bg-blue-100 rounded-full overflow-hidden">
+                  <div className="h-1 bg-info/15 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                      className="h-full bg-info rounded-full transition-all duration-500"
                       style={{ width: `${Math.round((activeJob.documents_indexed / activeJob.documents_found) * 100)}%` }}
                     />
                   </div>
@@ -584,7 +584,7 @@ export default function ConnectorsPage() {
           {detailTab === 'documents' && (selectedConnector?.provider === 'github' || selectedConnector?.provider === 'confluence') && (
             <div>
               {/* Breadcrumb + search */}
-              <div className="flex flex-wrap items-center gap-1 px-4 py-2 border-b border-border bg-gray-50/50">
+              <div className="flex flex-wrap items-center gap-1 px-4 py-2 border-b border-border bg-muted/50">
                 <button
                   onClick={() => setBrowsePath('')}
                   className={`text-[12px] flex-shrink-0 ${browsePath === '' ? 'text-foreground font-medium' : 'text-accent dark:text-accent-bright hover:underline'}`}
@@ -607,7 +607,7 @@ export default function ConnectorsPage() {
                 })}
                 <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">
                   {searchInput && (
-                    <button onClick={() => setSearchInput('')} className="text-faint hover:text-gray-500">
+                    <button onClick={() => setSearchInput('')} className="text-faint hover:text-muted-foreground">
                       <X size={12} />
                     </button>
                   )}
@@ -642,18 +642,18 @@ export default function ConnectorsPage() {
                     <button
                       key={dir.path}
                       onClick={() => setBrowsePath(dir.path)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 border-b border-border hover:bg-amber-50/40 text-left group transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 border-b border-border hover:bg-warn/10/40 text-left group transition-colors"
                     >
-                      <FolderOpen size={14} className="text-amber-400 flex-shrink-0" />
-                      <span className="text-[12px] font-medium text-foreground flex-1 truncate group-hover:text-amber-700">{dir.label}</span>
+                      <FolderOpen size={14} className="text-warn flex-shrink-0" />
+                      <span className="text-[12px] font-medium text-foreground flex-1 truncate group-hover:text-warn">{dir.label}</span>
                       {(dir.count ?? 0) > 0 && (
                         <span className="text-[11px] text-faint flex-shrink-0">{dir.count!.toLocaleString()} files</span>
                       )}
-                      <ChevronRight size={12} className="text-faint flex-shrink-0 group-hover:text-amber-400" />
+                      <ChevronRight size={12} className="text-faint flex-shrink-0 group-hover:text-warn" />
                     </button>
                   ))}
                   {browseData.files.map((file) => (
-                    <div key={file.id} className="flex items-center gap-3 px-4 py-2.5 border-b last:border-b-0 border-border hover:bg-gray-50/60 group">
+                    <div key={file.id} className="flex items-center gap-3 px-4 py-2.5 border-b last:border-b-0 border-border hover:bg-muted/60 group">
                       <FileText size={13} className="text-faint flex-shrink-0" />
                       <span className="text-[12px] text-foreground flex-1 truncate min-w-0" title={file.source_document_id}>
                         {file.title || file.source_document_id}
@@ -746,12 +746,12 @@ export default function ConnectorsPage() {
                 <div key={job.id} className="px-4 py-3 border-b last:border-b-0 border-border">
                   <div className="flex items-center gap-3">
                     {job.status === 'running'
-                      ? <RefreshCw size={11} className="animate-spin text-blue-500 flex-shrink-0" />
+                      ? <RefreshCw size={11} className="animate-spin text-info flex-shrink-0" />
                       : null}
                     <span className={`text-[10px] px-2 py-0.5 rounded-full flex-shrink-0 ${
                       job.status === 'completed' ? statusColor('connected')
-                      : job.status === 'running' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300'
-                      : job.status === 'interrupted' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                      : job.status === 'running' ? 'bg-info/10 text-info'
+                      : job.status === 'interrupted' ? 'bg-warn/10 text-warn'
                       : statusColor(job.status)
                     }`}>
                       {job.status}
@@ -761,23 +761,23 @@ export default function ConnectorsPage() {
                       {job.documents_found > 0 ? ` of ${job.documents_found.toLocaleString()} found` : ''}
                     </p>
                     {job.error_message && (
-                      <p className="text-[11px] text-red-500 truncate flex-1">{job.error_message}</p>
+                      <p className="text-[11px] text-crit truncate flex-1">{job.error_message}</p>
                     )}
                     <p className="text-[11px] text-faint ml-auto flex-shrink-0">{relativeTime(job.created_at)}</p>
                   </div>
                   {job.status === 'running' && job.documents_found > 0 && (
                     <div className="mt-2 ml-5">
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[10px] text-blue-600 dark:text-blue-300">
+                        <span className="text-[10px] text-info">
                           {Math.round((job.documents_indexed / job.documents_found) * 100)}% complete
                         </span>
                         <span className="text-[10px] text-faint">
                           {(job.documents_found - job.documents_indexed).toLocaleString()} remaining
                         </span>
                       </div>
-                      <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-info/15 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                          className="h-full bg-info rounded-full transition-all duration-500"
                           style={{ width: `${Math.round((job.documents_indexed / job.documents_found) * 100)}%` }}
                         />
                       </div>

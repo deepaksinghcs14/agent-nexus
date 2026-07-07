@@ -80,14 +80,14 @@ function ToolTrace({ traces, open }: { traces: TraceEvent[]; open?: boolean }) {
         <summary className="flex items-center gap-2 cursor-pointer list-none select-none group py-1">
           <div className="flex items-center gap-1.5">
             <Wrench size={12} className="text-accent dark:text-accent-bright" />
-            <span className="text-[11px] font-medium text-muted-foreground group-hover:text-gray-700 dark:hover:text-gray-300">
+            <span className="text-[11px] font-medium text-muted-foreground group-hover:text-foreground dark:hover:text-faint">
               {traces.length} tool call{traces.length !== 1 ? 's' : ''}
             </span>
             {pendingCount > 0 && (
-              <span className="text-[10px] text-blue-500 font-medium">· {pendingCount} running</span>
+              <span className="text-[10px] text-info font-medium">· {pendingCount} running</span>
             )}
             {errorCount > 0 && (
-              <span className="text-[10px] text-red-500 font-medium">· {errorCount} failed</span>
+              <span className="text-[10px] text-crit font-medium">· {errorCount} failed</span>
             )}
           </div>
           <ChevronDown size={11} className="text-faint transition-transform group-open:rotate-180 ml-0.5" />
@@ -95,15 +95,15 @@ function ToolTrace({ traces, open }: { traces: TraceEvent[]; open?: boolean }) {
         <div className="mt-1 rounded-lg border border-border bg-muted overflow-hidden">
           {traces.map((t, i) => (
             <details key={i} className="group/item border-b border-border last:border-b-0">
-              <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer list-none select-none hover:bg-gray-100/80">
+              <summary className="flex items-center gap-2 px-3 py-2 cursor-pointer list-none select-none hover:bg-muted/80">
                 {t.pending ? (
-                  <Loader2 size={12} className="text-blue-400 animate-spin flex-shrink-0" />
+                  <Loader2 size={12} className="text-info animate-spin flex-shrink-0" />
                 ) : (
-                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.error ? 'bg-red-400' : 'bg-green-400'}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${t.error ? 'bg-crit' : 'bg-good'}`} />
                 )}
                 <span className="font-mono text-[11px] font-medium text-foreground flex-1 truncate">{t.tool}</span>
                 {t.pending ? (
-                  <span className="text-[10px] text-blue-400 flex-shrink-0">running…</span>
+                  <span className="text-[10px] text-info flex-shrink-0">running…</span>
                 ) : (
                   <span className="text-[10px] text-faint flex-shrink-0">{t.latencyMs}ms</span>
                 )}
@@ -117,7 +117,7 @@ function ToolTrace({ traces, open }: { traces: TraceEvent[]; open?: boolean }) {
                 {!t.pending && (
                   <div>
                     <p className="text-[10px] uppercase tracking-wide text-faint font-semibold mb-1">Output</p>
-                    <pre className={`text-[11px] bg-muted border rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-40 ${t.error ? 'text-red-600 dark:text-red-300 border-red-100 bg-red-50 dark:bg-red-500/10' : 'text-muted-foreground border-border'}`}>{JSON.stringify(t.output, null, 2)}</pre>
+                    <pre className={`text-[11px] bg-muted border rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-40 ${t.error ? 'text-crit border-crit/30 bg-crit/10' : 'text-muted-foreground border-border'}`}>{JSON.stringify(t.output, null, 2)}</pre>
                   </div>
                 )}
               </div>
@@ -524,7 +524,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
         {isLoading && <div className="text-sm text-faint text-center py-12">Loading…</div>}
 
         {loadError && (
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-crit/30 bg-crit/10 px-3 py-2 text-sm text-crit dark:text-crit">
             <span className="flex items-center gap-2"><AlertCircle size={14} />{loadError}</span>
             <button onClick={() => refetch()} className="text-xs font-medium hover:underline">Retry</button>
           </div>
@@ -590,9 +590,9 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
               <Bot size={13} className="text-accent dark:text-accent-bright" />
             </div>
             <div className="bg-muted border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
+              <span className="w-1.5 h-1.5 bg-faint rounded-full animate-bounce [animation-delay:0ms]" />
+              <span className="w-1.5 h-1.5 bg-faint rounded-full animate-bounce [animation-delay:150ms]" />
+              <span className="w-1.5 h-1.5 bg-faint rounded-full animate-bounce [animation-delay:300ms]" />
             </div>
           </div>
         )}
@@ -605,7 +605,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             </div>
             <div className="max-w-[90%] sm:max-w-[80%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm leading-relaxed bg-muted border border-border text-foreground">
               <MarkdownMessage content={streamBuffer} isStreaming />
-              <span className="inline-block w-1.5 h-3.5 bg-gray-400 ml-0.5 animate-pulse rounded-sm" />
+              <span className="inline-block w-1.5 h-3.5 bg-faint ml-0.5 animate-pulse rounded-sm" />
             </div>
           </div>
         )}
@@ -613,22 +613,22 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
         {/* Approval gate */}
         {approvalState && (
           <div className="flex gap-2.5 justify-start">
-            <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Bot size={13} className="text-amber-600 dark:text-amber-300" />
+            <div className="w-7 h-7 rounded-full bg-warn/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Bot size={13} className="text-warn dark:text-warn" />
             </div>
-            <div className="max-w-[90%] sm:max-w-[80%] rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
-              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1">Approval required</p>
-              <p className="text-[12px] text-amber-700 dark:text-amber-300 mb-2">
-                Tool <code className="font-mono bg-amber-100 px-1 rounded">{approvalState.tool}</code> wants to run with:
+            <div className="max-w-[90%] sm:max-w-[80%] rounded-2xl border border-warn/30 bg-warn/10 px-4 py-3">
+              <p className="text-xs font-semibold text-warn mb-1">Approval required</p>
+              <p className="text-[12px] text-warn mb-2">
+                Tool <code className="font-mono bg-warn/15 px-1 rounded">{approvalState.tool}</code> wants to run with:
               </p>
-              <pre className="text-[11px] text-amber-800 dark:text-amber-300 bg-surface border border-amber-100 rounded p-2 overflow-x-auto whitespace-pre-wrap mb-3 max-h-32">{JSON.stringify(approvalState.input, null, 2)}</pre>
+              <pre className="text-[11px] text-warn bg-surface border border-warn/30 rounded p-2 overflow-x-auto whitespace-pre-wrap mb-3 max-h-32">{JSON.stringify(approvalState.input, null, 2)}</pre>
               <div className="flex gap-2">
                 <button onClick={() => handleApproval('approved')} disabled={!!approvingDecision}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-[12px] font-medium hover:bg-green-700 disabled:opacity-50">
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-good text-white rounded-lg text-[12px] font-medium hover:bg-good disabled:opacity-50">
                   <CheckCircle size={12} /> Approve
                 </button>
                 <button onClick={() => handleApproval('rejected')} disabled={!!approvingDecision}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white rounded-lg text-[12px] font-medium hover:bg-red-600 disabled:opacity-50">
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-crit/100 text-white rounded-lg text-[12px] font-medium hover:bg-crit disabled:opacity-50">
                   <XCircle size={12} /> Reject
                 </button>
               </div>
@@ -639,24 +639,24 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
         {/* User input gate */}
         {userInputState && (
           <div className="flex gap-2.5 justify-start">
-            <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Bot size={13} className="text-blue-600 dark:text-blue-300" />
+            <div className="w-7 h-7 rounded-full bg-info/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Bot size={13} className="text-info" />
             </div>
-            <div className="max-w-[90%] sm:max-w-[80%] rounded-2xl border border-blue-200 bg-blue-50 dark:bg-blue-500/10 px-4 py-3 w-full sm:w-80">
-              <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 mb-2">Agent is asking</p>
-              <p className="text-[13px] text-blue-900 mb-3">{userInputState.question}</p>
+            <div className="max-w-[90%] sm:max-w-[80%] rounded-2xl border border-info/30 bg-info/10 px-4 py-3 w-full sm:w-80">
+              <p className="text-xs font-semibold text-info dark:text-info mb-2">Agent is asking</p>
+              <p className="text-[13px] text-info mb-3">{userInputState.question}</p>
               <textarea
                 value={userInputAnswer}
                 onChange={e => setUserInputAnswer(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleUserInputSubmit() } }}
                 placeholder="Type your answer…"
                 rows={2}
-                className="w-full text-sm bg-surface border border-blue-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400 resize-none mb-2"
+                className="w-full text-sm bg-surface border border-info/30 rounded-lg px-3 py-2 focus:outline-none focus:border-info/50 resize-none mb-2"
               />
               <button
                 onClick={handleUserInputSubmit}
                 disabled={submittingInput || !userInputAnswer.trim()}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-[12px] font-medium hover:bg-blue-700 disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-info text-white rounded-lg text-[12px] font-medium hover:bg-info disabled:opacity-50"
               >
                 <Send size={12} /> Send reply
               </button>
@@ -667,7 +667,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
         {/* Compacting indicator */}
         {isCompacting && (
           <div className="flex items-center gap-1.5 px-3 py-1 text-[11px] text-faint">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-300 animate-pulse" />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-faint animate-pulse" />
             Compacting conversation…
           </div>
         )}
@@ -678,7 +678,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
       {/* Input */}
       <div className="border-t border-border px-4 py-3 flex-shrink-0 bg-surface">
         {errorMessage && (
-          <div className="mb-2 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-crit/30 bg-crit/10 px-3 py-2 text-sm text-crit dark:text-crit">
             <AlertCircle size={13} /><span>{errorMessage}</span>
           </div>
         )}
@@ -691,7 +691,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             placeholder={streaming ? 'Agent is running…' : 'Message the agent… (Enter to send, Shift+Enter for newline)'}
             rows={1}
             disabled={streaming}
-            className="flex-1 text-sm bg-transparent resize-none focus:outline-none disabled:opacity-50 placeholder-gray-400 dark:placeholder-gray-500"
+            className="flex-1 text-sm bg-transparent resize-none focus:outline-none disabled:opacity-50 placeholder-faint"
             style={{ minHeight: 24, maxHeight: 160 }}
           />
           <button

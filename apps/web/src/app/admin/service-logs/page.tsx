@@ -13,14 +13,14 @@ function levelClass(level: string) {
   switch (level.toLowerCase()) {
     case 'fatal':
     case 'error':
-      return 'text-red-300'
+      return 'text-crit'
     case 'warn':
-      return 'text-amber-300'
+      return 'text-warn'
     case 'debug':
     case 'trace':
-      return 'text-cyan-300'
+      return 'text-info'
     default:
-      return 'text-emerald-300'
+      return 'text-good'
   }
 }
 
@@ -122,7 +122,7 @@ export default function AdminServiceLogsPage() {
           </button>
           <button
             onClick={() => setLogs([])}
-            className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border-strong bg-surface text-muted-foreground hover:border-gray-300"
+            className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg border border-border-strong bg-surface text-muted-foreground hover:border-border-strong"
           >
             <Trash2 className="w-3.5 h-3.5" />
             Clear
@@ -130,7 +130,7 @@ export default function AdminServiceLogsPage() {
           {running ? (
             <button
               onClick={stop}
-              className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700"
+              className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-crit text-white hover:bg-crit"
             >
               <Square className="w-3.5 h-3.5" />
               Stop
@@ -138,7 +138,7 @@ export default function AdminServiceLogsPage() {
           ) : (
             <button
               onClick={() => setRunning(true)}
-              className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+              className="inline-flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg bg-good text-white hover:bg-good"
             >
               <Play className="w-3.5 h-3.5" />
               Start
@@ -163,13 +163,13 @@ export default function AdminServiceLogsPage() {
         <select value={level} onChange={(event) => setLevel(event.target.value)} className="text-[12px] px-2.5 py-1.5 border border-border-strong rounded-lg bg-surface">
           {LEVELS.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
-        <span className={`ml-auto text-[11px] px-2 py-1 rounded-full ${running ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
+        <span className={`ml-auto text-[11px] px-2 py-1 rounded-full ${running ? 'bg-good/10 text-good' : 'bg-muted text-muted-foreground'}`}>
           {running ? 'streaming' : 'stopped'}
         </span>
       </div>
 
       {streamError && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-3">
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-3">
           {streamError}
         </div>
       )}
@@ -186,7 +186,7 @@ export default function AdminServiceLogsPage() {
                 <span className="text-muted-foreground">{formatTime(log.ts)}</span>
                 <span className="text-sky-300 truncate">{log.source}</span>
                 <span className={`uppercase ${levelClass(log.level)}`}>{log.level}</span>
-                <span className="text-gray-200 whitespace-pre-wrap break-words">
+                <span className="text-faint whitespace-pre-wrap break-words">
                   {log.message}
                   {log.attrs && Object.keys(log.attrs).length > 0 && (
                     <span className="text-muted-foreground"> {JSON.stringify(log.attrs)}</span>

@@ -19,7 +19,7 @@ const TYPE_LABELS: Record<WorkspaceType, string> = {
 
 const TYPE_COLORS: Record<WorkspaceType, string> = {
   personal: 'bg-accent/15 text-accent dark:text-accent-bright',
-  team: 'bg-blue-500/15 text-blue-700 dark:text-blue-300',
+  team: 'bg-info/15 text-info',
   organization: 'bg-good/15 text-good',
   project: 'bg-warn/15 text-warn',
   sandbox: 'bg-muted text-muted-foreground',

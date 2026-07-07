@@ -45,7 +45,7 @@ export default function AdminAuditLogsPage() {
         </div>
       </div>
       {error && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">{(error as Error).message}</div>
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">{(error as Error).message}</div>
       )}
       {isLoading && <div className="py-12 text-center text-sm text-faint">Loading…</div>}
       {!isLoading && !error && logs.length === 0 && (

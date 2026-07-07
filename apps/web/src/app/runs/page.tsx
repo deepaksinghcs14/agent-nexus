@@ -140,7 +140,7 @@ export default function RunsPage() {
         ].map((item) => <div key={item.label} className="bg-surface border border-border rounded-xl p-4"><p className="text-[11px] text-faint mb-1">{item.label}</p><p className="text-2xl font-bold text-foreground">{item.value}</p></div>)}
       </div>
 
-      {error && <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">{error}</div>}
+      {error && <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">{error}</div>}
       {initialLoading && (
         <div className="bg-surface border border-border rounded-xl overflow-x-auto">
           <div className="min-w-[600px] divide-y divide-border">
@@ -184,7 +184,7 @@ export default function RunsPage() {
                       const { name, type } = runLabel(run)
                       return (
                         <div className="flex items-center gap-1.5">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${type === 'workflow' ? 'bg-accent/10 text-accent dark:text-accent-bright' : 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300'}`}>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${type === 'workflow' ? 'bg-accent/10 text-accent dark:text-accent-bright' : 'bg-accent/10 dark:bg-info/10 text-info dark:text-info'}`}>
                             {type === 'workflow' ? 'WF' : 'AG'}
                           </span>
                           <span className="text-[12px] font-medium text-foreground">{name}</span>
@@ -197,7 +197,7 @@ export default function RunsPage() {
                   </td>
                   <td className="px-4 py-2.5">
                     {run.trigger_id ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-300 font-medium">
+                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-crit/10 dark:bg-crit/10 text-crit dark:text-crit font-medium">
                         <Zap className="w-2.5 h-2.5" /> Webhook
                       </span>
                     ) : (
@@ -217,7 +217,7 @@ export default function RunsPage() {
                           onClick={() => stop.mutate(run.id)}
                           disabled={stop.isPending}
                           title="Stop run"
-                          className="text-[11px] px-2.5 py-1 border border-red-200 rounded-md text-red-500 hover:bg-red-50 inline-flex items-center gap-1"
+                          className="text-[11px] px-2.5 py-1 border border-crit/30 rounded-md text-crit hover:bg-crit/10 inline-flex items-center gap-1"
                         >
                           <Square className="w-3 h-3" /> Stop
                         </button>

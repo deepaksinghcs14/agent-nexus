@@ -59,6 +59,6 @@ export default function AdminUsersPage() {
   )
 }
 
-function ErrorMessage({ error }: { error: Error }) { return <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">{error.message}</div> }
+function ErrorMessage({ error }: { error: Error }) { return <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">{error.message}</div> }
 function Loading() { return <div className="py-12 text-center text-sm text-faint">Loading…</div> }
 function Empty({ icon: Icon, text }: { icon: React.ElementType; text: string }) { return <div className="border border-dashed border-border-strong rounded-xl py-12 text-center"><Icon className="mx-auto text-faint mb-3" /><p className="text-sm text-muted-foreground">{text}</p></div> }

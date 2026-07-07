@@ -54,10 +54,10 @@ export default function AdminClaudeCodePage() {
           {/* Runner */}
           <div className={`flex flex-wrap items-center gap-3 border rounded-xl px-4 py-3 mb-4 ${
             !data.runner_configured ? 'border-border-strong bg-muted'
-              : runnerOk ? (stub ? 'border-amber-200 bg-amber-50/60' : 'border-green-200 bg-green-50/50')
-              : 'border-red-200 bg-red-50/60'
+              : runnerOk ? (stub ? 'border-warn/30 bg-warn/10/60' : 'border-good/30 bg-good/10/50')
+              : 'border-crit/30 bg-crit/10/60'
           }`}>
-            <Server size={16} className={!data.runner_configured ? 'text-faint' : runnerOk ? (stub ? 'text-amber-600 dark:text-amber-300' : 'text-green-600 dark:text-green-300') : 'text-red-500'} />
+            <Server size={16} className={!data.runner_configured ? 'text-faint' : runnerOk ? (stub ? 'text-warn dark:text-warn' : 'text-good dark:text-good') : 'text-crit'} />
             <div>
               <p className="text-sm font-medium text-foreground">
                 Runner{data.runner_executor ? ` — ${data.runner_executor} mode` : ''}
@@ -95,7 +95,7 @@ export default function AdminClaudeCodePage() {
             </div>
             {waiting.length === 0 ? (
               <p className="flex items-center gap-2 px-4 py-6 text-sm text-faint">
-                <CheckCircle2 size={14} className="text-green-500" /> Nothing is waiting — no parked runs anywhere.
+                <CheckCircle2 size={14} className="text-good" /> Nothing is waiting — no parked runs anywhere.
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -124,7 +124,7 @@ export default function AdminClaudeCodePage() {
                           </td>
                           <td className="px-4 py-2 text-muted-foreground">{r.wait_type}</td>
                           <td className="px-4 py-2">
-                            <span className={`inline-flex items-center gap-1 ${stale ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-muted-foreground'}`}>
+                            <span className={`inline-flex items-center gap-1 ${stale ? 'text-warn font-medium' : 'text-muted-foreground'}`}>
                               {stale && <AlertTriangle size={11} />}
                               {relativeTime(r.waiting_since)}
                             </span>

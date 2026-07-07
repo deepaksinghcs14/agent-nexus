@@ -18,26 +18,26 @@ function effectivePassed(res: EvalResult): boolean | undefined {
 function StatusIcon({ res }: { res: EvalResult }) {
   const ep = effectivePassed(res)
   const isOverridden = res.override_passed !== null && res.override_passed !== undefined
-  if (res.error && ep === undefined) return <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0" />
-  if (ep === true) return <CheckCircle2 className={`w-4 h-4 flex-shrink-0 ${isOverridden ? 'text-green-400' : 'text-green-500'}`} />
-  if (ep === false) return <XCircle className={`w-4 h-4 flex-shrink-0 ${isOverridden ? 'text-red-300' : 'text-red-400'}`} />
+  if (res.error && ep === undefined) return <AlertCircle className="w-4 h-4 text-warn flex-shrink-0" />
+  if (ep === true) return <CheckCircle2 className={`w-4 h-4 flex-shrink-0 ${isOverridden ? 'text-good' : 'text-good'}`} />
+  if (ep === false) return <XCircle className={`w-4 h-4 flex-shrink-0 ${isOverridden ? 'text-crit' : 'text-crit'}`} />
   return <span className="w-4 h-4 flex-shrink-0" />
 }
 
 function RunStatusBadge({ status }: { status: EvalRun['status'] }) {
   const cls = {
     pending: 'bg-muted text-muted-foreground',
-    running: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300',
-    completed: 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300',
-    failed: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-300',
+    running: 'bg-info/10 text-info',
+    completed: 'bg-good/10 text-good',
+    failed: 'bg-crit/10 text-crit',
   }[status] ?? 'bg-muted text-muted-foreground'
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{status}</span>
 }
 
 function FixIcon({ type }: { type: EvalAnalysisFix['type'] }) {
   if (type === 'tool') return <Wrench className="w-4 h-4 text-accent dark:text-accent-bright flex-shrink-0" />
-  if (type === 'skill') return <GraduationCap className="w-4 h-4 text-blue-500 flex-shrink-0" />
-  return <FileText className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+  if (type === 'skill') return <GraduationCap className="w-4 h-4 text-info flex-shrink-0" />
+  return <FileText className="w-4 h-4 text-accent dark:text-accent-bright flex-shrink-0" />
 }
 
 function PromptFix({ fix, agentId }: { fix: EvalAnalysisFix; agentId?: string }) {
@@ -72,15 +72,15 @@ function PromptFix({ fix, agentId }: { fix: EvalAnalysisFix; agentId?: string })
 
   return (
     <div>
-      <pre className="text-xs text-foreground bg-indigo-50 dark:bg-indigo-500/10 rounded p-3 whitespace-pre-wrap font-mono leading-relaxed">
+      <pre className="text-xs text-foreground bg-accent/10 dark:bg-info/10 rounded p-3 whitespace-pre-wrap font-mono leading-relaxed">
         {fix.content}
       </pre>
       <div className="flex items-center gap-2 mt-2">
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground dark:hover:text-faint transition-colors"
         >
-          {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+          {copied ? <Check className="w-3 h-3 text-good" /> : <Copy className="w-3 h-3" />}
           {copied ? 'Copied' : 'Copy'}
         </button>
         {agentId && !applied && (
@@ -91,17 +91,17 @@ function PromptFix({ fix, agentId }: { fix: EvalAnalysisFix; agentId?: string })
                 <button
                   onClick={handleApply}
                   disabled={applying}
-                  className="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1"
+                  className="text-xs bg-accent text-white px-2 py-0.5 rounded hover:bg-accent-hover disabled:opacity-50 flex items-center gap-1"
                 >
                   {applying && <Loader2 className="w-3 h-3 animate-spin" />}
                   Confirm
                 </button>
-                <button onClick={() => setShowConfirm(false)} className="text-xs text-faint hover:text-gray-600 dark:hover:text-gray-300">Cancel</button>
+                <button onClick={() => setShowConfirm(false)} className="text-xs text-faint hover:text-muted-foreground dark:hover:text-faint">Cancel</button>
               </div>
             ) : (
               <button
                 onClick={() => setShowConfirm(true)}
-                className="text-xs text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 transition-colors"
+                className="text-xs text-info dark:text-info hover:text-accent dark:text-accent-bright transition-colors"
               >
                 Apply to agent
               </button>
@@ -109,7 +109,7 @@ function PromptFix({ fix, agentId }: { fix: EvalAnalysisFix; agentId?: string })
           </>
         )}
         {applied && (
-          <span className="text-xs text-green-600 dark:text-green-300 flex items-center gap-1">
+          <span className="text-xs text-good dark:text-good flex items-center gap-1">
             <Check className="w-3 h-3" /> Applied
             {agentId && (
               <Link href={`/agents/${agentId}/edit`} className="ml-1 underline">
@@ -159,7 +159,7 @@ function AnalysisCard({ analysis, agentId }: { analysis: EvalAnalysis; agentId?:
                 )}
                 {fix.type === 'skill' && agentId && (
                   <div className="mt-2">
-                    <Link href={`/agents/${agentId}/edit`} className="text-xs text-blue-600 dark:text-blue-300 hover:underline">Edit agent skills →</Link>
+                    <Link href={`/agents/${agentId}/edit`} className="text-xs text-info hover:underline">Edit agent skills →</Link>
                   </div>
                 )}
               </div>
@@ -187,7 +187,7 @@ function ResultCard({
 
   const ep = effectivePassed(res)
   const isOverridden = res.override_passed !== null && res.override_passed !== undefined
-  const borderCls = ep === true ? 'border-green-100' : res.error && ep === undefined ? 'border-amber-100' : 'border-red-100'
+  const borderCls = ep === true ? 'border-good/30' : res.error && ep === undefined ? 'border-warn/30' : 'border-crit/30'
 
   const handleOverride = async (val: boolean | null) => {
     setOverriding(true)
@@ -226,7 +226,7 @@ function ResultCard({
             {res.score > 0 && <span className="text-xs text-muted-foreground">Score: {res.score.toFixed(2)}</span>}
             <span className="text-xs text-faint">{res.latency_ms}ms</span>
             {isOverridden && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-50 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 border border-yellow-200">
+              <span className="text-xs px-1.5 py-0.5 rounded bg-warn/10 dark:bg-warn/100/10 text-warn dark:text-warn border border-warn/30">
                 manually {res.override_passed ? 'correct' : 'incorrect'}
               </span>
             )}
@@ -251,14 +251,14 @@ function ResultCard({
               <button
                 title="Mark as correct"
                 onClick={() => handleOverride(res.override_passed === true ? null : true)}
-                className={`p-1 rounded transition-colors ${res.override_passed === true ? 'bg-green-100 text-green-600 dark:text-green-300' : 'text-faint hover:text-green-500 hover:bg-green-50'}`}
+                className={`p-1 rounded transition-colors ${res.override_passed === true ? 'bg-good/15 text-good dark:text-good' : 'text-faint hover:text-good hover:bg-good/10'}`}
               >
                 <ThumbsUp className="w-3.5 h-3.5" />
               </button>
               <button
                 title="Mark as incorrect"
                 onClick={() => handleOverride(res.override_passed === false ? null : false)}
-                className={`p-1 rounded transition-colors ${res.override_passed === false ? 'bg-red-100 text-red-500' : 'text-faint hover:text-red-400 hover:bg-red-50'}`}
+                className={`p-1 rounded transition-colors ${res.override_passed === false ? 'bg-crit/15 text-crit' : 'text-faint hover:text-crit hover:bg-crit/10'}`}
               >
                 <ThumbsDown className="w-3.5 h-3.5" />
               </button>
@@ -279,7 +279,7 @@ function ResultCard({
           {res.expected_output && (
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-1">Expected output</p>
-              <p className="text-sm text-foreground whitespace-pre-wrap bg-green-50 dark:bg-green-500/10 rounded p-3">{res.expected_output}</p>
+              <p className="text-sm text-foreground whitespace-pre-wrap bg-good/10 rounded p-3">{res.expected_output}</p>
             </div>
           )}
           {res.grading_criteria && (
@@ -291,13 +291,13 @@ function ResultCard({
           {res.judge_reasoning && (
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-1">Judge reasoning</p>
-              <p className="text-sm text-foreground bg-blue-50 dark:bg-blue-500/10 rounded p-3">{res.judge_reasoning}</p>
+              <p className="text-sm text-foreground bg-info/10 rounded p-3">{res.judge_reasoning}</p>
             </div>
           )}
           {res.error && (
             <div>
-              <p className="text-xs font-medium text-amber-600 dark:text-amber-300 mb-1">Error</p>
-              <p className="text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 rounded p-3">{res.error}</p>
+              <p className="text-xs font-medium text-warn dark:text-warn mb-1">Error</p>
+              <p className="text-sm text-warn bg-warn/10 rounded p-3">{res.error}</p>
             </div>
           )}
 
@@ -305,7 +305,7 @@ function ResultCard({
           {isOverridden && (
             <div className="pt-1 border-t border-border">
               {fixResult ? (
-                <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-300">
+                <div className="flex items-center gap-2 text-xs text-good dark:text-good">
                   <Check className="w-3.5 h-3.5" />
                   Case updated — expected output and grading criteria refined.
                 </div>
@@ -396,9 +396,9 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
     <div className="p-4 sm:p-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-faint mb-4">
-        <Link href="/evals" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Evals</Link>
+        <Link href="/evals" className="hover:text-muted-foreground dark:hover:text-faint transition-colors">Evals</Link>
         <span>/</span>
-        <Link href={`/evals/${id}`} className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Suite</Link>
+        <Link href={`/evals/${id}`} className="hover:text-muted-foreground dark:hover:text-faint transition-colors">Suite</Link>
         <span>/</span>
         <span className="text-muted-foreground">Run</span>
       </div>
@@ -413,15 +413,15 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
           </div>
           {pct != null && run.status === 'completed' && (
             <div className="flex items-center gap-4 text-sm">
-              <span className="text-green-600 dark:text-green-300 font-medium">{run.passed} passed</span>
-              <span className="text-red-500 font-medium">{run.failed} failed</span>
-              {run.error_count > 0 && <span className="text-amber-500 font-medium">{run.error_count} errors</span>}
-              <span className={`text-lg font-bold ${pct >= 80 ? 'text-green-600 dark:text-green-300' : pct >= 50 ? 'text-amber-600 dark:text-amber-300' : 'text-red-600 dark:text-red-300'}`}>{pct}%</span>
+              <span className="text-good dark:text-good font-medium">{run.passed} passed</span>
+              <span className="text-crit font-medium">{run.failed} failed</span>
+              {run.error_count > 0 && <span className="text-warn font-medium">{run.error_count} errors</span>}
+              <span className={`text-lg font-bold ${pct >= 80 ? 'text-good dark:text-good' : pct >= 50 ? 'text-warn dark:text-warn' : 'text-crit'}`}>{pct}%</span>
             </div>
           )}
           {(run.status === 'pending' || run.status === 'running') && (
-            <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-300">
-              <span className="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+            <div className="flex items-center gap-2 text-sm text-info">
+              <span className="inline-block w-2 h-2 bg-info rounded-full animate-pulse" />
               Running {results.length} / {run.total_cases} cases…
             </div>
           )}
@@ -430,7 +430,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
         {/* Progress bar */}
         {run.status === 'completed' && run.total_cases > 0 && (
           <div className="mt-4 h-2 rounded-full bg-muted overflow-hidden">
-            <div className="h-full bg-green-500 transition-all" style={{ width: `${pct}%` }} />
+            <div className="h-full bg-good transition-all" style={{ width: `${pct}%` }} />
           </div>
         )}
       </div>

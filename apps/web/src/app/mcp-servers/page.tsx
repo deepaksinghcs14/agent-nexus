@@ -98,7 +98,7 @@ function AddServerPanel({
 
       <div className="p-4">
         {formError && (
-          <p className="text-[12px] text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-100 rounded px-3 py-2 mb-3">{formError}</p>
+          <p className="text-[12px] text-crit bg-crit/10 border border-crit/30 rounded px-3 py-2 mb-3">{formError}</p>
         )}
 
         {/* Preset catalog: popular token-auth servers, or fully custom */}
@@ -111,7 +111,7 @@ function AddServerPanel({
                 key={p.id}
                 onClick={() => pickPreset(active ? null : p)}
                 className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
-                  active ? 'border-accent/50 bg-accent/10' : 'border-border-strong hover:border-gray-300 bg-surface'
+                  active ? 'border-accent/50 bg-accent/10' : 'border-border-strong hover:border-border-strong bg-surface'
                 }`}
               >
                 <Package size={14} className={`mt-0.5 flex-shrink-0 ${active ? 'text-accent dark:text-accent-bright' : 'text-faint'}`} />
@@ -125,7 +125,7 @@ function AddServerPanel({
           <button
             onClick={() => pickPreset(null)}
             className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
-              preset === null ? 'border-accent/50 bg-accent/10' : 'border-border-strong hover:border-gray-300 bg-surface'
+              preset === null ? 'border-accent/50 bg-accent/10' : 'border-border-strong hover:border-border-strong bg-surface'
             }`}
           >
             <Wrench size={14} className={`mt-0.5 flex-shrink-0 ${preset === null ? 'text-accent dark:text-accent-bright' : 'text-faint'}`} />
@@ -193,7 +193,7 @@ function AddServerPanel({
                 key={id}
                 onClick={() => setForm((f) => ({ ...f, transport: id }))}
                 className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
-                  active ? 'border-accent/50 bg-accent/10' : 'border-border-strong hover:border-gray-300 bg-surface'
+                  active ? 'border-accent/50 bg-accent/10' : 'border-border-strong hover:border-border-strong bg-surface'
                 }`}
               >
                 <Icon size={14} className={`mt-0.5 flex-shrink-0 ${active ? 'text-accent dark:text-accent-bright' : 'text-faint'}`} />
@@ -259,7 +259,7 @@ function AddServerPanel({
           >
             {isPending ? 'Adding…' : 'Add server'}
           </button>
-          <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-gray-800 dark:hover:text-gray-200">
+          <button onClick={onClose} className="px-3 py-1.5 text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint">
             Cancel
           </button>
         </div>
@@ -287,7 +287,7 @@ function RiskRow({ tool, serverId, onRiskChange }: { tool: MCPTool; serverId: st
   }
 
   return (
-    <tr className="border-b last:border-b-0 border-border hover:bg-gray-50/50">
+    <tr className="border-b last:border-b-0 border-border hover:bg-muted/50">
       <td className="px-4 py-2.5">
         <p className="text-[12px] font-medium text-foreground font-mono">{tool.name}</p>
       </td>
@@ -314,10 +314,10 @@ function RiskRow({ tool, serverId, onRiskChange }: { tool: MCPTool; serverId: st
 
 function StatusDot({ status }: { status: string }) {
   const cls =
-    status === 'connected'    ? 'bg-green-500' :
-    status === 'error'        ? 'bg-red-400' :
-    status === 'disconnected' ? 'bg-gray-300' :
-                                'bg-amber-400'
+    status === 'connected'    ? 'bg-good' :
+    status === 'error'        ? 'bg-crit' :
+    status === 'disconnected' ? 'bg-faint' :
+                                'bg-warn'
   return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cls}`} />
 }
 
@@ -408,7 +408,7 @@ export default function MCPServersPage() {
       </div>
 
       {(error || actionError) && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">
           {actionError || (error as Error).message}
         </div>
       )}
@@ -490,7 +490,7 @@ export default function MCPServersPage() {
                     <p className="text-[13px] font-medium text-foreground truncate">{server.name}</p>
                   </div>
                   {server.status === 'error' && (
-                    <AlertTriangle size={13} className="text-red-400 flex-shrink-0 ml-1" />
+                    <AlertTriangle size={13} className="text-crit flex-shrink-0 ml-1" />
                   )}
                 </div>
 
@@ -507,7 +507,7 @@ export default function MCPServersPage() {
                     {server.transport}
                   </span>
                   {server.auth_type === 'oauth' && (
-                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200">
+                    <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-info/10 text-info border-info/30">
                       oauth
                     </span>
                   )}
@@ -532,7 +532,7 @@ export default function MCPServersPage() {
                       onClick={() => oauthConnect.mutate(server.id)}
                       disabled={oauthConnect.isPending && (oauthConnect.variables as string) === server.id}
                       title="Authorize via OAuth (for servers like Atlassian's hosted MCP)"
-                      className="inline-flex items-center gap-1 px-2 py-1 border border-blue-200 text-[11px] text-blue-700 dark:text-blue-300 rounded-md hover:bg-blue-50 disabled:opacity-50"
+                      className="inline-flex items-center gap-1 px-2 py-1 border border-info/30 text-[11px] text-info rounded-md hover:bg-info/10 disabled:opacity-50"
                     >
                       <KeyRound size={11} />
                       {server.auth_type === 'oauth' ? 'Re-connect' : 'Connect (OAuth)'}
@@ -540,7 +540,7 @@ export default function MCPServersPage() {
                   )}
                   <button
                     onClick={() => { if (confirm('Delete this server and all its discovered tools?')) remove.mutate(server.id) }}
-                    className="ml-auto p-1 text-faint hover:text-red-500"
+                    className="ml-auto p-1 text-faint hover:text-crit"
                   >
                     <Trash2 size={13} />
                   </button>
@@ -574,7 +574,7 @@ export default function MCPServersPage() {
           </div>
 
           {toolsError && (
-            <div className="text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 px-4 py-3">{(toolsError as Error).message}</div>
+            <div className="text-xs text-crit bg-crit/10 px-4 py-3">{(toolsError as Error).message}</div>
           )}
           {toolsLoading && <div className="py-8 text-center text-sm text-faint">Loading tools…</div>}
 

@@ -8,15 +8,15 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import type { LatencyData, LatencyByAgent, LatencyByModel, LatencyTrendDay } from '@/types'
 
 function latencyColor(secs: number): string {
-  if (secs < 2) return 'bg-green-100 text-green-700 dark:text-green-300'
-  if (secs < 5) return 'bg-amber-100 text-amber-700 dark:text-amber-300'
-  return 'bg-red-100 text-red-700 dark:text-red-300'
+  if (secs < 2) return 'bg-good/15 text-good'
+  if (secs < 5) return 'bg-warn/15 text-warn'
+  return 'bg-crit/15 text-crit dark:text-crit'
 }
 
 function successColor(rate: number): string {
-  if (rate >= 95) return 'text-green-600 dark:text-green-300'
-  if (rate >= 80) return 'text-amber-600 dark:text-amber-300'
-  return 'text-red-600 dark:text-red-300'
+  if (rate >= 95) return 'text-good dark:text-good'
+  if (rate >= 80) return 'text-warn dark:text-warn'
+  return 'text-crit'
 }
 
 function fmt(secs: number): string {
@@ -73,7 +73,7 @@ export default function ObservabilityPage() {
       />
 
       {error && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">
           {(error as Error).message}
         </div>
       )}
@@ -112,7 +112,7 @@ export default function ObservabilityPage() {
                   {byAgent.map((row) => {
                     const successRate = row.run_count > 0 ? (row.success_count / row.run_count) * 100 : 0
                     return (
-                      <tr key={row.id} className="hover:bg-gray-50/50">
+                      <tr key={row.id} className="hover:bg-muted/50">
                         <td className="px-4 py-2.5 font-medium text-foreground">{row.name}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">
                           <span className="capitalize">{row.provider}</span>
@@ -158,7 +158,7 @@ export default function ObservabilityPage() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {byModel.map((row) => (
-                      <tr key={`${row.provider}/${row.model}`} className="hover:bg-gray-50/50">
+                      <tr key={`${row.provider}/${row.model}`} className="hover:bg-muted/50">
                         <td className="px-4 py-2.5 capitalize text-foreground">{row.provider}</td>
                         <td className="px-4 py-2.5 text-muted-foreground text-[12px] font-mono">{row.model}</td>
                         <td className="px-4 py-2.5 text-center">
@@ -186,7 +186,7 @@ export default function ObservabilityPage() {
                 {/* Legend */}
                 <div className="flex gap-4 mb-4 text-[11px] text-faint">
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" />
+                    <span className="w-2.5 h-2.5 rounded-sm bg-info inline-block" />
                     P50
                   </span>
                   <span className="flex items-center gap-1.5">
@@ -201,7 +201,7 @@ export default function ObservabilityPage() {
                       <div className="flex items-end gap-0.5 h-24">
                         <div
                           title={`P50: ${fmt(d.p50_secs)} | ${d.run_count} runs`}
-                          className="w-3 bg-blue-400 rounded-t cursor-default"
+                          className="w-3 bg-info rounded-t cursor-default"
                           style={{ height: `${Math.max((d.p50_secs / maxP95) * 100, 2)}%` }}
                         />
                         <div

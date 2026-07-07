@@ -73,7 +73,7 @@ function PlaygroundInner() {
                   className={`text-left p-3 rounded-xl border transition-all ${
                     selectedAgent === agent.id
                       ? 'border-accent/50 bg-accent/10 ring-1 ring-accent/30'
-                      : 'border-border hover:border-gray-200 bg-surface hover:bg-muted'
+                      : 'border-border hover:border-border-strong bg-surface hover:bg-muted'
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -119,13 +119,13 @@ function PlaygroundInner() {
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && selectedAgent) { e.preventDefault(); createMutation.mutate() } }}
               placeholder="What would you like to ask? Skip to start with an empty conversation."
               rows={3}
-              className="w-full text-sm px-3 py-2.5 border border-border-strong rounded-xl resize-none focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent/50 bg-surface placeholder-gray-400 dark:placeholder-gray-500"
+              className="w-full text-sm px-3 py-2.5 border border-border-strong rounded-xl resize-none focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent/50 bg-surface placeholder-faint"
             />
           </div>
         )}
 
         {error && (
-          <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+          <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg px-3 py-2">{error}</div>
         )}
 
         <button

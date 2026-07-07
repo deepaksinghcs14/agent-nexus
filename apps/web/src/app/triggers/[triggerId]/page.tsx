@@ -26,10 +26,10 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handle}
-      className="p-1.5 rounded hover:bg-muted text-faint hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+      className="p-1.5 rounded hover:bg-muted text-faint hover:text-muted-foreground dark:hover:text-faint transition-colors"
       title="Copy"
     >
-      {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+      {copied ? <Check className="w-4 h-4 text-good" /> : <Copy className="w-4 h-4" />}
     </button>
   )
 }
@@ -69,7 +69,7 @@ function TriggerPageInner({ triggerId }: { triggerId: string }) {
     <div className="p-4 sm:p-6">
       <Link
         href="/triggers"
-        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300 mb-6 transition-colors"
+        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground dark:hover:text-faint mb-6 transition-colors"
       >
         <ChevronLeft className="w-4 h-4" />
         Webhook Triggers
@@ -101,7 +101,7 @@ function TriggerPageInner({ triggerId }: { triggerId: string }) {
             className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors -mb-px ${
               tab === t
                 ? 'border-accent/50 text-accent dark:text-accent-bright'
-                : 'border-transparent text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'
+                : 'border-transparent text-muted-foreground hover:text-foreground dark:hover:text-faint'
             }`}
           >
             {t === 'config' ? 'Configuration' : 'Runs'}

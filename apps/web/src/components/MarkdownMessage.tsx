@@ -51,7 +51,7 @@ function renderInline(text: string, baseKey: string) {
     const key = `${baseKey}-${i++}`
     if (full.startsWith('`')) {
       nodes.push(
-        <code key={key} className="bg-muted rounded px-1 py-0.5 font-mono text-xs text-rose-600 dark:text-rose-300 whitespace-nowrap">
+        <code key={key} className="bg-muted rounded px-1 py-0.5 font-mono text-xs text-crit dark:text-crit whitespace-nowrap">
           {full.slice(1, -1)}
         </code>
       )
@@ -177,7 +177,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   }
 
   return (
-    <div className="my-3 rounded-lg overflow-hidden border border-gray-700 text-sm">
+    <div className="my-3 rounded-lg overflow-hidden border border-border-strong text-sm">
       <div className="flex items-center justify-between px-4 py-1.5 bg-gray-800 text-xs text-faint">
         <span className="font-mono">{lang || 'code'}</span>
         <button onClick={copy} className="flex items-center gap-1 hover:text-white transition-colors">
@@ -186,7 +186,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
         </button>
       </div>
       <pre className="overflow-x-auto bg-gray-900 p-4 leading-relaxed m-0">
-        <code ref={codeRef} className={`hljs language-${lang || 'plaintext'} font-mono text-gray-100`}>
+        <code ref={codeRef} className={`hljs language-${lang || 'plaintext'} font-mono text-foreground`}>
           {code}
         </code>
       </pre>

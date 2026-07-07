@@ -9,9 +9,9 @@ import { Plus, Trash2, Play, ChevronRight, Pencil, X, Check, Sparkles, Download,
 function RunStatusBadge({ status }: { status: EvalRun['status'] }) {
   const cls = {
     pending: 'bg-muted text-muted-foreground',
-    running: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300',
-    completed: 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300',
-    failed: 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-300',
+    running: 'bg-info/10 text-info',
+    completed: 'bg-good/10 text-good',
+    failed: 'bg-crit/10 text-crit',
   }[status] ?? 'bg-muted text-muted-foreground'
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{status}</span>
 }
@@ -19,7 +19,7 @@ function RunStatusBadge({ status }: { status: EvalRun['status'] }) {
 function ScorePct({ score, status }: { score: number; status: string }) {
   if (status === 'pending' || status === 'running') return <span className="text-xs text-faint">—</span>
   const pct = Math.round(score * 100)
-  const color = pct >= 80 ? 'text-green-600 dark:text-green-300' : pct >= 50 ? 'text-amber-600 dark:text-amber-300' : 'text-red-600 dark:text-red-300'
+  const color = pct >= 80 ? 'text-good dark:text-good' : pct >= 50 ? 'text-warn dark:text-warn' : 'text-crit'
   return <span className={`text-sm font-semibold ${color}`}>{pct}%</span>
 }
 
@@ -62,14 +62,14 @@ function CaseRow({ c, suiteId, onDeleted, onUpdated }: {
         </div>
         <div className="flex justify-end gap-2">
           <button onClick={() => setEditing(false)} className="p-1.5 rounded hover:bg-muted text-muted-foreground transition-colors"><X className="w-4 h-4" /></button>
-          <button onClick={save} disabled={saving || !input} className="p-1.5 rounded hover:bg-green-100 text-green-600 dark:text-green-300 transition-colors disabled:opacity-50"><Check className="w-4 h-4" /></button>
+          <button onClick={save} disabled={saving || !input} className="p-1.5 rounded hover:bg-good/15 text-good dark:text-good transition-colors disabled:opacity-50"><Check className="w-4 h-4" /></button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="border border-border rounded-lg p-4 group hover:border-gray-200 transition-colors">
+    <div className="border border-border rounded-lg p-4 group hover:border-border-strong transition-colors">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1 space-y-1">
           <p className="text-sm text-foreground line-clamp-2">{c.input}</p>
@@ -77,8 +77,8 @@ function CaseRow({ c, suiteId, onDeleted, onUpdated }: {
           {c.grading_criteria && <p className="text-xs text-muted-foreground"><span className="font-medium">Criteria:</span> {c.grading_criteria}</p>}
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          <button onClick={() => setEditing(true)} className="p-1 rounded hover:bg-muted text-faint hover:text-gray-600 dark:hover:text-gray-300 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-          <button onClick={onDeleted} className="p-1 rounded hover:bg-red-50 text-faint hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+          <button onClick={() => setEditing(true)} className="p-1 rounded hover:bg-muted text-faint hover:text-muted-foreground dark:hover:text-faint transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+          <button onClick={onDeleted} className="p-1 rounded hover:bg-crit/10 text-faint hover:text-crit transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
         </div>
       </div>
     </div>
@@ -118,7 +118,7 @@ function AddCaseForm({ suiteId, onCreated }: { suiteId: string; onCreated: () =>
   return (
     <div className="border border-accent/40 rounded-lg p-4 space-y-3 bg-accent/10/30">
       <div>
-        <label className="text-xs font-medium text-muted-foreground block mb-1">Input <span className="text-red-500">*</span></label>
+        <label className="text-xs font-medium text-muted-foreground block mb-1">Input <span className="text-crit">*</span></label>
         <textarea className="w-full border rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-accent" rows={3} value={input} onChange={e => setInput(e.target.value)} placeholder="The message to send to the agent" />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -132,7 +132,7 @@ function AddCaseForm({ suiteId, onCreated }: { suiteId: string; onCreated: () =>
         </div>
       </div>
       <div className="flex justify-end gap-2">
-        <button onClick={() => setOpen(false)} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-gray-900 transition-colors">Cancel</button>
+        <button onClick={() => setOpen(false)} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
         <button onClick={submit} disabled={saving || !input} className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-md transition-colors disabled:opacity-50">
           {saving ? 'Adding…' : 'Add case'}
         </button>
@@ -266,11 +266,11 @@ function GenerateCasesModal({ suiteId, agentProvider, agentModel, onDone }: {
                 </div>
               </div>
 
-              {error && <p className="text-sm text-red-600 dark:text-red-300">{error}</p>}
+              {error && <p className="text-sm text-crit">{error}</p>}
             </>
           ) : (
             <>
-              <p className="text-sm text-green-600 dark:text-green-300 font-medium">{generated.length} cases generated</p>
+              <p className="text-sm text-good dark:text-good font-medium">{generated.length} cases generated</p>
               <div className="space-y-2">
                 {generated.map((c, i) => (
                   <div key={i} className="border border-border rounded-lg p-3 text-xs space-y-1">
@@ -284,7 +284,7 @@ function GenerateCasesModal({ suiteId, agentProvider, agentModel, onDone }: {
         </div>
 
         <div className="p-4 border-t flex justify-end gap-2">
-          <button onClick={onDone} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-gray-900 transition-colors">
+          <button onClick={onDone} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             {generated ? 'Done' : 'Cancel'}
           </button>
           {!generated && (
@@ -354,7 +354,7 @@ function ImportModal({ suiteId, onDone }: { suiteId: string; onDone: () => void 
 
         <div className="p-4 space-y-3 overflow-y-auto flex-1">
           {result ? (
-            <p className="text-sm text-green-600 dark:text-green-300 font-medium">{result.imported} cases imported successfully.</p>
+            <p className="text-sm text-good dark:text-good font-medium">{result.imported} cases imported successfully.</p>
           ) : (
             <>
               <p className="text-xs text-muted-foreground">Paste a JSON array or upload a file exported from this page.</p>
@@ -377,16 +377,16 @@ function ImportModal({ suiteId, onDone }: { suiteId: string; onDone: () => void 
               />
               {text.trim() && (
                 parseError
-                  ? <p className="text-xs text-red-500">{parseError}</p>
-                  : <p className="text-xs text-green-600 dark:text-green-300">{parsed?.length} case{parsed?.length === 1 ? '' : 's'} ready to import</p>
+                  ? <p className="text-xs text-crit">{parseError}</p>
+                  : <p className="text-xs text-good dark:text-good">{parsed?.length} case{parsed?.length === 1 ? '' : 's'} ready to import</p>
               )}
-              {error && <p className="text-xs text-red-600 dark:text-red-300">{error}</p>}
+              {error && <p className="text-xs text-crit">{error}</p>}
             </>
           )}
         </div>
 
         <div className="p-4 border-t flex justify-end gap-2">
-          <button onClick={onDone} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-gray-900 transition-colors">
+          <button onClick={onDone} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             {result ? 'Done' : 'Cancel'}
           </button>
           {!result && (
@@ -467,10 +467,10 @@ function EditSuiteModal({ suite, onSaved, onClose }: {
               onChange={e => setDesc(e.target.value)}
             />
           </div>
-          {error && <p className="text-xs text-red-600 dark:text-red-300">{error}</p>}
+          {error && <p className="text-xs text-crit">{error}</p>}
         </div>
         <div className="px-4 pb-4 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-gray-900 transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
           <button
             onClick={submit}
             disabled={saving || !name.trim()}
@@ -598,7 +598,7 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
       <div className="flex flex-wrap items-center gap-3 justify-between mb-6">
         <div>
           <div className="flex items-center gap-2 text-sm text-faint mb-1">
-            <Link href="/evals" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Evals</Link>
+            <Link href="/evals" className="hover:text-muted-foreground dark:hover:text-faint transition-colors">Evals</Link>
             <span>/</span>
             <span className="text-muted-foreground">{suite.name}</span>
           </div>
@@ -606,7 +606,7 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
             <h1 className="text-xl font-semibold text-foreground">{suite.name}</h1>
             <button
               onClick={() => setShowEdit(true)}
-              className="p-1 rounded hover:bg-muted text-faint hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              className="p-1 rounded hover:bg-muted text-faint hover:text-muted-foreground dark:hover:text-faint transition-colors"
               title="Edit suite"
             >
               <Pencil className="w-4 h-4" />
@@ -619,7 +619,7 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
             onClick={handleToggleAutoRun}
             disabled={togglingAutoRun}
             title={suite.auto_run ? 'Auto-run on agent save (on)' : 'Auto-run on agent save (off)'}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border transition-colors disabled:opacity-50 ${suite.auto_run ? 'bg-accent/10 text-accent dark:text-accent-bright border-accent/40' : 'bg-surface text-muted-foreground border-border-strong hover:border-gray-300'}`}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border transition-colors disabled:opacity-50 ${suite.auto_run ? 'bg-accent/10 text-accent dark:text-accent-bright border-accent/40' : 'bg-surface text-muted-foreground border-border-strong hover:border-border-strong'}`}
           >
             {suite.auto_run ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
             Auto-run
@@ -641,7 +641,7 @@ export default function SuitePage({ params }: { params: Promise<{ id: string }> 
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? 'border-accent text-accent dark:text-accent-bright' : 'border-transparent text-muted-foreground hover:text-gray-700 dark:hover:text-gray-300'}`}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? 'border-accent text-accent dark:text-accent-bright' : 'border-transparent text-muted-foreground hover:text-foreground dark:hover:text-faint'}`}
           >
             {t === 'cases' ? `Cases (${cases.length})` : `Run history (${runs.length})`}
           </button>

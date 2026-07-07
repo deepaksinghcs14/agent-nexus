@@ -132,7 +132,7 @@ function KVEditor({ label, rows, onChange }: { label: string; rows: KV[]; onChan
             value={r.value} onChange={(e) => set(i, 'value', e.target.value)}
             placeholder="Value (supports {{var}})" className="flex-[2] text-[12px] px-2 py-1.5 border border-border-strong rounded-md bg-surface font-mono"
           />
-          <button type="button" onClick={() => remove(i)} className="text-faint hover:text-red-400">
+          <button type="button" onClick={() => remove(i)} className="text-faint hover:text-crit">
             <X size={13} />
           </button>
         </div>
@@ -152,10 +152,10 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 }
 
 function typeInfo(type: string) {
-  if (type === 'native') return { label: 'Built-in',    icon: <Wrench size={11} />,   cls: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-100' }
+  if (type === 'native') return { label: 'Built-in',    icon: <Wrench size={11} />,   cls: 'bg-info/10 text-info border-info/30' }
   if (type === 'mcp')    return { label: 'MCP',         icon: <Server size={11} />,   cls: 'bg-accent/10 text-accent dark:text-accent-bright border-accent/25' }
-  if (type === 'code')   return { label: 'Code',        icon: <Terminal size={11} />, cls: 'bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-100' }
-  return                        { label: 'HTTP',        icon: <Globe size={11} />,    cls: 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300 border-green-100' }
+  if (type === 'code')   return { label: 'Code',        icon: <Terminal size={11} />, cls: 'bg-warn/10 dark:bg-warn/10 text-warn dark:text-warn border-warn/30' }
+  return                        { label: 'HTTP',        icon: <Globe size={11} />,    cls: 'bg-good/10 text-good border-good/30' }
 }
 
 // ─── tool row ────────────────────────────────────────────────────────────────
@@ -189,10 +189,10 @@ function ToolRow({ tool, onToggle, onDelete, onEdit }: {
             {tool.risk_level}
           </span>
           {tool.requires_approval && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-100">approval</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-warn/10 text-warn border border-warn/30">approval</span>
           )}
           {canExpand && (
-            <button onClick={() => setOpen((v) => !v)} className="p-1 text-faint hover:text-gray-600 dark:hover:text-gray-300" title="Show code">
+            <button onClick={() => setOpen((v) => !v)} className="p-1 text-faint hover:text-muted-foreground dark:hover:text-faint" title="Show code">
               {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
           )}
@@ -201,12 +201,12 @@ function ToolRow({ tool, onToggle, onDelete, onEdit }: {
           ) : (
             <>
               {onEdit && tool.type === 'code' && (
-                <button onClick={onEdit} className="p-1 text-faint hover:text-blue-500" title="Edit code tool">
+                <button onClick={onEdit} className="p-1 text-faint hover:text-info" title="Edit code tool">
                   <Pencil size={13} />
                 </button>
               )}
               <Toggle on={tool.enabled} onToggle={onToggle} />
-              <button onClick={onDelete} className="p-1 text-faint hover:text-red-500" aria-label={`Delete ${tool.name}`}>
+              <button onClick={onDelete} className="p-1 text-faint hover:text-crit" aria-label={`Delete ${tool.name}`}>
                 <Trash2 size={13} />
               </button>
             </>
@@ -225,7 +225,7 @@ function ToolRow({ tool, onToggle, onDelete, onEdit }: {
             </div>
           )}
           {tool.type === 'code' && cfg?.code && (
-            <pre className="px-4 py-3 bg-gray-900 text-green-300 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">
+            <pre className="px-4 py-3 bg-gray-900 text-good text-[11px] font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">
               {cfg.code}
             </pre>
           )}
@@ -292,7 +292,7 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
         <button onClick={onClose}><X size={15} className="text-faint" /></button>
       </div>
 
-      {error && <p className="text-[12px] text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-100 rounded px-3 py-2 mb-3">{error}</p>}
+      {error && <p className="text-[12px] text-crit bg-crit/10 border border-crit/30 rounded px-3 py-2 mb-3">{error}</p>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         <div>
@@ -340,7 +340,7 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
                 className={`px-3 py-1.5 text-[12px] rounded-lg border transition-colors ${
                   form.bodyMode === mode
                     ? 'bg-accent text-white border-accent'
-                    : 'bg-surface text-muted-foreground border-border-strong hover:border-gray-300'
+                    : 'bg-surface text-muted-foreground border-border-strong hover:border-border-strong'
                 }`}>
                 {mode === 'template' ? 'Template' : 'Free-form'}
               </button>
@@ -406,7 +406,7 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
           className="px-4 py-2 bg-accent text-white text-[12px] rounded-lg disabled:opacity-50 font-medium">
           {create.isPending ? 'Adding…' : 'Add tool'}
         </button>
-        <button onClick={onClose} className="px-3 py-2 text-[12px] text-muted-foreground hover:text-gray-800 dark:hover:text-gray-200">Cancel</button>
+        <button onClick={onClose} className="px-3 py-2 text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint">Cancel</button>
       </div>
     </div>
   )
@@ -485,7 +485,7 @@ function CodeToolPanel({
         <button onClick={onClose}><X size={15} className="text-faint" /></button>
       </div>
 
-      {error && <p className="text-[12px] text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-100 rounded px-3 py-2 mb-3">{error}</p>}
+      {error && <p className="text-[12px] text-crit bg-crit/10 border border-crit/30 rounded px-3 py-2 mb-3">{error}</p>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         <div>
@@ -565,7 +565,7 @@ function CodeToolPanel({
             <label className="block text-[10px] text-muted-foreground mb-1">Result</label>
             <pre className={`h-[88px] text-[12px] font-mono px-3 py-2 border rounded-lg overflow-auto whitespace-pre-wrap ${
               testResult?.startsWith('Error:')
-                ? 'bg-red-50 dark:bg-red-500/10 border-red-100 text-red-700 dark:text-red-300'
+                ? 'bg-crit/10 border-crit/30 text-crit dark:text-crit'
                 : 'bg-surface border-border-strong text-foreground'
             }`}>
               {testResult ?? <span className="text-faint">— run test to see output —</span>}
@@ -587,7 +587,7 @@ function CodeToolPanel({
           className="px-4 py-2 bg-accent text-white text-[12px] rounded-lg disabled:opacity-50 font-medium">
           {save.isPending ? 'Saving…' : existingId ? 'Save changes' : 'Create tool'}
         </button>
-        <button onClick={onClose} className="px-3 py-2 text-[12px] text-muted-foreground hover:text-gray-800 dark:hover:text-gray-200">Cancel</button>
+        <button onClick={onClose} className="px-3 py-2 text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint">Cancel</button>
       </div>
     </div>
   )
@@ -690,21 +690,21 @@ export default function ToolsPage() {
         <div className="flex flex-wrap items-center gap-2 text-[11px]">
           <span className="text-faint">Risk levels:</span>
           {([
-            { level: 'low',      cls: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-100' },
-            { level: 'medium',   cls: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-100' },
-            { level: 'high',     cls: 'bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-100' },
-            { level: 'critical', cls: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 border-red-100' },
+            { level: 'low',      cls: 'bg-info/10 text-info border-info/30' },
+            { level: 'medium',   cls: 'bg-warn/10 text-warn border-warn/30' },
+            { level: 'high',     cls: 'bg-warn/10 dark:bg-warn/10 text-warn dark:text-warn border-warn/30' },
+            { level: 'critical', cls: 'bg-crit/10 text-crit dark:text-crit border-crit/30' },
           ] as const).map(({ level, cls }) => (
             <span key={level} className={`px-2 py-0.5 rounded-full border ${cls}`}>{level}</span>
           ))}
           <span className="text-faint ml-1">
-            · tools marked <span className="text-amber-700 dark:text-amber-300 font-medium">approval</span> pause the agent until a human approves
+            · tools marked <span className="text-warn font-medium">approval</span> pause the agent until a human approves
           </span>
         </div>
       </div>
 
       {(error || actionError) && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">
           {actionError || (error as Error).message}
         </div>
       )}

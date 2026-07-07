@@ -8,8 +8,8 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { relativeTime } from '@/lib/utils'
 import type { Agent, Memory } from '@/types'
 
-const scopeColor = (scope: string) => scope === 'agent' ? 'bg-accent/10 text-accent dark:text-accent-bright' : scope === 'workspace' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300' : 'bg-muted text-muted-foreground'
-const sourceColor = (source: string) => source === 'tool' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300'
+const scopeColor = (scope: string) => scope === 'agent' ? 'bg-accent/10 text-accent dark:text-accent-bright' : scope === 'workspace' ? 'bg-info/10 text-info' : 'bg-muted text-muted-foreground'
+const sourceColor = (source: string) => source === 'tool' ? 'bg-good/10 text-good' : 'bg-warn/10 text-warn'
 
 export default function MemoryPage() {
   const queryClient = useQueryClient()
@@ -52,9 +52,9 @@ export default function MemoryPage() {
         <select value={scope} onChange={(e) => setScope(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-border-strong rounded-lg bg-surface"><option value="">All scopes</option><option>agent</option><option>workspace</option><option>conversation</option></select>
         <select value={source} onChange={(e) => setSource(e.target.value)} className="text-[12px] px-2.5 py-1.5 border border-border-strong rounded-lg bg-surface"><option value="">All sources</option><option value="tool">tool</option><option value="extractor">extractor</option></select>
       </div>
-      <button onClick={() => { if (memories.length && confirm('Delete all memories matching these filters?')) bulkRemove.mutate() }} disabled={!memories.length || bulkRemove.isPending} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] text-red-600 dark:text-red-300 border border-red-200 rounded-lg disabled:opacity-40"><Trash2 className="w-3.5 h-3.5" /> Delete filtered</button>
+      <button onClick={() => { if (memories.length && confirm('Delete all memories matching these filters?')) bulkRemove.mutate() }} disabled={!memories.length || bulkRemove.isPending} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] text-crit border border-crit/30 rounded-lg disabled:opacity-40"><Trash2 className="w-3.5 h-3.5" /> Delete filtered</button>
     </div>
-    {error && <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">{(error as Error).message}</div>}
+    {error && <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">{(error as Error).message}</div>}
     {isLoading && <div className="py-12 text-center text-sm text-faint">Loading memories…</div>}
     {!isLoading && !error && memories.length === 0 && <div className="border border-dashed border-border-strong rounded-xl py-12 text-center"><Brain className="mx-auto text-faint mb-3" /><p className="text-sm text-muted-foreground">No {tab} memories match these filters.</p></div>}
     <div className="bg-surface border border-border rounded-xl overflow-hidden">{memories.map((memory) => <div key={memory.id} className="p-4 border-b last:border-b-0 border-border">
@@ -71,7 +71,7 @@ export default function MemoryPage() {
                     ))}
                   </span>
                 )
-              })()}{tab === 'pending' && <><button onClick={() => approve.mutate(memory.id)} disabled={approve.isPending} className="inline-flex items-center gap-1 px-2 py-1 text-[11px] text-emerald-700 dark:text-emerald-300 border border-emerald-200 rounded-lg disabled:opacity-40"><Check className="w-3 h-3" /> Approve</button><button onClick={() => reject.mutate(memory.id)} disabled={reject.isPending} className="inline-flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground border border-border-strong rounded-lg disabled:opacity-40"><X className="w-3 h-3" /> Reject</button></>}<button onClick={() => { if (confirm('Delete this memory?')) remove.mutate(memory.id) }} className="ml-auto p-1 text-faint hover:text-red-500"><Trash2 className="w-3.5 h-3.5" /></button></div>
+              })()}{tab === 'pending' && <><button onClick={() => approve.mutate(memory.id)} disabled={approve.isPending} className="inline-flex items-center gap-1 px-2 py-1 text-[11px] text-good border border-good/30 rounded-lg disabled:opacity-40"><Check className="w-3 h-3" /> Approve</button><button onClick={() => reject.mutate(memory.id)} disabled={reject.isPending} className="inline-flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground border border-border-strong rounded-lg disabled:opacity-40"><X className="w-3 h-3" /> Reject</button></>}<button onClick={() => { if (confirm('Delete this memory?')) remove.mutate(memory.id) }} className="ml-auto p-1 text-faint hover:text-crit"><Trash2 className="w-3.5 h-3.5" /></button></div>
     </div>)}</div>
     <div className="mt-6 p-4 rounded-lg bg-muted border border-border-strong">
       <p className="text-sm text-muted-foreground">

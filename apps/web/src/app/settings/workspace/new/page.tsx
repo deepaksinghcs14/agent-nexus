@@ -55,7 +55,7 @@ export default function NewWorkspacePage() {
           You can create up to 5 workspaces. You can be a member of unlimited workspaces others create.
         </p>
         {!canCreate && (
-          <div className="mt-3 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 rounded-lg px-3 py-2">
+          <div className="mt-3 text-sm text-warn bg-warn/10 border border-warn/30 rounded-lg px-3 py-2">
             You already own 5 workspaces — the maximum allowed.
           </div>
         )}
@@ -88,7 +88,7 @@ export default function NewWorkspacePage() {
                   'flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all',
                   wsType === value
                     ? 'border-accent bg-accent/10 ring-1 ring-accent/40'
-                    : 'border-border-strong hover:border-gray-300 hover:bg-muted'
+                    : 'border-border-strong hover:border-border-strong hover:bg-muted'
                 )}
               >
                 <div className={cn(
@@ -109,7 +109,7 @@ export default function NewWorkspacePage() {
         </div>
 
         {error && (
-          <p className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+          <p className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg px-3 py-2">{error}</p>
         )}
 
         <div className="flex gap-3">

@@ -42,7 +42,7 @@ export default function AdminPoliciesPage() {
         </button>
       </div>
       {(error || actionError) && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">
           {actionError || (error as Error).message}
         </div>
       )}

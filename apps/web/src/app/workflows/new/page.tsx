@@ -29,7 +29,7 @@ export default function NewWorkflowPage() {
         </p>
       </div>
       <div className="bg-surface border border-border rounded-xl p-6 space-y-4">
-        {error && <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-2">{error}</div>}
+        {error && <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-2">{error}</div>}
         <Field label="Workflow name">
           <input
             value={name}

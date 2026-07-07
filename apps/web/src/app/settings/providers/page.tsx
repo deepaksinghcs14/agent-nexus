@@ -8,9 +8,9 @@ import { providersAPI } from '@/lib/api'
 import type { ProviderCredential } from '@/types'
 
 const PROVIDER_OPTIONS = [
-  { value: 'anthropic', label: 'Anthropic', color: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' },
-  { value: 'openai', label: 'OpenAI', color: 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300' },
-  { value: 'gemini', label: 'Google Gemini', color: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300' },
+  { value: 'anthropic', label: 'Anthropic', color: 'bg-warn/10 text-warn' },
+  { value: 'openai', label: 'OpenAI', color: 'bg-good/10 text-good' },
+  { value: 'gemini', label: 'Google Gemini', color: 'bg-info/10 text-info' },
   { value: 'ollama', label: 'Ollama (local)', color: 'bg-accent/10 text-accent dark:text-accent-bright' },
 ]
 
@@ -112,18 +112,18 @@ export default function ProvidersPage() {
       </div>
 
       {oauthStatus === 'success' && (
-        <div className="flex items-center gap-2 text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-500/10 border border-green-200 rounded-lg px-3 py-2 mb-4 text-sm">
+        <div className="flex items-center gap-2 text-good bg-good/10 border border-good/30 rounded-lg px-3 py-2 mb-4 text-sm">
           <Check size={14} /> Connected to Google Gemini via OAuth
         </div>
       )}
       {oauthStatus === 'error' && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg px-3 py-2 mb-4">
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg px-3 py-2 mb-4">
           Google OAuth failed. Please try again.
         </div>
       )}
 
       {saved && (
-        <div className="flex items-center gap-2 text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-500/10 border border-green-200 rounded-lg px-3 py-2 mb-4 text-sm">
+        <div className="flex items-center gap-2 text-good bg-good/10 border border-good/30 rounded-lg px-3 py-2 mb-4 text-sm">
           <Check size={14} /> API key saved successfully
         </div>
       )}
@@ -136,17 +136,17 @@ export default function ProvidersPage() {
 
       {/* Google OAuth quick-connect for Gemini */}
       {!providers.find((p) => p.provider === 'gemini') && (
-        <div className="flex flex-wrap items-center gap-3 justify-between border border-blue-100 bg-blue-50 dark:bg-blue-500/10 rounded-xl px-4 py-3 mb-4">
+        <div className="flex flex-wrap items-center gap-3 justify-between border border-info/30 bg-info/10 rounded-xl px-4 py-3 mb-4">
           <div className="flex items-center gap-2.5">
-            <Chrome size={16} className="text-blue-600 dark:text-blue-300" />
+            <Chrome size={16} className="text-info" />
             <div>
-              <p className="text-sm font-medium text-blue-900">Connect Google Gemini</p>
-              <p className="text-xs text-blue-600 dark:text-blue-300">Use your Google account — no API key needed</p>
+              <p className="text-sm font-medium text-info">Connect Google Gemini</p>
+              <p className="text-xs text-info">Use your Google account — no API key needed</p>
             </div>
           </div>
           <button
             onClick={handleGoogleOAuth}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-info text-white text-xs rounded-lg hover:bg-info"
           >
             <Chrome size={12} /> Login with Google
           </button>
@@ -157,7 +157,7 @@ export default function ProvidersPage() {
         <div className="border border-border-strong rounded-xl p-4 mb-4 bg-muted space-y-3">
           <h3 className="text-sm font-medium text-foreground">Add API Key</h3>
           {formError && (
-            <div className="text-xs text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded px-2 py-1">{formError}</div>
+            <div className="text-xs text-crit bg-crit/10 border border-crit/30 rounded px-2 py-1">{formError}</div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -198,7 +198,7 @@ export default function ProvidersPage() {
                 <button
                   type="button"
                   onClick={handleGoogleOAuth}
-                  className="flex items-center gap-1.5 px-3 py-1.5 border border-blue-200 text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-500/10 text-xs rounded-lg hover:bg-blue-100"
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-info/30 text-info bg-info/10 text-xs rounded-lg hover:bg-info/15"
                 >
                   <Chrome size={12} /> Login with Google instead
                 </button>
@@ -268,7 +268,7 @@ export default function ProvidersPage() {
               <div>
                 <p className="text-sm font-medium text-foreground">{p.display_name}</p>
                 {p.auth_type === 'oauth' ? (
-                  <p className="text-xs text-blue-600 dark:text-blue-300">{tokenExpiryLabel(p.oauth_token_expiry) ?? 'Connected via Google OAuth'}</p>
+                  <p className="text-xs text-info">{tokenExpiryLabel(p.oauth_token_expiry) ?? 'Connected via Google OAuth'}</p>
                 ) : (
                   <p className="text-xs text-faint">••••••••••••••••</p>
                 )}
@@ -276,14 +276,14 @@ export default function ProvidersPage() {
             </div>
             <div className="flex items-center gap-2">
               {p.auth_type === 'oauth' && (
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300">OAuth</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-info/10 text-info">OAuth</span>
               )}
-              <span className={`text-[11px] px-2 py-0.5 rounded-full ${p.is_active ? 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300' : 'bg-muted text-muted-foreground'}`}>
+              <span className={`text-[11px] px-2 py-0.5 rounded-full ${p.is_active ? 'bg-good/10 text-good' : 'bg-muted text-muted-foreground'}`}>
                 {p.is_active ? 'active' : 'inactive'}
               </span>
               <button
                 onClick={() => { if (confirm('Delete this credential?')) deleteMutation.mutate(p.id) }}
-                className="p-1.5 text-faint hover:text-red-500 hover:bg-red-50 rounded-lg"
+                className="p-1.5 text-faint hover:text-crit hover:bg-crit/10 rounded-lg"
               >
                 <Trash2 size={14} />
               </button>
