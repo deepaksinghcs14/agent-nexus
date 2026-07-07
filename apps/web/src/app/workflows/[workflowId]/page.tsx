@@ -89,7 +89,7 @@ function edgeColor(label?: string | null) {
   if (label === 'no') return '#ef4444'
   if (label === 'loop') return '#8b5cf6'
   if (label === 'delegate') return '#d97706'
-  return '#7c3aed'
+  return '#534AB7'
 }
 
 function labelToSourceHandle(label?: string | null): string | undefined {
@@ -158,14 +158,14 @@ function StartNode({ data }: NodeProps) {
         <div style={{ position: 'absolute', top: -6, right: -6, background: '#22c55e', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>✓</div>
       )}
       Start
-      <Handle type="source" position={Position.Right} style={{ background: '#7c3aed', width: 10, height: 10, border: '2px solid #fff' }} />
+      <Handle type="source" position={Position.Right} style={{ background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
     </div>
   )
 }
 
 function AgentNode({ data }: NodeProps) {
   const nodeData = data as NodeData
-  const borderColor = nodeData.status === 'running' ? '#7c3aed' : nodeData.status === 'done' ? '#22c55e' : nodeData.status === 'error' ? '#ef4444' : '#7c3aed'
+  const borderColor = nodeData.status === 'running' ? '#534AB7' : nodeData.status === 'done' ? '#22c55e' : nodeData.status === 'error' ? '#ef4444' : '#534AB7'
   const glow = nodeData.status === 'running' ? '0 0 0 3px rgba(83,74,183,0.45)' : 'none'
   return (
     <div style={{
@@ -177,19 +177,19 @@ function AgentNode({ data }: NodeProps) {
         <div style={{ position: 'absolute', top: -7, right: -7, background: '#22c55e', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>✓</div>
       )}
       {nodeData.status === 'running' && (
-        <div style={{ position: 'absolute', top: -7, right: -7, background: '#7c3aed', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ position: 'absolute', top: -7, right: -7, background: '#534AB7', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: 8, height: 8, border: '1.5px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
         </div>
       )}
-      <Handle type="target" position={Position.Left} style={{ background: '#7c3aed', width: 10, height: 10, border: '2px solid #fff' }} />
+      <Handle type="target" position={Position.Left} style={{ background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
       <div style={{ fontSize: 12, fontWeight: 600, color: '#1a1825', marginBottom: 4 }}>{nodeData.label}</div>
       {nodeData.agent_model && (
         <div style={{ display: 'flex', gap: 4 }}>
-          <span style={{ fontSize: 10, background: '#f1f0ff', color: '#7c3aed', borderRadius: 4, padding: '1px 6px' }}>{nodeData.agent_model}</span>
+          <span style={{ fontSize: 10, background: '#f1f0ff', color: '#534AB7', borderRadius: 4, padding: '1px 6px' }}>{nodeData.agent_model}</span>
           {nodeData.agent_provider && <span style={{ fontSize: 10, background: '#f4f4f5', color: '#71717a', borderRadius: 4, padding: '1px 6px' }}>{nodeData.agent_provider}</span>}
         </div>
       )}
-      <Handle type="source" position={Position.Right} style={{ background: '#7c3aed', width: 10, height: 10, border: '2px solid #fff' }} />
+      <Handle type="source" position={Position.Right} style={{ background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
     </div>
   )
 }
@@ -228,18 +228,18 @@ function ParallelNode({ data }: NodeProps) {
   const glow = nodeData.status === 'running' ? '0 0 0 3px rgba(83,74,183,0.45)' : 'none'
   return (
     <div style={{
-      width: 130, height: 44, background: '#f1f0ff', border: '2px solid #7c3aed',
+      width: 130, height: 44, background: '#f1f0ff', border: '2px solid #534AB7',
       borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
       gap: 8, fontFamily: 'Inter, sans-serif', boxShadow: glow,
     }}>
-      <Handle type="target" position={Position.Left} style={{ background: '#7c3aed', width: 10, height: 10, border: '2px solid #fff' }} />
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <Handle type="target" position={Position.Left} style={{ background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#534AB7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
         <line x1="6" y1="3" x2="6" y2="15" /><path d="M21 3H3" /><path d="M12 3v18" /><path d="M3 21l4-4" /><path d="M21 21l-4-4" />
       </svg>
-      <span style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed' }}>PARALLEL</span>
-      <Handle type="source" id="s1" position={Position.Right} style={{ top: '25%', background: '#7c3aed', width: 10, height: 10, border: '2px solid #fff' }} />
-      <Handle type="source" id="s2" position={Position.Right} style={{ top: '50%', background: '#7c3aed', width: 10, height: 10, border: '2px solid #fff' }} />
-      <Handle type="source" id="s3" position={Position.Right} style={{ top: '75%', background: '#7c3aed', width: 10, height: 10, border: '2px solid #fff' }} />
+      <span style={{ fontSize: 11, fontWeight: 700, color: '#534AB7' }}>PARALLEL</span>
+      <Handle type="source" id="s1" position={Position.Right} style={{ top: '25%', background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
+      <Handle type="source" id="s2" position={Position.Right} style={{ top: '50%', background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
+      <Handle type="source" id="s3" position={Position.Right} style={{ top: '75%', background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
     </div>
   )
 }
@@ -249,18 +249,18 @@ function JoinNode({ data }: NodeProps) {
   const glow = nodeData.status === 'running' ? '0 0 0 3px rgba(83,74,183,0.45)' : 'none'
   return (
     <div style={{
-      width: 130, height: 44, background: '#f1f0ff', border: '2px solid #7c3aed',
+      width: 130, height: 44, background: '#f1f0ff', border: '2px solid #534AB7',
       borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
       gap: 8, fontFamily: 'Inter, sans-serif', boxShadow: glow,
     }}>
-      <Handle type="target" id="t1" position={Position.Left} style={{ top: '25%', background: '#7c3aed', width: 10, height: 10, border: '2px solid #fff' }} />
-      <Handle type="target" id="t2" position={Position.Left} style={{ top: '50%', background: '#7c3aed', width: 10, height: 10, border: '2px solid #fff' }} />
-      <Handle type="target" id="t3" position={Position.Left} style={{ top: '75%', background: '#7c3aed', width: 10, height: 10, border: '2px solid #fff' }} />
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <Handle type="target" id="t1" position={Position.Left} style={{ top: '25%', background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
+      <Handle type="target" id="t2" position={Position.Left} style={{ top: '50%', background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
+      <Handle type="target" id="t3" position={Position.Left} style={{ top: '75%', background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#534AB7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 12H3" /><path d="M3 3l4 4" /><path d="M3 21l4-4" /><line x1="18" y1="3" x2="18" y2="21" />
       </svg>
-      <span style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed' }}>JOIN</span>
-      <Handle type="source" position={Position.Right} style={{ background: '#7c3aed', width: 10, height: 10, border: '2px solid #fff' }} />
+      <span style={{ fontSize: 11, fontWeight: 700, color: '#534AB7' }}>JOIN</span>
+      <Handle type="source" position={Position.Right} style={{ background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
     </div>
   )
 }
@@ -346,11 +346,11 @@ const nodeTypes = {
 const PALETTE_ITEMS: { type: WorkflowNodeType; label: string; icon: React.ReactNode; color: string }[] = [
   { type: 'start',      label: 'Start',      icon: <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#22c55e' }} />, color: '#22c55e' },
   { type: 'end',        label: 'End',        icon: <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#ef4444' }} />, color: '#ef4444' },
-  { type: 'agent',      label: 'Agent',      icon: <div style={{ width: 20, height: 14, border: '2px solid #7c3aed', borderRadius: 4 }} />, color: '#7c3aed' },
+  { type: 'agent',      label: 'Agent',      icon: <div style={{ width: 20, height: 14, border: '2px solid #534AB7', borderRadius: 4 }} />, color: '#534AB7' },
   { type: 'supervisor', label: 'Supervisor', icon: <span style={{ fontSize: 16, lineHeight: 1 }}>👑</span>, color: '#d97706' },
   { type: 'condition',  label: 'Condition',  icon: <div style={{ width: 16, height: 16, border: '2px solid #f59e0b', transform: 'rotate(45deg)' }} />, color: '#f59e0b' },
-  { type: 'parallel',   label: 'Parallel',   icon: <GitBranch size={16} color="#7c3aed" />, color: '#7c3aed' },
-  { type: 'join',       label: 'Join',       icon: <Merge size={16} color="#7c3aed" />, color: '#7c3aed' },
+  { type: 'parallel',   label: 'Parallel',   icon: <GitBranch size={16} color="#534AB7" />, color: '#534AB7' },
+  { type: 'join',       label: 'Join',       icon: <Merge size={16} color="#534AB7" />, color: '#534AB7' },
   { type: 'loop',       label: 'Loop',       icon: <RefreshCcw size={16} color="#8b5cf6" />, color: '#8b5cf6' },
 ]
 
@@ -1215,7 +1215,7 @@ function TemplateGalleryModal({
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <BookOpen size={16} color="#7c3aed" />
+            <BookOpen size={16} color="#534AB7" />
             <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>Workflow Templates</span>
             <span style={{ fontSize: 11, color: '#9ca3af' }}>— select a template to get started</span>
           </div>
@@ -1240,13 +1240,13 @@ function TemplateGalleryModal({
                   onClick={() => { setSelected(tpl); setGuideTab('overview') }}
                   style={{
                     padding: '12px', borderRadius: 10, textAlign: 'left', cursor: 'pointer',
-                    border: `2px solid ${isActive ? '#7c3aed' : '#e5e7eb'}`,
+                    border: `2px solid ${isActive ? '#534AB7' : '#e5e7eb'}`,
                     background: isActive ? '#f1f0ff' : '#fff',
                     transition: 'border-color 0.15s',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: isActive ? '#7c3aed' : '#111827' }}>{tpl.name}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: isActive ? '#534AB7' : '#111827' }}>{tpl.name}</span>
                     <span style={{
                       fontSize: 9, padding: '2px 6px', borderRadius: 4, fontWeight: 700,
                       background: cat.bg, color: cat.text,
@@ -1273,8 +1273,8 @@ function TemplateGalleryModal({
                   onClick={() => setGuideTab(tab)}
                   style={{
                     padding: '12px 16px', fontSize: 12, fontWeight: guideTab === tab ? 700 : 500,
-                    color: guideTab === tab ? '#7c3aed' : '#6b7280',
-                    borderBottom: `2px solid ${guideTab === tab ? '#7c3aed' : 'transparent'}`,
+                    color: guideTab === tab ? '#534AB7' : '#6b7280',
+                    borderBottom: `2px solid ${guideTab === tab ? '#534AB7' : 'transparent'}`,
                     background: 'none', border: 'none', borderRadius: 0, cursor: 'pointer',
                     textTransform: 'capitalize',
                   }}
@@ -1293,7 +1293,7 @@ function TemplateGalleryModal({
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>Workflow nodes</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {selected.nodes.map((n) => {
-                        const color = n.type === 'start' ? '#22c55e' : n.type === 'end' ? '#ef4444' : n.type === 'condition' ? '#f59e0b' : n.type === 'loop' ? '#8b5cf6' : n.type === 'supervisor' ? '#d97706' : '#7c3aed'
+                        const color = n.type === 'start' ? '#22c55e' : n.type === 'end' ? '#ef4444' : n.type === 'condition' ? '#f59e0b' : n.type === 'loop' ? '#8b5cf6' : n.type === 'supervisor' ? '#d97706' : '#534AB7'
                         return (
                           <span key={n.key} style={{
                             fontSize: 11, padding: '3px 8px', borderRadius: 6,
@@ -1316,7 +1316,7 @@ function TemplateGalleryModal({
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>{agent.name}</span>
                           {agent.model && (
-                            <span style={{ fontSize: 10, padding: '2px 6px', background: '#ede9fe', color: '#7c3aed', borderRadius: 4, fontWeight: 600 }}>{agent.model}</span>
+                            <span style={{ fontSize: 10, padding: '2px 6px', background: '#ede9fe', color: '#534AB7', borderRadius: 4, fontWeight: 600 }}>{agent.model}</span>
                           )}
                         </div>
                         <p style={{ fontSize: 11, color: '#6b7280', margin: '4px 0 0' }}>{agent.role}</p>
@@ -1352,7 +1352,7 @@ function TemplateGalleryModal({
                     <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                       <div style={{
                         width: 24, height: 24, borderRadius: '50%', background: '#f1f0ff',
-                        color: '#7c3aed', fontSize: 11, fontWeight: 700,
+                        color: '#534AB7', fontSize: 11, fontWeight: 700,
                         display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                       }}>
                         {i + 1}
@@ -1374,7 +1374,7 @@ function TemplateGalleryModal({
               {createProgress.length > 0 && (
                 <div style={{ marginBottom: 10, padding: '8px 12px', background: '#f1f0ff', border: '1px solid #c4b5fd', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {createProgress.map((line, i) => (
-                    <span key={i} style={{ fontSize: 11, color: '#7c3aed' }}>{line}</span>
+                    <span key={i} style={{ fontSize: 11, color: '#534AB7' }}>{line}</span>
                   ))}
                 </div>
               )}
@@ -1383,7 +1383,7 @@ function TemplateGalleryModal({
                   onClick={() => onSelect(selected)}
                   disabled={creating}
                   style={{
-                    padding: '9px 16px', background: '#fff', color: '#7c3aed',
+                    padding: '9px 16px', background: '#fff', color: '#534AB7',
                     border: '1px solid #c4b5fd', borderRadius: 8, fontSize: 12, fontWeight: 600,
                     cursor: creating ? 'not-allowed' : 'pointer', opacity: creating ? 0.5 : 1,
                     display: 'flex', alignItems: 'center', gap: 6,
@@ -1395,7 +1395,7 @@ function TemplateGalleryModal({
                   onClick={handleCreateAndLoad}
                   disabled={creating}
                   style={{
-                    padding: '9px 20px', background: creating ? '#a5b4fc' : '#7c3aed', color: '#fff',
+                    padding: '9px 20px', background: creating ? '#a5b4fc' : '#534AB7', color: '#fff',
                     border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700,
                     cursor: creating ? 'not-allowed' : 'pointer',
                     display: 'flex', alignItems: 'center', gap: 6,
@@ -1759,7 +1759,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
             padding: '2px 8px', borderRadius: 10,
             background: groupData.mode === 'pipeline' ? '#f1f0ff' : '#fef3c7',
-            color: groupData.mode === 'pipeline' ? '#7c3aed' : '#92400e',
+            color: groupData.mode === 'pipeline' ? '#534AB7' : '#92400e',
             textTransform: 'uppercase',
           }}>
             {groupData.mode}
@@ -1772,7 +1772,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            background: '#fff', color: '#7c3aed', border: '1px solid #c4b5fd',
+            background: '#fff', color: '#534AB7', border: '1px solid #c4b5fd',
           }}
         >
           <LayoutTemplate size={13} /> Templates
@@ -1784,7 +1784,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
             background: triggersPanelOpen ? '#f1f0ff' : '#fff',
-            color: triggersPanelOpen ? '#7c3aed' : '#374151',
+            color: triggersPanelOpen ? '#534AB7' : '#374151',
             border: `1px solid ${triggersPanelOpen ? '#c4b5fd' : '#e5e7eb'}`,
           }}
         >
@@ -1809,7 +1809,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            background: '#7c3aed', color: '#fff', border: 'none',
+            background: '#534AB7', color: '#fff', border: 'none',
           }}
         >
           <Play size={13} /> Run
@@ -1882,7 +1882,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         >
           {graphLoading && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, background: 'rgba(255,255,255,0.8)' }}>
-              <Loader2 size={24} style={{ animation: 'spin 0.7s linear infinite', color: '#7c3aed' }} />
+              <Loader2 size={24} style={{ animation: 'spin 0.7s linear infinite', color: '#534AB7' }} />
             </div>
           )}
           <ReactFlow
@@ -1910,7 +1910,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                 if (t === 'end') return '#ef4444'
                 if (t === 'condition') return '#f59e0b'
                 if (t === 'loop') return '#8b5cf6'
-                return '#7c3aed'
+                return '#534AB7'
               }}
               style={{ bottom: 20, right: 20, border: '1px solid #e5e7eb', borderRadius: 8 }}
             />
@@ -2026,7 +2026,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               <span style={{
                 fontSize: 11, padding: '2px 8px', borderRadius: 6,
                 background: selectedNode.data.node_type === 'supervisor' ? '#fef3c7' : '#f1f0ff',
-                color: selectedNode.data.node_type === 'supervisor' ? '#92400e' : '#7c3aed',
+                color: selectedNode.data.node_type === 'supervisor' ? '#92400e' : '#534AB7',
                 fontWeight: 700,
               }}>
                 {selectedNode.data.node_type === 'supervisor' ? '👑 supervisor' : selectedNode.data.node_type as string}
@@ -2070,7 +2070,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                 </select>
                 {selectedNode.data.agent_model && (
                   <div style={{ marginTop: 4, display: 'flex', gap: 4 }}>
-                    <span style={{ fontSize: 10, background: selectedNode.data.node_type === 'supervisor' ? '#fef3c7' : '#f1f0ff', color: selectedNode.data.node_type === 'supervisor' ? '#d97706' : '#7c3aed', borderRadius: 4, padding: '1px 6px' }}>{selectedNode.data.agent_model as string}</span>
+                    <span style={{ fontSize: 10, background: selectedNode.data.node_type === 'supervisor' ? '#fef3c7' : '#f1f0ff', color: selectedNode.data.node_type === 'supervisor' ? '#d97706' : '#534AB7', borderRadius: 4, padding: '1px 6px' }}>{selectedNode.data.agent_model as string}</span>
                     <span style={{ fontSize: 10, background: '#f4f4f5', color: '#71717a', borderRadius: 4, padding: '1px 6px' }}>{selectedNode.data.agent_provider as string}</span>
                   </div>
                 )}
@@ -2192,7 +2192,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
             borderBottom: '1px solid #2d2b3d', flexShrink: 0,
           }}>
-            <Play size={13} color="#7c3aed" />
+            <Play size={13} color="#534AB7" />
             <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e0ff' }}>Run Workflow</span>
             <div style={{ flex: 1 }} />
             <button
@@ -2228,7 +2228,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                 onClick={handleRun}
                 disabled={!runInput.trim() || runStatus === 'running'}
                 style={{
-                  padding: '8px 16px', background: runStatus === 'running' ? '#3d3b52' : '#7c3aed',
+                  padding: '8px 16px', background: runStatus === 'running' ? '#3d3b52' : '#534AB7',
                   color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600,
                   cursor: runStatus === 'running' ? 'not-allowed' : 'pointer',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -2254,7 +2254,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                 return (
                   <div key={nodeId} style={{ background: '#1e1c2e', borderRadius: 8, padding: '10px 12px', border: '1px solid #2d2b3d' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                      <ChevronRight size={11} color="#7c3aed" />
+                      <ChevronRight size={11} color="#534AB7" />
                       <span style={{ fontSize: 11, fontWeight: 700, color: '#a5b4fc' }}>{label}</span>
                     </div>
                     <pre style={{ fontSize: 11, color: '#d1d5db', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace' }}>{text}</pre>

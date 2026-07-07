@@ -115,7 +115,7 @@ function WorkflowTraceNode({ data }: NodeProps & { data: WorkflowTraceNodeData }
     isSlow    ? '#f59e0b' :
     status === 'success' ? '#4ade80' :
     status === 'running' ? '#60a5fa' :
-    selected  ? '#7c3aed' : '#d1d5db'
+    selected  ? '#534AB7' : '#d1d5db'
 
   const bg = isError ? '#fef2f2' : selected ? '#f1f0ff' : '#fff'
 
@@ -125,10 +125,10 @@ function WorkflowTraceNode({ data }: NodeProps & { data: WorkflowTraceNodeData }
   }
 
   const typeIcon: Record<string, React.ReactNode> = {
-    start: <Zap size={11} color="#7c3aed" />,
+    start: <Zap size={11} color="#534AB7" />,
     end: <Check size={11} color="#22c55e" />,
     agent: <Sparkles size={11} color="#6366f1" />,
-    supervisor: <Sparkles size={11} color="#7c3aed" />,
+    supervisor: <Sparkles size={11} color="#534AB7" />,
     condition: <GitBranch size={11} color="#f59e0b" />,
     parallel: <Layers size={11} color="#3b82f6" />,
     join: <Layers size={11} color="#3b82f6" />,
@@ -277,7 +277,7 @@ function SubRunStepsPanel({ subRun, onClose }: { subRun: Run; onClose: () => voi
   return (
     <div style={{
       position: 'absolute', bottom: 0, left: 0, right: 0,
-      background: '#fff', borderTop: '2px solid #7c3aed',
+      background: '#fff', borderTop: '2px solid #534AB7',
       padding: '12px 14px', borderRadius: '0 0 8px 8px',
       maxHeight: 280, overflowY: 'auto', zIndex: 10,
     }}>

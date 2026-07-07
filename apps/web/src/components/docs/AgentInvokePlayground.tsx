@@ -101,9 +101,9 @@ export default function AgentInvokePlayground() {
                   onClick={() => setMode(m)}
                   style={{
                     padding: '0.35rem 0.875rem', borderRadius: 6, fontSize: '0.8125rem', fontWeight: 500,
-                    border: mode === m ? '1px solid #7c3aed' : '1px solid #e5e7eb',
-                    background: mode === m ? '#f1f0ff' : '#fff',
-                    color: mode === m ? '#7c3aed' : '#6b7280',
+                    border: mode === m ? '1px solid #534AB7' : '1px solid #e5e7eb',
+                    background: mode === m ? '#EEEDFE' : '#fff',
+                    color: mode === m ? '#534AB7' : '#6b7280',
                     cursor: 'pointer', transition: 'all 0.15s',
                   }}
                 >
@@ -126,7 +126,7 @@ export default function AgentInvokePlayground() {
                   <span style={{ color: '#9ca3af' }}>No {mode === 'agent' ? 'agents' : 'workflows'} found in this workspace. </span>
                   <a
                     href={mode === 'agent' ? '/agents/new' : '/workflows/new'}
-                    style={{ color: '#7c3aed', fontWeight: 500, textDecoration: 'none' }}
+                    style={{ color: '#534AB7', fontWeight: 500, textDecoration: 'none' }}
                   >
                     <Plus size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> Create one
                   </a>
@@ -188,7 +188,7 @@ export default function AgentInvokePlayground() {
                 type="checkbox"
                 checked={stream}
                 onChange={(e) => setStream(e.target.checked)}
-                style={{ accentColor: '#7c3aed', width: 15, height: 15 }}
+                style={{ accentColor: '#534AB7', width: 15, height: 15 }}
               />
               <span style={{ fontSize: '0.875rem', color: '#4b5563' }}>
                 Streaming mode (SSE) — keep connection open for real-time deltas
@@ -202,7 +202,7 @@ export default function AgentInvokePlayground() {
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '0.625rem 1.125rem', borderRadius: 8,
-                background: loading || !selectedId ? '#9ca3af' : '#7c3aed',
+                background: loading || !selectedId ? '#9ca3af' : '#534AB7',
                 color: '#fff', fontSize: '0.875rem', fontWeight: 600,
                 border: 'none', cursor: loading || !selectedId ? 'not-allowed' : 'pointer',
                 alignSelf: 'flex-start', transition: 'background 0.15s',
@@ -237,8 +237,8 @@ export default function AgentInvokePlayground() {
             </pre>
             {response.status === 202 && (
               <p style={{ marginTop: 8, fontSize: '0.8125rem', color: '#6b7280' }}>
-                Run started. Use the <code style={{ background: '#f1f0ff', color: '#7c3aed', padding: '0.1em 0.4em', borderRadius: 4 }}>run_id</code> above
-                with <code style={{ background: '#f1f0ff', color: '#7c3aed', padding: '0.1em 0.4em', borderRadius: 4 }}>GET /runs/:id</code> to poll for results.
+                Run started. Use the <code style={{ background: '#EEEDFE', color: '#534AB7', padding: '0.1em 0.4em', borderRadius: 4 }}>run_id</code> above
+                with <code style={{ background: '#EEEDFE', color: '#534AB7', padding: '0.1em 0.4em', borderRadius: 4 }}>GET /runs/:id</code> to poll for results.
               </p>
             )}
           </div>
