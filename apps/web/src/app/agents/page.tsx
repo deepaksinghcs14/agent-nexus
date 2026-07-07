@@ -3,7 +3,7 @@
 import { useRef, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, MessageSquare, Pencil, Trash2, Bot, Download, Upload } from 'lucide-react'
+import { Plus, MessageSquare, Pencil, Trash2, Bot, Download, Upload, Search, ChevronDown } from 'lucide-react'
 import { agentsAPI } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -20,6 +20,9 @@ export default function AgentsPage() {
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [importError, setImportError] = useState('')
+  const [search, setSearch] = useState('')
+  const [providerFilter, setProviderFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { data, isLoading } = useQuery({
@@ -68,7 +71,15 @@ export default function AgentsPage() {
       })
   }
 
-  const agents = useMemo(() => data?.data ?? [], [data?.data])
+  const allAgents = useMemo(() => data?.data ?? [], [data?.data])
+  const providerOptions = useMemo(() => [...new Set(allAgents.map((a) => a.provider))].sort(), [allAgents])
+  const agents = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return allAgents.filter((a) =>
+      (!q || a.name.toLowerCase().includes(q) || (a.description ?? '').toLowerCase().includes(q) || a.model.toLowerCase().includes(q)) &&
+      (!providerFilter || a.provider === providerFilter) &&
+      (!statusFilter || a.status === statusFilter))
+  }, [allAgents, search, providerFilter, statusFilter])
   const visibleIds = useMemo(() => agents.filter((a) => !a.protected).map((a) => a.id), [agents])
   const selectedCount = selected.size
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id))
@@ -97,7 +108,7 @@ export default function AgentsPage() {
       <PageHeader
         eyebrow="Build"
         title="Agents"
-        subtitle={`${agents.length} agent${agents.length !== 1 ? 's' : ''} in this workspace`}
+        subtitle={`${allAgents.length} agent${allAgents.length !== 1 ? 's' : ''} in this workspace`}
         actions={
           <>
             <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
@@ -117,6 +128,29 @@ export default function AgentsPage() {
 
       {importError && (
         <div className="mb-4 text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg px-3 py-2">{importError}</div>
+      )}
+
+      {!isLoading && allAgents.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 px-3 py-2 border border-border rounded-[10px] bg-surface flex-1 min-w-[200px] max-w-sm">
+            <Search className="w-3.5 h-3.5 text-faint" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search agents…" className="flex-1 text-[13px] bg-transparent outline-none" />
+          </div>
+          <div className="relative">
+            <select value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-border rounded-[10px] bg-surface-2 text-[12px] font-mono text-muted-foreground cursor-pointer">
+              <option value="">All providers</option>
+              {providerOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-faint absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+          <div className="relative">
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="appearance-none pl-3 pr-8 py-2 border border-border rounded-[10px] bg-surface-2 text-[12px] font-mono text-muted-foreground cursor-pointer">
+              <option value="">Status</option>
+              {['active', 'paused', 'archived'].map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-faint absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+        </div>
       )}
 
       {!isLoading && agents.length > 0 && (
