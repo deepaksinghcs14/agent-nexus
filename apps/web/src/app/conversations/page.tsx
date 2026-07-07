@@ -6,11 +6,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MessageSquare, Trash2, Plus } from 'lucide-react'
 import { conversationsAPI } from '@/lib/api'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { DataTable, Row, Cell } from '@/components/ui/DataTable'
 import { relativeTime } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
 import type { Conversation } from '@/types'
 
 export default function ConversationsPage() {
   const queryClient = useQueryClient()
+  const router = useRouter()
   const [error, setError] = useState('')
 
   const { data, isLoading } = useQuery({
@@ -72,25 +75,26 @@ export default function ConversationsPage() {
         </div>
       )}
 
-      <div className="space-y-2">
-        {conversations.map((c) => (
-          <div key={c.id} className="flex items-center justify-between border border-border rounded-xl p-4 bg-surface hover:border-border-strong">
-            <Link href={`/playground/${c.id}`} className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">{c.title}</p>
-              <p className="text-xs text-faint mt-0.5">
-                {c.message_count} message{c.message_count !== 1 ? 's' : ''} · {relativeTime(c.updated_at)}
-              </p>
-            </Link>
-            <button
-              onClick={() => { if (confirm('Delete this conversation?')) deleteMutation.mutate(c.id) }}
-              disabled={deleteMutation.isPending}
-              className="p-1.5 text-faint hover:text-crit hover:bg-crit/10 rounded-lg ml-3 disabled:opacity-40"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))}
-      </div>
+      {!isLoading && conversations.length > 0 && (
+        <DataTable columns={['Conversation', 'Messages', 'Updated', '']} minWidth={560}>
+          {conversations.map((c) => (
+            <Row key={c.id} onClick={() => router.push(`/playground/${c.id}`)}>
+              <Cell className="!whitespace-normal"><span className="font-medium text-foreground">{c.title}</span></Cell>
+              <Cell><span className="font-mono text-[11px] text-muted-foreground tabular-nums">{c.message_count}</span></Cell>
+              <Cell><span className="text-[11px] text-faint">{relativeTime(c.updated_at)}</span></Cell>
+              <Cell className="text-right">
+                <button
+                  onClick={(e) => { e.stopPropagation(); if (confirm('Delete this conversation?')) deleteMutation.mutate(c.id) }}
+                  disabled={deleteMutation.isPending}
+                  className="p-1.5 text-faint hover:text-crit hover:bg-crit/10 rounded-lg disabled:opacity-40"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </Cell>
+            </Row>
+          ))}
+        </DataTable>
+      )}
     </div>
   )
 }

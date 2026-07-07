@@ -129,6 +129,55 @@ function ToolTrace({ traces, open }: { traces: TraceEvent[]; open?: boolean }) {
   )
 }
 
+// LiveTracePanel — the mock's right-side "Live trace" waterfall. Shows the
+// current turn's tool calls as labeled bars scaled by latency, with a status dot.
+function LiveTracePanel({ traces, running }: { traces: TraceEvent[]; running: boolean }) {
+  const maxLatency = Math.max(1, ...traces.map(t => t.latencyMs || 0))
+  const totalMs = traces.reduce((s, t) => s + (t.latencyMs || 0), 0)
+  return (
+    <aside className="hidden lg:flex flex-col w-80 border-l border-border bg-surface flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <h3 className="text-sm font-semibold text-foreground">Live trace</h3>
+        {running
+          ? <span className="inline-flex items-center gap-1.5 font-mono text-[10px] text-accent dark:text-accent-bright"><span className="w-1.5 h-1.5 rounded-full bg-accent dark:bg-accent-bright animate-pulse" />running</span>
+          : traces.length > 0
+            ? <span className="font-mono text-[10px] text-good">done</span>
+            : null}
+      </div>
+      <div className="flex-1 overflow-y-auto p-3">
+        {traces.length === 0 ? (
+          <div className="text-[12px] text-faint text-center py-10 px-4">
+            Tool calls stream here as the agent runs.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {traces.map((t) => {
+              const pct = Math.max(6, ((t.latencyMs || 0) / maxLatency) * 100)
+              const tone = t.error ? 'bg-crit' : t.pending ? 'bg-accent dark:bg-accent-bright' : 'bg-good'
+              return (
+                <div key={t.callId} className="grid grid-cols-[92px_1fr] gap-2 items-center">
+                  <span className="font-mono text-[10px] text-muted-foreground truncate" title={t.tool}>{t.tool}</span>
+                  <div className="h-4 rounded bg-surface-2 relative overflow-hidden">
+                    <div className={`absolute inset-y-0 left-0 rounded ${tone} ${t.pending ? 'animate-pulse' : ''}`} style={{ width: `${pct}%` }} />
+                    {!t.pending && (t.latencyMs || 0) > 0 && (
+                      <span className="absolute right-1 top-1/2 -translate-y-1/2 font-mono text-[9px] text-muted-foreground">{(t.latencyMs / 1000).toFixed(2)}s</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+      {traces.length > 0 && (
+        <div className="px-4 py-2.5 border-t border-border font-mono text-[10px] text-faint">
+          {traces.length} tool{traces.length !== 1 ? 's' : ''} · {(totalMs / 1000).toFixed(2)}s total
+        </div>
+      )}
+    </aside>
+  )
+}
+
 function PlaygroundConversation({ params }: { params: { conversation_id: string } }) {
   const queryClient = useQueryClient()
   const searchParams = useSearchParams()
@@ -485,6 +534,15 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
     ? agent.model.split('/').pop()?.split('-').slice(0, 3).join('-') ?? agent.model
     : null
 
+  // Traces for the live-trace side panel: the most recent turn that has any.
+  const panelTraces = (() => {
+    const ids = Object.keys(turnTraces)
+    for (let i = ids.length - 1; i >= 0; i--) {
+      if (turnTraces[ids[i]]?.length) return turnTraces[ids[i]]
+    }
+    return [] as TraceEvent[]
+  })()
+
   return (
     <div className="flex flex-col h-full bg-surface">
       {/* Header */}
@@ -519,6 +577,9 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
         )}
       </div>
 
+      {/* Chat + live trace panel */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-3">
         {isLoading && <div className="text-sm text-faint text-center py-12">Loading…</div>}
@@ -706,6 +767,9 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
           {messages.length} message{messages.length !== 1 ? 's' : ''}
           {agent && <> · {agent.max_steps} max steps</>}
         </p>
+      </div>
+      </div>
+      <LiveTracePanel traces={panelTraces} running={streaming} />
       </div>
     </div>
   )
