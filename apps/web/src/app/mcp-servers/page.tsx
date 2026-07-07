@@ -478,10 +478,10 @@ export default function MCPServersPage() {
               <div
                 key={server.id}
                 onClick={() => setSelected(server.id === selected ? '' : server.id)}
-                className={`bg-surface border rounded-xl p-3.5 cursor-pointer transition-all ${
+                className={`bg-surface border shadow-card rounded-xl p-3.5 cursor-pointer transition-all hover:-translate-y-0.5 ${
                   selected === server.id
                     ? 'border-accent/50 ring-1 ring-accent/20'
-                    : 'border-border hover:border-gray-200'
+                    : 'border-border hover:border-border-strong'
                 }`}
               >
                 <div className="flex items-start justify-between mb-2">

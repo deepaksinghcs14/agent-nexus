@@ -35,35 +35,31 @@ export default function WorkflowsPage() {
         <p className="text-sm text-muted-foreground">No workflows yet.</p>
       </div>
     )}
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
       {workflows.map((wf) => (
-        <div key={wf.id} className="bg-surface border border-border rounded-xl p-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[13px] font-medium text-foreground">{wf.name}</p>
-              <p className="text-[11px] text-faint mt-1">{wf.description || `${wf.mode} workflow`}</p>
+        <div key={wf.id} className="group bg-surface border border-border shadow-card rounded-xl p-4 flex flex-col gap-3 hover:border-border-strong hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-accent/10 dark:bg-accent-bright/10 text-accent dark:text-accent-bright grid place-items-center flex-shrink-0">
+              <GitBranch className="w-4 h-4" />
             </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-foreground truncate">{wf.name}</p>
+              <p className="font-mono text-[10px] text-faint">{wf.run_count ?? 0} runs</p>
+            </div>
+          </div>
+          <p className="text-[12px] text-muted-foreground line-clamp-2 min-h-[2rem]">{wf.description || `${wf.mode} workflow`}</p>
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-accent/10 text-accent dark:text-accent-bright border border-accent/25">{wf.mode}</span>
             <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor(wf.status ?? 'active')}`}>{wf.status ?? 'active'}</span>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-3">
-            {wf.mode} workflow · {wf.run_count ?? 0} runs
-          </p>
-          <div className="flex gap-2 mt-4 pt-3 border-t border-border">
-            <span className="text-[10px] text-faint mr-auto">
-              {wf.last_run_at ? `Last run ${relativeTime(wf.last_run_at)}` : 'Never run'}
+          <div className="flex items-center gap-2 mt-1 pt-3 border-t border-border">
+            <span className="font-mono text-[10px] text-faint mr-auto">
+              {wf.last_run_at ? `last run ${relativeTime(wf.last_run_at)}` : 'never run'}
             </span>
-            <button
-              onClick={() => router.push(`/workflows/${wf.id}`)}
-              className="inline-flex items-center gap-1 px-2.5 py-1 bg-accent text-white text-[11px] rounded-md"
-            >
+            <button onClick={() => router.push(`/workflows/${wf.id}`)} className="inline-flex items-center gap-1 px-2.5 py-1 bg-accent text-white text-[11px] rounded-lg hover:bg-accent-hover">
               <ExternalLink className="w-2.5 h-2.5" /> Open
             </button>
-            <button
-              onClick={() => { if (confirm('Delete this workflow?')) remove.mutate(wf.id) }}
-              className="p-1 text-faint hover:text-red-500"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <button onClick={() => { if (confirm('Delete this workflow?')) remove.mutate(wf.id) }} className="p-1 text-faint hover:text-crit"><Trash2 className="w-3.5 h-3.5" /></button>
           </div>
         </div>
       ))}
