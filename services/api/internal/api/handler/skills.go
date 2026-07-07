@@ -42,6 +42,7 @@ func (h *SkillsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Description        string   `json:"description"`
 		Content            string   `json:"content"`
 		Enabled            *bool    `json:"enabled"`
+		Category           string   `json:"category"`
 		RequiredToolNames  []string `json:"required_tool_names"`
 	}
 	if json.NewDecoder(r.Body).Decode(&body) != nil || body.Name == "" {
@@ -60,6 +61,7 @@ func (h *SkillsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Content:           body.Content,
 		Source:            "manual",
 		Enabled:           enabled,
+		Category:          body.Category,
 		RequiredToolNames: body.RequiredToolNames,
 		CreatedBy:         uid,
 	}
@@ -98,6 +100,7 @@ func (h *SkillsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Description       *string  `json:"description"`
 		Content           *string  `json:"content"`
 		Enabled           *bool    `json:"enabled"`
+		Category          *string  `json:"category"`
 		RequiredToolNames *[]string `json:"required_tool_names"`
 	}
 	if json.NewDecoder(r.Body).Decode(&body) != nil {
@@ -115,6 +118,9 @@ func (h *SkillsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Enabled != nil {
 		s.Enabled = *body.Enabled
+	}
+	if body.Category != nil {
+		s.Category = *body.Category
 	}
 	if body.RequiredToolNames != nil {
 		s.RequiredToolNames = *body.RequiredToolNames

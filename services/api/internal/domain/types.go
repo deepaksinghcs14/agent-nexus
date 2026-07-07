@@ -110,6 +110,7 @@ type Tool struct {
 	RequiresApproval bool            `json:"requires_approval"`
 	TimeoutMs        int             `json:"timeout_ms"`
 	Enabled          bool            `json:"enabled"`
+	Category         string          `json:"category,omitempty"` // functional category (Communication, Dev & Code, …)
 	CreatedAt        time.Time       `json:"created_at"`
 	UpdatedAt        time.Time       `json:"updated_at"`
 }
@@ -441,6 +442,7 @@ type Skill struct {
 	Content           string    `json:"content"`
 	Source            string    `json:"source"`
 	Enabled           bool      `json:"enabled"`
+	Category          string    `json:"category,omitempty"`
 	RequiredToolNames []string  `json:"required_tool_names,omitempty"`
 	CreatedBy         string    `json:"created_by,omitempty"`
 	CreatedAt         time.Time `json:"created_at"`

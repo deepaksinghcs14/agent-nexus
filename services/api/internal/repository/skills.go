@@ -15,12 +15,12 @@ func NewSkillRepository(pool *pgxpool.Pool) *SkillRepository { return &SkillRepo
 
 const skillSelect = `
 SELECT id::text, COALESCE(workspace_id::text,''), name, description, content, source, enabled,
-       COALESCE(required_tool_names, '{}'), COALESCE(created_by::text,''), created_at, updated_at
+       COALESCE(category,''), COALESCE(required_tool_names, '{}'), COALESCE(created_by::text,''), created_at, updated_at
 FROM skills`
 
 func scanSkill(row interface{ Scan(...any) error }) (domain.Skill, error) {
 	var s domain.Skill
-	err := row.Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Description, &s.Content, &s.Source, &s.Enabled, &s.RequiredToolNames, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt)
+	err := row.Scan(&s.ID, &s.WorkspaceID, &s.Name, &s.Description, &s.Content, &s.Source, &s.Enabled, &s.Category, &s.RequiredToolNames, &s.CreatedBy, &s.CreatedAt, &s.UpdatedAt)
 	return s, err
 }
 
@@ -50,10 +50,10 @@ func (r *SkillRepository) Create(ctx context.Context, s *domain.Skill) error {
 		s.RequiredToolNames = []string{}
 	}
 	return r.pool.QueryRow(ctx,
-		`INSERT INTO skills(id,workspace_id,name,description,content,source,enabled,required_tool_names,created_by)
-		 VALUES($1::uuid,$2::uuid,$3,$4,$5,'manual',$6,$7,$8::uuid)
+		`INSERT INTO skills(id,workspace_id,name,description,content,source,enabled,required_tool_names,created_by,category)
+		 VALUES($1::uuid,$2::uuid,$3,$4,$5,'manual',$6,$7,$8::uuid,NULLIF($9,''))
 		 RETURNING created_at, updated_at`,
-		s.ID, s.WorkspaceID, s.Name, s.Description, s.Content, s.Enabled, s.RequiredToolNames, s.CreatedBy,
+		s.ID, s.WorkspaceID, s.Name, s.Description, s.Content, s.Enabled, s.RequiredToolNames, s.CreatedBy, s.Category,
 	).Scan(&s.CreatedAt, &s.UpdatedAt)
 }
 
@@ -65,9 +65,9 @@ func (r *SkillRepository) Update(ctx context.Context, s *domain.Skill) error {
 		s.RequiredToolNames = []string{}
 	}
 	_, err := r.pool.Exec(ctx,
-		`UPDATE skills SET name=$1, description=$2, content=$3, enabled=$4, required_tool_names=$5, updated_at=NOW()
+		`UPDATE skills SET name=$1, description=$2, content=$3, enabled=$4, required_tool_names=$5, category=NULLIF($8,''), updated_at=NOW()
 		 WHERE id=$6::uuid AND workspace_id=$7::uuid AND source <> 'managed'`,
-		s.Name, s.Description, s.Content, s.Enabled, s.RequiredToolNames, s.ID, s.WorkspaceID)
+		s.Name, s.Description, s.Content, s.Enabled, s.RequiredToolNames, s.ID, s.WorkspaceID, s.Category)
 	return err
 }
 

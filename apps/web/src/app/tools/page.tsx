@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp, ExternalLink, Globe, Lock, Pencil, Play, Plus, 
 import Link from 'next/link'
 import { toolsAPI } from '@/lib/api'
 import { riskColor } from '@/lib/utils'
+import { toolCategory } from '@/lib/tool-category'
 import type { Tool } from '@/types'
 
 // ─── CodeMirror (dynamic — client only, avoids SSR window references) ────────
@@ -183,6 +184,9 @@ function ToolRow({ tool, onToggle, onDelete, onEdit }: {
         <div className="flex items-center gap-2 flex-shrink-0 ml-2 overflow-x-auto">
           <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border flex-shrink-0 ${ti.cls}`}>
             {ti.icon}{ti.label}
+          </span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 flex-shrink-0 whitespace-nowrap">
+            {toolCategory(tool)}
           </span>
           <span className={`text-[10px] px-2 py-0.5 rounded-full border ${riskColor(tool.risk_level)}`}>
             {tool.risk_level}

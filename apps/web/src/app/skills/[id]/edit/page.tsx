@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { ChevronRight, Save, X } from 'lucide-react'
 import { skillsAPI } from '@/lib/api'
+import { ToolPicker } from '@/components/ToolPicker'
+import { CATEGORIES } from '@/lib/tool-category'
 
 export default function EditSkillPage() {
   const router = useRouter()
@@ -11,7 +13,8 @@ export default function EditSkillPage() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [content, setContent] = useState('')
-  const [requiredTools, setRequiredTools] = useState('')
+  const [category, setCategory] = useState('')
+  const [requiredTools, setRequiredTools] = useState<string[]>([])
   const [enabled, setEnabled] = useState(true)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -22,7 +25,8 @@ export default function EditSkillPage() {
         setName(s.name ?? '')
         setDescription(s.description ?? '')
         setContent(s.content ?? '')
-        setRequiredTools((s.required_tool_names ?? []).join(', '))
+        setCategory(s.category ?? '')
+        setRequiredTools(s.required_tool_names ?? [])
         setEnabled(s.enabled ?? true)
       })
       .catch(() => setError('Failed to load skill'))
@@ -34,8 +38,7 @@ export default function EditSkillPage() {
       setError('Skill name is required')
       return
     }
-    const required_tool_names = requiredTools.split(',').map((s: string) => s.trim()).filter(Boolean)
-    await skillsAPI.update(id, { name, description, content, enabled, required_tool_names })
+    await skillsAPI.update(id, { name, description, content, category, enabled, required_tool_names: requiredTools })
     router.push('/skills')
   }
 
@@ -62,10 +65,16 @@ export default function EditSkillPage() {
       <div className="space-y-4">
         <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg" /></Field>
         <Field label="Description"><input value={description} onChange={(e) => setDescription(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg" /></Field>
+        <Field label="Category">
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+            <option value="">Uncategorized</option>
+            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
         <Field label="Instructions"><textarea value={content} onChange={(e) => setContent(e.target.value)} rows={12} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg font-mono" /></Field>
         <Field label="Required tools">
-          <input value={requiredTools} onChange={(e) => setRequiredTools(e.target.value)} placeholder="e.g. whatsapp_send_message, whatsapp_search_contacts" className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg" />
-          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">Comma-separated tool names. With lazy tool loading, these tools are auto-activated when this skill is requested.</p>
+          <ToolPicker selected={requiredTools} onChange={setRequiredTools} />
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">Pick the tools this skill needs. With lazy tool loading, they are auto-activated when this skill is requested.</p>
         </Field>
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />

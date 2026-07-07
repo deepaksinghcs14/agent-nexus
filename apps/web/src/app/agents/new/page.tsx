@@ -6,6 +6,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, ChevronDown, Save, X, Check, Search, GripVertical } from 'lucide-react'
 import { agentsAPI, connectorsAPI, providersAPI, skillsAPI, toolsAPI } from '@/lib/api'
 import type { Agent, AgentSkill, Connector, ModelInfo, ProviderCredential, Skill, Tool } from '@/types'
+import { NexusDraftPanel, type AgentDraft } from '@/components/NexusDraftPanel'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { FIELD_HELP } from '@/lib/field-help'
 
 const TABS = ['Basics', 'Model', 'Instructions', 'Skills', 'Tools', 'Context', 'Memory', 'Guardrails'] as const
 type Tab = typeof TABS[number]
@@ -323,6 +326,33 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
     })
   }
 
+  // applyDraft pre-fills the whole form from a Nexus AI agent draft. Selection
+  // maps: tools are keyed by name, skills and connectors by id (matching the
+  // form's existing state shape).
+  function applyDraft(d: AgentDraft) {
+    if (d.name) setName(d.name)
+    if (d.description !== undefined) setDescription(d.description)
+    if (d.instructions) setInstructions(d.instructions)
+    if (d.provider) setProvider(d.provider)
+    if (d.model) setModel(d.model)
+    if (typeof d.temperature === 'number') setTemperature(d.temperature)
+    if (typeof d.max_tokens === 'number') setMaxTokens(d.max_tokens)
+    if (typeof d.max_steps === 'number') setMaxSteps(d.max_steps)
+    if (typeof d.max_tool_calls === 'number') setMaxToolCalls(d.max_tool_calls)
+    if (typeof d.max_duration_secs === 'number') setMaxDurationSecs(d.max_duration_secs)
+    if (typeof d.memory_enabled === 'boolean') setMemoryEnabled(d.memory_enabled)
+    if (d.memory_scope) setMemoryScope(d.memory_scope)
+    if (typeof d.context_retrieval_enabled === 'boolean') setContextEnabled(d.context_retrieval_enabled)
+    if (typeof d.agentic_rag === 'boolean') setAgenticRAG(d.agentic_rag)
+    if (typeof d.max_chunks === 'number') setMaxChunks(d.max_chunks)
+    if (typeof d.min_score === 'number') setMinScore(d.min_score)
+    if (typeof d.lazy_tool_loading === 'boolean') setLazyToolLoading(d.lazy_tool_loading)
+    if (d.status) setStatus(d.status)
+    if (d.tools) setEnabledTools(Object.fromEntries(d.tools.map((t) => [t.name, true])))
+    if (d.skills) setEnabledSkills(Object.fromEntries(d.skills.map((s) => [s.id, true])))
+    if (d.connectors) setEnabledConnectors(Object.fromEntries(d.connectors.map((c) => [c.id, true])))
+  }
+
   return (
     <div className="p-4 sm:p-6 max-w-3xl">
       {isEdit && isLoadingAgent && <div className="text-sm text-gray-400 dark:text-gray-500 py-8 text-center">Loading agent…</div>}
@@ -346,6 +376,9 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           </button>
         </div>
       </div>
+
+      {/* Nexus AI fast-track — describe the agent and let Nexus draft it (create only) */}
+      {!isEdit && <NexusDraftPanel onDraft={applyDraft} />}
 
       {/* Tab bar */}
       <div className="flex border-b border-gray-100 dark:border-gray-800 mb-5 bg-gray-50 dark:bg-gray-800/60 rounded-t-lg overflow-x-auto"
@@ -844,9 +877,13 @@ function SkillSection({
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  const help = FIELD_HELP[label]
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400">{label}</label>
+      <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400 flex items-center gap-1">
+        {label}
+        {help && <InfoTip text={help} />}
+      </label>
       {hint && <p className="text-[10px] text-gray-400 dark:text-gray-500 -mt-1">{hint}</p>}
       {children}
     </div>
