@@ -319,6 +319,9 @@ export const gatewayAPI = {
   rejectPairing: (id: string) => api.post(`/gateway/pairings/${id}/reject`),
   listOutbox: (params?: string) => api.get(`/gateway/outbox${params ? '?' + params : ''}`),
   listReminders: (params?: string) => api.get(`/gateway/reminders${params ? '?' + params : ''}`),
+  createReminder: (body: unknown) => api.post('/gateway/reminders', body),
+  updateReminder: (id: string, body: unknown) => api.put(`/gateway/reminders/${id}`, body),
+  deleteReminder: (id: string) => api.delete(`/gateway/reminders/${id}`),
   listEscalations: (params?: string) => api.get(`/gateway/escalations${params ? '?' + params : ''}`),
   approveEscalation: (id: string) => api.post(`/gateway/escalations/${id}/approve`),
   rejectEscalation: (id: string) => api.post(`/gateway/escalations/${id}/reject`),
@@ -331,6 +334,7 @@ export const gatewayAPI = {
   deleteContact: (id: string) => api.delete(`/gateway/contacts/${id}`),
   listScheduledMessages: (params?: string) => api.get(`/gateway/scheduled-messages${params ? '?' + params : ''}`),
   createScheduledMessage: (body: unknown) => api.post('/gateway/scheduled-messages', body),
+  updateScheduledMessage: (id: string, body: unknown) => api.put(`/gateway/scheduled-messages/${id}`, body),
   deleteScheduledMessage: (id: string) => api.delete(`/gateway/scheduled-messages/${id}`),
 }
 

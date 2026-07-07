@@ -589,6 +589,20 @@ func (r *GatewayRepository) UpdateReminderStatus(ctx context.Context, id, worksp
 	return m, err
 }
 
+// UpdateReminder edits an editable reminder's core fields (title, message, due time, agent flag).
+func (r *GatewayRepository) UpdateReminder(ctx context.Context, id, workspaceID string, m *domain.GatewayReminder) (domain.GatewayReminder, error) {
+	var out domain.GatewayReminder
+	err := r.pool.QueryRow(ctx, `
+		UPDATE gateway_reminders
+		SET title=$1, message=$2, due_at=$3, use_agent=$4, updated_at=NOW()
+		WHERE id=$5::uuid AND workspace_id=$6::uuid
+		RETURNING id::text, workspace_id::text, COALESCE(channel_id::text,''), COALESCE(session_id::text,''),
+		          COALESCE(contact_id::text,''), use_agent, account_id, title, message, due_at, status, payload, created_at, updated_at`,
+		m.Title, m.Message, m.DueAt, m.UseAgent, id, workspaceID,
+	).Scan(&out.ID, &out.WorkspaceID, &out.ChannelID, &out.SessionID, &out.ContactID, &out.UseAgent, &out.AccountID, &out.Title, &out.Message, &out.DueAt, &out.Status, &out.Payload, &out.CreatedAt, &out.UpdatedAt)
+	return out, err
+}
+
 func (r *GatewayRepository) CreateEscalation(ctx context.Context, e *domain.GatewayEscalation) error {
 	payload := e.Payload
 	if len(payload) == 0 {
@@ -713,7 +727,7 @@ func (r *GatewayRepository) Tx(ctx context.Context) (pgx.Tx, error) {
 
 func (r *GatewayRepository) CreateScheduledMessage(ctx context.Context, m *domain.ScheduledMessage) error {
 	rule := m.RecurrenceRule
-	if len(rule) == 0 {
+	if len(rule) == 0 || string(rule) == "null" {
 		rule = nil
 	}
 	return r.pool.QueryRow(ctx, `
@@ -787,6 +801,29 @@ func (r *GatewayRepository) RescheduleMessage(ctx context.Context, id, workspace
 		WHERE id=$3::uuid AND workspace_id=$4::uuid`,
 		nextSendAt, occurrenceCount, id, workspaceID)
 	return err
+}
+
+// UpdateScheduledMessage edits a pending scheduled message. Editing resets occurrence_count to 0
+// and forces status back to 'pending' so an edited series restarts cleanly.
+func (r *GatewayRepository) UpdateScheduledMessage(ctx context.Context, id, workspaceID string, m *domain.ScheduledMessage) (domain.ScheduledMessage, error) {
+	rule := m.RecurrenceRule
+	if len(rule) == 0 || string(rule) == "null" {
+		rule = nil
+	}
+	var out domain.ScheduledMessage
+	err := r.pool.QueryRow(ctx, `
+		UPDATE gateway_scheduled_messages
+		SET contact_id=$1::uuid, peer_kind=$2, peer_id=$3, message=$4, send_at=$5,
+		    recurrence_rule=$6, use_agent=$7, occurrence_count=0, status='pending', last_error='', updated_at=NOW()
+		WHERE id=$8::uuid AND workspace_id=$9::uuid
+		RETURNING id::text, workspace_id::text, channel_id::text, COALESCE(contact_id::text,''), use_agent,
+		          account_id, peer_kind, peer_id, message, send_at, status,
+		          recurrence_rule, occurrence_count, last_error, created_by, created_at, updated_at`,
+		nullableString(m.ContactID), m.PeerKind, m.PeerID, m.Message, m.SendAt, rule, m.UseAgent, id, workspaceID,
+	).Scan(&out.ID, &out.WorkspaceID, &out.ChannelID, &out.ContactID, &out.UseAgent,
+		&out.AccountID, &out.PeerKind, &out.PeerID, &out.Message, &out.SendAt, &out.Status,
+		&out.RecurrenceRule, &out.OccurrenceCount, &out.LastError, &out.CreatedBy, &out.CreatedAt, &out.UpdatedAt)
+	return out, err
 }
 
 func (r *GatewayRepository) FetchDueScheduledMessages(ctx context.Context) ([]domain.ScheduledMessage, error) {

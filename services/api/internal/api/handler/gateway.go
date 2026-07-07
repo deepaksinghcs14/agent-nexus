@@ -275,6 +275,72 @@ func (h *GatewayHandler) ListReminders(w http.ResponseWriter, r *http.Request) {
 	errs.WriteJSON(w, http.StatusOK, map[string]any{"data": list})
 }
 
+func (h *GatewayHandler) CreateReminder(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	var body domain.GatewayReminder
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errs.Write(w, errs.BadRequest("invalid request body"))
+		return
+	}
+	if body.ChannelID == "" || body.Title == "" || body.DueAt == nil {
+		errs.Write(w, errs.BadRequest("channel_id, title, and due_at are required"))
+		return
+	}
+	// Resolve account_id + peer from contact when available so the dispatcher can deliver it.
+	if body.AccountID == "" || body.ContactID != "" {
+		if body.ContactID != "" {
+			if _, err := h.repo.GetContact(r.Context(), body.ContactID, ws); err != nil {
+				errs.Write(w, errs.BadRequest("contact not found"))
+				return
+			}
+		}
+		if ch, err := h.repo.GetChannel(r.Context(), body.ChannelID); err == nil {
+			cfg := gatewayservice.ParseConfig(ch.Config, h.cfg.WhatsAppAdapterURL)
+			body.AccountID = cfg.AccountID
+		}
+	}
+	body.WorkspaceID = ws
+	if body.Message == "" {
+		body.Message = body.Title
+	}
+	if err := h.repo.CreateReminder(r.Context(), &body); err != nil {
+		errs.Write(w, errs.Internal("failed to create reminder"))
+		return
+	}
+	errs.WriteJSON(w, http.StatusCreated, body)
+}
+
+func (h *GatewayHandler) UpdateReminder(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	var body domain.GatewayReminder
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errs.Write(w, errs.BadRequest("invalid request body"))
+		return
+	}
+	if body.Title == "" || body.DueAt == nil {
+		errs.Write(w, errs.BadRequest("title and due_at are required"))
+		return
+	}
+	if body.Message == "" {
+		body.Message = body.Title
+	}
+	m, err := h.repo.UpdateReminder(r.Context(), chi.URLParam(r, "id"), ws, &body)
+	if err != nil {
+		errs.Write(w, errs.NotFound("reminder not found"))
+		return
+	}
+	errs.WriteJSON(w, http.StatusOK, m)
+}
+
+func (h *GatewayHandler) DeleteReminder(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	if _, err := h.repo.UpdateReminderStatus(r.Context(), chi.URLParam(r, "id"), ws, "cancelled"); err != nil {
+		errs.Write(w, errs.NotFound("reminder not found"))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *GatewayHandler) ListEscalations(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	list, err := h.repo.ListEscalations(r.Context(), ws, r.URL.Query().Get("channel_id"), r.URL.Query().Get("status"), intParam(r, "limit", 100))
@@ -1755,6 +1821,44 @@ func (h *GatewayHandler) GetScheduledMessage(w http.ResponseWriter, r *http.Requ
 	errs.WriteJSON(w, http.StatusOK, m)
 }
 
+func (h *GatewayHandler) UpdateScheduledMessage(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+	var body domain.ScheduledMessage
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errs.Write(w, errs.BadRequest("invalid request body"))
+		return
+	}
+	if body.Message == "" || body.SendAt.IsZero() {
+		errs.Write(w, errs.BadRequest("message and send_at are required"))
+		return
+	}
+	// Re-resolve peer_id from contact if a contact is set (contact may have changed).
+	if body.ContactID != "" {
+		c, err := h.repo.GetContact(r.Context(), body.ContactID, ws)
+		if err != nil {
+			errs.Write(w, errs.BadRequest("contact not found"))
+			return
+		}
+		body.PeerID = c.WhatsAppJID
+		if body.PeerID == "" {
+			body.PeerID = c.PhoneNumber
+		}
+	}
+	if body.PeerID == "" {
+		errs.Write(w, errs.BadRequest("peer_id or contact_id is required"))
+		return
+	}
+	if body.PeerKind == "" {
+		body.PeerKind = "direct"
+	}
+	m, err := h.repo.UpdateScheduledMessage(r.Context(), chi.URLParam(r, "id"), ws, &body)
+	if err != nil {
+		errs.Write(w, errs.NotFound("scheduled message not found"))
+		return
+	}
+	errs.WriteJSON(w, http.StatusOK, m)
+}
+
 func (h *GatewayHandler) DeleteScheduledMessage(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	if err := h.repo.UpdateScheduledMessageStatus(r.Context(), chi.URLParam(r, "id"), ws, "cancelled", ""); err != nil {
@@ -1878,7 +1982,15 @@ func (h *GatewayHandler) fireScheduledMessages(ctx context.Context) {
 			}
 		}
 		if len(msg.RecurrenceRule) > 2 {
-			next, ok := nextScheduledFireAt(msg.RecurrenceRule, time.Now(), msg.OccurrenceCount+1)
+			// Base the next fire on the scheduled send time (not time.Now()) so the
+			// time-of-day the user picked is preserved across occurrences instead of
+			// drifting by the dispatcher's tick latency. If the dispatcher was down and
+			// the series fell behind, advance until the next fire is in the future so we
+			// don't emit a burst of catch-up sends.
+			next, ok := nextScheduledFireAt(msg.RecurrenceRule, msg.SendAt, msg.OccurrenceCount+1)
+			for ok && !next.After(time.Now()) {
+				next, ok = nextScheduledFireAt(msg.RecurrenceRule, next, msg.OccurrenceCount+1)
+			}
 			if ok {
 				_ = h.repo.RescheduleMessage(ctx, msg.ID, msg.WorkspaceID, next, msg.OccurrenceCount+1)
 				slog.Info("scheduled message rescheduled", "msg_id", msg.ID, "next_send_at", next)

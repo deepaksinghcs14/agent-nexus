@@ -21,6 +21,24 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
+// Format an ISO timestamp as a local `datetime-local` input value (YYYY-MM-DDTHH:mm).
+function toLocalInput(iso?: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+// Format an ISO timestamp as a local `date` input value (YYYY-MM-DD).
+function toDateInput(iso?: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 export default function GatewayChannelDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: channelId } = use(params)
   const [tab, setTab] = useState<Tab>('Overview')
@@ -54,6 +72,13 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
   const [schedEndAt, setSchedEndAt] = useState('')
   const [schedMaxOcc, setSchedMaxOcc] = useState('')
   const [schedUseAgent, setSchedUseAgent] = useState(false)
+  const [schedEditId, setSchedEditId] = useState<string | null>(null)
+  const [remTitle, setRemTitle] = useState('')
+  const [remMsg, setRemMsg] = useState('')
+  const [remDueAt, setRemDueAt] = useState('')
+  const [remContact, setRemContact] = useState('')
+  const [remUseAgent, setRemUseAgent] = useState(false)
+  const [remEditId, setRemEditId] = useState<string | null>(null)
   const [testInput, setTestInput] = useState('')
   const [testSessionId, setTestSessionId] = useState('')
   const [testResponse, setTestResponse] = useState<string | null>(null)
@@ -314,23 +339,8 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
     loadContacts(contactPage, contactSearch)
   }
 
-  const scheduleMessage = async () => {
-    if (!schedMsg.trim() || !schedSendAt) { setError('Message and send time are required'); return }
-    const body: Record<string, unknown> = {
-      channel_id: channelId,
-      message: schedMsg,
-      send_at: new Date(schedSendAt).toISOString(),
-      ...(schedContact ? { contact_id: schedContact } : {}),
-    }
-    if (schedFreq) {
-      const rule: Record<string, unknown> = { frequency: schedFreq }
-      if (schedInterval > 1) rule.interval = schedInterval
-      if (schedEndAt) rule.end_at = new Date(schedEndAt).toISOString()
-      if (schedMaxOcc) rule.max_occurrences = parseInt(schedMaxOcc)
-      body.recurrence_rule = rule
-    }
-    if (schedUseAgent) body.use_agent = true
-    await gatewayAPI.createScheduledMessage(body).catch((e: Error) => { setError(e.message); return null })
+  const resetSchedForm = () => {
+    setSchedEditId(null)
     setSchedMsg('')
     setSchedContact('')
     setSchedSendAt('')
@@ -339,11 +349,100 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
     setSchedEndAt('')
     setSchedMaxOcc('')
     setSchedUseAgent(false)
+  }
+
+  const scheduleMessage = async () => {
+    setError('')
+    if (!schedContact) { setError('Pick a contact to send to'); return }
+    if (!schedMsg.trim()) { setError(schedUseAgent ? 'A prompt for the agent is required' : 'A message is required'); return }
+    if (!schedSendAt) { setError('A send date and time is required'); return }
+    const body: Record<string, unknown> = {
+      channel_id: channelId,
+      message: schedMsg,
+      send_at: new Date(schedSendAt).toISOString(),
+      contact_id: schedContact,
+      use_agent: schedUseAgent,
+      recurrence_rule: null,
+    }
+    if (schedFreq) {
+      const rule: Record<string, unknown> = { frequency: schedFreq }
+      if (schedInterval > 1) rule.interval = schedInterval
+      if (schedEndAt) rule.end_at = new Date(`${schedEndAt}T23:59:59`).toISOString()
+      if (schedMaxOcc) rule.max_occurrences = parseInt(schedMaxOcc)
+      body.recurrence_rule = rule
+    }
+    const res = schedEditId
+      ? await gatewayAPI.updateScheduledMessage(schedEditId, body).catch((e: Error) => { setError(e.message); return null })
+      : await gatewayAPI.createScheduledMessage(body).catch((e: Error) => { setError(e.message); return null })
+    if (res === null) return
+    resetSchedForm()
     load()
   }
 
+  const startEditSchedule = (m: ScheduledMessage) => {
+    setSchedEditId(m.id)
+    setSchedContact(m.contact_id || '')
+    setSchedMsg(m.message)
+    setSchedSendAt(toLocalInput(m.send_at))
+    setSchedUseAgent(!!m.use_agent)
+    setSchedFreq(m.recurrence_rule?.frequency || '')
+    setSchedInterval(m.recurrence_rule?.interval || 1)
+    setSchedEndAt(toDateInput(m.recurrence_rule?.end_at))
+    setSchedMaxOcc(m.recurrence_rule?.max_occurrences ? String(m.recurrence_rule.max_occurrences) : '')
+    if (tab !== 'Scheduled') setTab('Scheduled')
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   const cancelScheduledMessage = async (id: string) => {
+    if (!confirm('Cancel this scheduled message?')) return
     await gatewayAPI.deleteScheduledMessage(id).catch(() => {})
+    if (schedEditId === id) resetSchedForm()
+    load()
+  }
+
+  const resetReminderForm = () => {
+    setRemEditId(null)
+    setRemTitle('')
+    setRemMsg('')
+    setRemDueAt('')
+    setRemContact('')
+    setRemUseAgent(false)
+  }
+
+  const saveReminder = async () => {
+    setError('')
+    if (!remTitle.trim()) { setError('A reminder title is required'); return }
+    if (!remDueAt) { setError('A due date and time is required'); return }
+    const body: Record<string, unknown> = {
+      channel_id: channelId,
+      title: remTitle,
+      message: remMsg.trim() || remTitle,
+      due_at: new Date(remDueAt).toISOString(),
+      use_agent: remUseAgent,
+      ...(remContact ? { contact_id: remContact } : {}),
+    }
+    const res = remEditId
+      ? await gatewayAPI.updateReminder(remEditId, body).catch((e: Error) => { setError(e.message); return null })
+      : await gatewayAPI.createReminder(body).catch((e: Error) => { setError(e.message); return null })
+    if (res === null) return
+    resetReminderForm()
+    load()
+  }
+
+  const startEditReminder = (m: GatewayReminder) => {
+    setRemEditId(m.id)
+    setRemTitle(m.title)
+    setRemMsg(m.message === m.title ? '' : m.message)
+    setRemDueAt(toLocalInput(m.due_at))
+    setRemContact(m.contact_id || '')
+    setRemUseAgent(!!m.use_agent)
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const cancelReminder = async (id: string) => {
+    if (!confirm('Cancel this reminder?')) return
+    await gatewayAPI.deleteReminder(id).catch(() => {})
+    if (remEditId === id) resetReminderForm()
     load()
   }
 
@@ -671,36 +770,149 @@ Content-Type: application/json
       )}
 
       {tab === 'Sessions' && <Table rows={sessions} empty="No sessions yet" columns={['peer_kind', 'peer_id', 'external_sender_id', 'conversation_id', 'last_active_at']} />}
-      {tab === 'Reminders' && <Table rows={reminders} empty="No reminders yet" columns={['title', 'message', 'due_at', 'status', 'created_at']} />}
+      {tab === 'Reminders' && (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{remEditId ? 'Edit reminder' : 'New reminder'}</p>
+              {remEditId && <button onClick={resetReminderForm} className="text-[12px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">Cancel edit</button>}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Title <span className="text-red-400">*</span></label>
+                <input value={remTitle} onChange={(e) => setRemTitle(e.target.value)} placeholder="e.g. Follow up on invoice" className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">{remUseAgent ? 'Prompt for agent' : 'Message'} <span className="font-normal text-gray-400">(optional — defaults to title)</span></label>
+                <input value={remMsg} onChange={(e) => setRemMsg(e.target.value)} placeholder={remUseAgent ? 'What should the agent say?' : 'Reminder text to send…'} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Contact <span className="font-normal text-gray-400">(optional)</span></label>
+                <select value={remContact} onChange={(e) => setRemContact(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+                  <option value="">No specific contact</option>
+                  {contacts.map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Due at <span className="text-red-400">*</span> <span className="font-normal text-gray-400">(your local time)</span></label>
+                <input type="datetime-local" value={remDueAt} onChange={(e) => setRemDueAt(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={remUseAgent} onChange={(e) => setRemUseAgent(e.target.checked)} className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-purple-600 dark:text-purple-300 focus:ring-purple-500" />
+                <span className="text-[13px] text-gray-600 dark:text-gray-400">Generate with agent</span>
+              </label>
+              <button onClick={saveReminder} className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium">{remEditId ? 'Save changes' : 'Create reminder'}</button>
+            </div>
+          </div>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
+            {reminders.length === 0 ? <div className="p-8 text-center text-sm text-gray-400 dark:text-gray-500">No reminders yet</div> : (
+              <div className="overflow-x-auto"><table className="w-full text-sm min-w-[640px]">
+                <thead><tr className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 text-left text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  <th className="px-4 py-2">Title</th>
+                  <th className="px-4 py-2">Message</th>
+                  <th className="px-4 py-2">Contact</th>
+                  <th className="px-4 py-2">Due at</th>
+                  <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2" />
+                </tr></thead>
+                <tbody>
+                  {reminders.map((m) => {
+                    const contact = contacts.find((c) => c.id === m.contact_id)
+                    const statusColor = m.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : m.status === 'completed' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400'
+                    return (
+                      <tr key={m.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{m.title}</td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-xs truncate" title={m.message}>
+                          {m.use_agent && <span className="mr-1.5 inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-300 font-medium">agent</span>}
+                          {m.message}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{contact?.display_name || '—'}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">{m.due_at ? new Date(m.due_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+                        <td className="px-4 py-3"><span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusColor}`}>{m.status}</span></td>
+                        <td className="px-4 py-3">
+                          {m.status === 'pending' && (
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => startEditReminder(m)} className="text-[11px] px-2 py-1 rounded bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:bg-purple-50 hover:text-purple-600">Edit</button>
+                              <button onClick={() => cancelReminder(m.id)} className="text-[11px] px-2 py-1 rounded bg-gray-50 dark:bg-gray-800/60 text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-600">Cancel</button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table></div>
+            )}
+          </div>
+        </div>
+      )}
       {tab === 'Scheduled' && (
         <div className="space-y-4">
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-            <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300 mb-3">Schedule a message</p>
-            <div className="flex flex-wrap gap-3">
-              <select value={schedContact} onChange={(e) => setSchedContact(e.target.value)} className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 min-w-[160px]">
-                <option value="">Pick contact…</option>
-                {contacts.map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
-              </select>
-              <label className="flex items-center gap-2 cursor-pointer self-center">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{schedEditId ? 'Edit scheduled message' : 'Schedule a message'}</p>
+              {schedEditId && <button onClick={resetSchedForm} className="text-[12px] text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">Cancel edit</button>}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Send to <span className="text-red-400">*</span></label>
+                <select value={schedContact} onChange={(e) => setSchedContact(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+                  <option value="">Pick contact…</option>
+                  {contacts.map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Send at <span className="text-red-400">*</span> <span className="font-normal text-gray-400">(your local time)</span></label>
+                <input type="datetime-local" value={schedSendAt} onChange={(e) => setSchedSendAt(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">{schedUseAgent ? 'Prompt for agent' : 'Message'} <span className="text-red-400">*</span></label>
+                <input value={schedMsg} onChange={(e) => setSchedMsg(e.target.value)} placeholder={schedUseAgent ? 'What should the agent say?' : 'Message to send…'} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+              </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400">Repeat</label>
+                <select value={schedFreq} onChange={(e) => setSchedFreq(e.target.value)} className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+                  <option value="">Doesn&apos;t repeat (one-time)</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekdays">Weekdays (Mon–Fri)</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+              {schedFreq && (
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Every</label>
+                    <div className="flex items-center gap-2">
+                      <input type="number" min={1} value={schedInterval} onChange={(e) => setSchedInterval(parseInt(e.target.value) || 1)} className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg w-20 bg-white dark:bg-gray-900" />
+                      <span className="text-[13px] text-gray-500 dark:text-gray-400">{schedFreq === 'daily' || schedFreq === 'weekdays' ? 'day(s)' : schedFreq === 'weekly' ? 'week(s)' : schedFreq === 'monthly' ? 'month(s)' : 'year(s)'}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Ends on <span className="font-normal text-gray-400">(optional)</span></label>
+                    <input type="date" value={schedEndAt} onChange={(e) => setSchedEndAt(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Max sends <span className="font-normal text-gray-400">(optional)</span></label>
+                    <input type="number" min={1} value={schedMaxOcc} onChange={(e) => setSchedMaxOcc(e.target.value)} placeholder="Unlimited" className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900" />
+                  </div>
+                  <p className="sm:col-span-3 text-[11px] text-gray-400 dark:text-gray-500">The message keeps repeating at the time you set above until the end date or max sends is reached (whichever comes first).</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+              <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={schedUseAgent} onChange={(e) => setSchedUseAgent(e.target.checked)} className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-purple-600 dark:text-purple-300 focus:ring-purple-500" />
                 <span className="text-[13px] text-gray-600 dark:text-gray-400">Generate with agent</span>
               </label>
-              <input value={schedMsg} onChange={(e) => setSchedMsg(e.target.value)} placeholder={schedUseAgent ? 'Prompt for agent…' : 'Message…'} className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg flex-1 min-w-[200px]" />
-              <input type="datetime-local" value={schedSendAt} onChange={(e) => setSchedSendAt(e.target.value)} className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg" />
-              <select value={schedFreq} onChange={(e) => setSchedFreq(e.target.value)} className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
-                <option value="">One-time</option>
-                <option value="daily">Daily</option>
-                <option value="weekdays">Weekdays</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="yearly">Yearly</option>
-              </select>
-              {schedFreq && <>
-                <input type="number" min={1} value={schedInterval} onChange={(e) => setSchedInterval(parseInt(e.target.value) || 1)} title="Every N periods" className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg w-20" placeholder="×N" />
-                <input type="date" value={schedEndAt} onChange={(e) => setSchedEndAt(e.target.value)} title="End date (optional)" className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg" />
-                <input type="number" min={1} value={schedMaxOcc} onChange={(e) => setSchedMaxOcc(e.target.value)} placeholder="Max sends" title="Max occurrences (optional)" className="text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg w-28" />
-              </>}
-              <button onClick={scheduleMessage} className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium shrink-0">Schedule</button>
+              <button onClick={scheduleMessage} className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm font-medium">{schedEditId ? 'Save changes' : 'Schedule'}</button>
             </div>
           </div>
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
@@ -734,7 +946,12 @@ Content-Type: application/json
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{m.occurrence_count}</td>
                         <td className="px-4 py-3"><span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusColor}`}>{m.status}</span></td>
                         <td className="px-4 py-3">
-                          {m.status === 'pending' && <button onClick={() => cancelScheduledMessage(m.id)} className="text-[11px] px-2 py-1 rounded bg-gray-50 dark:bg-gray-800/60 text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-600">Cancel</button>}
+                          {m.status === 'pending' && (
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => startEditSchedule(m)} className="text-[11px] px-2 py-1 rounded bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400 hover:bg-purple-50 hover:text-purple-600">Edit</button>
+                              <button onClick={() => cancelScheduledMessage(m.id)} className="text-[11px] px-2 py-1 rounded bg-gray-50 dark:bg-gray-800/60 text-gray-400 dark:text-gray-500 hover:bg-red-50 hover:text-red-600">Cancel</button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )
