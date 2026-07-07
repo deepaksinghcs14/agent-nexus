@@ -48,6 +48,9 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
   const [pairings, setPairings] = useState<GatewayPairingRequest[]>([])
   const [outbox, setOutbox] = useState<GatewayOutboundMessage[]>([])
   const [contacts, setContacts] = useState<GatewayContact[]>([])
+  // Full contact list for the schedule/reminder recipient pickers (the `contacts`
+  // state above is paginated for the Contacts tab and only holds one page).
+  const [pickerContacts, setPickerContacts] = useState<GatewayContact[]>([])
   const [contactTotal, setContactTotal] = useState(0)
   const [contactPage, setContactPage] = useState(1)
   const [contactSearch, setContactSearch] = useState('')
@@ -155,6 +158,23 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
       }).catch(() => {})
   }, [channelId])
 
+  // Fetch every contact (paging through 100 at a time) for the recipient pickers.
+  const loadPickerContacts = useCallback(async () => {
+    try {
+      const all: GatewayContact[] = []
+      for (let page = 1; page <= 50; page++) {
+        const r = await gatewayAPI.listContacts({ channel_id: channelId, page, per_page: 100 })
+        const res = r as { data?: GatewayContact[]; total?: number }
+        const batch = res.data ?? []
+        all.push(...batch)
+        if (batch.length < 100 || all.length >= (res.total ?? all.length)) break
+      }
+      setPickerContacts(all)
+    } catch {
+      /* leave existing picker list in place on error */
+    }
+  }, [channelId])
+
   const load = useCallback(() => {
     const q = `channel_id=${channelId}`
     gatewayAPI.getChannel(channelId).then((c) => {
@@ -163,6 +183,7 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
       if (ch.channel_type === 'whatsapp') {
         gatewayAPI.listPairings(q).then((r) => setPairings(((r as { data?: GatewayPairingRequest[] }).data) ?? [])).catch(() => {})
         loadContacts(1, '')
+        loadPickerContacts()
       }
     }).catch((e: Error) => setError(e.message))
     gatewayAPI.listSessions(q).then((r) => setSessions(((r as { data?: ChannelSession[] }).data) ?? [])).catch(() => {})
@@ -172,7 +193,7 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
     gatewayAPI.listScheduledMessages(q).then((r) => setScheduledMessages(((r as { data?: ScheduledMessage[] }).data) ?? [])).catch(() => {})
     gatewayAPI.listEscalations(q).then((r) => setEscalations(((r as { data?: GatewayEscalation[] }).data) ?? [])).catch(() => {})
     agentsAPI.list().then((r) => setAgents(((r as { data?: { id: string; name: string }[] }).data) ?? [])).catch(() => {})
-  }, [channelId])
+  }, [channelId, loadPickerContacts])
 
   useEffect(() => { load() }, [load])
 
@@ -790,7 +811,7 @@ Content-Type: application/json
                 <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Contact <span className="font-normal text-gray-400">(optional)</span></label>
                 <select value={remContact} onChange={(e) => setRemContact(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
                   <option value="">No specific contact</option>
-                  {contacts.map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+                  {(pickerContacts.length ? pickerContacts : contacts).map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
                 </select>
               </div>
               <div>
@@ -819,7 +840,7 @@ Content-Type: application/json
                 </tr></thead>
                 <tbody>
                   {reminders.map((m) => {
-                    const contact = contacts.find((c) => c.id === m.contact_id)
+                    const contact = (pickerContacts.length ? pickerContacts : contacts).find((c) => c.id === m.contact_id)
                     const statusColor = m.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : m.status === 'completed' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400'
                     return (
                       <tr key={m.id} className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800">
@@ -860,7 +881,7 @@ Content-Type: application/json
                 <label className="block text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Send to <span className="text-red-400">*</span></label>
                 <select value={schedContact} onChange={(e) => setSchedContact(e.target.value)} className="w-full text-[13px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
                   <option value="">Pick contact…</option>
-                  {contacts.map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
+                  {(pickerContacts.length ? pickerContacts : contacts).map((c) => <option key={c.id} value={c.id}>{c.display_name}</option>)}
                 </select>
               </div>
               <div>
@@ -929,7 +950,7 @@ Content-Type: application/json
                 </tr></thead>
                 <tbody>
                   {scheduledMessages.map((m) => {
-                    const contact = contacts.find((c) => c.id === m.contact_id)
+                    const contact = (pickerContacts.length ? pickerContacts : contacts).find((c) => c.id === m.contact_id)
                     const statusColor = m.status === 'pending' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : m.status === 'sent' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : m.status === 'failed' ? 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300' : 'bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400'
                     const recLabel = m.recurrence_rule
                       ? `${m.recurrence_rule.interval && m.recurrence_rule.interval > 1 ? `Every ${m.recurrence_rule.interval} ` : ''}${m.recurrence_rule.frequency}${m.recurrence_rule.max_occurrences ? ` (${m.recurrence_rule.max_occurrences}×)` : ''}`
