@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Check, Copy, Edit2, Plus, Radio, Trash2 } from 'lucide-react'
 import { gatewayAPI } from '@/lib/api'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { DataTable, Row, Cell } from '@/components/ui/DataTable'
 import type { GatewayChannel } from '@/types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
@@ -17,10 +19,10 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600) }}
-      className="p-1 rounded hover:bg-muted text-faint hover:text-gray-600 dark:hover:text-gray-300"
+      className="p-1 rounded hover:bg-muted text-faint hover:text-foreground"
       title="Copy ingress URL"
     >
-      {copied ? <Check className="w-3.5 h-3.5 text-green-600 dark:text-green-300" /> : <Copy className="w-3.5 h-3.5" />}
+      {copied ? <Check className="w-3.5 h-3.5 text-good" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
   )
 }
@@ -50,66 +52,61 @@ export default function GatewayChannelsPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6">
-      <div className="flex flex-wrap items-center gap-3 justify-between mb-8">
-        <div>
-          <span className="eyebrow block mb-1">Integrations</span>
-          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Gateway Channels</h1>
-          <p className="text-sm text-muted-foreground mt-1">Persistent channel entrypoints for always-on agents.</p>
-        </div>
-        <Link href="/gateway/channels/new" className="flex items-center gap-2 px-4 py-2 rounded-md bg-accent hover:bg-accent-hover text-white text-sm font-medium">
-          <Plus className="w-4 h-4" /> New channel
-        </Link>
-      </div>
+    <div className="p-4 sm:p-6 max-w-6xl">
+      <PageHeader
+        eyebrow="Integrations"
+        title="Gateway"
+        subtitle="Persistent channel entrypoints for always-on agents (WhatsApp, HTTP)."
+        actions={
+          <Link href="/gateway/channels/new" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] bg-gradient-to-br from-accent to-accent-ink hover:opacity-95 text-white text-[13px] font-semibold shadow-card">
+            <Plus className="w-4 h-4" /> New channel
+          </Link>
+        }
+      />
 
       {loading ? (
         <div className="py-10 text-center text-sm text-faint">Loading…</div>
       ) : channels.length === 0 ? (
-        <div className="py-16 text-center">
+        <div className="border border-dashed border-border-strong rounded-2xl py-16 text-center bg-surface">
           <Radio className="w-10 h-10 text-faint mx-auto mb-3" />
           <p className="text-sm font-medium text-muted-foreground mb-1">No gateway channels yet</p>
           <p className="text-sm text-faint mb-4">Create a WhatsApp or HTTP channel to route messages into an agent.</p>
-          <Link href="/gateway/channels/new" className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-accent text-white text-sm font-medium">
+          <Link href="/gateway/channels/new" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium">
             <Plus className="w-4 h-4" /> Create channel
           </Link>
         </div>
       ) : (
-        <div className="rounded-lg border border-border-strong overflow-hidden divide-y divide-border">
+        <DataTable columns={['Channel', 'Type', 'Agent', 'Ingress URL', 'Active', '']} minWidth={780}>
           {channels.map((c) => (
-            <div key={c.id} className="bg-surface px-4 sm:px-5 py-4">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium text-foreground">{c.name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${c.channel_type === 'whatsapp' ? 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300' : 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300'}`}>
-                      {c.channel_type}
-                    </span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${c.is_active ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
-                      {c.is_active ? 'active' : 'disabled'}
-                    </span>
-                  </div>
-                  {c.description && <p className="text-xs text-faint mb-1">{c.description}</p>}
-                  <p className="text-xs text-muted-foreground">Agent: {c.agent_name || c.agent_id}</p>
-                  <div className="flex items-center gap-1 mt-2">
-                    <code className="text-xs text-muted-foreground font-mono bg-muted px-2 py-0.5 rounded truncate max-w-[200px] sm:max-w-md">{ingressURL(c)}</code>
-                    <CopyButton text={ingressURL(c)} />
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => toggle(c)} className={`relative inline-flex h-5 w-9 items-center rounded-full ${c.is_active ? 'bg-accent' : 'bg-muted'}`} title={c.is_active ? 'Disable' : 'Enable'}>
-                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow transition-transform ${c.is_active ? 'translate-x-4' : 'translate-x-1'}`} />
-                  </button>
-                  <Link href={`/gateway/channels/${c.id}`} className="p-1.5 rounded text-faint hover:text-gray-600 dark:hover:text-gray-300 hover:bg-muted" title="Open">
-                    <Edit2 className="w-4 h-4" />
-                  </Link>
-                  <button onClick={() => remove(c.id)} className="p-1.5 rounded text-faint hover:text-red-500 hover:bg-red-50" title="Delete">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
+            <Row key={c.id}>
+              <Cell className="!whitespace-normal">
+                <div className="font-medium text-foreground">{c.name}</div>
+                {c.description && <div className="text-xs text-faint mt-0.5 line-clamp-1 max-w-xs">{c.description}</div>}
+              </Cell>
+              <Cell>
+                <span className={`font-mono text-[10px] px-2 py-0.5 rounded-full border ${c.channel_type === 'whatsapp' ? 'border-good/40 text-good' : 'border-info/40 text-info'}`}>{c.channel_type}</span>
+              </Cell>
+              <Cell><span className="text-[12px] text-muted-foreground">{c.agent_name || c.agent_id}</span></Cell>
+              <Cell>
+                <span className="inline-flex items-center gap-1">
+                  <code className="font-mono text-[11px] text-muted-foreground bg-muted px-2 py-0.5 rounded truncate max-w-[220px] inline-block align-middle">{ingressURL(c)}</code>
+                  <CopyButton text={ingressURL(c)} />
+                </span>
+              </Cell>
+              <Cell>
+                <button onClick={() => toggle(c)} className={`relative inline-flex h-5 w-9 items-center rounded-full ${c.is_active ? 'bg-accent' : 'bg-muted'}`} title={c.is_active ? 'Disable' : 'Enable'}>
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow transition-transform ${c.is_active ? 'translate-x-4' : 'translate-x-1'}`} />
+                </button>
+              </Cell>
+              <Cell className="text-right">
+                <span className="inline-flex items-center gap-0.5">
+                  <Link href={`/gateway/channels/${c.id}`} className="p-1.5 rounded text-faint hover:text-foreground hover:bg-muted" title="Open"><Edit2 className="w-4 h-4" /></Link>
+                  <button onClick={() => remove(c.id)} className="p-1.5 rounded text-faint hover:text-crit hover:bg-crit/10" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                </span>
+              </Cell>
+            </Row>
           ))}
-        </div>
+        </DataTable>
       )}
     </div>
   )
