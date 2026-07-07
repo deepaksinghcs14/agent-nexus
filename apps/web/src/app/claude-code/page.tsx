@@ -7,7 +7,6 @@ import { Activity, GitBranch, Loader2, Plus, Trash2 } from 'lucide-react'
 import { agentsAPI, pipelineAPI, repoCatalogAPI, runnerCredsAPI, runsAPI, webhookTriggersAPI } from '@/lib/api'
 import { relativeTime, statusColor, cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth'
-import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Agent, Run } from '@/types'
@@ -34,10 +33,9 @@ function ReadinessBadge({ label, ok, hint }: { label: string; ok: boolean; hint:
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span>
-          <Badge variant={ok ? 'success' : 'secondary'} className="cursor-default">
-            {label}
-          </Badge>
+        <span className="inline-flex items-center gap-1.5 cursor-default rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+          <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', ok ? 'bg-good' : 'bg-faint')} />
+          {label}
         </span>
       </TooltipTrigger>
       <TooltipContent>{hint}</TooltipContent>
@@ -200,10 +198,10 @@ export default function ClaudeCodePage() {
                     key={r.repo}
                     className={cn(
                       'flex flex-wrap items-center gap-2 text-[12px] border rounded-lg px-2.5 py-1.5',
-                      r.sessions_enabled ? 'border-green-200 bg-green-50/40' : 'border-border'
+                      r.sessions_enabled ? 'border-good/30 bg-good/[0.06]' : 'border-border'
                     )}
                   >
-                    <GitBranch size={12} className={r.sessions_enabled ? 'text-green-600 dark:text-green-300' : 'text-faint'} />
+                    <GitBranch size={12} className={r.sessions_enabled ? 'text-good' : 'text-faint'} />
                     <span className="font-mono text-foreground break-all">{r.repo}</span>
                     <span className="text-faint">
                       {r.documents} docs · indexed {relativeTime(r.updated_at)}
@@ -216,7 +214,7 @@ export default function ClaudeCodePage() {
                         className={cn(
                           'px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors disabled:opacity-50',
                           r.sessions_enabled
-                            ? 'bg-green-100 text-green-800 dark:text-green-300 border-green-300 hover:bg-green-200'
+                            ? 'bg-good/15 text-good border-good/40 hover:bg-good/25'
                             : 'bg-muted text-muted-foreground border-border-strong hover:bg-muted'
                         )}
                       >
