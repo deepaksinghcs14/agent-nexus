@@ -95,6 +95,27 @@ Guidelines:
 - After creating resources, tell the user what was created and provide navigation links. Keep responses concise.
 - If the user has no provider configured, tell them to go to Settings → Providers to add one.`
 
+// agentBuilderModePrompt is appended to the system prompt when the request is in
+// "agent_builder" mode (the "Describe your agent" panel on the create page). It
+// steers Nexus to draft a single agent for form review rather than creating it.
+const agentBuilderModePrompt = `AGENT BUILDER MODE IS ON.
+
+You are helping the user create ONE agent through a form. Your job is to produce a
+complete draft they can review and edit — you must NOT create, update, or run anything.
+
+Rules for this mode:
+- Discover first: call list_available_models, list_tools, list_connectors, and
+  list_skills as needed so your picks reference real resources.
+- Then call propose_agent (NEVER create_agent, create_workflow, or any create_* tool).
+  propose_agent returns a draft to the form without saving — the user clicks Create.
+- Ask AT MOST ONE brief clarifying question, and only if the request is too vague to
+  draft at all. Otherwise draft with sensible defaults and note assumptions.
+- Write detailed instructions (role, behaviour loop, tool usage, output format, edge
+  cases) — never a one-liner.
+- Only attach tools/skills/connectors that genuinely fit the described purpose. Fill the
+  rationale object explaining why you chose the model, tools, memory, and context.
+- After proposing, tell the user the draft is ready in the form to review and create.`
+
 // nexusToolDefs are the tool definitions sent to the LLM so it can call them.
 var nexusToolDefs = []provider.ToolDefinition{
 	{
@@ -145,6 +166,37 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"status":{"type":"string","enum":["active","paused","archived"],"description":"Agent status, default active"}
 			},
 			"required":["name","instructions","provider","model"]
+		}`),
+	},
+	{
+		Name:        "propose_agent",
+		Description: "Draft a fully configured agent for the user to review WITHOUT creating it. Use this (never create_agent) in agent-builder mode: resolve the model, tools, skills, and context sources, then propose the complete spec. The UI shows it in an editable form and the user clicks Create. Accepts the same fields as create_agent, plus skill_names and an optional rationale object explaining each non-obvious choice.",
+		InputSchema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"name":{"type":"string","description":"Short, descriptive name for the agent"},
+				"description":{"type":"string","description":"One-sentence description of what this agent does"},
+				"instructions":{"type":"string","description":"Full system prompt — the agent's core instructions and behaviour"},
+				"provider":{"type":"string","enum":["anthropic","openai","gemini","ollama"],"description":"LLM provider to use"},
+				"model":{"type":"string","description":"Model ID from list_available_models. If omitted, a sensible default for the provider is used."},
+				"temperature":{"type":"number","description":"Sampling temperature 0-2, default 0.7"},
+				"max_tokens":{"type":"integer","description":"Max output tokens, default 4096"},
+				"max_steps":{"type":"integer","description":"Maximum agentic steps per run, default 10"},
+				"max_tool_calls":{"type":"integer","description":"Maximum total tool calls per run, default 20"},
+				"max_duration_secs":{"type":"integer","description":"Max run duration in seconds, default 300"},
+				"memory_enabled":{"type":"boolean","description":"Enable memory so the agent remembers past interactions"},
+				"memory_scope":{"type":"string","enum":["conversation","agent","workspace"],"description":"Memory scope. Default: agent"},
+				"context_retrieval_enabled":{"type":"boolean","description":"Enable retrieval-augmented context from connectors"},
+				"agentic_rag":{"type":"boolean","description":"Let the agent decide when/what to retrieve. Only used when context_retrieval_enabled=true."},
+				"tool_names":{"type":"array","items":{"type":"string"},"description":"Tool names to attach, e.g. ['native_web_search']. Get from list_tools."},
+				"skill_names":{"type":"array","items":{"type":"string"},"description":"Skill names to attach. Get from list_skills."},
+				"connector_ids":{"type":"array","items":{"type":"string"},"description":"Connector UUIDs for context retrieval. Requires context_retrieval_enabled=true. Get from list_connectors."},
+				"max_chunks":{"type":"integer","description":"Max context chunks per run (default 8)"},
+				"min_score":{"type":"number","description":"Minimum similarity score for retrieval, 0-1 (default 0.5)"},
+				"status":{"type":"string","enum":["active","paused","archived"],"description":"Agent status, default active"},
+				"rationale":{"type":"object","description":"Optional short explanations keyed by area, e.g. {\"model\":\"...\",\"tools\":\"...\",\"memory\":\"...\"}. Shown to the user next to the draft."}
+			},
+			"required":["name","instructions"]
 		}`),
 	},
 	{
@@ -247,6 +299,11 @@ var nexusToolDefs = []provider.ToolDefinition{
 		InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
 	},
 	{
+		Name:        "list_memories",
+		Description: "List recent memories stored in this workspace (workspace-scoped and agent-scoped). Useful for understanding what the user's agents already remember before drafting a new agent.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Max memories to return (default 20)."}}}`),
+	},
+	{
 		Name:        "create_skill",
 		Description: "Create a new skill — a named block of reusable instructions that can be attached to agents to extend their capabilities.",
 		InputSchema: json.RawMessage(`{
@@ -282,8 +339,13 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"description":{"type":"string","description":"New one-sentence description."},
 				"instructions":{"type":"string","description":"New system prompt / instructions."},
 				"model":{"type":"string","description":"New model ID, e.g. claude-sonnet-4-6. Use list_available_models to verify it exists."},
+				"temperature":{"type":"number","description":"New sampling temperature 0-2."},
+				"max_tokens":{"type":"integer","description":"New max output tokens."},
+				"memory_enabled":{"type":"boolean","description":"Enable or disable memory."},
+				"memory_scope":{"type":"string","enum":["conversation","agent","workspace"],"description":"New memory scope."},
 				"context_retrieval_enabled":{"type":"boolean","description":"Enable or disable retrieval-augmented context from connected data sources."},
 				"agentic_rag":{"type":"boolean","description":"Let the agent decide when/what to retrieve via native_retrieve_context instead of pre-run injection. Requires context_retrieval_enabled=true."},
+				"connector_ids":{"type":"array","items":{"type":"string"},"description":"Replace the agent's context connectors with these UUIDs. Requires context_retrieval_enabled=true. Get IDs from list_connectors."},
 				"status":{"type":"string","enum":["active","paused","archived"],"description":"New agent status."}
 			},
 			"required":["agent_id"]
@@ -311,6 +373,30 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"tool_name":{"type":"string","description":"Exact name of the tool to detach, e.g. 'native_web_search'. Get from list_tools."}
 			},
 			"required":["agent_id","tool_name"]
+		}`),
+	},
+	{
+		Name:        "attach_connector_to_agent",
+		Description: "Attach a data-source connector to an agent for context retrieval. Enables context retrieval on the agent. Has no effect if already attached.",
+		InputSchema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"agent_id":{"type":"string","description":"UUID of the agent. Get from list_agents."},
+				"connector_id":{"type":"string","description":"UUID of the connector. Get from list_connectors."}
+			},
+			"required":["agent_id","connector_id"]
+		}`),
+	},
+	{
+		Name:        "detach_connector_from_agent",
+		Description: "Remove a data-source connector from an agent. The connector is detached but not deleted from the workspace.",
+		InputSchema: json.RawMessage(`{
+			"type":"object",
+			"properties":{
+				"agent_id":{"type":"string","description":"UUID of the agent. Get from list_agents."},
+				"connector_id":{"type":"string","description":"UUID of the connector. Get from list_connectors."}
+			},
+			"required":["agent_id","connector_id"]
 		}`),
 	},
 	{
@@ -371,6 +457,7 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		} `json:"messages"`
 		Provider string `json:"provider"` // optional — client-chosen provider
 		Model    string `json:"model"`    // optional — client-chosen model
+		Mode     string `json:"mode"`     // optional — "agent_builder" drafts an agent for form review
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Messages) == 0 {
 		errs.Write(w, errs.BadRequest("messages array is required"))
@@ -463,8 +550,12 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// ── Build messages ────────────────────────────────────────────────────────
+	systemContent := nexusSystemPrompt(h.cfg.PublicAppURL)
+	if req.Mode == "agent_builder" {
+		systemContent += "\n\n" + agentBuilderModePrompt
+	}
 	messages := []provider.Message{
-		{Role: "system", Content: nexusSystemPrompt(h.cfg.PublicAppURL)},
+		{Role: "system", Content: systemContent},
 	}
 	for _, m := range req.Messages {
 		if m.Role == "user" || m.Role == "assistant" {
@@ -574,6 +665,13 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			evtJSON, _ := json.Marshal(completedEvt)
 			emit(string(evtJSON))
 
+			// Draft proposals (propose_agent) stream the resolved spec to the UI
+			// so the create form can pre-fill for review. Nothing is persisted.
+			if result.Draft != nil {
+				draftJSON, _ := json.Marshal(map[string]any{"type": "agent_draft", "draft": result.Draft})
+				emit(string(draftJSON))
+			}
+
 			resultJSON, _ := json.Marshal(result.Data)
 			messages = append(messages, provider.Message{
 				Role: "tool", ToolCallID: call.ID, ToolName: call.Name,
@@ -593,6 +691,10 @@ type toolResult struct {
 	ResultName string
 	Link       string
 	Data       any
+	// Draft, when non-nil, carries a proposed (not-yet-persisted) agent spec.
+	// The Chat loop emits it as an "agent_draft" SSE event so the UI can
+	// pre-fill the create form for user review. Set only by toolProposeAgent.
+	Draft any
 }
 
 // executeTool dispatches a tool call by name and executes it against the DB.
@@ -610,6 +712,8 @@ func (h *NexusAIHandler) executeTool(ctx context.Context, ws, uid, name string, 
 		return h.toolListConnectors(ctx, ws)
 	case "create_agent":
 		return h.toolCreateAgent(ctx, ws, uid, input)
+	case "propose_agent":
+		return h.toolProposeAgent(ctx, ws, input)
 	case "create_workflow":
 		return h.toolCreateWorkflow(ctx, ws, uid, input)
 	case "save_workflow_graph":
@@ -622,6 +726,8 @@ func (h *NexusAIHandler) executeTool(ctx context.Context, ws, uid, name string, 
 		return h.toolCreateGatewayChannel(ctx, ws, uid, input)
 	case "list_skills":
 		return h.toolListSkills(ctx, ws)
+	case "list_memories":
+		return h.toolListMemories(ctx, ws, input)
 	case "create_skill":
 		return h.toolCreateSkill(ctx, ws, uid, input)
 	case "attach_skills_to_agent":
@@ -632,6 +738,10 @@ func (h *NexusAIHandler) executeTool(ctx context.Context, ws, uid, name string, 
 		return h.toolAttachToolToAgent(ctx, ws, input)
 	case "detach_tool_from_agent":
 		return h.toolDetachToolFromAgent(ctx, ws, input)
+	case "attach_connector_to_agent":
+		return h.toolAttachConnectorToAgent(ctx, ws, input)
+	case "detach_connector_from_agent":
+		return h.toolDetachConnectorFromAgent(ctx, ws, input)
 	case "run_workflow":
 		return h.toolRunWorkflow(ctx, ws, uid, input)
 	case "create_code_tool":
@@ -907,6 +1017,204 @@ func (h *NexusAIHandler) toolCreateAgent(ctx context.Context, ws, uid string, in
 		ResultName: a.Name,
 		Link:       "/agents",
 		Data:       map[string]string{"id": a.ID, "name": a.Name},
+	}, nil
+}
+
+// toolProposeAgent resolves a proposed agent spec (tools/skills/connectors →
+// real workspace records) and returns it as a Draft WITHOUT writing to the DB.
+// The Chat loop emits it as an "agent_draft" SSE event; the UI pre-fills the
+// create form for the user to review and save.
+func (h *NexusAIHandler) toolProposeAgent(ctx context.Context, ws string, input json.RawMessage) (*toolResult, error) {
+	var args struct {
+		Name                    string          `json:"name"`
+		Description             string          `json:"description"`
+		Instructions            string          `json:"instructions"`
+		Provider                string          `json:"provider"`
+		Model                   string          `json:"model"`
+		Temperature             float64         `json:"temperature"`
+		MaxTokens               int             `json:"max_tokens"`
+		MaxSteps                int             `json:"max_steps"`
+		MaxToolCalls            int             `json:"max_tool_calls"`
+		MaxDurationSecs         int             `json:"max_duration_secs"`
+		MemoryEnabled           bool            `json:"memory_enabled"`
+		MemoryScope             string          `json:"memory_scope"`
+		ContextRetrievalEnabled bool            `json:"context_retrieval_enabled"`
+		AgenticRAG              bool            `json:"agentic_rag"`
+		ToolNames               []string        `json:"tool_names"`
+		SkillNames              []string        `json:"skill_names"`
+		ConnectorIDs            []string        `json:"connector_ids"`
+		MaxChunks               int             `json:"max_chunks"`
+		MinScore                float64         `json:"min_score"`
+		Status                  string          `json:"status"`
+		Rationale               json.RawMessage `json:"rationale"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return nil, fmt.Errorf("invalid propose_agent input: %w", err)
+	}
+	if args.Name == "" || args.Instructions == "" {
+		return nil, fmt.Errorf("propose_agent requires name and instructions")
+	}
+
+	// Defaults (mirror toolCreateAgent so the drafted form matches what Create would produce).
+	if args.Provider == "" {
+		// Pick the first active provider by priority.
+		repo := repository.NewProviderRepository(h.pool)
+		if creds, err := repo.List(ctx, ws); err == nil {
+			for _, prio := range providerPriority {
+				for _, c := range creds {
+					if c.IsActive && c.Provider == prio {
+						args.Provider = c.Provider
+						break
+					}
+				}
+				if args.Provider != "" {
+					break
+				}
+			}
+		}
+	}
+	if args.Model == "" && args.Provider != "" {
+		args.Model = defaultModel(args.Provider)
+	}
+	if args.Temperature == 0 {
+		args.Temperature = 0.7
+	}
+	if args.MaxTokens == 0 {
+		args.MaxTokens = 4096
+	}
+	if args.MaxSteps == 0 {
+		args.MaxSteps = 10
+	}
+	if args.MaxToolCalls == 0 {
+		args.MaxToolCalls = 20
+	}
+	if args.MaxDurationSecs == 0 {
+		args.MaxDurationSecs = 300
+	}
+	if args.MemoryScope == "" {
+		args.MemoryScope = "agent"
+	}
+	if args.Status == "" {
+		args.Status = "active"
+	}
+	if args.MaxChunks == 0 {
+		args.MaxChunks = 8
+	}
+	if args.MinScore == 0 {
+		args.MinScore = 0.5
+	}
+
+	// Resolve tools by name → {id, name, description}. Unknown names are dropped
+	// from the resolved set but reported in "unresolved" so the model can react.
+	type namedRef struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		Description string `json:"description,omitempty"`
+	}
+	resolvedTools := []namedRef{}
+	unresolved := []string{}
+	for _, name := range args.ToolNames {
+		var ref namedRef
+		err := h.pool.QueryRow(ctx,
+			`SELECT id::text, name, COALESCE(description,'') FROM tools
+			 WHERE name=$1 AND (workspace_id IS NULL OR workspace_id=$2::uuid) LIMIT 1`,
+			name, ws).Scan(&ref.ID, &ref.Name, &ref.Description)
+		if err != nil {
+			unresolved = append(unresolved, "tool:"+name)
+			continue
+		}
+		resolvedTools = append(resolvedTools, ref)
+	}
+
+	// Resolve skills by name → {id, name}.
+	resolvedSkills := []namedRef{}
+	for _, name := range args.SkillNames {
+		var ref namedRef
+		err := h.pool.QueryRow(ctx,
+			`SELECT id::text, name FROM skills
+			 WHERE name=$1 AND (workspace_id IS NULL OR workspace_id=$2::uuid) AND enabled=true
+			 ORDER BY workspace_id NULLS LAST LIMIT 1`,
+			name, ws).Scan(&ref.ID, &ref.Name)
+		if err != nil {
+			unresolved = append(unresolved, "skill:"+name)
+			continue
+		}
+		resolvedSkills = append(resolvedSkills, ref)
+	}
+
+	// Born self-managing: ensure the Agent Self-Management skill is attached so the
+	// new agent can attach/detach its own tools, skills, and context afterward.
+	hasSelfMgmt := false
+	for _, s := range resolvedSkills {
+		if strings.EqualFold(s.Name, "Agent Self-Management") {
+			hasSelfMgmt = true
+			break
+		}
+	}
+	if !hasSelfMgmt {
+		var ref namedRef
+		if err := h.pool.QueryRow(ctx,
+			`SELECT id::text, name FROM skills
+			 WHERE name='Agent Self-Management' AND (workspace_id IS NULL OR workspace_id=$1::uuid) AND enabled=true
+			 ORDER BY workspace_id NULLS LAST LIMIT 1`,
+			ws).Scan(&ref.ID, &ref.Name); err == nil {
+			resolvedSkills = append(resolvedSkills, ref)
+		}
+	}
+
+	// Resolve connectors by id → {id, name}.
+	resolvedConnectors := []namedRef{}
+	if args.ContextRetrievalEnabled {
+		for _, cid := range args.ConnectorIDs {
+			var ref namedRef
+			err := h.pool.QueryRow(ctx,
+				`SELECT id::text, name FROM connectors WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+				cid, ws).Scan(&ref.ID, &ref.Name)
+			if err != nil {
+				unresolved = append(unresolved, "connector:"+cid)
+				continue
+			}
+			resolvedConnectors = append(resolvedConnectors, ref)
+		}
+	}
+
+	var rationale any
+	if len(args.Rationale) > 0 {
+		_ = json.Unmarshal(args.Rationale, &rationale)
+	}
+
+	draft := map[string]any{
+		"name":                      args.Name,
+		"description":               args.Description,
+		"instructions":             args.Instructions,
+		"provider":                  args.Provider,
+		"model":                     args.Model,
+		"temperature":               args.Temperature,
+		"max_tokens":                args.MaxTokens,
+		"max_steps":                 args.MaxSteps,
+		"max_tool_calls":            args.MaxToolCalls,
+		"max_duration_secs":         args.MaxDurationSecs,
+		"memory_enabled":            args.MemoryEnabled,
+		"memory_scope":              args.MemoryScope,
+		"context_retrieval_enabled": args.ContextRetrievalEnabled,
+		"agentic_rag":               args.AgenticRAG,
+		"max_chunks":                args.MaxChunks,
+		"min_score":                 args.MinScore,
+		"status":                    args.Status,
+		// New agents are born self-managing (see plan Phase 4).
+		"lazy_tool_loading": true,
+		"tools":             resolvedTools,
+		"skills":            resolvedSkills,
+		"connectors":        resolvedConnectors,
+		"rationale":         rationale,
+		"unresolved":        unresolved,
+	}
+
+	label := fmt.Sprintf("Drafted agent \"%s\" for review", args.Name)
+	return &toolResult{
+		Label: label,
+		Data:  draft,
+		Draft: draft,
 	}, nil
 }
 
@@ -1264,6 +1572,43 @@ func (h *NexusAIHandler) toolListSkills(ctx context.Context, ws string) (*toolRe
 	return &toolResult{Label: fmt.Sprintf("Listed %d skills", len(out)), Data: out}, nil
 }
 
+func (h *NexusAIHandler) toolListMemories(ctx context.Context, ws string, input json.RawMessage) (*toolResult, error) {
+	var args struct {
+		Limit int `json:"limit"`
+	}
+	_ = json.Unmarshal(input, &args)
+	if args.Limit <= 0 || args.Limit > 100 {
+		args.Limit = 20
+	}
+	rows, err := h.pool.Query(ctx,
+		`SELECT id::text, COALESCE(agent_id::text,''), scope, content, relevance_score
+		 FROM memories WHERE workspace_id=$1::uuid
+		 ORDER BY relevance_score DESC, created_at DESC LIMIT $2`,
+		ws, args.Limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list memories: %w", err)
+	}
+	defer rows.Close()
+	type entry struct {
+		ID        string  `json:"id"`
+		AgentID   string  `json:"agent_id,omitempty"`
+		Scope     string  `json:"scope"`
+		Content   string  `json:"content"`
+		Relevance float64 `json:"relevance_score"`
+	}
+	var out []entry
+	for rows.Next() {
+		var e entry
+		if rows.Scan(&e.ID, &e.AgentID, &e.Scope, &e.Content, &e.Relevance) == nil {
+			out = append(out, e)
+		}
+	}
+	if out == nil {
+		out = []entry{}
+	}
+	return &toolResult{Label: fmt.Sprintf("Listed %d memories", len(out)), Data: out}, nil
+}
+
 func (h *NexusAIHandler) toolCreateSkill(ctx context.Context, ws, uid string, input json.RawMessage) (*toolResult, error) {
 	var args struct {
 		Name        string `json:"name"`
@@ -1345,14 +1690,19 @@ func (h *NexusAIHandler) toolAttachSkills(ctx context.Context, ws string, input 
 
 func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input json.RawMessage) (*toolResult, error) {
 	var args struct {
-		AgentID      string `json:"agent_id"`
-		Name                    string `json:"name"`
-		Description             string `json:"description"`
-		Instructions            string `json:"instructions"`
-		Model                   string `json:"model"`
-		Status                  string `json:"status"`
-		ContextRetrievalEnabled *bool  `json:"context_retrieval_enabled"`
-		AgenticRAG              *bool  `json:"agentic_rag"`
+		AgentID                 string   `json:"agent_id"`
+		Name                    string   `json:"name"`
+		Description             string   `json:"description"`
+		Instructions            string   `json:"instructions"`
+		Model                   string   `json:"model"`
+		Status                  string   `json:"status"`
+		Temperature             *float64 `json:"temperature"`
+		MaxTokens               *int     `json:"max_tokens"`
+		MemoryEnabled           *bool    `json:"memory_enabled"`
+		MemoryScope             string   `json:"memory_scope"`
+		ContextRetrievalEnabled *bool    `json:"context_retrieval_enabled"`
+		AgenticRAG              *bool    `json:"agentic_rag"`
+		ConnectorIDs            []string `json:"connector_ids"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
 		return nil, fmt.Errorf("invalid update_agent input: %w", err)
@@ -1394,13 +1744,25 @@ func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input j
 	if args.Status != "" {
 		clauses = append(clauses, setClause{"status", args.Status})
 	}
+	if args.Temperature != nil {
+		clauses = append(clauses, setClause{"temperature", *args.Temperature})
+	}
+	if args.MaxTokens != nil {
+		clauses = append(clauses, setClause{"max_tokens", *args.MaxTokens})
+	}
+	if args.MemoryEnabled != nil {
+		clauses = append(clauses, setClause{"memory_enabled", *args.MemoryEnabled})
+	}
+	if args.MemoryScope != "" {
+		clauses = append(clauses, setClause{"memory_scope", args.MemoryScope})
+	}
 	if args.ContextRetrievalEnabled != nil {
 		clauses = append(clauses, setClause{"context_retrieval_enabled", *args.ContextRetrievalEnabled})
 	}
 	if args.AgenticRAG != nil {
 		clauses = append(clauses, setClause{"agentic_rag", *args.AgenticRAG})
 	}
-	if len(clauses) == 0 {
+	if len(clauses) == 0 && args.ConnectorIDs == nil {
 		return nil, fmt.Errorf("update_agent: no fields to update")
 	}
 
@@ -1419,12 +1781,31 @@ func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input j
 		len(clauses)+2,
 	)
 
-	tag, err := h.pool.Exec(ctx, query, vals...)
-	if err != nil {
-		return nil, fmt.Errorf("update_agent: %w", err)
+	if len(clauses) > 0 {
+		tag, err := h.pool.Exec(ctx, query, vals...)
+		if err != nil {
+			return nil, fmt.Errorf("update_agent: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return nil, fmt.Errorf("agent not found")
+		}
 	}
-	if tag.RowsAffected() == 0 {
-		return nil, fmt.Errorf("agent not found")
+
+	// Replace the agent's context connectors when connector_ids is provided.
+	if args.ConnectorIDs != nil {
+		tx, err := h.pool.Begin(ctx)
+		if err == nil {
+			tx.Exec(ctx, `DELETE FROM agent_connectors WHERE agent_id=$1::uuid`, args.AgentID) //nolint:errcheck
+			for _, cid := range args.ConnectorIDs {
+				tx.Exec(ctx, //nolint:errcheck
+					`INSERT INTO agent_connectors(agent_id,connector_id,max_chunks,min_score)
+					 SELECT $1::uuid,$2::uuid,8,0.5 WHERE EXISTS(
+					   SELECT 1 FROM connectors WHERE id=$2::uuid AND workspace_id=$3::uuid)
+					 ON CONFLICT(agent_id,connector_id) DO NOTHING`,
+					args.AgentID, cid, ws)
+			}
+			tx.Commit(ctx) //nolint:errcheck
+		}
 	}
 
 	return &toolResult{
@@ -1522,6 +1903,80 @@ func (h *NexusAIHandler) toolDetachToolFromAgent(ctx context.Context, ws string,
 	}, nil
 }
 
+func (h *NexusAIHandler) toolAttachConnectorToAgent(ctx context.Context, ws string, input json.RawMessage) (*toolResult, error) {
+	var args struct {
+		AgentID     string `json:"agent_id"`
+		ConnectorID string `json:"connector_id"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return nil, fmt.Errorf("invalid attach_connector_to_agent input: %w", err)
+	}
+	if args.AgentID == "" || args.ConnectorID == "" {
+		return nil, fmt.Errorf("attach_connector_to_agent requires agent_id and connector_id")
+	}
+
+	var agentName, connectorName string
+	if err := h.pool.QueryRow(ctx,
+		`SELECT name FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+		args.AgentID, ws).Scan(&agentName); err != nil {
+		return nil, fmt.Errorf("agent not found: %s", args.AgentID)
+	}
+	if err := h.pool.QueryRow(ctx,
+		`SELECT name FROM connectors WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+		args.ConnectorID, ws).Scan(&connectorName); err != nil {
+		return nil, fmt.Errorf("connector not found: %s", args.ConnectorID)
+	}
+
+	if _, err := h.pool.Exec(ctx,
+		`INSERT INTO agent_connectors(agent_id, connector_id, enabled)
+		 VALUES($1::uuid, $2::uuid, true)
+		 ON CONFLICT(agent_id, connector_id) DO UPDATE SET enabled=true`,
+		args.AgentID, args.ConnectorID); err != nil {
+		return nil, fmt.Errorf("attach_connector_to_agent: %w", err)
+	}
+	h.pool.Exec(ctx, //nolint:errcheck
+		`UPDATE agents SET context_retrieval_enabled=true, updated_at=NOW()
+		 WHERE id=$1::uuid AND context_retrieval_enabled=false`, args.AgentID)
+
+	return &toolResult{
+		Label: fmt.Sprintf("Attached connector \"%s\" to agent \"%s\"", connectorName, agentName),
+		Link:  "/agents/" + args.AgentID,
+		Data:  map[string]any{"attached": true, "agent_id": args.AgentID, "connector_id": args.ConnectorID},
+	}, nil
+}
+
+func (h *NexusAIHandler) toolDetachConnectorFromAgent(ctx context.Context, ws string, input json.RawMessage) (*toolResult, error) {
+	var args struct {
+		AgentID     string `json:"agent_id"`
+		ConnectorID string `json:"connector_id"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return nil, fmt.Errorf("invalid detach_connector_from_agent input: %w", err)
+	}
+	if args.AgentID == "" || args.ConnectorID == "" {
+		return nil, fmt.Errorf("detach_connector_from_agent requires agent_id and connector_id")
+	}
+
+	var agentName string
+	if err := h.pool.QueryRow(ctx,
+		`SELECT name FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid`,
+		args.AgentID, ws).Scan(&agentName); err != nil {
+		return nil, fmt.Errorf("agent not found: %s", args.AgentID)
+	}
+
+	if _, err := h.pool.Exec(ctx,
+		`DELETE FROM agent_connectors WHERE agent_id=$1::uuid AND connector_id=$2::uuid`,
+		args.AgentID, args.ConnectorID); err != nil {
+		return nil, fmt.Errorf("detach_connector_from_agent: %w", err)
+	}
+
+	return &toolResult{
+		Label: fmt.Sprintf("Detached connector from agent \"%s\"", agentName),
+		Link:  "/agents/" + args.AgentID,
+		Data:  map[string]any{"detached": true, "agent_id": args.AgentID, "connector_id": args.ConnectorID},
+	}, nil
+}
+
 func (h *NexusAIHandler) toolRunWorkflow(ctx context.Context, ws, uid string, input json.RawMessage) (*toolResult, error) {
 	var args struct {
 		WorkflowID string `json:"workflow_id"`
@@ -1562,6 +2017,11 @@ func toolStartLabel(toolName string, input json.RawMessage) string {
 			return fmt.Sprintf("Creating agent \"%s\"...", n)
 		}
 		return "Creating agent..."
+	case "propose_agent":
+		if n, ok := m["name"].(string); ok && n != "" {
+			return fmt.Sprintf("Drafting agent \"%s\"...", n)
+		}
+		return "Drafting agent..."
 	case "create_workflow":
 		if n, ok := m["name"].(string); ok && n != "" {
 			return fmt.Sprintf("Creating workflow \"%s\"...", n)
@@ -1591,6 +2051,8 @@ func toolStartLabel(toolName string, input json.RawMessage) string {
 		return "Creating gateway channel..."
 	case "list_skills":
 		return "Listing skills..."
+	case "list_memories":
+		return "Reviewing memories..."
 	case "create_skill":
 		if n, ok := m["name"].(string); ok && n != "" {
 			return fmt.Sprintf("Creating skill \"%s\"...", n)
@@ -1613,6 +2075,10 @@ func toolStartLabel(toolName string, input json.RawMessage) string {
 			return fmt.Sprintf("Detaching tool \"%s\"...", n)
 		}
 		return "Detaching tool from agent..."
+	case "attach_connector_to_agent":
+		return "Attaching connector to agent..."
+	case "detach_connector_from_agent":
+		return "Detaching connector from agent..."
 	case "run_workflow":
 		if id, ok := m["workflow_id"].(string); ok && id != "" {
 			return fmt.Sprintf("Running workflow %s...", id)

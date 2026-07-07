@@ -351,7 +351,7 @@ export const skillsAPI = {
 export const nexusAIAPI = {
   chat: (
     messages: { role: 'user' | 'assistant'; content: string }[],
-    opts?: { provider?: string; model?: string },
+    opts?: { provider?: string; model?: string; mode?: string },
   ): Promise<Response> => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
     return fetch(`${API_URL}/api/v1/nexus-ai/chat`, {

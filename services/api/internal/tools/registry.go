@@ -113,15 +113,16 @@ func (r *Registry) All() []domain.Tool {
 // in the UI and can be assigned to agents. Safe to call on every startup.
 func (r *Registry) SeedDB(ctx context.Context, pool *pgxpool.Pool) error {
 	for _, t := range r.All() {
+		category := CategoryForTool(t.Name, t.Type)
 		var existingID string
 		pool.QueryRow(ctx, `SELECT id::text FROM tools WHERE name=$1 AND workspace_id IS NULL`, t.Name).Scan(&existingID) //nolint:errcheck
 
 		if existingID != "" {
 			_, err := pool.Exec(ctx, `
 				UPDATE tools SET description=$2, input_schema=$3, risk_level=$4,
-				requires_approval=$5, timeout_ms=$6, enabled=true
+				requires_approval=$5, timeout_ms=$6, enabled=true, category=$7
 				WHERE id=$1::uuid`,
-				existingID, t.Description, t.InputSchema, t.RiskLevel, t.RequiresApproval, t.TimeoutMs)
+				existingID, t.Description, t.InputSchema, t.RiskLevel, t.RequiresApproval, t.TimeoutMs, category)
 			if err != nil {
 				return fmt.Errorf("seed tool %q (update): %w", t.Name, err)
 			}
@@ -131,9 +132,9 @@ func (r *Registry) SeedDB(ctx context.Context, pool *pgxpool.Pool) error {
 				outSchema = []byte(`{}`)
 			}
 			_, err := pool.Exec(ctx, `
-				INSERT INTO tools(id, workspace_id, name, description, type, input_schema, output_schema, risk_level, requires_approval, timeout_ms, enabled)
-				VALUES ($1::uuid, NULL, $2, $3, 'native', $4, $5, $6, $7, $8, true)`,
-				uuid.NewString(), t.Name, t.Description, t.InputSchema, outSchema, t.RiskLevel, t.RequiresApproval, t.TimeoutMs)
+				INSERT INTO tools(id, workspace_id, name, description, type, input_schema, output_schema, risk_level, requires_approval, timeout_ms, enabled, category)
+				VALUES ($1::uuid, NULL, $2, $3, 'native', $4, $5, $6, $7, $8, true, $9)`,
+				uuid.NewString(), t.Name, t.Description, t.InputSchema, outSchema, t.RiskLevel, t.RequiresApproval, t.TimeoutMs, category)
 			if err != nil {
 				return fmt.Errorf("seed tool %q (insert): %w", t.Name, err)
 			}

@@ -108,6 +108,7 @@ export interface Tool {
   requires_approval: boolean
   timeout_ms: number
   enabled: boolean
+  category?: string
 }
 
 export interface MCPServer {
