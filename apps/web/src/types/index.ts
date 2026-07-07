@@ -374,6 +374,7 @@ export interface Skill {
   content: string
   source: 'manual' | 'managed'
   enabled: boolean
+  category?: string
   required_tool_names?: string[]
   created_by?: string
   created_at: string

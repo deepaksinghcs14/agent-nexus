@@ -158,35 +158,36 @@ export default function AgentsPage() {
         </div>
       )}
 
-      <div className="grid gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
         {agents.map((agent) => (
-          <div key={agent.id} className={cn('border rounded-xl p-4 bg-surface shadow-card transition-all hover:border-border-strong', selected.has(agent.id) ? 'border-accent/50 ring-1 ring-accent/20' : 'border-border')}>
-            <div className="flex items-start justify-between">
-              <label className="mr-3 mt-0.5 flex h-5 w-5 items-center justify-center">
-                {!agent.protected && (
-                  <input type="checkbox" checked={selected.has(agent.id)} onChange={() => toggleSelected(agent.id)}
-                    className="h-4 w-4 rounded border-border-strong text-accent focus:ring-accent" aria-label={`Select ${agent.name}`} />
-                )}
-              </label>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="font-semibold text-foreground text-sm">{agent.name}</span>
-                  <span className={cn('text-[10px] font-mono px-2 py-0.5 rounded-full border', statusColors[agent.status] ?? statusColors.active)}>{agent.status}</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border border-border text-muted-foreground">{agent.provider}</span>
-                  {agent.protected && <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-warn/15 text-warn">protected</span>}
+          <div key={agent.id} className={cn('group relative border rounded-xl p-4 bg-surface shadow-card transition-all hover:border-border-strong hover:-translate-y-0.5', selected.has(agent.id) ? 'border-accent/50 ring-1 ring-accent/20' : 'border-border')}>
+            {!agent.protected && (
+              <input type="checkbox" checked={selected.has(agent.id)} onChange={() => toggleSelected(agent.id)}
+                className="absolute top-3 right-3 h-4 w-4 rounded border-border-strong text-accent focus:ring-accent opacity-0 group-hover:opacity-100 checked:opacity-100 transition-opacity" aria-label={`Select ${agent.name}`} />
+            )}
+            <Link href={`/agents/${agent.id}/edit`} className="block">
+              <div className="flex items-center gap-2.5 mb-2.5">
+                <div className="w-9 h-9 rounded-lg bg-accent/10 dark:bg-accent-bright/10 text-accent dark:text-accent-bright grid place-items-center flex-shrink-0">
+                  <Bot size={17} />
                 </div>
-                {agent.description && <p className="text-xs text-muted-foreground truncate">{agent.description}</p>}
-                <p className="text-xs text-faint font-mono mt-1">{agent.model}</p>
-                {agent.name === 'Code Review Agent' && (
-                  <p className="text-[11px] text-faint mt-1 italic">Used as a prompt template by repo sessions — not run as a chat agent.</p>
-                )}
+                <div className="min-w-0">
+                  <div className="font-semibold text-foreground text-sm truncate">{agent.name}</div>
+                  <div className="font-mono text-[10px] text-faint truncate">{agent.model}</div>
+                </div>
               </div>
-              <div className="flex items-center gap-0.5 ml-4">
-                <Link href={`/playground?agent=${agent.id}`} className={cn(iconBtn, 'hover:text-accent hover:bg-accent/10')} title="Chat"><MessageSquare size={15} /></Link>
-                <Link href={`/agents/${agent.id}/edit`} className={cn(iconBtn, 'hover:text-foreground hover:bg-muted')} title="Edit"><Pencil size={15} /></Link>
-                <button onClick={() => exportAgent(agent)} className={cn(iconBtn, 'hover:text-info hover:bg-info/10')} title="Export"><Download size={15} /></button>
+              <p className="text-xs text-muted-foreground line-clamp-2 min-h-[2rem]">{agent.description || 'No description.'}</p>
+            </Link>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+              <div className="flex items-center gap-1.5">
+                <span className={cn('text-[10px] font-mono px-2 py-0.5 rounded-full border', statusColors[agent.status] ?? statusColors.active)}>{agent.status}</span>
+                <span className="text-[10px] font-mono text-muted-foreground">{agent.provider}</span>
+                {agent.protected && <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-warn/15 text-warn">protected</span>}
+              </div>
+              <div className="flex items-center gap-0.5">
+                <Link href={`/playground?agent=${agent.id}`} className={cn(iconBtn, 'hover:text-accent hover:bg-accent/10')} title="Chat"><MessageSquare size={14} /></Link>
+                <button onClick={() => exportAgent(agent)} className={cn(iconBtn, 'hover:text-info hover:bg-info/10')} title="Export"><Download size={14} /></button>
                 {!agent.protected && (
-                  <button onClick={() => { if (confirm('Delete this agent?')) deleteMutation.mutate(agent.id) }} className={cn(iconBtn, 'hover:text-crit hover:bg-crit/10')} title="Delete"><Trash2 size={15} /></button>
+                  <button onClick={() => { if (confirm('Delete this agent?')) deleteMutation.mutate(agent.id) }} className={cn(iconBtn, 'hover:text-crit hover:bg-crit/10')} title="Delete"><Trash2 size={14} /></button>
                 )}
               </div>
             </div>
