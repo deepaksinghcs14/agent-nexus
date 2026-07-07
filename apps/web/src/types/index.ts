@@ -108,6 +108,7 @@ export interface Tool {
   requires_approval: boolean
   timeout_ms: number
   enabled: boolean
+  category?: string
 }
 
 export interface MCPServer {
@@ -374,6 +375,7 @@ export interface Skill {
   content: string
   source: 'manual' | 'managed'
   enabled: boolean
+  category?: string
   required_tool_names?: string[]
   created_by?: string
   created_at: string

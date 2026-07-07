@@ -132,6 +132,8 @@ func main() {
 	reg.Register(native.NewListWorkspaceToolsTool(pool))
 	reg.Register(native.NewAttachToolTool(pool))
 	reg.Register(native.NewDetachToolTool(pool))
+	reg.Register(native.NewAttachConnectorTool(pool))
+	reg.Register(native.NewDetachConnectorTool(pool))
 	reg.Register(native.NewCreateCodeToolTool(pool))
 	reg.Register(native.NewListWorkflowsTool(pool))
 	reg.Register(native.NewCreateWorkflowTool(pool))

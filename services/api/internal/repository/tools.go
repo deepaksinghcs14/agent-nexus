@@ -10,11 +10,11 @@ type ToolRepository struct{ pool *pgxpool.Pool }
 
 func NewToolRepository(p *pgxpool.Pool) *ToolRepository { return &ToolRepository{p} }
 
-const toolCols = `id::text,COALESCE(workspace_id::text,''),name,description,type,input_schema,output_schema,risk_level,requires_approval,timeout_ms,enabled,created_at,updated_at`
+const toolCols = `id::text,COALESCE(workspace_id::text,''),name,description,type,input_schema,output_schema,risk_level,requires_approval,timeout_ms,enabled,COALESCE(category,''),created_at,updated_at`
 
 func scanTool(r interface{ Scan(...any) error }) (domain.Tool, error) {
 	var t domain.Tool
-	e := r.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.Type, &t.InputSchema, &t.OutputSchema, &t.RiskLevel, &t.RequiresApproval, &t.TimeoutMs, &t.Enabled, &t.CreatedAt, &t.UpdatedAt)
+	e := r.Scan(&t.ID, &t.WorkspaceID, &t.Name, &t.Description, &t.Type, &t.InputSchema, &t.OutputSchema, &t.RiskLevel, &t.RequiresApproval, &t.TimeoutMs, &t.Enabled, &t.Category, &t.CreatedAt, &t.UpdatedAt)
 	return t, e
 }
 func (r *ToolRepository) List(c context.Context, w string) ([]domain.Tool, error) {
@@ -34,7 +34,7 @@ func (r *ToolRepository) List(c context.Context, w string) ([]domain.Tool, error
 	return a, rows.Err()
 }
 func (r *ToolRepository) Create(c context.Context, t *domain.Tool) error {
-	_, e := r.pool.Exec(c, `INSERT INTO tools(id,workspace_id,name,description,type,input_schema,output_schema,risk_level,requires_approval,timeout_ms,enabled)VALUES($1::uuid,NULLIF($2,'')::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, t.ID, t.WorkspaceID, t.Name, t.Description, t.Type, t.InputSchema, t.OutputSchema, t.RiskLevel, t.RequiresApproval, t.TimeoutMs, t.Enabled)
+	_, e := r.pool.Exec(c, `INSERT INTO tools(id,workspace_id,name,description,type,input_schema,output_schema,risk_level,requires_approval,timeout_ms,enabled,category)VALUES($1::uuid,NULLIF($2,'')::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULLIF($12,''))`, t.ID, t.WorkspaceID, t.Name, t.Description, t.Type, t.InputSchema, t.OutputSchema, t.RiskLevel, t.RequiresApproval, t.TimeoutMs, t.Enabled, t.Category)
 	return e
 }
 func (r *ToolRepository) Get(c context.Context, id string) (*domain.Tool, error) {
@@ -42,7 +42,7 @@ func (r *ToolRepository) Get(c context.Context, id string) (*domain.Tool, error)
 	return &t, e
 }
 func (r *ToolRepository) Update(c context.Context, t *domain.Tool) error {
-	_, e := r.pool.Exec(c, `UPDATE tools SET name=$2,description=$3,type=$4,input_schema=$5,output_schema=$6,risk_level=$7,requires_approval=$8,timeout_ms=$9,enabled=$10,updated_at=NOW()WHERE id=$1::uuid`, t.ID, t.Name, t.Description, t.Type, t.InputSchema, t.OutputSchema, t.RiskLevel, t.RequiresApproval, t.TimeoutMs, t.Enabled)
+	_, e := r.pool.Exec(c, `UPDATE tools SET name=$2,description=$3,type=$4,input_schema=$5,output_schema=$6,risk_level=$7,requires_approval=$8,timeout_ms=$9,enabled=$10,category=NULLIF($11,''),updated_at=NOW()WHERE id=$1::uuid`, t.ID, t.Name, t.Description, t.Type, t.InputSchema, t.OutputSchema, t.RiskLevel, t.RequiresApproval, t.TimeoutMs, t.Enabled, t.Category)
 	return e
 }
 func (r *ToolRepository) Delete(c context.Context, id string) error {

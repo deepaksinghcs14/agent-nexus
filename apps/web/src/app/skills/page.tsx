@@ -56,6 +56,7 @@ export default function SkillsPage() {
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{s.name}</span>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${s.source === 'managed' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300' : 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300'}`}>{s.source}</span>
+                  {s.category && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300">{s.category}</span>}
                   {!s.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">disabled</span>}
                 </div>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{s.description || 'No description'}</p>
