@@ -39,7 +39,7 @@ export default function AdminWorkspacesPage() {
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="mb-5">
         <span className="eyebrow block mb-1">Admin</span>
-          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Workspaces</h1>
+        <h1 className="text-[22px] font-bold tracking-tight text-foreground">Workspaces</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Manage all workspaces on this instance</p>
       </div>
       {error && (

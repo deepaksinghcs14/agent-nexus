@@ -24,9 +24,11 @@ export default function AdminAuditLogsPage() {
 
   return (
     <div className="p-4 sm:p-6">
-      <div className="flex flex-wrap items-center gap-3 justify-between mb-4">
-        <span className="eyebrow block mb-1">Admin</span>
+      <div className="flex flex-wrap items-end gap-3 justify-between mb-4">
+        <div>
+          <span className="eyebrow block mb-1">Admin</span>
           <h1 className="text-[22px] font-bold tracking-tight text-foreground">Audit logs</h1>
+        </div>
         <div className="flex flex-wrap gap-2">
           <input
             value={actorEmail}

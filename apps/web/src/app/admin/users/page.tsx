@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Users } from 'lucide-react'
 import { adminAPI } from '@/lib/api'
 import { relativeTime, statusColor } from '@/lib/utils'
+import { PageHeader } from '@/components/ui/PageHeader'
 import type { User } from '@/types'
 
 export default function AdminUsersPage() {
@@ -14,17 +15,19 @@ export default function AdminUsersPage() {
   const update = useMutation({ mutationFn: (user: User) => adminAPI.updateUser(user.id, { is_active: !user.is_active }), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }) })
   const users = (data?.data ?? []).filter((user) => `${user.full_name} ${user.email}`.toLowerCase().includes(search.toLowerCase()))
   return (
-    <div className="p-4 sm:p-6">
-      <div className="flex flex-wrap items-center gap-3 justify-between mb-4">
-        <span className="eyebrow block mb-1">Admin</span>
-          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Users ({users.length})</h1>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search users…"
-          className="text-[12px] px-3 py-1.5 border border-border-strong rounded-lg w-48"
-        />
-      </div>
+    <div className="p-4 sm:p-6 max-w-6xl">
+      <PageHeader
+        eyebrow="Admin"
+        title={`Users (${users.length})`}
+        actions={
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search users…"
+            className="text-[12px] px-3 py-2 border border-border-strong rounded-[10px] w-48 bg-surface"
+          />
+        }
+      />
       {error && <ErrorMessage error={error as Error} />}
       {isLoading && <Loading />}
       {!isLoading && !error && users.length === 0 && <Empty icon={Users} text="No users found." />}
