@@ -594,28 +594,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			dbTool, toolExists := dbTools[call.Name]
-
-			if !toolExists {
-				if gateErr, matched := unattachedCatalogToolError(call.Name, toolCatalog, a.LazyToolLoading); matched {
-					_ = h.createStep(r.Context(), id, domain.StepToolCall,
-						map[string]any{"tool": call.Name, "input": call.Input},
-						map[string]any{"error": gateErr},
-						time.Now(), 0, call.Name, gateErr)
-					emit(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":0}`,
-						call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(fmt.Sprintf(`{"error":%q}`, gateErr)))))
-					messages = append(messages, provider.Message{
-						Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: fmt.Sprintf(`{"error":%q}`, gateErr),
-					})
-					stepCount++
-					if stepCount > a.MaxSteps {
-						_ = h.failRun(r.Context(), id, "max steps exceeded")
-						sseErr("max steps exceeded")
-						return
-					}
-					continue
-				}
-			}
+			dbTool, toolExists := resolveDBTool(call.Name, dbTools, toolCatalog)
 
 			// Approval gate for high-risk tools
 			if toolExists && dbTool.RequiresApproval {
