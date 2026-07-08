@@ -61,6 +61,7 @@ const SHOTS = [
   { file: 'latency', url: '/observability' },
   { file: 'triggers_01_list', url: '/triggers' },
   { file: 'triggers_02_new_form', url: '/triggers/new' },
+  { file: 'triggers_03_new_prefilled', url: '/triggers/new' },
 
   // ── Agent builder tabs ─────────────────────────────────────────
   { file: '04_agent_builder_basics', url: '/agents/new' },
@@ -88,6 +89,7 @@ const SHOTS = [
   { file: 'docs_02_agent_configuration', url: '/docs/agent-configuration' },
   { file: 'docs_03_invoke_api', url: '/docs/invoke-api' },
   { file: 'docs_05_mcp_servers', url: '/docs/mcp-servers' },
+  { file: 'docs_06_sse_events', url: '/docs/sse-events' },
   { file: 'docs_07_workflows', url: '/docs/workflows' },
 ]
 

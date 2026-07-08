@@ -21,13 +21,13 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 <tr>
 <td width="50%">
 
-**Dashboard**
+**Dashboard — Mission Control**
 ![Dashboard](docs/screenshots/02_dashboard.png)
 
 </td>
 <td width="50%">
 
-**Agent List**
+**Agents**
 ![Agents](docs/screenshots/03_agents_list.png)
 
 </td>
@@ -35,36 +35,50 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 <tr>
 <td width="50%">
 
+**Nexus AI — Build Agents from Natural Language**
+![Nexus AI](docs/screenshots/20_nexus_ai.png)
+
+</td>
+<td width="50%">
+
 **Agent Builder — Tools (grouped by source)**
 ![Agent Builder Tools](docs/screenshots/06_agent_builder_tools.png)
 
 </td>
+</tr>
+<tr>
+<td width="50%">
+
+**Visual Workflow Canvas**
+![Workflow Canvas](docs/screenshots/14_workflow_canvas.png)
+
+</td>
+<td width="50%">
+
+**Runs & Traces — Full Step Observability**
+![Runs](docs/screenshots/09_runs.png)
+
+</td>
+</tr>
+<tr>
 <td width="50%">
 
 **Playground with Live Trace Panel**
 ![Playground](docs/screenshots/08_playground.png)
 
 </td>
-</tr>
-<tr>
 <td width="50%">
 
-**Visual Workflow Canvas (Supervisor)**
-![Supervisor Workflow](docs/screenshots/14_canvas_supervisor_Research_and_Content_Creation_.png)
-
-</td>
-<td width="50%">
-
-**Hierarchical Multi-Agent Workflow**
-![Hierarchical Workflow](docs/screenshots/16_canvas_supervisor_Hierarchical_Code_Review.png)
+**Tools Registry**
+![Tools](docs/screenshots/10_tools.png)
 
 </td>
 </tr>
 <tr>
 <td width="50%">
 
-**Run Traces — Full Step Observability**
-![Runs](docs/screenshots/09_runs.png)
+**Skills — Reusable Instruction Blocks**
+![Skills](docs/screenshots/skills.png)
 
 </td>
 <td width="50%">
@@ -77,28 +91,14 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 <tr>
 <td width="50%">
 
-**Nexus AI — Meta-Agent Chat Interface**
-![Nexus AI](docs/screenshots/20_nexus_ai.png)
+**Claude Code — Autonomous Repo Sessions (Jira → PR)**
+![Claude Code](docs/screenshots/claude_code.png)
 
 </td>
-<td width="50%">
-
-**Tools Registry (grouped by source)**
-![Tools](docs/screenshots/10_tools.png)
-
-</td>
-</tr>
-<tr>
 <td width="50%">
 
 **Webhook Triggers — Inbound HTTP Endpoints**
 ![Webhook Triggers](docs/screenshots/triggers_01_list.png)
-
-</td>
-<td width="50%">
-
-**Workflow Studio — Triggers Panel**
-![Workflow Triggers Panel](docs/screenshots/triggers_06_workflow_triggers_panel.png)
 
 </td>
 </tr>
@@ -514,26 +514,7 @@ MIT — see [LICENSE](LICENSE).
 ![Prefilled Trigger](docs/screenshots/triggers_03_new_prefilled.png)
 
 </td>
-<td width="50%">
-
-**Edit Trigger**
-![Edit Trigger](docs/screenshots/triggers_04_edit.png)
-
-</td>
-</tr>
-<tr>
-<td width="50%">
-
-**Workflow Studio — Triggers Panel**
-![Workflow Triggers Panel](docs/screenshots/triggers_06_workflow_triggers_panel.png)
-
-</td>
-<td width="50%">
-
-**Nexus AI — Webhook Trigger Template**
-![Nexus AI Webhook](docs/screenshots/triggers_07_nexus_ai_webhook.png)
-
-</td>
+<td width="50%"></td>
 </tr>
 </table>
 
