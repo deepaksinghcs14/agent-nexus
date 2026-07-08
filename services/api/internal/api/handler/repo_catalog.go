@@ -61,15 +61,38 @@ func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Reques
 }
 
 // SetRepoSessions handles PATCH /api/v1/repo-catalog — enables or disables
-// coding sessions for one repo. This toggle is the deliberate grant of write
+// coding sessions for one repo, or for ALL repos in the workspace when
+// {"all": true} is passed. This toggle is the deliberate grant of write
 // access; connector syncs only make repos known.
 func (h *WorkspaceHandler) SetRepoSessions(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	var req struct {
 		Repo            string `json:"repo"`
+		All             bool   `json:"all"`
 		SessionsEnabled bool   `json:"sessions_enabled"`
 	}
-	if json.NewDecoder(r.Body).Decode(&req) != nil || strings.TrimSpace(req.Repo) == "" {
+	if json.NewDecoder(r.Body).Decode(&req) != nil {
+		errs.Write(w, errs.BadRequest("invalid request body"))
+		return
+	}
+
+	// Bulk mode: a single UPDATE across every repo in the workspace — avoids
+	// firing one request per repo from the client.
+	if req.All {
+		tag, err := h.pool.Exec(r.Context(),
+			`UPDATE repo_catalog SET sessions_enabled=$2, updated_at=NOW()
+			 WHERE workspace_id=$1::uuid AND sessions_enabled <> $2`,
+			ws, req.SessionsEnabled)
+		if err != nil {
+			errs.Write(w, errs.Internal("failed to update repo catalog"))
+			return
+		}
+		writeAudit(r, h.pool, "repo_catalog.sessions_toggled_all", "workspace", ws)
+		errs.WriteJSON(w, http.StatusOK, map[string]any{"updated": tag.RowsAffected(), "sessions_enabled": req.SessionsEnabled})
+		return
+	}
+
+	if strings.TrimSpace(req.Repo) == "" {
 		errs.Write(w, errs.BadRequest("repo is required"))
 		return
 	}

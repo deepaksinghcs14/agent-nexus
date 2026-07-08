@@ -247,6 +247,8 @@ export const repoCatalogAPI = {
   onboard: (repo: string, branch?: string) => api.post('/repo-catalog', { repo, branch }),
   setSessions: (repo: string, enabled: boolean) =>
     api.patch('/repo-catalog', { repo, sessions_enabled: enabled }),
+  setAllSessions: (enabled: boolean) =>
+    api.patch('/repo-catalog', { all: true, sessions_enabled: enabled }),
   remove: (repo: string) => api.delete(`/repo-catalog?repo=${encodeURIComponent(repo)}`),
 }
 

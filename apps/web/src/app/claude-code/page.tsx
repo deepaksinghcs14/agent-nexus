@@ -114,12 +114,9 @@ export default function ClaudeCodePage() {
     mutationFn: (r: { repo: string; enabled: boolean }) => repoCatalogAPI.setSessions(r.repo, r.enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repo-catalog'] }),
   })
-  // Bulk enable/disable: flip sessions on every repo not already in that state.
+  // Bulk enable/disable: one backend call does a single UPDATE across all repos.
   const bulkSetSessions = useMutation({
-    mutationFn: async (enabled: boolean) => {
-      const targets = repos.filter((r) => r.sessions_enabled !== enabled)
-      await Promise.all(targets.map((r) => repoCatalogAPI.setSessions(r.repo, enabled)))
-    },
+    mutationFn: (enabled: boolean) => repoCatalogAPI.setAllSessions(enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repo-catalog'] }),
   })
 
