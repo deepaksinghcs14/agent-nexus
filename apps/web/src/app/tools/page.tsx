@@ -684,6 +684,22 @@ export default function ToolsPage() {
         eyebrow="Integrations"
         title="Tools"
         subtitle="Tools let agents take actions beyond text — run code, call APIs, search the web."
+        actions={
+          <>
+            <button
+              onClick={() => { setAddingHTTP(true); setAddingCode(false); setEditingTool(null); setActionError(''); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 border border-border-strong text-muted-foreground text-[13px] rounded-[10px] hover:bg-muted"
+            >
+              <Globe size={14} /> New HTTP tool
+            </button>
+            <button
+              onClick={() => { setAddingCode(true); setAddingHTTP(false); setEditingTool(null); setActionError(''); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-br from-accent to-accent-ink text-white text-[13px] font-semibold rounded-[10px] shadow-card hover:opacity-95"
+            >
+              <Plus size={15} /> New code tool
+            </button>
+          </>
+        }
       />
       <div className="mb-6 -mt-2">
         <div className="flex flex-wrap items-center gap-2 text-[11px]">
