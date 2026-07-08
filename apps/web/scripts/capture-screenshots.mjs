@@ -118,8 +118,9 @@ async function main() {
       await page.goto(WEB + shot.url, { waitUntil: 'networkidle', timeout: 30000 })
       await page.waitForTimeout(900)
       if (shot.tab) {
-        // Click a tab by its visible label, then let it settle.
-        const tab = page.locator(`text="${shot.tab}"`).first()
+        // Click a tab by its label — scoped to <main> so it can't hit a
+        // same-named sidebar nav item (Tools / Skills / Memory) and navigate away.
+        const tab = page.locator('main').getByText(shot.tab, { exact: false }).first()
         if (await tab.count()) { await tab.click().catch(() => {}); await page.waitForTimeout(700) }
       }
       const dest = resolve(OUT, `${shot.file}.png`)
