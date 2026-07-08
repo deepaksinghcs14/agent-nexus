@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, GitBranch, Loader2, Plus, Trash2 } from 'lucide-react'
+import { Activity, GitBranch, Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import { agentsAPI, pipelineAPI, repoCatalogAPI, runnerCredsAPI, runsAPI, webhookTriggersAPI } from '@/lib/api'
 import { relativeTime, statusColor, cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth'
@@ -95,6 +95,8 @@ export default function ClaudeCodePage() {
 
   const [newRepo, setNewRepo] = useState('')
   const [repoError, setRepoError] = useState('')
+  const [repoSearch, setRepoSearch] = useState('')
+  const [enabledOnly, setEnabledOnly] = useState(false)
   const onboard = useMutation({
     mutationFn: (repo: string) => repoCatalogAPI.onboard(repo),
     onSuccess: () => {
@@ -112,6 +114,12 @@ export default function ClaudeCodePage() {
     mutationFn: (r: { repo: string; enabled: boolean }) => repoCatalogAPI.setSessions(r.repo, r.enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repo-catalog'] }),
   })
+
+  // Filtered + sorted repo list: session-enabled first, then matching search.
+  const q = repoSearch.trim().toLowerCase()
+  const visibleRepos = repos
+    .filter((r) => (!enabledOnly || r.sessions_enabled) && (!q || r.repo.toLowerCase().includes(q)))
+    .sort((a, b) => Number(b.sessions_enabled) - Number(a.sessions_enabled) || a.repo.localeCompare(b.repo))
 
   const runnerHint = !pipeStatus?.runner_configured
     ? 'RUNNER_URL is not set on the API — sessions are disabled'
@@ -164,7 +172,7 @@ export default function ClaudeCodePage() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="p-4 sm:p-6 max-w-3xl">
+      <div className="p-4 sm:p-6 max-w-5xl">
         <div className="mb-4">
           <span className="eyebrow block mb-1">Build</span>
           <h1 className="text-[22px] font-bold tracking-tight text-foreground">Claude Code</h1>
@@ -187,32 +195,76 @@ export default function ClaudeCodePage() {
           </TabsList>
 
           <TabsContent value="repos">
-            <p className="text-[11px] text-faint mb-3">
-              Coding sessions can only target repositories onboarded here. Private repos use this workspace&apos;s
-              GitHub token{creds?.github_connected ? '' : ' — connect one in Settings → Claude Code first'}.
-            </p>
+            {/* Add repository — pinned at the top so it's reachable without scrolling past the catalog */}
+            <div className="rounded-xl border border-border bg-surface shadow-card p-3 mb-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2 flex-1 min-w-[220px] px-2.5 py-1.5 border border-border-strong rounded-lg bg-surface-2">
+                  <GitBranch size={13} className="text-faint flex-shrink-0" />
+                  <input
+                    value={newRepo}
+                    onChange={(e) => setNewRepo(e.target.value)}
+                    placeholder="owner/repo — add a repository to the catalog"
+                    className="flex-1 bg-transparent text-xs font-mono outline-none"
+                    onKeyDown={(e) => { if (e.key === 'Enter' && newRepo.trim() && !onboard.isPending) onboard.mutate(newRepo.trim()) }}
+                  />
+                </div>
+                <button
+                  onClick={() => onboard.mutate(newRepo.trim())}
+                  disabled={!newRepo.trim() || onboard.isPending}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-br from-accent to-accent-ink text-white text-[13px] font-semibold rounded-[10px] shadow-card hover:opacity-95 disabled:opacity-50"
+                >
+                  {onboard.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={14} />}
+                  {onboard.isPending ? 'Cloning & indexing…' : 'Add repository'}
+                </button>
+              </div>
+              {repoError && <p className="text-xs text-crit mt-2">{repoError}</p>}
+              <p className="text-[11px] text-faint mt-2">
+                Coding sessions can only target repositories onboarded here. Private repos use this workspace&apos;s
+                GitHub token{creds?.github_connected ? '' : ' — connect one in Settings → Claude Code first'}.
+              </p>
+            </div>
+
+            {/* Search + filter toolbar */}
             {repos.length > 0 && (
-              <div className="space-y-1.5 mb-3">
-                {repos.map((r) => (
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-sm px-3 py-2 border border-border rounded-[10px] bg-surface">
+                  <Search size={14} className="text-faint" />
+                  <input value={repoSearch} onChange={(e) => setRepoSearch(e.target.value)} placeholder="Search repositories…" className="flex-1 text-[13px] bg-transparent outline-none font-mono" />
+                </div>
+                <button
+                  onClick={() => setEnabledOnly((v) => !v)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[12px] font-medium border transition-colors',
+                    enabledOnly ? 'bg-good/10 text-good border-good/40' : 'bg-surface text-muted-foreground border-border hover:border-border-strong'
+                  )}
+                >
+                  <span className={cn('w-1.5 h-1.5 rounded-full', enabledOnly ? 'bg-good' : 'bg-faint')} />
+                  Sessions enabled
+                </button>
+                <span className="ml-auto font-mono text-[11px] text-faint tabular-nums">
+                  {visibleRepos.length} of {repos.length} · {enabledRepos.length} enabled
+                </span>
+              </div>
+            )}
+
+            {/* Repo list — capped height so it scrolls internally instead of pushing the page */}
+            {visibleRepos.length > 0 ? (
+              <div className="rounded-xl border border-border bg-surface shadow-card divide-y divide-border max-h-[520px] overflow-y-auto">
+                {visibleRepos.map((r) => (
                   <div
                     key={r.repo}
-                    className={cn(
-                      'flex flex-wrap items-center gap-2 text-[12px] border rounded-lg px-2.5 py-1.5',
-                      r.sessions_enabled ? 'border-good/30 bg-good/[0.06]' : 'border-border'
-                    )}
+                    className={cn('flex flex-wrap items-center gap-2 text-[12px] px-3 py-2.5', r.sessions_enabled && 'bg-good/[0.04]')}
                   >
-                    <GitBranch size={12} className={r.sessions_enabled ? 'text-good' : 'text-faint'} />
+                    <GitBranch size={13} className={r.sessions_enabled ? 'text-good' : 'text-faint'} />
                     <span className="font-mono text-foreground break-all">{r.repo}</span>
-                    <span className="text-faint">
-                      {r.documents} docs · indexed {relativeTime(r.updated_at)}
-                    </span>
+                    <span className="text-faint">{r.documents} docs · indexed {relativeTime(r.updated_at)}</span>
                     <div className="ml-auto flex items-center gap-2">
                       <button
                         onClick={() => toggleSessions.mutate({ repo: r.repo, enabled: !r.sessions_enabled })}
                         disabled={toggleSessions.isPending}
                         title={r.sessions_enabled ? 'Sessions may modify this repo — click to revoke' : 'Indexed for context only — click to allow coding sessions'}
                         className={cn(
-                          'px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors disabled:opacity-50',
+                          'px-2 py-0.5 rounded-full text-[10px] font-mono font-medium border transition-colors disabled:opacity-50 whitespace-nowrap',
                           r.sessions_enabled
                             ? 'bg-good/15 text-good border-good/40 hover:bg-good/25'
                             : 'bg-muted text-muted-foreground border-border-strong hover:bg-muted'
@@ -230,25 +282,11 @@ export default function ClaudeCodePage() {
                   </div>
                 ))}
               </div>
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                value={newRepo}
-                onChange={(e) => setNewRepo(e.target.value)}
-                placeholder="owner/repo"
-                className="flex-1 min-w-[200px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-                onKeyDown={(e) => { if (e.key === 'Enter' && newRepo.trim() && !onboard.isPending) onboard.mutate(newRepo.trim()) }}
-              />
-              <button
-                onClick={() => onboard.mutate(newRepo.trim())}
-                disabled={!newRepo.trim() || onboard.isPending}
-                className="inline-flex items-center gap-1 px-3 py-1.5 bg-accent text-white text-xs rounded-lg font-medium disabled:opacity-50"
-              >
-                {onboard.isPending ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
-                {onboard.isPending ? 'Cloning & indexing…' : 'Add repository'}
-              </button>
-            </div>
-            {repoError && <p className="text-xs text-crit mt-2">{repoError}</p>}
+            ) : repos.length > 0 ? (
+              <div className="border border-dashed border-border-strong rounded-xl py-10 text-center text-[12px] text-faint">
+                No repositories match {enabledOnly ? 'the “sessions enabled” filter' : `“${repoSearch}”`}.
+              </div>
+            ) : null}
           </TabsContent>
 
           <TabsContent value="sessions">
@@ -266,18 +304,23 @@ export default function ClaudeCodePage() {
                 {!pipelineTrigger ? ' for the orchestrator agent.' : '.'}
               </p>
             ) : (
-              <div className="space-y-1.5">
-                {sessions.map((run) => (
-                  <Link
-                    key={run.id}
-                    href={`/runs/${run.id}`}
-                    className="flex items-center gap-2.5 text-[12px] border border-border rounded-lg px-2.5 py-1.5 hover:bg-muted"
-                  >
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusColor(run.status)}`}>{run.status}</span>
-                    <span className="font-mono text-muted-foreground">{run.id.slice(0, 8)}</span>
-                    <span className="text-faint ml-auto">{relativeTime(run.started_at)}</span>
-                  </Link>
-                ))}
+              <div className="rounded-xl border border-border bg-surface shadow-card divide-y divide-border overflow-hidden">
+                {sessions.map((run) => {
+                  const stripe = run.status === 'success' ? 'bg-good'
+                    : run.status === 'failed' ? 'bg-crit'
+                    : ['running', 'pending', 'approval_wait', 'session_wait'].includes(run.status) ? 'bg-accent dark:bg-accent-bright'
+                    : 'bg-faint'
+                  return (
+                    <Link key={run.id} href={`/runs/${run.id}`} className="grid grid-cols-[3px_1fr_auto] gap-3 items-center px-3.5 py-3 hover:bg-muted transition-colors">
+                      <span className={cn('self-stretch w-[3px] rounded-full', stripe)} />
+                      <div className="min-w-0 flex items-center gap-3">
+                        <span className="font-mono text-[12px] text-foreground">{run.id.slice(0, 8)}</span>
+                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${statusColor(run.status)}`}>{run.status}</span>
+                      </div>
+                      <span className="font-mono text-[10px] text-faint whitespace-nowrap">{relativeTime(run.started_at)}</span>
+                    </Link>
+                  )
+                })}
               </div>
             )}
           </TabsContent>
