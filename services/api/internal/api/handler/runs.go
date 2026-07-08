@@ -193,6 +193,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	skills, _ := loadAgentSkills(r.Context(), h.pool, a.ID)
+	skillCatalog, _ := loadWorkspaceSkillCatalog(r.Context(), h.pool, ws)
 	instructions := a.Instructions + onDemandSkillsInstructions(skills.OnDemand)
 	if a.ContextRetrievalEnabled && a.AgenticRAG {
 		instructions += "\n\nTo look up information from your connected knowledge sources, use the `native_retrieve_context` tool. Always call it before answering questions that require specific knowledge from your documents, codebase, or indexed files. Do NOT call any tool named \"search\" — use `native_retrieve_context` instead."
@@ -217,13 +218,22 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	toolSummaries := map[string]string{}
-	for _, td := range allToolDefs {
+	// Discovery is workspace-wide (not just tools/skills already attached to this agent) so
+	// native_list_tools/native_request_tool and native_list_agent_skills/native_request_skill
+	// let the agent self-serve the full catalog.
+	toolCatalogDefs, toolCatalog, _ := loadWorkspaceToolCatalog(r.Context(), h.pool, ws)
+	toolSummaries := make(map[string]string, len(toolCatalogDefs)+len(allToolDefs))
+	for _, td := range toolCatalogDefs {
 		toolSummaries[td.Name] = td.Description
+	}
+	for _, td := range allToolDefs {
+		if _, ok := toolSummaries[td.Name]; !ok {
+			toolSummaries[td.Name] = td.Description
+		}
 	}
 	skillSummaries := map[string]string{}
 	skillToolMap := map[string]string{}
-	for name, skill := range skills.OnDemand {
+	for name, skill := range skillCatalog {
 		skillSummaries[name] = skill.Description
 		for _, toolName := range skill.RequiredToolNames {
 			skillToolMap[toolName] = name
@@ -291,6 +301,9 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		RequestTool: func(name string) { requestedTools[name] = true },
 		RequestSkill: func(name string) bool {
 			skill, ok := skills.OnDemand[name]
+			if !ok {
+				skill, ok = skillCatalog[name]
+			}
 			if !ok || activeSkills[name] {
 				return false
 			}
@@ -402,18 +415,28 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 					toolDefs = append(toolDefs, td)
 				}
 			}
-			// Fallback: requested tools not in agent_tools (e.g. skill required tools not yet
-			// auto-attached) are loaded directly from the native registry.
+			// Fallback: requested tools not in agent_tools (e.g. discovered via the workspace
+			// catalog, or skill-required tools not yet auto-attached) are loaded from the
+			// workspace catalog first (so http/mcp/code tools carry their config for dispatch),
+			// then the native registry as a last resort.
 			for name := range requestedTools {
-				if !coveredByDB[name] {
-					if tool, err := h.registry.Get(name); err == nil {
-						def := tool.Definition()
-						toolDefs = append(toolDefs, provider.ToolDefinition{
-							Name:        def.Name,
-							Description: def.Description,
-							InputSchema: def.InputSchema,
-						})
-					}
+				if coveredByDB[name] {
+					continue
+				}
+				if fullTool, ok := toolCatalog[name]; ok {
+					toolDefs = append(toolDefs, provider.ToolDefinition{
+						Name:        fullTool.Name,
+						Description: fullTool.Description,
+						InputSchema: fullTool.InputSchema,
+					})
+					dbTools[name] = fullTool
+				} else if tool, err := h.registry.Get(name); err == nil {
+					def := tool.Definition()
+					toolDefs = append(toolDefs, provider.ToolDefinition{
+						Name:        def.Name,
+						Description: def.Description,
+						InputSchema: def.InputSchema,
+					})
 				}
 			}
 		} else {
@@ -725,6 +748,23 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			}
 			for _, td := range allToolDefs {
 				toolSummaries[td.Name] = td.Description
+			}
+		}
+		// Refresh the workspace catalogs too, so tools/skills created mid-run become
+		// discoverable and requestable even before/without being attached to this agent.
+		if freshCatalogDefs, freshCatalog, err := loadWorkspaceToolCatalog(r.Context(), h.pool, ws); err == nil {
+			toolCatalog = freshCatalog
+			for _, td := range freshCatalogDefs {
+				toolSummaries[td.Name] = td.Description
+			}
+		}
+		if freshSkillCatalog, err := loadWorkspaceSkillCatalog(r.Context(), h.pool, ws); err == nil {
+			skillCatalog = freshSkillCatalog
+			for name, skill := range skillCatalog {
+				skillSummaries[name] = skill.Description
+				for _, toolName := range skill.RequiredToolNames {
+					skillToolMap[toolName] = name
+				}
 			}
 		}
 		// Loop: call model again with tool results in messages

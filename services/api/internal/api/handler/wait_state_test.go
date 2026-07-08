@@ -31,7 +31,7 @@ func TestRunWaitStateRoundTrip(t *testing.T) {
 		TotalOutput:      45,
 		ActionLog:        []string{"did a thing"},
 		MemorySaveCalled: true,
-		RequestedTools:   []string{"native_web_search"},
+		RequestedTools:   []string{"native_read_file"},
 		ActiveSkills:     []string{"research"},
 	}
 	b, err := json.Marshal(st)
@@ -51,7 +51,7 @@ func TestRunWaitStateRoundTrip(t *testing.T) {
 	if got.PendingCalls[0].Name != "danger_tool" || string(got.PendingCalls[0].Input) != `{"x":1}` {
 		t.Errorf("pending calls not preserved: %+v", got.PendingCalls)
 	}
-	if !setOf(got.RequestedTools)["native_web_search"] || !setOf(got.ActiveSkills)["research"] {
+	if !setOf(got.RequestedTools)["native_read_file"] || !setOf(got.ActiveSkills)["research"] {
 		t.Errorf("tool/skill sets not preserved")
 	}
 }

@@ -267,7 +267,7 @@ func progressLabel(toolName string) string {
 		return "Looking up agents…"
 
 	// Web & HTTP
-	case "native_web_search", "web_search":
+	case "web_search", "brave_web_search":
 		return "Searching the web…"
 	case "native_http_request", "http_request":
 		return "Fetching data…"
@@ -574,10 +574,18 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		}
 	}
 
-	// Build tool summary map for lazy loading and native meta-tools.
-	toolSummaries := make(map[string]string, len(allToolDefs))
-	for _, td := range allToolDefs {
+	// Build tool summary map for lazy loading and native meta-tools. Discovery is
+	// workspace-wide (not just tools already attached to this agent) so
+	// native_list_tools/native_request_tool let the agent self-serve the full catalog.
+	toolCatalogDefs, toolCatalog, _ := loadWorkspaceToolCatalog(ctx, h.pool, ws)
+	toolSummaries := make(map[string]string, len(toolCatalogDefs)+len(allToolDefs))
+	for _, td := range toolCatalogDefs {
 		toolSummaries[td.Name] = td.Description
+	}
+	for _, td := range allToolDefs {
+		if _, ok := toolSummaries[td.Name]; !ok {
+			toolSummaries[td.Name] = td.Description
+		}
 	}
 
 	hasCallAgent := false
@@ -592,6 +600,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	}
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
+	skillCatalog, _ := loadWorkspaceSkillCatalog(ctx, h.pool, ws)
 	instructions := a.Instructions + onDemandSkillsInstructions(skills.OnDemand)
 	if a.ContextRetrievalEnabled && a.AgenticRAG {
 		instructions += "\n\nTo look up information from your connected knowledge sources, use the `native_retrieve_context` tool. Always call it before answering questions that require specific knowledge from your documents, codebase, or indexed files. Do NOT call any tool named \"search\" — use `native_retrieve_context` instead."
@@ -628,9 +637,11 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			requestedTools[name] = true
 		}
 	}
+	// Discovery is workspace-wide (not just skills already attached to this agent) so
+	// native_list_agent_skills/native_request_skill let the agent self-serve the full catalog.
 	skillSummaries := map[string]string{}
 	skillToolMap := map[string]string{}
-	for name, skill := range skills.OnDemand {
+	for name, skill := range skillCatalog {
 		skillSummaries[name] = skill.Description
 		for _, toolName := range skill.RequiredToolNames {
 			skillToolMap[toolName] = name
@@ -721,6 +732,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		},
 		RequestSkill: func(name string) bool {
 			skill, ok := skills.OnDemand[name]
+			if !ok {
+				skill, ok = skillCatalog[name]
+			}
 			if !ok || activeSkills[name] {
 				return false
 			}
@@ -853,18 +867,28 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					toolDefs = append(toolDefs, td)
 				}
 			}
-			// Fallback: requested tools not in agent_tools (e.g. skill required tools not yet
-			// auto-attached) are loaded directly from the native registry.
+			// Fallback: requested tools not in agent_tools (e.g. discovered via the workspace
+			// catalog, or skill-required tools not yet auto-attached) are loaded from the
+			// workspace catalog first (so http/mcp/code tools carry their config for dispatch),
+			// then the native registry as a last resort.
 			for name := range requestedTools {
-				if !coveredByDB[name] {
-					if tool, err := h.registry.Get(name); err == nil {
-						def := tool.Definition()
-						toolDefs = append(toolDefs, provider.ToolDefinition{
-							Name:        def.Name,
-							Description: def.Description,
-							InputSchema: def.InputSchema,
-						})
-					}
+				if coveredByDB[name] {
+					continue
+				}
+				if fullTool, ok := toolCatalog[name]; ok {
+					toolDefs = append(toolDefs, provider.ToolDefinition{
+						Name:        fullTool.Name,
+						Description: fullTool.Description,
+						InputSchema: fullTool.InputSchema,
+					})
+					dbTools[name] = fullTool
+				} else if tool, err := h.registry.Get(name); err == nil {
+					def := tool.Definition()
+					toolDefs = append(toolDefs, provider.ToolDefinition{
+						Name:        def.Name,
+						Description: def.Description,
+						InputSchema: def.InputSchema,
+					})
 				}
 			}
 		} else {
@@ -1309,6 +1333,23 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			allToolDefs, dbTools = freshAll, freshDB
 			for _, td := range freshAll {
 				toolSummaries[td.Name] = td.Description
+			}
+		}
+		// Refresh the workspace catalogs too, so tools/skills created mid-run become
+		// discoverable and requestable even before/without being attached to this agent.
+		if freshCatalogDefs, freshCatalog, err := loadWorkspaceToolCatalog(ctx, h.pool, ws); err == nil {
+			toolCatalog = freshCatalog
+			for _, td := range freshCatalogDefs {
+				toolSummaries[td.Name] = td.Description
+			}
+		}
+		if freshSkillCatalog, err := loadWorkspaceSkillCatalog(ctx, h.pool, ws); err == nil {
+			skillCatalog = freshSkillCatalog
+			for name, skill := range skillCatalog {
+				skillSummaries[name] = skill.Description
+				for _, toolName := range skill.RequiredToolNames {
+					skillToolMap[toolName] = name
+				}
 			}
 		}
 	}
@@ -2332,13 +2373,26 @@ func (h *InvokeHandler) executeSupervisorRun(
 	}
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
+	skillCatalog, _ := loadWorkspaceSkillCatalog(ctx, h.pool, ws)
 	supervisorInstructions += onDemandSkillsInstructions(skills.OnDemand)
 	if a.ContextRetrievalEnabled && a.AgenticRAG {
 		supervisorInstructions += "\n\nTo look up information from your connected knowledge sources, use the `native_retrieve_context` tool. Always call it before answering questions that require specific knowledge from your documents, codebase, or indexed files. Do NOT call any tool named \"search\" — use `native_retrieve_context` instead."
 	}
+	// Discovery is workspace-wide, matching executeRun/Start, so native_list_tools and
+	// native_list_agent_skills (if attached to a supervisor agent) don't just report empty.
+	toolCatalogDefs, _, _ := loadWorkspaceToolCatalog(ctx, h.pool, ws)
+	supToolSummaries := make(map[string]string, len(toolCatalogDefs)+len(regularToolDefs))
+	for _, td := range toolCatalogDefs {
+		supToolSummaries[td.Name] = td.Description
+	}
+	for _, td := range regularToolDefs {
+		if _, ok := supToolSummaries[td.Name]; !ok {
+			supToolSummaries[td.Name] = td.Description
+		}
+	}
 	supSkillSummaries := map[string]string{}
 	supSkillToolMap := map[string]string{}
-	for name, skill := range skills.OnDemand {
+	for name, skill := range skillCatalog {
 		supSkillSummaries[name] = skill.Description
 		for _, toolName := range skill.RequiredToolNames {
 			supSkillToolMap[toolName] = name
@@ -2395,6 +2449,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 		RunID:             runID,
 		ConversationID:    convID,
 		ConnectorIDs:      supConnSettings.IDs,
+		ToolSummaries:     supToolSummaries,
 		AlwaysActiveTools: metaToolNameSet(),
 		InvokeDepth:       0,
 		RootRunID:         supRootTraceID,
@@ -2443,6 +2498,9 @@ func (h *InvokeHandler) executeSupervisorRun(
 		RequestTool:    func(name string) {}, // no-op: all tools are always visible in supervisor runs
 		RequestSkill: func(name string) bool {
 			skill, ok := skills.OnDemand[name]
+			if !ok {
+				skill, ok = skillCatalog[name]
+			}
 			if !ok || supActiveSkills[name] {
 				return false
 			}
@@ -2768,6 +2826,22 @@ func (h *InvokeHandler) executeSupervisorRun(
 			}
 			regularToolDefs, dbTools = freshAll, freshDB
 			toolDefs = append(regularToolDefs, delegateToolDefs...)
+		}
+		// Refresh the workspace catalogs too, so tools/skills created mid-run stay
+		// discoverable via native_list_tools/native_list_agent_skills.
+		if freshCatalogDefs, _, err := loadWorkspaceToolCatalog(ctx, h.pool, ws); err == nil {
+			for _, td := range freshCatalogDefs {
+				supToolSummaries[td.Name] = td.Description
+			}
+		}
+		if freshSkillCatalog, err := loadWorkspaceSkillCatalog(ctx, h.pool, ws); err == nil {
+			skillCatalog = freshSkillCatalog
+			for name, skill := range skillCatalog {
+				supSkillSummaries[name] = skill.Description
+				for _, toolName := range skill.RequiredToolNames {
+					supSkillToolMap[toolName] = name
+				}
+			}
 		}
 	}
 }

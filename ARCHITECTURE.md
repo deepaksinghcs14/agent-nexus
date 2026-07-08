@@ -4,7 +4,7 @@ Agent Nexus is a developer-first AI agent control plane — not a chatbot wrappe
 
 Users can:
 - Create agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama) using their own API keys
-- Attach native tools (`native_read_file`, `native_write_file`, `native_web_search`, `native_http_request`, `whatsapp_request_owner_approval`, and agent self-management tools) with risk-based approval gates
+- Attach native tools (`native_read_file`, `native_write_file`, `native_http_request`, `whatsapp_request_owner_approval`, and agent self-management tools) with risk-based approval gates
 - Connect MCP servers and expose discovered tools through the same approval pipeline
 - Define HTTP tools that wrap external APIs with JSON schemas
 - Index external context (files) via connectors
@@ -155,7 +155,6 @@ services/api/
       save_memory.go               ← memory save pipeline
       skills_mgmt.go               ← native_create_skill
       tools_mgmt.go                ← tool management helpers
-      web_search.go                ← native_web_search
       whatsapp.go                  ← whatsapp_request_owner_approval
       workflows_mgmt.go            ← workflow invocation from native tools
       write_file.go                ← native_write_file

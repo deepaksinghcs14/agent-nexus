@@ -51,6 +51,45 @@ func loadAgentToolDefs(ctx context.Context, pool *pgxpool.Pool, agentID string) 
 	return defs, nameMap, rows.Err()
 }
 
+// loadWorkspaceToolCatalog returns every enabled tool visible in the workspace, regardless of
+// whether it's attached to any particular agent via agent_tools. Used to populate discovery
+// (native_list_tools) and to let native_request_tool activate a workspace tool the agent wasn't
+// pre-wired with — loadAgentToolDefs stays attachment-scoped since it also drives which tools
+// are actually offered to the LLM by default and the risk/approval map.
+func loadWorkspaceToolCatalog(ctx context.Context, pool *pgxpool.Pool, workspaceID string) ([]provider.ToolDefinition, map[string]domain.Tool, error) {
+	rows, err := pool.Query(ctx,
+		`SELECT t.name, t.description, t.type, t.input_schema, t.config, t.risk_level, t.requires_approval, t.timeout_ms
+		 FROM tools t
+		 WHERE (t.workspace_id IS NULL OR t.workspace_id=$1::uuid) AND t.enabled = true
+		 ORDER BY t.name`,
+		workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	var defs []provider.ToolDefinition
+	nameMap := map[string]domain.Tool{}
+	for rows.Next() {
+		var t domain.Tool
+		var inputSchema, cfg []byte
+		if err := rows.Scan(&t.Name, &t.Description, &t.Type, &inputSchema, &cfg, &t.RiskLevel, &t.RequiresApproval, &t.TimeoutMs); err != nil {
+			continue
+		}
+		t.InputSchema = json.RawMessage(inputSchema)
+		if len(cfg) > 0 {
+			t.Config = json.RawMessage(cfg)
+		}
+		defs = append(defs, provider.ToolDefinition{
+			Name:        t.Name,
+			Description: t.Description,
+			InputSchema: t.InputSchema,
+		})
+		nameMap[t.Name] = t
+	}
+	return defs, nameMap, rows.Err()
+}
+
 var metaToolNames = []string{
 	"native_list_tools",
 	"native_request_tool",
