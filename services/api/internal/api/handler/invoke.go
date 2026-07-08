@@ -1162,6 +1162,27 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 			dbTool, toolExists := dbTools[call.Name]
 
+			if !toolExists {
+				if gateErr, matched := unattachedCatalogToolError(call.Name, toolCatalog, a.LazyToolLoading); matched {
+					h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
+						map[string]any{"tool": call.Name, "input": call.Input},
+						map[string]any{"error": gateErr},
+						time.Now(), 0, call.Name, gateErr)
+					sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":0}`,
+						call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(fmt.Sprintf(`{"error":%q}`, gateErr)))))
+					messages = append(messages, provider.Message{
+						Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: fmt.Sprintf(`{"error":%q}`, gateErr),
+					})
+					stepCount++
+					if stepCount > a.MaxSteps {
+						runErrMsg = "max steps exceeded"
+						sseErr("max steps exceeded")
+						return
+					}
+					continue
+				}
+			}
+
 			if toolExists && dbTool.RequiresApproval {
 				var decision ApprovalDecision
 				if resuming && callIdx == startIdx && opts.resumeDecision != nil {
@@ -2380,7 +2401,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	}
 	// Discovery is workspace-wide, matching executeRun/Start, so native_list_tools and
 	// native_list_agent_skills (if attached to a supervisor agent) don't just report empty.
-	toolCatalogDefs, _, _ := loadWorkspaceToolCatalog(ctx, h.pool, ws)
+	toolCatalogDefs, toolCatalog, _ := loadWorkspaceToolCatalog(ctx, h.pool, ws)
 	supToolSummaries := make(map[string]string, len(toolCatalogDefs)+len(regularToolDefs))
 	for _, td := range toolCatalogDefs {
 		supToolSummaries[td.Name] = td.Description
@@ -2713,6 +2734,27 @@ func (h *InvokeHandler) executeSupervisorRun(
 
 			dbTool, toolExists := dbTools[call.Name]
 
+			if !toolExists {
+				if gateErr, matched := unattachedCatalogToolError(call.Name, toolCatalog, false); matched {
+					h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
+						map[string]any{"tool": call.Name, "input": call.Input},
+						map[string]any{"error": gateErr},
+						time.Now(), 0, call.Name, gateErr)
+					sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":0}`,
+						call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(fmt.Sprintf(`{"error":%q}`, gateErr)))))
+					messages = append(messages, provider.Message{
+						Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: fmt.Sprintf(`{"error":%q}`, gateErr),
+					})
+					stepCount++
+					if stepCount > a.MaxSteps {
+						runErrMsg = "max steps exceeded"
+						sseErr("max steps exceeded")
+						return
+					}
+					continue
+				}
+			}
+
 			if toolExists && dbTool.RequiresApproval {
 				arID := uuid.NewString()
 				h.pool.Exec(ctx, //nolint:errcheck
@@ -2829,7 +2871,8 @@ func (h *InvokeHandler) executeSupervisorRun(
 		}
 		// Refresh the workspace catalogs too, so tools/skills created mid-run stay
 		// discoverable via native_list_tools/native_list_agent_skills.
-		if freshCatalogDefs, _, err := loadWorkspaceToolCatalog(ctx, h.pool, ws); err == nil {
+		if freshCatalogDefs, freshCatalog, err := loadWorkspaceToolCatalog(ctx, h.pool, ws); err == nil {
+			toolCatalog = freshCatalog
 			for _, td := range freshCatalogDefs {
 				supToolSummaries[td.Name] = td.Description
 			}

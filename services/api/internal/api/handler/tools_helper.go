@@ -227,6 +227,24 @@ func lazyToolNotActiveError(toolName string, skillToolMap map[string]string) str
 	return fmt.Sprintf("tool %q is not active this turn — call native_request_tool(%q) first, then call it again next turn.", toolName, toolName)
 }
 
+// unattachedCatalogToolError distinguishes "this tool exists in the workspace but isn't
+// enabled for this agent" from a genuinely unknown/hallucinated tool name. It only fires for
+// non-native tool types (http/mcp/code) — those have no entry in the native Go registry, so
+// without this check a call to one that's visible via native_list_tools (workspace-wide
+// discovery) but not attached would otherwise fall through to the executor and fail with the
+// unhelpful "tool ... not found in registry". Native tools missing from dbTools still resolve
+// fine via the registry fallback, so they're left alone here.
+func unattachedCatalogToolError(toolName string, catalog map[string]domain.Tool, lazy bool) (string, bool) {
+	t, ok := catalog[toolName]
+	if !ok || t.Type == "native" {
+		return "", false
+	}
+	if lazy {
+		return fmt.Sprintf("tool %q exists in the workspace (type=%s) but isn't active this turn — call native_request_tool(%q) first, then call it again next turn.", toolName, t.Type, toolName), true
+	}
+	return fmt.Sprintf("tool %q exists in the workspace (type=%s) but is not attached to this agent, so it can't be called. Ask an admin to attach it from the agent's Tools tab, or enable lazy tool loading so the agent can self-request it.", toolName, t.Type), true
+}
+
 // dedupeToolDefs removes repeated tool names while preserving the first
 // declaration order. Gemini rejects duplicate function declarations outright,
 // and the same rule keeps the other providers' tool lists clean.
