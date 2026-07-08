@@ -429,6 +429,7 @@ func sanitizeGeminiSchema(v any) any {
 			}
 			out[k] = sanitizeGeminiSchema(vv)
 		}
+		fixRequiredAgainstProperties(out)
 		return out
 	case []any:
 		out := make([]any, len(val))
@@ -438,6 +439,34 @@ func sanitizeGeminiSchema(v any) any {
 		return out
 	default:
 		return v
+	}
+}
+
+// fixRequiredAgainstProperties drops any "required" entry that isn't an actual key in this
+// schema level's "properties". Plain JSON Schema allows a required property to be covered
+// by additionalProperties/patternProperties instead of an explicit properties entry —
+// Gemini requires every required name to be a literal properties key and 400s otherwise
+// ("parameters.required[N]: property is not defined"). Runs after unsupported-keyword
+// stripping (which already removes additionalProperties) so this only needs to reconcile
+// what's left.
+func fixRequiredAgainstProperties(m map[string]any) {
+	required, ok := m["required"].([]any)
+	if !ok {
+		return
+	}
+	props, _ := m["properties"].(map[string]any)
+	filtered := make([]any, 0, len(required))
+	for _, r := range required {
+		if name, ok := r.(string); ok {
+			if _, exists := props[name]; exists {
+				filtered = append(filtered, r)
+			}
+		}
+	}
+	if len(filtered) == 0 {
+		delete(m, "required")
+	} else {
+		m["required"] = filtered
 	}
 }
 

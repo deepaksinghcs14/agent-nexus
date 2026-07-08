@@ -85,6 +85,70 @@ func TestSanitizeGeminiSchemaStripsUnsupportedKeys(t *testing.T) {
 	}
 }
 
+func TestSanitizeGeminiSchemaDropsRequiredNamesNotInProperties(t *testing.T) {
+	raw := `{
+		"type": "object",
+		"properties": {
+			"query": {"type": "string"},
+			"limit": {"type": "integer"}
+		},
+		"required": ["query", "limit", "extra_field_from_pattern_properties"],
+		"nested": {
+			"type": "object",
+			"properties": {
+				"inner": {"type": "string"}
+			},
+			"required": ["inner", "missing_inner"]
+		},
+		"emptyAfterFilter": {
+			"type": "object",
+			"properties": {
+				"foo": {"type": "string"}
+			},
+			"required": ["only_invalid_name"]
+		}
+	}`
+	var schema any
+	if err := json.Unmarshal([]byte(raw), &schema); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	sanitized := sanitizeGeminiSchema(schema)
+	b, err := json.Marshal(sanitized)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("unmarshal sanitized: %v", err)
+	}
+
+	required, ok := out["required"].([]any)
+	if !ok {
+		t.Fatalf("expected top-level required to survive as a slice, got %T", out["required"])
+	}
+	if len(required) != 2 || required[0] != "query" || required[1] != "limit" {
+		t.Errorf("expected required to be [query, limit], got %v", required)
+	}
+
+	nested, ok := out["nested"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected nested to survive as a map, got %T", out["nested"])
+	}
+	nestedRequired, ok := nested["required"].([]any)
+	if !ok || len(nestedRequired) != 1 || nestedRequired[0] != "inner" {
+		t.Errorf("expected nested.required to be filtered down to [inner], got %v", nested["required"])
+	}
+
+	emptyAfterFilter, ok := out["emptyAfterFilter"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected emptyAfterFilter to survive as a map, got %T", out["emptyAfterFilter"])
+	}
+	if _, ok := emptyAfterFilter["required"]; ok {
+		t.Errorf("expected required to be dropped entirely once every entry is filtered out, got %v", emptyAfterFilter["required"])
+	}
+}
+
 func TestSanitizeGeminiSchemaPassesThroughScalarsAndNil(t *testing.T) {
 	if got := sanitizeGeminiSchema(nil); got != nil {
 		t.Errorf("expected nil to pass through unchanged, got %v", got)
