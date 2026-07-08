@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { toolsAPI } from '@/lib/api'
 import { riskColor } from '@/lib/utils'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { DataTable, Row, Cell } from '@/components/ui/DataTable'
 import { toolCategory } from '@/lib/tool-category'
 import type { Tool } from '@/types'
 
@@ -172,68 +173,62 @@ function ToolRow({ tool, onToggle, onDelete, onEdit }: {
 
   return (
     <>
-      <div className="flex items-center justify-between px-4 py-3 border-b last:border-b-0 border-border hover:bg-muted">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 text-muted-foreground">
-            {ti.icon}
-          </div>
-          <div className="min-w-0">
-            <p className="text-[13px] font-medium text-foreground font-mono truncate">{tool.name}</p>
-            <p className="text-[11px] text-faint mt-0.5 truncate">{tool.description || '—'}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0 ml-2 overflow-x-auto">
-          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border flex-shrink-0 ${ti.cls}`}>
-            {ti.icon}{ti.label}
-          </span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 flex-shrink-0 whitespace-nowrap">
-            {toolCategory(tool)}
-          </span>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${riskColor(tool.risk_level)}`}>
-            {tool.risk_level}
-          </span>
-          {tool.requires_approval && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-warn/10 text-warn border border-warn/30">approval</span>
-          )}
-          {canExpand && (
-            <button onClick={() => setOpen((v) => !v)} className="p-1 text-faint hover:text-muted-foreground dark:hover:text-faint" title="Show code">
-              {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-            </button>
-          )}
-          {isSystem ? (
-            <span title="Managed by system" className="p-1 text-faint"><Lock size={13} /></span>
-          ) : (
-            <>
-              {onEdit && tool.type === 'code' && (
-                <button onClick={onEdit} className="p-1 text-faint hover:text-info" title="Edit code tool">
-                  <Pencil size={13} />
-                </button>
-              )}
-              <Toggle on={tool.enabled} onToggle={onToggle} />
-              <button onClick={onDelete} className="p-1 text-faint hover:text-crit" aria-label={`Delete ${tool.name}`}>
-                <Trash2 size={13} />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-      {open && (
-        <div className="border-b border-border">
-          {tool.type === 'http' && cfg && (
-            <div className="px-4 py-3 bg-muted text-[11px] text-muted-foreground font-mono space-y-1">
-              <p><span className="text-faint">URL</span>  {cfg.method} {cfg.url}</p>
-              {cfg.body_mode && <p><span className="text-faint">body</span>  {cfg.body_mode === 'template' ? 'template' : 'free-form (LLM constructs)'}</p>}
-              {cfg.body_template && (
-                <pre className="mt-1 bg-surface border border-border rounded p-2 overflow-x-auto whitespace-pre-wrap text-[10px]">{cfg.body_template}</pre>
-              )}
+      <Row>
+        <Cell className="!whitespace-normal">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 text-muted-foreground">{ti.icon}</div>
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium text-foreground font-mono truncate">{tool.name}</p>
+              <p className="text-[11px] text-faint mt-0.5 truncate max-w-md">{tool.description || '—'}</p>
             </div>
-          )}
-          {tool.type === 'code' && cfg?.code && (
-            <pre className="px-4 py-3 bg-gray-900 text-good text-[11px] font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">
-              {cfg.code}
-            </pre>
-          )}
-        </div>
+          </div>
+        </Cell>
+        <Cell>
+          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border ${ti.cls}`}>{ti.icon}{ti.label}</span>
+        </Cell>
+        <Cell>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-accent/10 text-accent dark:text-accent-bright border border-accent/25 whitespace-nowrap">{toolCategory(tool)}</span>
+        </Cell>
+        <Cell>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${riskColor(tool.risk_level)}`}>{tool.risk_level}</span>
+          {tool.requires_approval && <span className="text-[10px] px-2 py-0.5 rounded-full bg-warn/10 text-warn border border-warn/30 ml-1">approval</span>}
+        </Cell>
+        <Cell>
+          {isSystem
+            ? <span title="Managed by system" className="text-faint inline-flex"><Lock size={13} /></span>
+            : <Toggle on={tool.enabled} onToggle={onToggle} />}
+        </Cell>
+        <Cell className="text-right">
+          <span className="inline-flex items-center gap-0.5">
+            {canExpand && (
+              <button onClick={() => setOpen((v) => !v)} className="p-1 text-faint hover:text-foreground" title="Show config">
+                {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
+            )}
+            {!isSystem && onEdit && tool.type === 'code' && (
+              <button onClick={onEdit} className="p-1 text-faint hover:text-info" title="Edit code tool"><Pencil size={13} /></button>
+            )}
+            {!isSystem && (
+              <button onClick={onDelete} className="p-1 text-faint hover:text-crit" aria-label={`Delete ${tool.name}`}><Trash2 size={13} /></button>
+            )}
+          </span>
+        </Cell>
+      </Row>
+      {open && (
+        <tr>
+          <td colSpan={6} className="p-0 border-b border-border">
+            {tool.type === 'http' && cfg && (
+              <div className="px-4 py-3 bg-muted text-[11px] text-muted-foreground font-mono space-y-1">
+                <p><span className="text-faint">URL</span>  {cfg.method} {cfg.url}</p>
+                {cfg.body_mode && <p><span className="text-faint">body</span>  {cfg.body_mode === 'template' ? 'template' : 'free-form (LLM constructs)'}</p>}
+                {cfg.body_template && <pre className="mt-1 bg-surface border border-border rounded p-2 overflow-x-auto whitespace-pre-wrap text-[10px]">{cfg.body_template}</pre>}
+              </div>
+            )}
+            {tool.type === 'code' && cfg?.code && (
+              <pre className="px-4 py-3 bg-gray-900 text-good text-[11px] font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">{cfg.code}</pre>
+            )}
+          </td>
+        </tr>
       )}
     </>
   )
@@ -618,7 +613,7 @@ function Section({
       </div>
       <p className="text-[11px] text-faint ml-6 mb-2">{blurb}</p>
       {tools.length > 0 ? (
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
+        <DataTable columns={['Tool', 'Type', 'Category', 'Risk', 'Enabled', '']} minWidth={720}>
           {tools.map((t) => (
             <ToolRow
               key={t.id}
@@ -628,7 +623,7 @@ function Section({
               onEdit={onEdit ? () => onEdit(t) : undefined}
             />
           ))}
-        </div>
+        </DataTable>
       ) : (
         <div className="border border-dashed border-border-strong rounded-xl py-6 text-center">
           <p className="text-[12px] text-faint">{emptyBlurb ?? `No ${title.toLowerCase()} yet.`}</p>
@@ -684,7 +679,7 @@ export default function ToolsPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl">
+    <div className="p-4 sm:p-6 max-w-5xl">
       <PageHeader
         eyebrow="Integrations"
         title="Tools"
