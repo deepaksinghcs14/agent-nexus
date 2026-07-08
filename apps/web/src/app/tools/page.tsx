@@ -7,13 +7,15 @@ import { ChevronDown, ChevronUp, ExternalLink, Globe, Lock, Pencil, Play, Plus, 
 import Link from 'next/link'
 import { toolsAPI } from '@/lib/api'
 import { riskColor } from '@/lib/utils'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { DataTable, Row, Cell } from '@/components/ui/DataTable'
 import { toolCategory } from '@/lib/tool-category'
 import type { Tool } from '@/types'
 
 // ─── CodeMirror (dynamic — client only, avoids SSR window references) ────────
 
 const CodeEditor = dynamic(() => import('@/components/CodeEditor'), { ssr: false, loading: () => (
-  <div className="h-48 bg-gray-900 rounded-lg flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">Loading editor…</div>
+  <div className="h-48 bg-gray-900 rounded-lg flex items-center justify-center text-sm text-muted-foreground">Loading editor…</div>
 )})
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -114,25 +116,25 @@ function KVEditor({ label, rows, onChange }: { label: string; rows: KV[]; onChan
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <p className="text-[11px] font-medium text-gray-600 dark:text-gray-400">{label}</p>
-        <button type="button" onClick={add} className="text-[11px] text-purple-600 dark:text-purple-300 hover:underline flex items-center gap-0.5">
+        <p className="text-[11px] font-medium text-muted-foreground">{label}</p>
+        <button type="button" onClick={add} className="text-[11px] text-accent dark:text-accent-bright hover:underline flex items-center gap-0.5">
           <Plus size={10} /> Add
         </button>
       </div>
       {rows.length === 0 && (
-        <p className="text-[11px] text-gray-400 dark:text-gray-500 italic">None — click Add to set one.</p>
+        <p className="text-[11px] text-faint italic">None — click Add to set one.</p>
       )}
       {rows.map((r, i) => (
         <div key={i} className="flex items-center gap-1.5 mb-1.5">
           <input
             value={r.key} onChange={(e) => set(i, 'key', e.target.value)}
-            placeholder="Key" className="flex-1 text-[12px] px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 font-mono"
+            placeholder="Key" className="flex-1 text-[12px] px-2 py-1.5 border border-border-strong rounded-md bg-surface font-mono"
           />
           <input
             value={r.value} onChange={(e) => set(i, 'value', e.target.value)}
-            placeholder="Value (supports {{var}})" className="flex-[2] text-[12px] px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-900 font-mono"
+            placeholder="Value (supports {{var}})" className="flex-[2] text-[12px] px-2 py-1.5 border border-border-strong rounded-md bg-surface font-mono"
           />
-          <button type="button" onClick={() => remove(i)} className="text-gray-300 dark:text-gray-600 hover:text-red-400">
+          <button type="button" onClick={() => remove(i)} className="text-faint hover:text-crit">
             <X size={13} />
           </button>
         </div>
@@ -144,18 +146,18 @@ function KVEditor({ label, rows, onChange }: { label: string; rows: KV[]; onChan
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <button onClick={onToggle} aria-label="toggle"
-      className={`rounded-full relative flex-shrink-0 transition-colors ${on ? 'bg-purple-600' : 'bg-gray-200'}`}
+      className={`rounded-full relative flex-shrink-0 transition-colors ${on ? 'bg-accent' : 'bg-muted'}`}
       style={{ width: 32, height: 18 }}>
-      <span className={`absolute top-0.5 w-3.5 h-3.5 bg-white dark:bg-gray-900 rounded-full transition-all ${on ? 'left-[14px]' : 'left-0.5'}`} />
+      <span className={`absolute top-0.5 w-3.5 h-3.5 bg-surface rounded-full transition-all ${on ? 'left-[14px]' : 'left-0.5'}`} />
     </button>
   )
 }
 
 function typeInfo(type: string) {
-  if (type === 'native') return { label: 'Built-in',    icon: <Wrench size={11} />,   cls: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-100' }
-  if (type === 'mcp')    return { label: 'MCP',         icon: <Server size={11} />,   cls: 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-100' }
-  if (type === 'code')   return { label: 'Code',        icon: <Terminal size={11} />, cls: 'bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-100' }
-  return                        { label: 'HTTP',        icon: <Globe size={11} />,    cls: 'bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300 border-green-100' }
+  if (type === 'native') return { label: 'Built-in',    icon: <Wrench size={11} />,   cls: 'bg-info/10 text-info border-info/30' }
+  if (type === 'mcp')    return { label: 'MCP',         icon: <Server size={11} />,   cls: 'bg-accent/10 text-accent dark:text-accent-bright border-accent/25' }
+  if (type === 'code')   return { label: 'Code',        icon: <Terminal size={11} />, cls: 'bg-warn/10 dark:bg-warn/10 text-warn dark:text-warn border-warn/30' }
+  return                        { label: 'HTTP',        icon: <Globe size={11} />,    cls: 'bg-good/10 text-good border-good/30' }
 }
 
 // ─── tool row ────────────────────────────────────────────────────────────────
@@ -171,68 +173,62 @@ function ToolRow({ tool, onToggle, onDelete, onEdit }: {
 
   return (
     <>
-      <div className="flex items-center justify-between px-4 py-3 border-b last:border-b-0 border-gray-50 hover:bg-gray-50/50">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0 text-gray-500 dark:text-gray-400">
-            {ti.icon}
-          </div>
-          <div className="min-w-0">
-            <p className="text-[13px] font-medium text-gray-900 dark:text-gray-100 font-mono truncate">{tool.name}</p>
-            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">{tool.description || '—'}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0 ml-2 overflow-x-auto">
-          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border flex-shrink-0 ${ti.cls}`}>
-            {ti.icon}{ti.label}
-          </span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 flex-shrink-0 whitespace-nowrap">
-            {toolCategory(tool)}
-          </span>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${riskColor(tool.risk_level)}`}>
-            {tool.risk_level}
-          </span>
-          {tool.requires_approval && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-100">approval</span>
-          )}
-          {canExpand && (
-            <button onClick={() => setOpen((v) => !v)} className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300" title="Show code">
-              {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-            </button>
-          )}
-          {isSystem ? (
-            <span title="Managed by system" className="p-1 text-gray-300 dark:text-gray-600"><Lock size={13} /></span>
-          ) : (
-            <>
-              {onEdit && tool.type === 'code' && (
-                <button onClick={onEdit} className="p-1 text-gray-300 dark:text-gray-600 hover:text-blue-500" title="Edit code tool">
-                  <Pencil size={13} />
-                </button>
-              )}
-              <Toggle on={tool.enabled} onToggle={onToggle} />
-              <button onClick={onDelete} className="p-1 text-gray-300 dark:text-gray-600 hover:text-red-500" aria-label={`Delete ${tool.name}`}>
-                <Trash2 size={13} />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-      {open && (
-        <div className="border-b border-gray-100 dark:border-gray-800">
-          {tool.type === 'http' && cfg && (
-            <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800/60 text-[11px] text-gray-600 dark:text-gray-400 font-mono space-y-1">
-              <p><span className="text-gray-400 dark:text-gray-500">URL</span>  {cfg.method} {cfg.url}</p>
-              {cfg.body_mode && <p><span className="text-gray-400 dark:text-gray-500">body</span>  {cfg.body_mode === 'template' ? 'template' : 'free-form (LLM constructs)'}</p>}
-              {cfg.body_template && (
-                <pre className="mt-1 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded p-2 overflow-x-auto whitespace-pre-wrap text-[10px]">{cfg.body_template}</pre>
-              )}
+      <Row>
+        <Cell className="!whitespace-normal">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center flex-shrink-0 text-muted-foreground">{ti.icon}</div>
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium text-foreground font-mono truncate">{tool.name}</p>
+              <p className="text-[11px] text-faint mt-0.5 truncate max-w-md">{tool.description || '—'}</p>
             </div>
-          )}
-          {tool.type === 'code' && cfg?.code && (
-            <pre className="px-4 py-3 bg-gray-900 text-green-300 text-[11px] font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">
-              {cfg.code}
-            </pre>
-          )}
-        </div>
+          </div>
+        </Cell>
+        <Cell>
+          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border ${ti.cls}`}>{ti.icon}{ti.label}</span>
+        </Cell>
+        <Cell>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-accent/10 text-accent dark:text-accent-bright border border-accent/25 whitespace-nowrap">{toolCategory(tool)}</span>
+        </Cell>
+        <Cell>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${riskColor(tool.risk_level)}`}>{tool.risk_level}</span>
+          {tool.requires_approval && <span className="text-[10px] px-2 py-0.5 rounded-full bg-warn/10 text-warn border border-warn/30 ml-1">approval</span>}
+        </Cell>
+        <Cell>
+          {isSystem
+            ? <span title="Managed by system" className="text-faint inline-flex"><Lock size={13} /></span>
+            : <Toggle on={tool.enabled} onToggle={onToggle} />}
+        </Cell>
+        <Cell className="text-right">
+          <span className="inline-flex items-center gap-0.5">
+            {canExpand && (
+              <button onClick={() => setOpen((v) => !v)} className="p-1 text-faint hover:text-foreground" title="Show config">
+                {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
+            )}
+            {!isSystem && onEdit && tool.type === 'code' && (
+              <button onClick={onEdit} className="p-1 text-faint hover:text-info" title="Edit code tool"><Pencil size={13} /></button>
+            )}
+            {!isSystem && (
+              <button onClick={onDelete} className="p-1 text-faint hover:text-crit" aria-label={`Delete ${tool.name}`}><Trash2 size={13} /></button>
+            )}
+          </span>
+        </Cell>
+      </Row>
+      {open && (
+        <tr>
+          <td colSpan={6} className="p-0 border-b border-border">
+            {tool.type === 'http' && cfg && (
+              <div className="px-4 py-3 bg-muted text-[11px] text-muted-foreground font-mono space-y-1">
+                <p><span className="text-faint">URL</span>  {cfg.method} {cfg.url}</p>
+                {cfg.body_mode && <p><span className="text-faint">body</span>  {cfg.body_mode === 'template' ? 'template' : 'free-form (LLM constructs)'}</p>}
+                {cfg.body_template && <pre className="mt-1 bg-surface border border-border rounded p-2 overflow-x-auto whitespace-pre-wrap text-[10px]">{cfg.body_template}</pre>}
+              </div>
+            )}
+            {tool.type === 'code' && cfg?.code && (
+              <pre className="px-4 py-3 bg-gray-900 text-good text-[11px] font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">{cfg.code}</pre>
+            )}
+          </td>
+        </tr>
       )}
     </>
   )
@@ -284,49 +280,49 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
   const set = <K extends keyof HTTPForm>(k: K, v: HTTPForm[K]) => setForm((f) => ({ ...f, [k]: v }))
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-5 mb-6 bg-white dark:bg-gray-900 shadow-sm">
+    <div className="border border-border-strong rounded-xl p-5 mb-6 bg-surface shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">New HTTP tool</p>
-          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-            Call any REST endpoint. Headers, query params, and the body can contain <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">{`{{variable}}`}</code> tokens — the LLM fills them in at runtime.
+          <p className="text-sm font-medium text-foreground">New HTTP tool</p>
+          <p className="text-[11px] text-faint mt-0.5">
+            Call any REST endpoint. Headers, query params, and the body can contain <code className="font-mono bg-muted px-1 rounded">{`{{variable}}`}</code> tokens — the LLM fills them in at runtime.
           </p>
         </div>
-        <button onClick={onClose}><X size={15} className="text-gray-400 dark:text-gray-500" /></button>
+        <button onClick={onClose}><X size={15} className="text-faint" /></button>
       </div>
 
-      {error && <p className="text-[12px] text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-100 rounded px-3 py-2 mb-3">{error}</p>}
+      {error && <p className="text-[12px] text-crit bg-crit/10 border border-crit/30 rounded px-3 py-2 mb-3">{error}</p>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         <div>
-          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Tool name *</label>
+          <label className="block text-[11px] font-medium text-muted-foreground mb-1">Tool name *</label>
           <input value={form.name} onChange={(e) => set('name', e.target.value)}
-            placeholder="e.g. send_slack_message" className="w-full text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg font-mono" />
+            placeholder="e.g. send_slack_message" className="w-full text-sm px-3 py-2 border border-border-strong rounded-lg font-mono" />
         </div>
         <div>
-          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Description</label>
+          <label className="block text-[11px] font-medium text-muted-foreground mb-1">Description</label>
           <input value={form.description} onChange={(e) => set('description', e.target.value)}
-            placeholder="What this tool does" className="w-full text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg" />
+            placeholder="What this tool does" className="w-full text-sm px-3 py-2 border border-border-strong rounded-lg" />
         </div>
       </div>
 
       <div className="mb-4">
-        <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Endpoint *</label>
+        <label className="block text-[11px] font-medium text-muted-foreground mb-1">Endpoint *</label>
         <div className="flex gap-2">
           <select value={form.method} onChange={(e) => set('method', e.target.value)}
-            className="text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 w-28 flex-shrink-0">
+            className="text-sm px-3 py-2 border border-border-strong rounded-lg bg-surface w-28 flex-shrink-0">
             {METHOD_OPTIONS.map((m) => <option key={m}>{m}</option>)}
           </select>
           <input value={form.url} onChange={(e) => set('url', e.target.value)}
             placeholder="https://api.example.com/endpoint  (supports {{var}})"
-            className="flex-1 text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg font-mono min-w-0" />
+            className="flex-1 text-sm px-3 py-2 border border-border-strong rounded-lg font-mono min-w-0" />
         </div>
       </div>
 
       <div className="mb-4">
         <KVEditor label="Headers" rows={form.headers} onChange={(v) => set('headers', v)} />
-        <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
-          Static headers (e.g. <code className="font-mono">Authorization: Bearer my-secret-key</code>) or dynamic ones with <code className="font-mono bg-gray-100 dark:bg-gray-800 px-0.5 rounded">{`{{token}}`}</code>.
+        <p className="text-[10px] text-faint mt-1">
+          Static headers (e.g. <code className="font-mono">Authorization: Bearer my-secret-key</code>) or dynamic ones with <code className="font-mono bg-muted px-0.5 rounded">{`{{token}}`}</code>.
         </p>
       </div>
 
@@ -336,14 +332,14 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
 
       {form.method !== 'GET' && form.method !== 'DELETE' && form.method !== 'HEAD' && (
         <div className="mb-4">
-          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-2">Request body</label>
+          <label className="block text-[11px] font-medium text-muted-foreground mb-2">Request body</label>
           <div className="flex gap-2 mb-3">
             {(['template', 'free'] as const).map((mode) => (
               <button key={mode} type="button" onClick={() => set('bodyMode', mode)}
                 className={`px-3 py-1.5 text-[12px] rounded-lg border transition-colors ${
                   form.bodyMode === mode
-                    ? 'bg-purple-600 text-white border-purple-600'
-                    : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                    ? 'bg-accent text-white border-accent'
+                    : 'bg-surface text-muted-foreground border-border-strong hover:border-border-strong'
                 }`}>
                 {mode === 'template' ? 'Template' : 'Free-form'}
               </button>
@@ -352,21 +348,21 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
 
           {form.bodyMode === 'template' ? (
             <div>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">
-                Write the JSON body you want to send. Use <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">{`{{variable}}`}</code> for parts the LLM should fill in.
+              <p className="text-[11px] text-muted-foreground mb-2">
+                Write the JSON body you want to send. Use <code className="font-mono bg-muted px-1 rounded">{`{{variable}}`}</code> for parts the LLM should fill in.
               </p>
               <textarea
                 value={form.bodyTemplate}
                 onChange={(e) => set('bodyTemplate', e.target.value)}
                 rows={5}
                 placeholder={`{\n  "channel": "{{channel}}",\n  "text": "{{message}}"\n}`}
-                className="w-full text-[12px] font-mono px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg resize-y bg-white dark:bg-gray-900"
+                className="w-full text-[12px] font-mono px-3 py-2 border border-border-strong rounded-lg resize-y bg-surface"
               />
               {detectedVars.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500">LLM will provide:</span>
+                  <span className="text-[10px] text-faint">LLM will provide:</span>
                   {detectedVars.map((v) => (
-                    <span key={v} className="text-[10px] px-2 py-0.5 bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-100 rounded-full font-mono">
+                    <span key={v} className="text-[10px] px-2 py-0.5 bg-accent/10 text-accent dark:text-accent-bright border border-accent/25 rounded-full font-mono">
                       {v}
                     </span>
                   ))}
@@ -374,9 +370,9 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
               )}
             </div>
           ) : (
-            <div className="bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3">
-              <p className="text-[12px] text-gray-600 dark:text-gray-400">
-                The LLM constructs the entire body as a JSON object and passes it as <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">body</code>.
+            <div className="bg-muted border border-border-strong rounded-lg px-4 py-3">
+              <p className="text-[12px] text-muted-foreground">
+                The LLM constructs the entire body as a JSON object and passes it as <code className="font-mono bg-muted px-1 rounded">body</code>.
               </p>
             </div>
           )}
@@ -385,18 +381,18 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
 
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
-          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Risk level</label>
+          <label className="block text-[11px] font-medium text-muted-foreground mb-1">Risk level</label>
           <select value={form.riskLevel} onChange={(e) => set('riskLevel', e.target.value)}
-            className="text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+            className="text-sm px-3 py-2 border border-border-strong rounded-lg bg-surface">
             {RISK_OPTIONS.map((r) => <option key={r}>{r}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Timeout (ms)</label>
+          <label className="block text-[11px] font-medium text-muted-foreground mb-1">Timeout (ms)</label>
           <input type="number" value={form.timeoutMs} onChange={(e) => set('timeoutMs', Number(e.target.value))}
-            className="text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg w-28" />
+            className="text-sm px-3 py-2 border border-border-strong rounded-lg w-28" />
         </div>
-        <label className="flex items-center gap-2 text-[12px] text-gray-600 dark:text-gray-400 cursor-pointer pb-2">
+        <label className="flex items-center gap-2 text-[12px] text-muted-foreground cursor-pointer pb-2">
           <input type="checkbox" checked={form.requiresApproval}
             onChange={(e) => set('requiresApproval', e.target.checked)} />
           Require approval before running
@@ -406,10 +402,10 @@ function HTTPToolForm({ onClose }: { onClose: () => void }) {
       <div className="flex gap-2">
         <button
           onClick={() => create.mutate()} disabled={create.isPending}
-          className="px-4 py-2 bg-purple-600 text-white text-[12px] rounded-lg disabled:opacity-50 font-medium">
+          className="px-4 py-2 bg-accent text-white text-[12px] rounded-lg disabled:opacity-50 font-medium">
           {create.isPending ? 'Adding…' : 'Add tool'}
         </button>
-        <button onClick={onClose} className="px-3 py-2 text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">Cancel</button>
+        <button onClick={onClose} className="px-3 py-2 text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint">Cancel</button>
       </div>
     </div>
   )
@@ -477,36 +473,36 @@ function CodeToolPanel({
   }
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-5 mb-6 bg-white dark:bg-gray-900 shadow-sm">
+    <div className="border border-border-strong rounded-xl p-5 mb-6 bg-surface shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{existingId ? 'Edit code tool' : 'New code tool'}</p>
-          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-            Write JavaScript that runs in a sandboxed Goja VM. Receives <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">input</code> and returns any JSON-serializable value.
+          <p className="text-sm font-medium text-foreground">{existingId ? 'Edit code tool' : 'New code tool'}</p>
+          <p className="text-[11px] text-faint mt-0.5">
+            Write JavaScript that runs in a sandboxed Goja VM. Receives <code className="font-mono bg-muted px-1 rounded">input</code> and returns any JSON-serializable value.
           </p>
         </div>
-        <button onClick={onClose}><X size={15} className="text-gray-400 dark:text-gray-500" /></button>
+        <button onClick={onClose}><X size={15} className="text-faint" /></button>
       </div>
 
-      {error && <p className="text-[12px] text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-100 rounded px-3 py-2 mb-3">{error}</p>}
+      {error && <p className="text-[12px] text-crit bg-crit/10 border border-crit/30 rounded px-3 py-2 mb-3">{error}</p>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
         <div>
-          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Tool name *</label>
+          <label className="block text-[11px] font-medium text-muted-foreground mb-1">Tool name *</label>
           <input value={form.name} onChange={(e) => set('name', e.target.value)}
-            placeholder="e.g. calculate_discount" className="w-full text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg font-mono" />
+            placeholder="e.g. calculate_discount" className="w-full text-sm px-3 py-2 border border-border-strong rounded-lg font-mono" />
         </div>
         <div>
-          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Description</label>
+          <label className="block text-[11px] font-medium text-muted-foreground mb-1">Description</label>
           <input value={form.description} onChange={(e) => set('description', e.target.value)}
-            placeholder="What this tool does" className="w-full text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg" />
+            placeholder="What this tool does" className="w-full text-sm px-3 py-2 border border-border-strong rounded-lg" />
         </div>
       </div>
 
       {/* Code editor */}
       <div className="mb-4">
-        <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">JavaScript code *</label>
-        <div className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+        <label className="block text-[11px] font-medium text-muted-foreground mb-1">JavaScript code *</label>
+        <div className="rounded-lg overflow-hidden border border-border-strong">
           <CodeEditor
             value={form.code}
             height="220px"
@@ -519,32 +515,32 @@ function CodeToolPanel({
 
       {/* Input schema */}
       <div className="mb-4">
-        <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">
-          Input schema <span className="font-normal text-gray-400 dark:text-gray-500">(JSON Schema — describes what the LLM must provide)</span>
+        <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+          Input schema <span className="font-normal text-faint">(JSON Schema — describes what the LLM must provide)</span>
         </label>
         <textarea
           value={form.inputSchema}
           onChange={(e) => set('inputSchema', e.target.value)}
           rows={5}
-          className="w-full text-[12px] font-mono px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg resize-y bg-white dark:bg-gray-900"
+          className="w-full text-[12px] font-mono px-3 py-2 border border-border-strong rounded-lg resize-y bg-surface"
         />
       </div>
 
       {/* Risk + settings */}
       <div className="flex flex-wrap items-end gap-3 mb-5">
         <div>
-          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Risk level</label>
+          <label className="block text-[11px] font-medium text-muted-foreground mb-1">Risk level</label>
           <select value={form.riskLevel} onChange={(e) => set('riskLevel', e.target.value)}
-            className="text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+            className="text-sm px-3 py-2 border border-border-strong rounded-lg bg-surface">
             {RISK_OPTIONS.map((r) => <option key={r}>{r}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-1">Timeout (ms)</label>
+          <label className="block text-[11px] font-medium text-muted-foreground mb-1">Timeout (ms)</label>
           <input type="number" value={form.timeoutMs} onChange={(e) => set('timeoutMs', Number(e.target.value))}
-            className="text-sm px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg w-28" />
+            className="text-sm px-3 py-2 border border-border-strong rounded-lg w-28" />
         </div>
-        <label className="flex items-center gap-2 text-[12px] text-gray-600 dark:text-gray-400 cursor-pointer pb-2">
+        <label className="flex items-center gap-2 text-[12px] text-muted-foreground cursor-pointer pb-2">
           <input type="checkbox" checked={form.requiresApproval}
             onChange={(e) => set('requiresApproval', e.target.checked)} />
           Require approval before running
@@ -552,26 +548,26 @@ function CodeToolPanel({
       </div>
 
       {/* Test panel */}
-      <div className="border border-gray-100 dark:border-gray-800 rounded-lg p-4 mb-4 bg-gray-50 dark:bg-gray-800/60">
-        <p className="text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-2">Test this tool</p>
+      <div className="border border-border rounded-lg p-4 mb-4 bg-muted">
+        <p className="text-[11px] font-medium text-muted-foreground mb-2">Test this tool</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">Input (JSON)</label>
+            <label className="block text-[10px] text-muted-foreground mb-1">Input (JSON)</label>
             <textarea
               value={testInput}
               onChange={(e) => setTestInput(e.target.value)}
               rows={4}
-              className="w-full text-[12px] font-mono px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 resize-none"
+              className="w-full text-[12px] font-mono px-3 py-2 border border-border-strong rounded-lg bg-surface resize-none"
             />
           </div>
           <div>
-            <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">Result</label>
+            <label className="block text-[10px] text-muted-foreground mb-1">Result</label>
             <pre className={`h-[88px] text-[12px] font-mono px-3 py-2 border rounded-lg overflow-auto whitespace-pre-wrap ${
               testResult?.startsWith('Error:')
-                ? 'bg-red-50 dark:bg-red-500/10 border-red-100 text-red-700 dark:text-red-300'
-                : 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200'
+                ? 'bg-crit/10 border-crit/30 text-crit dark:text-crit'
+                : 'bg-surface border-border-strong text-foreground'
             }`}>
-              {testResult ?? <span className="text-gray-400 dark:text-gray-500">— run test to see output —</span>}
+              {testResult ?? <span className="text-faint">— run test to see output —</span>}
             </pre>
           </div>
         </div>
@@ -587,10 +583,10 @@ function CodeToolPanel({
       <div className="flex gap-2">
         <button
           onClick={() => save.mutate()} disabled={save.isPending}
-          className="px-4 py-2 bg-purple-600 text-white text-[12px] rounded-lg disabled:opacity-50 font-medium">
+          className="px-4 py-2 bg-accent text-white text-[12px] rounded-lg disabled:opacity-50 font-medium">
           {save.isPending ? 'Saving…' : existingId ? 'Save changes' : 'Create tool'}
         </button>
-        <button onClick={onClose} className="px-3 py-2 text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">Cancel</button>
+        <button onClick={onClose} className="px-3 py-2 text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint">Cancel</button>
       </div>
     </div>
   )
@@ -609,15 +605,15 @@ function Section({
     <div className="mb-7">
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
-          <span className="text-gray-400 dark:text-gray-500">{icon}</span>
-          <p className="text-[13px] font-medium text-gray-800 dark:text-gray-200">{title}</p>
-          <span className="text-[11px] text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded-full">{tools.length}</span>
+          <span className="text-faint">{icon}</span>
+          <p className="text-[13px] font-medium text-foreground">{title}</p>
+          <span className="text-[11px] text-faint bg-muted px-1.5 py-0.5 rounded-full">{tools.length}</span>
         </div>
         {action}
       </div>
-      <p className="text-[11px] text-gray-400 dark:text-gray-500 ml-6 mb-2">{blurb}</p>
+      <p className="text-[11px] text-faint ml-6 mb-2">{blurb}</p>
       {tools.length > 0 ? (
-        <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+        <DataTable columns={['Tool', 'Type', 'Category', 'Risk', 'Enabled', '']} minWidth={720}>
           {tools.map((t) => (
             <ToolRow
               key={t.id}
@@ -627,10 +623,10 @@ function Section({
               onEdit={onEdit ? () => onEdit(t) : undefined}
             />
           ))}
-        </div>
+        </DataTable>
       ) : (
-        <div className="border border-dashed border-gray-200 dark:border-gray-700 rounded-xl py-6 text-center">
-          <p className="text-[12px] text-gray-400 dark:text-gray-500">{emptyBlurb ?? `No ${title.toLowerCase()} yet.`}</p>
+        <div className="border border-dashed border-border-strong rounded-xl py-6 text-center">
+          <p className="text-[12px] text-faint">{emptyBlurb ?? `No ${title.toLowerCase()} yet.`}</p>
         </div>
       )}
     </div>
@@ -683,35 +679,52 @@ export default function ToolsPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Tools</h1>
-        <p className="text-[12px] text-gray-400 dark:text-gray-500 mt-0.5">
-          Tools let agents take actions beyond text — run code, call APIs, search the web.
-        </p>
-        <div className="flex flex-wrap items-center gap-2 text-[11px] mt-3">
-          <span className="text-gray-400 dark:text-gray-500">Risk levels:</span>
+    <div className="p-4 sm:p-6 max-w-5xl">
+      <PageHeader
+        eyebrow="Integrations"
+        title="Tools"
+        subtitle="Tools let agents take actions beyond text — run code, call APIs, search the web."
+        actions={
+          <>
+            <button
+              onClick={() => { setAddingHTTP(true); setAddingCode(false); setEditingTool(null); setActionError(''); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 border border-border-strong text-muted-foreground text-[13px] rounded-[10px] hover:bg-muted"
+            >
+              <Globe size={14} /> New HTTP tool
+            </button>
+            <button
+              onClick={() => { setAddingCode(true); setAddingHTTP(false); setEditingTool(null); setActionError(''); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-br from-accent to-accent-ink text-white text-[13px] font-semibold rounded-[10px] shadow-card hover:opacity-95"
+            >
+              <Plus size={15} /> New code tool
+            </button>
+          </>
+        }
+      />
+      <div className="mb-6 -mt-2">
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="text-faint">Risk levels:</span>
           {([
-            { level: 'low',      cls: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-100' },
-            { level: 'medium',   cls: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-100' },
-            { level: 'high',     cls: 'bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-100' },
-            { level: 'critical', cls: 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 border-red-100' },
+            { level: 'low',      cls: 'bg-info/10 text-info border-info/30' },
+            { level: 'medium',   cls: 'bg-warn/10 text-warn border-warn/30' },
+            { level: 'high',     cls: 'bg-warn/10 dark:bg-warn/10 text-warn dark:text-warn border-warn/30' },
+            { level: 'critical', cls: 'bg-crit/10 text-crit dark:text-crit border-crit/30' },
           ] as const).map(({ level, cls }) => (
             <span key={level} className={`px-2 py-0.5 rounded-full border ${cls}`}>{level}</span>
           ))}
-          <span className="text-gray-400 dark:text-gray-500 ml-1">
-            · tools marked <span className="text-amber-700 dark:text-amber-300 font-medium">approval</span> pause the agent until a human approves
+          <span className="text-faint ml-1">
+            · tools marked <span className="text-warn font-medium">approval</span> pause the agent until a human approves
           </span>
         </div>
       </div>
 
       {(error || actionError) && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">
           {actionError || (error as Error).message}
         </div>
       )}
 
-      {isLoading && <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">Loading…</div>}
+      {isLoading && <div className="py-12 text-center text-sm text-faint">Loading…</div>}
 
       {!isLoading && (
         <>
@@ -744,7 +757,7 @@ export default function ToolsPage() {
             emptyBlurb="No MCP tools discovered yet. Connect an MCP server to populate this list."
             tools={mcp}
             action={
-              <Link href="/mcp-servers" className="inline-flex items-center gap-1 text-[11px] text-purple-600 dark:text-purple-300 hover:underline">
+              <Link href="/mcp-servers" className="inline-flex items-center gap-1 text-[11px] text-accent dark:text-accent-bright hover:underline">
                 Manage MCP servers <ExternalLink size={10} />
               </Link>
             }
@@ -762,7 +775,7 @@ export default function ToolsPage() {
               !addingCode && !editingTool ? (
                 <button
                   onClick={() => { setAddingCode(true); setAddingHTTP(false); setActionError('') }}
-                  className="inline-flex items-center gap-1 text-[11px] text-purple-600 dark:text-purple-300 hover:underline">
+                  className="inline-flex items-center gap-1 text-[11px] text-accent dark:text-accent-bright hover:underline">
                   <Plus size={11} /> New code tool
                 </button>
               ) : undefined
@@ -782,7 +795,7 @@ export default function ToolsPage() {
               !addingHTTP ? (
                 <button
                   onClick={() => { setAddingHTTP(true); setAddingCode(false); setEditingTool(null); setActionError('') }}
-                  className="inline-flex items-center gap-1 text-[11px] text-purple-600 dark:text-purple-300 hover:underline">
+                  className="inline-flex items-center gap-1 text-[11px] text-accent dark:text-accent-bright hover:underline">
                   <Plus size={11} /> Add HTTP tool
                 </button>
               ) : undefined
@@ -793,10 +806,10 @@ export default function ToolsPage() {
         </>
       )}
 
-      <div className="mt-6 p-4 rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
-        <p className="text-sm text-gray-600 dark:text-gray-400">
+      <div className="mt-6 p-4 rounded-lg bg-muted border border-border-strong">
+        <p className="text-sm text-muted-foreground">
           Learn about native tools, HTTP tools, code tools, risk levels, and approval gates in the{' '}
-          <Link href="/docs/what-is-a-tool" className="text-purple-600 dark:text-purple-300 hover:underline">
+          <Link href="/docs/what-is-a-tool" className="text-accent dark:text-accent-bright hover:underline">
             documentation
           </Link>.
         </p>

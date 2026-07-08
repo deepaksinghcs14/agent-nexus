@@ -34,39 +34,39 @@ function SubRunRow({ subRun, agentName }: { subRun: Run; agentName?: string }) {
   const tokens = subRun.total_input_tokens + subRun.total_output_tokens
 
   return (
-    <div className="border-b border-gray-50 last:border-b-0">
+    <div className="border-b border-border last:border-b-0">
       <button
-        className={`w-full ${ROW_GRID} ${GRID_COLS} py-2.5 text-left hover:bg-gray-50/60 transition-colors`}
+        className={`w-full ${ROW_GRID} ${GRID_COLS} py-2.5 text-left hover:bg-muted/60 transition-colors`}
         onClick={() => setOpen(v => !v)}
       >
-        <span className="flex items-center justify-center text-gray-300 dark:text-gray-600">
+        <span className="flex items-center justify-center text-faint">
           {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         </span>
         <span className="flex items-center gap-1.5 min-w-0">
-          <Sparkles size={11} className="text-indigo-400 flex-shrink-0" />
-          <span className="text-[12px] font-medium text-gray-800 dark:text-gray-200 truncate">{agentName ?? 'Agent'}</span>
+          <Sparkles size={11} className="text-accent-bright flex-shrink-0" />
+          <span className="text-[12px] font-medium text-foreground truncate">{agentName ?? 'Agent'}</span>
         </span>
         <span className="flex justify-center">
           <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusColor(subRun.status)}`}>{subRun.status}</span>
         </span>
-        <span className="text-[11px] text-gray-400 dark:text-gray-500 text-right">{dur !== null ? `${dur}s` : '—'}</span>
-        <span className="text-[11px] text-gray-400 dark:text-gray-500 text-right">{tokens > 0 ? formatTokens(tokens) : '—'}</span>
-        <span className="text-[11px] text-gray-400 dark:text-gray-500 text-right">{subRun.cost_estimate > 0 ? formatCost(subRun.cost_estimate) : '—'}</span>
+        <span className="text-[11px] text-faint text-right">{dur !== null ? `${dur}s` : '—'}</span>
+        <span className="text-[11px] text-faint text-right">{tokens > 0 ? formatTokens(tokens) : '—'}</span>
+        <span className="text-[11px] text-faint text-right">{subRun.cost_estimate > 0 ? formatCost(subRun.cost_estimate) : '—'}</span>
       </button>
       {open && (
-        <div className="mx-4 mb-2 rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/50 overflow-hidden">
-          {isFetching && <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center py-3">Loading steps…</p>}
+        <div className="mx-4 mb-2 rounded-lg border border-border bg-muted/50 overflow-hidden">
+          {isFetching && <p className="text-[11px] text-faint text-center py-3">Loading steps…</p>}
           {isActive && (
-            <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400">
+            <div className="flex items-center gap-2 border-b border-border bg-surface px-3 py-2 text-[11px] text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" />
               Waiting for this run to finish…
             </div>
           )}
-          {!isFetching && steps.length === 0 && !isActive && <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center py-3">No steps recorded.</p>}
+          {!isFetching && steps.length === 0 && !isActive && <p className="text-[11px] text-faint text-center py-3">No steps recorded.</p>}
           {!isFetching && output && (
-            <div className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
-              <p className="text-[10px] font-medium uppercase text-gray-400 dark:text-gray-500 mb-1.5">Output</p>
-              <div className="text-[12px] text-gray-700 dark:text-gray-300 whitespace-pre-wrap max-h-52 overflow-y-auto">{output}</div>
+            <div className="border-b border-border bg-surface p-3">
+              <p className="text-[10px] font-medium uppercase text-faint mb-1.5">Output</p>
+              <div className="text-[12px] text-foreground whitespace-pre-wrap max-h-52 overflow-y-auto">{output}</div>
             </div>
           )}
           {steps.map((step) => {
@@ -150,13 +150,13 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
   return (
     <div className="p-4 sm:p-6 max-w-6xl">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
-        <Link href="/runs" className="text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 inline-flex items-center gap-1">
+        <Link href="/runs" className="text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint inline-flex items-center gap-1">
           <ArrowLeft className="w-3 h-3" /> Runs
         </Link>
         {detail && ['pending', 'running', 'approval_wait', 'session_wait'].includes(detail.status) && (
           <button
             onClick={() => cancel.mutate()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-red-200 text-red-600 dark:text-red-300 text-[12px] rounded-lg"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-crit/30 text-crit text-[12px] rounded-lg"
           >
             <Ban className="w-3.5 h-3.5" /> Cancel run
           </button>
@@ -164,10 +164,10 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
       </div>
 
       {error && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3">{(error as Error).message}</div>
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3">{(error as Error).message}</div>
       )}
       {isLoading && (
-        <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">Loading trace…</div>
+        <div className="py-12 text-center text-sm text-faint">Loading trace…</div>
       )}
 
       {detail && (
@@ -175,36 +175,36 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
           {/* Pending approval — shown for waiting runs, including runs parked
               across a server restart (no live playground session exists). */}
           {detail.status === 'approval_wait' && approvalRequest && (
-            <div className="mb-5 rounded-xl border border-purple-200 bg-purple-50/60 p-4">
-              <p className="text-[12px] font-semibold text-purple-900 mb-1">
+            <div className="mb-5 rounded-xl border border-accent/40 bg-accent/10/60 p-4">
+              <p className="text-[12px] font-semibold text-accent dark:text-accent-bright mb-1">
                 Approval required: <span className="font-mono">{approvalRequest.tool_name}</span>
               </p>
-              <pre className="text-[11px] text-purple-900/80 bg-white/70 border border-purple-100 rounded-lg p-2.5 mb-3 max-h-40 overflow-auto whitespace-pre-wrap">
+              <pre className="text-[11px] text-accent dark:text-accent-bright/80 bg-white/70 border border-accent/25 rounded-lg p-2.5 mb-3 max-h-40 overflow-auto whitespace-pre-wrap">
                 {JSON.stringify(approvalRequest.tool_input, null, 2)}
               </pre>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => decide.mutate('approved')}
                   disabled={decide.isPending}
-                  className="px-3 py-1.5 rounded-lg bg-purple-700 text-white text-[12px] font-medium disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-lg bg-accent-hover text-white text-[12px] font-medium disabled:opacity-50"
                 >
                   {decide.isPending ? 'Sending…' : 'Approve & resume'}
                 </button>
                 <button
                   onClick={() => decide.mutate('rejected')}
                   disabled={decide.isPending}
-                  className="px-3 py-1.5 rounded-lg border border-purple-300 text-purple-800 dark:text-purple-300 text-[12px] font-medium disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-lg border border-accent/50 text-accent dark:text-accent-bright dark:text-accent dark:text-accent-bright text-[12px] font-medium disabled:opacity-50"
                 >
                   Reject
                 </button>
                 {decide.isError && (
-                  <span className="text-[11px] text-red-600 dark:text-red-300">{(decide.error as Error).message}</span>
+                  <span className="text-[11px] text-crit">{(decide.error as Error).message}</span>
                 )}
               </div>
             </div>
           )}
           {detail.status === 'session_wait' && (
-            <div className="mb-5 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 text-[12px] text-indigo-900">
+            <div className="mb-5 rounded-xl border border-accent/30 bg-accent/10/60 p-4 text-[12px] text-accent dark:text-accent-bright">
               A repo coding session is running for this run. It resumes automatically when the session completes — this can take minutes to hours.
             </div>
           )}
@@ -219,12 +219,12 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
               ['Started', new Date(detail.started_at).toLocaleString()],
               ['Completed', detail.completed_at ? new Date(detail.completed_at).toLocaleString() : '—'],
             ].map(([label, value]) => (
-              <div key={label} className="bg-gray-50 dark:bg-gray-800/60 rounded-lg p-2.5">
-                <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-1">{label}</p>
+              <div key={label} className="bg-muted rounded-lg p-2.5">
+                <p className="text-[10px] text-faint mb-1">{label}</p>
                 {label === 'Status' ? (
                   <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor(value)}`}>{value}</span>
                 ) : (
-                  <p className="text-[11px] font-medium text-gray-800 dark:text-gray-200 break-words">{value}</p>
+                  <p className="text-[11px] font-medium text-foreground break-words">{value}</p>
                 )}
               </div>
             ))}
@@ -233,16 +233,16 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
           {/* Input / Output */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
             <div>
-              <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">Input</p>
-              <div className="bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 rounded-lg p-3 text-[12px] text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-32 overflow-y-auto">
+              <p className="text-[12px] font-medium text-foreground mb-1.5">Input</p>
+              <div className="bg-muted border border-border rounded-lg p-3 text-[12px] text-muted-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
                 {detail.input || 'No input recorded.'}
               </div>
             </div>
             <div>
-              <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300 mb-1.5">Output</p>
-              <div className="bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 rounded-lg p-3 text-[12px] text-gray-600 dark:text-gray-400 whitespace-pre-wrap max-h-32 overflow-y-auto">
+              <p className="text-[12px] font-medium text-foreground mb-1.5">Output</p>
+              <div className="bg-muted border border-border rounded-lg p-3 text-[12px] text-muted-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
                 {detail.output || detail.error_message || (isActive || hasActiveChildren ? (
-                  <span className="inline-flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                  <span className="inline-flex items-center gap-2 text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin" />
                     Waiting for active work to finish…
                   </span>
@@ -253,15 +253,15 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
 
           {/* Trace graph — full width */}
           <div className="mb-5">
-            <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <p className="text-[12px] font-medium text-foreground mb-2">
               Trace
               {!isWorkflowRoot && steps.length > 0 && (
-                <span className="ml-1.5 text-[10px] text-gray-400 dark:text-gray-500 font-normal">
+                <span className="ml-1.5 text-[10px] text-faint font-normal">
                   {steps.length} step{steps.length !== 1 ? 's' : ''} — click nodes to inspect
                 </span>
               )}
               {hasChildren && (
-                <span className="ml-1.5 text-[10px] text-gray-400 dark:text-gray-500 font-normal">
+                <span className="ml-1.5 text-[10px] text-faint font-normal">
                   {hasActiveChildren ? 'child runs still working below' : 'child runs available below'}
                 </span>
               )}
@@ -272,21 +272,21 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
           {/* Child runs table */}
           {hasChildren && (
             <div className="mb-5">
-              <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <p className="text-[12px] font-medium text-foreground mb-2">
                 {isWorkflowRoot ? 'Agent runs' : 'Background runs'}
-                <span className="ml-1.5 text-[10px] text-gray-400 dark:text-gray-500 font-normal">
+                <span className="ml-1.5 text-[10px] text-faint font-normal">
                   {children.length} run{children.length !== 1 ? 's' : ''} — expand to see output and steps
                 </span>
               </p>
-              <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-x-auto">
+              <div className="bg-surface border border-border rounded-xl overflow-x-auto">
                 <div className="min-w-[480px]">
-                <div className={`${ROW_GRID} ${GRID_COLS} py-1.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800`}>
+                <div className={`${ROW_GRID} ${GRID_COLS} py-1.5 bg-muted border-b border-border`}>
                   <span />
-                  <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase">Agent</span>
-                  <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase text-center">Status</span>
-                  <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase text-right">Dur</span>
-                  <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase text-right">Tokens</span>
-                  <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase text-right">Cost</span>
+                  <span className="text-[10px] font-medium text-faint uppercase">Agent</span>
+                  <span className="text-[10px] font-medium text-faint uppercase text-center">Status</span>
+                  <span className="text-[10px] font-medium text-faint uppercase text-right">Dur</span>
+                  <span className="text-[10px] font-medium text-faint uppercase text-right">Tokens</span>
+                  <span className="text-[10px] font-medium text-faint uppercase text-right">Cost</span>
                 </div>
                 {children.map((child) => (
                   <SubRunRow key={child.id} subRun={child} agentName={child.agent_id ? agentNames[child.agent_id] : undefined} />

@@ -10,21 +10,28 @@ import {
   ExternalLink, ArrowRight, ChevronDown, Zap,
 } from 'lucide-react'
 import { providersAPI, nexusAIAPI } from '@/lib/api'
+import { PageHeader } from '@/components/ui/PageHeader'
 import type { NexusMessage, ProviderCredential, ModelInfo } from '@/types'
-
-const SUGGESTIONS = [
-  'Create a research agent with web search that writes detailed reports',
-  'Build a supervisor workflow: coordinator delegates to researcher, fact-checker, and writer agents',
-  'Build a support triage workflow: classify → route → respond',
-  'Make a code review pipeline with a reviewer and a fixer agent',
-  'Set up a webhook trigger to run a workflow from GitHub, Zapier, or any HTTP source',
-]
 
 const TEMPLATES = [
   {
-    icon: 'zap' as const,
-    title: 'Webhook trigger setup',
-    desc: 'Wire an external HTTP event to a workflow',
+    title: 'Support agent',
+    desc: 'Triage + reply drafting',
+    prompt: 'Build a support agent that triages my inbound support messages, classifies urgency, tags the topic, and drafts a friendly reply I can approve.',
+  },
+  {
+    title: 'Research pipeline',
+    desc: 'Multi-agent + digest',
+    prompt: 'Build a daily competitive-intel pipeline: a Market Researcher agent (web search + summarize) feeding a Digest Writer, wired into a scheduled workflow that emails the digest.',
+  },
+  {
+    title: 'Code reviewer',
+    desc: 'PR review on webhook',
+    prompt: 'Set up a code review pipeline with a reviewer and a fixer agent, triggered by a GitHub pull_request webhook.',
+  },
+  {
+    title: 'Webhook trigger',
+    desc: 'Wire an HTTP event to a workflow',
     prompt: `I need to set up a webhook trigger for a workflow.
 
 Please:
@@ -52,22 +59,22 @@ function ToolCard({ msg }: { msg: NexusMessage }) {
 
   return (
     <div className={`flex items-start gap-3 px-3.5 py-2.5 rounded-lg border text-sm
-      ${isError ? 'bg-red-50 dark:bg-red-500/10 border-red-200' : started ? 'bg-purple-50 dark:bg-purple-500/10 border-purple-200' : 'bg-green-50 dark:bg-green-500/10 border-green-200'}`}
+      ${isError ? 'bg-crit/10 border-crit/30' : started ? 'bg-accent/10 border-accent/40' : 'bg-good/10 border-good/30'}`}
     >
       <div className="mt-0.5 shrink-0">
-        {isError ? <AlertCircle size={15} className="text-red-500" />
-          : started ? <Loader2 size={15} className="animate-spin text-purple-500" />
-          : <CheckCircle2 size={15} className="text-green-500" />}
+        {isError ? <AlertCircle size={15} className="text-crit" />
+          : started ? <Loader2 size={15} className="animate-spin text-accent dark:text-accent-bright" />
+          : <CheckCircle2 size={15} className="text-good" />}
       </div>
       <div className="flex-1 min-w-0">
-        <p className={`font-medium text-[13px] ${isError ? 'text-red-700 dark:text-red-300' : started ? 'text-purple-700 dark:text-purple-300' : 'text-green-700 dark:text-green-300'}`}>
+        <p className={`font-medium text-[13px] ${isError ? 'text-crit dark:text-crit' : started ? 'text-accent dark:text-accent-bright' : 'text-good'}`}>
           {ev.label}
         </p>
-        {ev.error && <p className="text-red-500 text-xs mt-0.5">{ev.error}</p>}
-        {ev.result && !started && <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">{ev.result.name}</p>}
+        {ev.error && <p className="text-crit text-xs mt-0.5">{ev.error}</p>}
+        {ev.result && !started && <p className="text-muted-foreground text-xs mt-0.5">{ev.result.name}</p>}
       </div>
       {ev.link && !started && !isError && (
-        <Link href={ev.link} className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-300 hover:text-purple-700 font-medium shrink-0">
+        <Link href={ev.link} className="flex items-center gap-1 text-xs text-accent dark:text-accent-bright hover:text-accent dark:text-accent-bright font-medium shrink-0">
           Open <ExternalLink size={11} />
         </Link>
       )}
@@ -84,7 +91,7 @@ function MessageBubble({ msg, isStreaming }: { msg: NexusMessage; isStreaming: b
   if (msg.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[90%] sm:max-w-[72%] px-4 py-2.5 rounded-2xl rounded-tr-sm bg-purple-600 text-white text-sm leading-relaxed whitespace-pre-wrap">
+        <div className="max-w-[90%] sm:max-w-[72%] px-4 py-2.5 rounded-2xl rounded-tr-sm bg-accent text-white text-sm leading-relaxed whitespace-pre-wrap">
           {msg.content}
         </div>
       </div>
@@ -92,12 +99,12 @@ function MessageBubble({ msg, isStreaming }: { msg: NexusMessage; isStreaming: b
   }
   return (
     <div className="flex gap-2.5 items-start">
-      <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center">
-        <Sparkles size={12} className="text-purple-600 dark:text-purple-300" />
+      <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-accent/15 flex items-center justify-center">
+        <Sparkles size={12} className="text-accent dark:text-accent-bright" />
       </div>
-      <div className="flex-1 text-sm text-gray-800 dark:text-gray-200 leading-relaxed min-w-0">
+      <div className="flex-1 text-sm text-foreground leading-relaxed min-w-0">
         {isStreaming && msg.content === '' ? (
-          <span className="flex items-center gap-1.5 text-gray-400 dark:text-gray-500">
+          <span className="flex items-center gap-1.5 text-faint">
             <Loader2 size={13} className="animate-spin" /><span>thinking…</span>
           </span>
         ) : (
@@ -108,7 +115,7 @@ function MessageBubble({ msg, isStreaming }: { msg: NexusMessage; isStreaming: b
                 p: ({ children }: { children?: React.ReactNode }) => <p className="mb-2 last:mb-0">{children}</p>,
                 a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
                   <a href={href} target="_blank" rel="noopener noreferrer"
-                    className="text-purple-600 dark:text-purple-300 hover:text-purple-700 underline underline-offset-2">
+                    className="text-accent dark:text-accent-bright hover:text-accent dark:text-accent-bright underline underline-offset-2">
                     {children}
                   </a>
                 ),
@@ -118,19 +125,19 @@ function MessageBubble({ msg, isStreaming }: { msg: NexusMessage; isStreaming: b
                 code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
                   const isBlock = className?.includes('language-')
                   return isBlock
-                    ? <code className="block bg-gray-100 dark:bg-gray-800 rounded px-3 py-2 text-xs font-mono overflow-x-auto mb-2">{children}</code>
-                    : <code className="bg-gray-100 dark:bg-gray-800 rounded px-1 py-0.5 text-xs font-mono">{children}</code>
+                    ? <code className="block bg-muted rounded px-3 py-2 text-xs font-mono overflow-x-auto mb-2">{children}</code>
+                    : <code className="bg-muted rounded px-1 py-0.5 text-xs font-mono">{children}</code>
                 },
-                strong: ({ children }: { children?: React.ReactNode }) => <strong className="font-semibold text-gray-900 dark:text-gray-100">{children}</strong>,
-                h1: ({ children }: { children?: React.ReactNode }) => <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1 mt-2">{children}</h1>,
-                h2: ({ children }: { children?: React.ReactNode }) => <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1 mt-2">{children}</h2>,
-                h3: ({ children }: { children?: React.ReactNode }) => <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1 mt-2">{children}</h3>,
+                strong: ({ children }: { children?: React.ReactNode }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                h1: ({ children }: { children?: React.ReactNode }) => <h1 className="text-base font-semibold text-foreground mb-1 mt-2">{children}</h1>,
+                h2: ({ children }: { children?: React.ReactNode }) => <h2 className="text-sm font-semibold text-foreground mb-1 mt-2">{children}</h2>,
+                h3: ({ children }: { children?: React.ReactNode }) => <h3 className="text-sm font-medium text-foreground mb-1 mt-2">{children}</h3>,
               }}
             >
               {msg.content}
             </ReactMarkdown>
             {isStreaming && (
-              <span className="inline-block w-0.5 h-3.5 bg-purple-500 animate-pulse ml-0.5 align-middle" />
+              <span className="inline-block w-0.5 h-3.5 bg-accent animate-pulse ml-0.5 align-middle" />
             )}
           </>
         )}
@@ -326,7 +333,7 @@ export default function NexusAIPage() {
   if (providersLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 size={20} className="animate-spin text-gray-400 dark:text-gray-500" />
+        <Loader2 size={20} className="animate-spin text-faint" />
       </div>
     )
   }
@@ -334,184 +341,126 @@ export default function NexusAIPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="px-4 sm:px-6 py-3.5 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-3 flex-shrink-0">
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center">
-            <Sparkles size={14} className="text-purple-600 dark:text-purple-300" />
-          </div>
-          <span className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">Nexus AI</span>
-        </div>
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto h-full flex flex-col">
+      <PageHeader
+        eyebrow="Build · Natural language"
+        title="Nexus AI"
+        subtitle="Describe a system in plain language — Nexus discovers your tools, drafts agents, and wires workflows."
+      />
 
-        {/* Provider + model selectors */}
-        {hasProvider && (
-          <div className="flex flex-wrap items-center gap-2 ml-auto">
-            {/* Provider selector */}
-            <div className="relative">
-              <select
-                value={selectedProvider}
-                onChange={e => {
-                  setSelectedProvider(e.target.value)
-                  setSelectedModel('')
-                }}
-                disabled={isRunning}
-                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 cursor-pointer"
-              >
-                {activeProviders.map(p => (
-                  <option key={p.id} value={p.provider}>
-                    {p.display_name || p.provider}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-            </div>
-
-            {/* Model selector */}
-            <div className="relative">
-              <select
-                value={selectedModel}
-                onChange={e => setSelectedModel(e.target.value)}
-                disabled={isRunning || modelsLoading || availableModels.length === 0}
-                className="appearance-none pl-3 pr-7 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-100 disabled:opacity-50 cursor-pointer min-w-0 w-full sm:min-w-[160px] sm:w-auto"
-              >
-                {modelsLoading && <option value="">Loading models…</option>}
-                {!modelsLoading && availableModels.length === 0 && (
-                  <option value="">No models available</option>
-                )}
-                {availableModels.map(m => (
-                  <option key={m.id} value={m.id}>{m.name || m.id}</option>
-                ))}
-              </select>
-              <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* No-provider banner */}
       {!hasProvider && (
-        <div className="mx-4 sm:mx-6 mt-4 flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 flex-shrink-0">
-          <AlertCircle size={15} className="text-amber-500 shrink-0" />
-          <p className="text-sm text-amber-800 dark:text-amber-300">
+        <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-warn/10 border border-warn/30 flex-shrink-0">
+          <AlertCircle size={15} className="text-warn shrink-0" />
+          <p className="text-sm text-warn">
             Nexus AI uses your own LLM provider. Add one in{' '}
-            <Link href="/settings/providers" className="font-medium underline hover:text-amber-900">
-              Settings → Providers
-            </Link>{' '}
+            <Link href="/settings/providers" className="font-medium underline hover:text-warn">Settings → Providers</Link>{' '}
             to get started.
           </p>
         </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4">
-        {messages.length === 0 && (
-          <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
-            <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center mb-4">
-              <Sparkles size={20} className="text-purple-600 dark:text-purple-300" />
-            </div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">Nexus AI</h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-8 text-center">Ask me to build agents, create workflows, or manage your workspace</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
-              {[
-                { label: 'Create a research agent', desc: 'With web search and report generation' },
-                { label: 'Build a support workflow', desc: 'Classify → route → respond pipeline' },
-                { label: 'List my agents', desc: 'See all agents in this workspace' },
-                { label: 'Create a webhook trigger', desc: 'Connect an external event to a workflow' },
-              ].map((item) => (
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_290px] gap-5 flex-1 min-h-0">
+        {/* Chat card */}
+        <section className="flex flex-col border border-border rounded-xl bg-surface shadow-card overflow-hidden min-h-0">
+          <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
+            {messages.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center px-6 py-12">
+                <div className="w-10 h-10 rounded-full bg-accent/15 flex items-center justify-center mb-4">
+                  <Sparkles size={20} className="text-accent dark:text-accent-bright" />
+                </div>
+                <h2 className="text-lg font-semibold text-foreground mb-1">Nexus AI</h2>
+                <p className="text-sm text-muted-foreground text-center">Ask me to build agents, create workflows, or manage your workspace.</p>
+              </div>
+            )}
+            {messages.map(msg => (
+              <MessageBubble key={msg.id} msg={msg} isStreaming={isRunning && msg.id === activeAssistantId} />
+            ))}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Composer */}
+          <div className="border-t border-border p-3 flex-shrink-0">
+            <div className={`flex items-end gap-2.5 border rounded-xl bg-surface-2 transition-colors
+              ${isRunning ? 'border-border-strong' : 'border-border-strong focus-within:border-accent/50 focus-within:ring-2 focus-within:ring-accent/20'}`}>
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={!hasProvider ? 'Add a provider in Settings → Providers to use Nexus AI' : 'Describe the agent or workflow you want…'}
+                disabled={!hasProvider || isRunning}
+                className="flex-1 px-4 py-3 bg-transparent resize-none outline-none text-sm text-foreground placeholder-faint disabled:opacity-50 min-h-[44px] max-h-[160px] leading-relaxed"
+              />
+              <div className="pb-2 pr-2">
                 <button
-                  key={item.label}
-                  onClick={() => setInput(item.label)}
-                  className="text-left p-3.5 rounded-xl border border-gray-100 dark:border-gray-800 hover:border-purple-200 hover:bg-purple-50/30 transition-all"
+                  onClick={() => sendMessage(input)}
+                  disabled={!hasProvider || !input.trim() || isRunning}
+                  className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-accent-ink hover:opacity-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
                 >
-                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{item.label}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{item.desc}</p>
+                  {isRunning ? <Loader2 size={14} className="animate-spin text-white" /> : <Send size={14} className="text-white" />}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Right rail: provider + templates */}
+        <aside className="flex flex-col gap-4 min-w-0">
+          {hasProvider && (
+            <div className="border border-border rounded-xl bg-surface shadow-card overflow-hidden">
+              <div className="px-4 py-3 border-b border-border"><h3 className="text-sm font-semibold text-foreground">Provider</h3></div>
+              <div className="p-3 flex flex-col gap-2">
+                <div className="relative">
+                  <select
+                    value={selectedProvider}
+                    onChange={e => { setSelectedProvider(e.target.value); setSelectedModel('') }}
+                    disabled={isRunning}
+                    className="w-full appearance-none pl-3 pr-8 py-2 rounded-lg border border-border-strong bg-surface-2 text-[13px] text-foreground focus:outline-none focus:border-accent/50 disabled:opacity-50 cursor-pointer"
+                  >
+                    {activeProviders.map(p => <option key={p.id} value={p.provider}>{p.display_name || p.provider}</option>)}
+                  </select>
+                  <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
+                </div>
+                <div className="relative">
+                  <select
+                    value={selectedModel}
+                    onChange={e => setSelectedModel(e.target.value)}
+                    disabled={isRunning || modelsLoading || availableModels.length === 0}
+                    className="w-full appearance-none pl-3 pr-8 py-2 rounded-lg border border-border-strong bg-surface-2 text-[13px] text-foreground focus:outline-none focus:border-accent/50 disabled:opacity-50 cursor-pointer"
+                  >
+                    {modelsLoading && <option value="">Loading models…</option>}
+                    {!modelsLoading && availableModels.length === 0 && <option value="">No models available</option>}
+                    {availableModels.map(m => <option key={m.id} value={m.id}>{m.name || m.id}</option>)}
+                  </select>
+                  <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="border border-border rounded-xl bg-surface shadow-card overflow-hidden">
+            <div className="px-4 py-3 border-b border-border"><h3 className="text-sm font-semibold text-foreground">Start from a template</h3></div>
+            <div className="p-2 flex flex-col">
+              {TEMPLATES.map(t => (
+                <button
+                  key={t.title}
+                  onClick={() => setInput(t.prompt)}
+                  className="flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg text-left hover:bg-muted transition-colors"
+                >
+                  <div className="w-7 h-7 rounded-md bg-accent/15 flex items-center justify-center flex-shrink-0">
+                    <Zap size={13} className="text-accent dark:text-accent-bright" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[12.5px] font-semibold text-foreground truncate">{t.title}</p>
+                    <p className="text-[11px] text-faint truncate">{t.desc}</p>
+                  </div>
+                  <ArrowRight size={13} className="text-faint flex-shrink-0" />
                 </button>
               ))}
             </div>
           </div>
-        )}
-        {messages.map(msg => (
-          <MessageBubble
-            key={msg.id}
-            msg={msg}
-            isStreaming={isRunning && msg.id === activeAssistantId}
-          />
-        ))}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Template cards + suggestion chips — only on first greeting */}
-      {messages.length === 1 && hasProvider && (
-        <div className="px-4 sm:px-6 pb-3 flex-shrink-0 space-y-3">
-          {/* Template cards */}
-          <div className="flex gap-2">
-            {TEMPLATES.map(t => (
-              <button
-                key={t.title}
-                onClick={() => setInput(t.prompt)}
-                className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-left hover:border-purple-300 hover:bg-purple-50 transition-colors flex-1 min-w-0"
-              >
-                <div className="w-6 h-6 rounded-md bg-purple-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <Zap size={12} className="text-purple-600 dark:text-purple-300" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[12px] font-semibold text-gray-800 dark:text-gray-200 truncate">{t.title}</p>
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">{t.desc}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-          {/* Suggestion chips */}
-          <div className="flex flex-wrap gap-2">
-            {SUGGESTIONS.map(s => (
-              <button
-                key={s}
-                onClick={() => setInput(s)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-600 dark:text-gray-400 hover:border-purple-300 hover:text-purple-700 hover:bg-purple-50 transition-colors"
-              >
-                <ArrowRight size={11} className="text-gray-400 dark:text-gray-500" />
-                {s.length > 60 ? s.slice(0, 60) + '…' : s}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Input bar */}
-      <div className="px-4 sm:px-6 pb-5 pt-1 flex-shrink-0">
-        <div className={`flex items-end gap-2.5 border rounded-xl bg-white dark:bg-gray-900 transition-colors
-          ${isRunning ? 'border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-700 focus-within:border-purple-300 focus-within:ring-2 focus-within:ring-purple-100'}`}
-        >
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              !hasProvider
-                ? 'Add a provider in Settings → Providers to use Nexus AI'
-                : 'Describe the agent or workflow you want…  (Enter to send, Shift+Enter for newline)'
-            }
-            disabled={!hasProvider || isRunning}
-            className="flex-1 px-4 py-3 bg-transparent resize-none outline-none text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-50 min-h-[44px] max-h-[160px] leading-relaxed"
-          />
-          <div className="pb-2 pr-2">
-            <button
-              onClick={() => sendMessage(input)}
-              disabled={!hasProvider || !input.trim() || isRunning}
-              className="w-8 h-8 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
-            >
-              {isRunning
-                ? <Loader2 size={14} className="animate-spin text-white" />
-                : <Send size={14} className="text-white" />}
-            </button>
-          </div>
-        </div>
-        <p className="text-center text-gray-400 dark:text-gray-500 text-[11px] mt-2">
-          Nexus AI creates agents and workflows directly in your workspace. Review before running in production.
-        </p>
+        </aside>
       </div>
     </div>
   )

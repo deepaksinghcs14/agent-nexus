@@ -30,7 +30,7 @@ export const viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <body className="font-sans">
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>

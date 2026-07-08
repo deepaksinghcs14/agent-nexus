@@ -59,7 +59,7 @@ export function UserMenu() {
             )}
             <button
               onClick={handleLogout}
-              className="block w-full px-3 py-2 text-left bg-transparent border-none text-red-500 text-sm rounded cursor-pointer hover:bg-muted"
+              className="block w-full px-3 py-2 text-left bg-transparent border-none text-crit text-sm rounded cursor-pointer hover:bg-muted"
             >
               Sign out
             </button>

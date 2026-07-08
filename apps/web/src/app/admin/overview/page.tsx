@@ -2,9 +2,11 @@
 
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Building2, ClipboardList, Users, Zap, Coins, BarChart2, SquareTerminal, Bot, Database, Radio, FlaskConical } from 'lucide-react'
+import { Activity, Building2, ClipboardList, Users, Zap, SquareTerminal, Bot, Database, Radio, FlaskConical } from 'lucide-react'
 import { adminAPI } from '@/lib/api'
 import { relativeTime, formatTokens } from '@/lib/utils'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { KpiTile } from '@/components/ui/KpiTile'
 import type { AuditLog, User } from '@/types'
 
 interface WorkspaceUsage { id: string; display_name: string; runs: number; tokens: number; cost: number }
@@ -26,20 +28,18 @@ export default function AdminOverviewPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Admin Overview</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Platform-wide stats and recent activity</p>
-      </div>
+      <PageHeader eyebrow="Admin" title="Platform overview" subtitle="Platform-wide stats and recent activity across all workspaces." />
+
 
       {errors.length > 0 && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3">
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3">
           {errors[0].message}
         </div>
       )}
 
       {/* Platform entity counts */}
       <div>
-        <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Platform</p>
+        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-3">Platform</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {[
             { label: 'Users', value: users.data?.data?.length ?? '—', icon: Users, href: '/admin/users' },
@@ -53,10 +53,10 @@ export default function AdminOverviewPage() {
             { label: 'Audit events', value: logs.length > 0 ? `${logs.length}+` : (audit.isLoading ? '—' : '0'), icon: ClipboardList, href: '/admin/audit-logs' },
           ].map((item) => (
             <Link key={item.label} href={item.href}
-              className="bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 rounded-xl p-4 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-              <item.icon className="w-4 h-4 text-purple-600 dark:text-purple-300 mb-3" />
-              <p className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{item.value}</p>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{item.label}</p>
+              className="bg-surface border border-border shadow-card rounded-xl p-4 hover:border-border-strong transition-colors">
+              <item.icon className="w-4 h-4 text-accent dark:text-accent-bright mb-3" />
+              <p className="text-2xl font-bold tabular-nums text-foreground">{item.value}</p>
+              <p className="text-[11px] text-faint mt-1">{item.label}</p>
             </Link>
           ))}
         </div>
@@ -64,19 +64,11 @@ export default function AdminOverviewPage() {
 
       {/* Usage stats */}
       <div>
-        <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Usage (all time)</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {[
-            { label: 'Agent runs', value: u ? u.runs.toLocaleString() : '—', icon: Zap, color: 'text-amber-500' },
-            { label: 'Tokens used', value: u ? formatTokens(u.tokens) : '—', icon: BarChart2, color: 'text-blue-500' },
-            { label: 'Est. cost', value: u ? `$${u.cost.toFixed(4)}` : '—', icon: Coins, color: 'text-green-600 dark:text-green-300' },
-          ].map((item) => (
-            <div key={item.label} className="bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 rounded-xl p-4">
-              <item.icon className={`w-4 h-4 mb-3 ${item.color}`} />
-              <p className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{item.value}</p>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{item.label}</p>
-            </div>
-          ))}
+        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-3">Usage (all time)</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <KpiTile label="Agent runs" value={u ? u.runs.toLocaleString() : '—'} tone="accent" />
+          <KpiTile label="Tokens used" value={u ? formatTokens(u.tokens) : '—'} tone="good" />
+          <KpiTile label="Est. cost" value={u ? `$${u.cost.toFixed(4)}` : '—'} tone="warn" />
         </div>
       </div>
 
@@ -84,18 +76,18 @@ export default function AdminOverviewPage() {
       {u?.top_workspaces && u.top_workspaces.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Top workspaces by runs</p>
-            <Link href="/admin/workspaces" className="text-[11px] text-purple-600 dark:text-purple-300 hover:underline">View all</Link>
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Top workspaces by runs</p>
+            <Link href="/admin/workspaces" className="text-[11px] text-accent dark:text-accent-bright hover:underline">View all</Link>
           </div>
-          <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+          <div className="bg-surface border border-border rounded-xl overflow-hidden">
             {u.top_workspaces.map((ws, i) => (
-              <div key={ws.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-b-0 border-gray-50">
-                <span className="text-[11px] font-semibold text-gray-300 dark:text-gray-600 w-4">{i + 1}</span>
+              <div key={ws.id} className="flex items-center gap-3 px-4 py-3 border-b last:border-b-0 border-border">
+                <span className="text-[11px] font-semibold text-faint w-4">{i + 1}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-medium text-gray-900 dark:text-gray-100 truncate">{ws.display_name}</p>
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500">{formatTokens(ws.tokens)} tokens · ${ws.cost.toFixed(4)}</p>
+                  <p className="text-[12px] font-medium text-foreground truncate">{ws.display_name}</p>
+                  <p className="text-[10px] text-faint">{formatTokens(ws.tokens)} tokens · ${ws.cost.toFixed(4)}</p>
                 </div>
-                <span className="text-[12px] font-semibold text-gray-700 dark:text-gray-300">{ws.runs.toLocaleString()} runs</span>
+                <span className="text-[12px] font-semibold text-foreground">{ws.runs.toLocaleString()} runs</span>
               </div>
             ))}
           </div>
@@ -105,28 +97,28 @@ export default function AdminOverviewPage() {
       {/* Recent audit events */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Recent activity</p>
-          <Link href="/admin/audit-logs" className="text-[11px] text-purple-600 dark:text-purple-300 hover:underline">View all</Link>
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Recent activity</p>
+          <Link href="/admin/audit-logs" className="text-[11px] text-accent dark:text-accent-bright hover:underline">View all</Link>
         </div>
-        <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+        <div className="bg-surface border border-border rounded-xl overflow-hidden">
           {audit.isLoading && (
-            <div className="p-6 text-center text-[12px] text-gray-400 dark:text-gray-500">Loading…</div>
+            <div className="p-6 text-center text-[12px] text-faint">Loading…</div>
           )}
           {logs.map((log) => (
-            <div key={log.id} className="flex gap-3 px-4 py-3 border-b last:border-b-0 border-gray-50">
-              <Activity className="w-3.5 h-3.5 text-purple-500 mt-0.5 flex-shrink-0" />
+            <div key={log.id} className="flex gap-3 px-4 py-3 border-b last:border-b-0 border-border">
+              <Activity className="w-3.5 h-3.5 text-accent dark:text-accent-bright mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-[12px] text-gray-700 dark:text-gray-300 truncate">
-                  <span className="font-medium text-gray-900 dark:text-gray-100">{log.actor_email || 'system'}</span>
+                <p className="text-[12px] text-foreground truncate">
+                  <span className="font-medium text-foreground">{log.actor_email || 'system'}</span>
                   {' · '}{log.action}
                 </p>
-                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{log.resource_type}{log.ip_address ? ` · ${log.ip_address}` : ''}</p>
+                <p className="text-[10px] text-faint mt-0.5">{log.resource_type}{log.ip_address ? ` · ${log.ip_address}` : ''}</p>
               </div>
-              <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">{relativeTime(log.created_at)}</span>
+              <span className="text-[10px] text-faint flex-shrink-0">{relativeTime(log.created_at)}</span>
             </div>
           ))}
           {!audit.isLoading && logs.length === 0 && (
-            <div className="p-8 text-center text-[12px] text-gray-400 dark:text-gray-500">
+            <div className="p-8 text-center text-[12px] text-faint">
               No activity recorded yet. Events appear here when users log in or admins make changes.
             </div>
           )}

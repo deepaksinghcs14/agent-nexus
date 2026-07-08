@@ -176,6 +176,7 @@ export const connectorsAPI = {
   list: () => api.get('/connectors'),
   create: (body: unknown) => api.post('/connectors', body),
   sync: (id: string) => api.post(`/connectors/${id}/sync`),
+  cancelSync: (id: string) => api.post(`/connectors/${id}/sync/cancel`),
   documents: (id: string, page = 1, group?: string) => api.get(`/connectors/${id}/documents?page=${page}${group ? `&group=${encodeURIComponent(group)}` : ''}`),
   documentGroups: (id: string) => api.get(`/connectors/${id}/document-groups`),
   browse: (id: string, path = '', search = '') => api.get(`/connectors/${id}/browse?path=${encodeURIComponent(path)}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
@@ -247,6 +248,8 @@ export const repoCatalogAPI = {
   onboard: (repo: string, branch?: string) => api.post('/repo-catalog', { repo, branch }),
   setSessions: (repo: string, enabled: boolean) =>
     api.patch('/repo-catalog', { repo, sessions_enabled: enabled }),
+  setAllSessions: (enabled: boolean) =>
+    api.patch('/repo-catalog', { all: true, sessions_enabled: enabled }),
   remove: (repo: string) => api.delete(`/repo-catalog?repo=${encodeURIComponent(repo)}`),
 }
 

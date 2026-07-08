@@ -5,11 +5,15 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MessageSquare, Trash2, Plus } from 'lucide-react'
 import { conversationsAPI } from '@/lib/api'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { DataTable, Row, Cell } from '@/components/ui/DataTable'
 import { relativeTime } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
 import type { Conversation } from '@/types'
 
 export default function ConversationsPage() {
   const queryClient = useQueryClient()
+  const router = useRouter()
   const [error, setError] = useState('')
 
   const { data, isLoading } = useQuery({
@@ -33,64 +37,64 @@ export default function ConversationsPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-4xl">
-      <div className="flex flex-wrap items-center gap-3 justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Conversations</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{conversations.length} conversation{conversations.length !== 1 ? 's' : ''}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {conversations.length > 0 && (
-            <button
-              onClick={() => { if (confirm(`Clear all ${conversations.length} conversations? This cannot be undone.`)) deleteAllMutation.mutate() }}
-              disabled={deleteAllMutation.isPending}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-red-200 text-red-600 dark:text-red-300 text-sm rounded-lg hover:bg-red-50 disabled:opacity-50"
-            >
-              <Trash2 size={14} /> Clear all
-            </button>
-          )}
-          <Link href="/playground">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700">
-              <Plus size={15} /> New Chat
-            </button>
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Chat"
+        title="Conversations"
+        subtitle={`${conversations.length} conversation${conversations.length !== 1 ? 's' : ''} across all agents`}
+        actions={
+          <>
+            {conversations.length > 0 && (
+              <button
+                onClick={() => { if (confirm(`Clear all ${conversations.length} conversations? This cannot be undone.`)) deleteAllMutation.mutate() }}
+                disabled={deleteAllMutation.isPending}
+                className="inline-flex items-center gap-1.5 px-3 py-2 border border-crit/30 text-crit text-[13px] rounded-[10px] hover:bg-crit/10 disabled:opacity-50"
+              >
+                <Trash2 size={14} /> Clear all
+              </button>
+            )}
+            <Link href="/playground" className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-br from-accent to-accent-ink text-white text-[13px] font-semibold rounded-[10px] shadow-card hover:opacity-95">
+              <Plus size={15} /> New chat
+            </Link>
+          </>
+        }
+      />
 
-      {error && <div className="mb-4 text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+      {error && <div className="mb-4 text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg px-3 py-2">{error}</div>}
 
-      {isLoading && <div className="text-sm text-gray-400 dark:text-gray-500 py-12 text-center">Loading…</div>}
+      {isLoading && <div className="text-sm text-faint py-12 text-center">Loading…</div>}
 
       {!isLoading && conversations.length === 0 && (
-        <div className="border border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-12 text-center">
-          <MessageSquare size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-          <p className="text-gray-500 dark:text-gray-400 text-sm">No conversations yet. Start one from the Playground.</p>
+        <div className="border border-dashed border-border-strong rounded-xl p-12 text-center">
+          <MessageSquare size={32} className="mx-auto text-faint mb-3" />
+          <p className="text-muted-foreground text-sm">No conversations yet. Start one from the Playground.</p>
           <Link href="/playground">
-            <button className="mt-4 px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700">
+            <button className="mt-4 px-4 py-2 bg-accent text-white text-sm rounded-lg hover:bg-accent-hover">
               Open Playground
             </button>
           </Link>
         </div>
       )}
 
-      <div className="space-y-2">
-        {conversations.map((c) => (
-          <div key={c.id} className="flex items-center justify-between border border-gray-100 dark:border-gray-800 rounded-xl p-4 bg-white dark:bg-gray-900 hover:border-gray-200">
-            <Link href={`/playground/${c.id}`} className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{c.title}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                {c.message_count} message{c.message_count !== 1 ? 's' : ''} · {relativeTime(c.updated_at)}
-              </p>
-            </Link>
-            <button
-              onClick={() => { if (confirm('Delete this conversation?')) deleteMutation.mutate(c.id) }}
-              disabled={deleteMutation.isPending}
-              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg ml-3 disabled:opacity-40"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))}
-      </div>
+      {!isLoading && conversations.length > 0 && (
+        <DataTable columns={['Conversation', 'Messages', 'Updated', '']} minWidth={560}>
+          {conversations.map((c) => (
+            <Row key={c.id} onClick={() => router.push(`/playground/${c.id}`)}>
+              <Cell className="!whitespace-normal"><span className="font-medium text-foreground">{c.title}</span></Cell>
+              <Cell><span className="font-mono text-[11px] text-muted-foreground tabular-nums">{c.message_count}</span></Cell>
+              <Cell><span className="text-[11px] text-faint">{relativeTime(c.updated_at)}</span></Cell>
+              <Cell className="text-right">
+                <button
+                  onClick={(e) => { e.stopPropagation(); if (confirm('Delete this conversation?')) deleteMutation.mutate(c.id) }}
+                  disabled={deleteMutation.isPending}
+                  className="p-1.5 text-faint hover:text-crit hover:bg-crit/10 rounded-lg disabled:opacity-40"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </Cell>
+            </Row>
+          ))}
+        </DataTable>
+      )}
     </div>
   )
 }

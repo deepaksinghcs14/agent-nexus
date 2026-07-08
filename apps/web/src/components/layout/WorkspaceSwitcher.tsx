@@ -18,11 +18,11 @@ const TYPE_LABELS: Record<WorkspaceType, string> = {
 }
 
 const TYPE_COLORS: Record<WorkspaceType, string> = {
-  personal: 'bg-purple-500/20 text-purple-300',
-  team: 'bg-blue-500/20 text-blue-300',
-  organization: 'bg-green-500/20 text-green-300',
-  project: 'bg-amber-500/20 text-amber-300',
-  sandbox: 'bg-gray-500/20 text-gray-400 dark:text-gray-500',
+  personal: 'bg-accent/15 text-accent dark:text-accent-bright',
+  team: 'bg-info/15 text-info',
+  organization: 'bg-good/15 text-good',
+  project: 'bg-warn/15 text-warn',
+  sandbox: 'bg-muted text-muted-foreground',
 }
 
 export function WorkspaceSwitcher({ collapsed = false }: { collapsed?: boolean }) {
@@ -65,12 +65,12 @@ export function WorkspaceSwitcher({ collapsed = false }: { collapsed?: boolean }
   const initial = (workspace?.display_name ?? '?')[0].toUpperCase()
 
   return (
-    <div className="border-b border-white/[0.06]">
+    <div className="border-b border-border">
       <button
         ref={triggerRef}
         onClick={handleToggle}
         className={cn(
-          'w-full flex items-center hover:bg-white/[0.04] transition-colors text-left',
+          'w-full flex items-center hover:bg-muted transition-colors text-left',
           collapsed ? 'justify-center py-2.5 px-0' : 'gap-2 px-4 py-2.5'
         )}
       >
@@ -81,14 +81,14 @@ export function WorkspaceSwitcher({ collapsed = false }: { collapsed?: boolean }
         ) : (
           <>
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-medium text-white/80 truncate leading-tight">
+              <p className="text-[12px] font-medium text-foreground truncate leading-tight">
                 {workspace?.display_name ?? 'Loading…'}
               </p>
               <span className={cn('inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded mt-0.5 uppercase tracking-wider', TYPE_COLORS[wsType])}>
                 {TYPE_LABELS[wsType]}
               </span>
             </div>
-            <ChevronDown className={cn('w-3.5 h-3.5 text-white/30 flex-shrink-0 transition-transform', open && 'rotate-180')} />
+            <ChevronDown className={cn('w-3.5 h-3.5 text-muted-foreground flex-shrink-0 transition-transform', open && 'rotate-180')} />
           </>
         )}
       </button>
@@ -99,19 +99,19 @@ export function WorkspaceSwitcher({ collapsed = false }: { collapsed?: boolean }
           <div className="fixed inset-0 z-40" onClick={handleClose} />
           {/* dropdown — fixed with coords from trigger rect */}
           <div
-            className="fixed z-50 bg-[#1e1c2e] border border-white/[0.10] rounded-xl shadow-2xl overflow-hidden"
+            className="fixed z-50 bg-surface border border-border rounded-xl shadow-card overflow-hidden"
             style={{
               top: dropdownRect.bottom + 4,
               left: dropdownRect.left,
               width: dropdownRect.width,
             }}
           >
-            <p className="px-3 pt-2.5 pb-1 text-[9px] font-semibold text-white/25 uppercase tracking-widest">
+            <p className="px-3 pt-2.5 pb-1 text-[9px] font-semibold text-faint uppercase tracking-widest">
               Your workspaces
             </p>
             <div className="max-h-60 overflow-y-auto">
               {workspaces.length === 0 && (
-                <p className="px-3 py-3 text-[11px] text-white/25">No workspaces yet</p>
+                <p className="px-3 py-3 text-[11px] text-muted-foreground">No workspaces yet</p>
               )}
               {workspaces.map((ws) => {
                 const t = (ws.workspace_type ?? 'personal') as WorkspaceType
@@ -124,31 +124,31 @@ export function WorkspaceSwitcher({ collapsed = false }: { collapsed?: boolean }
                     disabled={isActive || !!switching}
                     className={cn(
                       'w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors',
-                      isActive ? 'bg-white/[0.07] cursor-default' : 'hover:bg-white/[0.04] cursor-pointer'
+                      isActive ? 'bg-muted cursor-default' : 'hover:bg-muted cursor-pointer'
                     )}
                   >
                     <div className="flex-1 min-w-0">
-                      <p className={cn('text-[12px] font-medium truncate', isActive ? 'text-white' : 'text-white/60')}>
+                      <p className={cn('text-[12px] font-medium truncate', isActive ? 'text-foreground' : 'text-muted-foreground')}>
                         {ws.display_name}
                       </p>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <span className={cn('text-[9px] font-semibold px-1 py-0.5 rounded uppercase tracking-wider', TYPE_COLORS[t])}>
                           {TYPE_LABELS[t]}
                         </span>
-                        <span className="text-[10px] text-white/25 capitalize">{ws.role}</span>
+                        <span className="text-[10px] text-faint capitalize">{ws.role}</span>
                       </div>
                     </div>
-                    {isLoading && <Loader2 className="w-3 h-3 text-white/40 animate-spin flex-shrink-0" />}
-                    {isActive && !isLoading && <Check className="w-3 h-3 text-purple-400 flex-shrink-0" />}
+                    {isLoading && <Loader2 className="w-3 h-3 text-muted-foreground animate-spin flex-shrink-0" />}
+                    {isActive && !isLoading && <Check className="w-3 h-3 text-accent dark:text-accent-bright flex-shrink-0" />}
                   </button>
                 )
               })}
             </div>
-            <div className="border-t border-white/[0.08] p-1.5">
+            <div className="border-t border-border p-1.5">
               <Link
                 href="/settings/workspace/new"
                 onClick={handleClose}
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors"
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               >
                 <Plus className="w-3 h-3" />
                 New workspace

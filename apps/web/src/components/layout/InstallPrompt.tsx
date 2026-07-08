@@ -118,7 +118,7 @@ export function InstallPrompt() {
               <div className="flex items-center gap-3 bg-white/[0.06] rounded-lg p-3">
                 <div className="w-7 h-7 bg-white/10 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold text-white/60">1</div>
                 <div className="flex items-center gap-2 text-[12px] text-white/80">
-                  Tap the <Share className="w-4 h-4 inline text-blue-400 flex-shrink-0" /> Share button in Safari
+                  Tap the <Share className="w-4 h-4 inline text-info flex-shrink-0" /> Share button in Safari
                 </div>
               </div>
               <div className="flex items-center gap-3 bg-white/[0.06] rounded-lg p-3">

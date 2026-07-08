@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import { BarChart2 } from 'lucide-react'
 import { runsAPI } from '@/lib/api'
 import { formatCost, formatTokens } from '@/lib/utils'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { KpiTile } from '@/components/ui/KpiTile'
 
 interface AgentStat {
   agent_id: string
@@ -32,44 +34,38 @@ export default function UsagePage() {
   const byAgent = data?.by_agent ?? []
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Usage</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Token consumption and cost across all runs</p>
+    <div className="p-4 sm:p-6 max-w-5xl">
+      <PageHeader
+        eyebrow="Observe"
+        title="Usage"
+        subtitle="Token consumption and cost across all runs."
+      />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
+        <KpiTile label="Total tokens" value={formatTokens(totalTokens)} tone="accent" />
+        <KpiTile label="Estimated cost" value={formatCost(totalCost)} tone="warn" />
+        <KpiTile label="Recorded runs" value={totalRuns} tone="accent" />
+        <KpiTile label="Avg tokens / run" value={formatTokens(totalRuns ? Math.round(totalTokens / totalRuns) : 0)} tone="good" />
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        {[
-          ['Total tokens', formatTokens(totalTokens)],
-          ['Estimated cost', formatCost(totalCost)],
-          ['Recorded runs', String(totalRuns)],
-          ['Average tokens / run', formatTokens(totalRuns ? Math.round(totalTokens / totalRuns) : 0)],
-        ].map(([label, value]) => (
-          <div key={label} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl p-4">
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">{label}</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
-          </div>
-        ))}
-      </div>
-      {error && <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3">{(error as Error).message}</div>}
-      {isLoading && <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">Loading usage…</div>}
+      {error && <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3">{(error as Error).message}</div>}
+      {isLoading && <div className="py-12 text-center text-sm text-faint">Loading usage…</div>}
       {!isLoading && !error && byAgent.length === 0 && (
-        <div className="border border-dashed border-gray-200 dark:border-gray-700 rounded-xl py-12 text-center">
-          <BarChart2 className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">Usage will appear after your first recorded run.</p>
+        <div className="border border-dashed border-border-strong rounded-xl py-12 text-center">
+          <BarChart2 className="mx-auto text-faint mb-3" />
+          <p className="text-sm text-muted-foreground">Usage will appear after your first recorded run.</p>
         </div>
       )}
       {byAgent.length > 0 && (
         <div>
-          <p className="text-[12px] font-medium text-gray-700 dark:text-gray-300 mb-2">Usage by agent</p>
-          <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl p-4 space-y-4">
+          <p className="text-[12px] font-medium text-foreground mb-2">Usage by agent</p>
+          <div className="bg-surface border border-border rounded-xl p-4 space-y-4">
             {byAgent.map((item) => (
               <div key={item.agent_id}>
-                <div className="flex justify-between text-[11px] text-gray-600 dark:text-gray-400 mb-1">
+                <div className="flex justify-between text-[11px] text-muted-foreground mb-1">
                   <span>{item.agent_name}</span>
-                  <span className="text-gray-400 dark:text-gray-500">{item.runs} runs · {formatTokens(item.tokens)} · {formatCost(item.cost)}</span>
+                  <span className="text-faint">{item.runs} runs · {formatTokens(item.tokens)} · {formatCost(item.cost)}</span>
                 </div>
-                <div className="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-purple-500 rounded-full" style={{ width: `${totalTokens ? item.tokens / totalTokens * 100 : 0}%` }} />
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-accent to-accent-ink rounded-full" style={{ width: `${totalTokens ? item.tokens / totalTokens * 100 : 0}%` }} />
                 </div>
               </div>
             ))}

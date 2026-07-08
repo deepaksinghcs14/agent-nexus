@@ -1,4 +1,4 @@
-.PHONY: dev postgres api web stop logs migrate docker docker-up up down help
+.PHONY: dev postgres api web stop logs migrate docker docker-up up down help screenshots
 
 # ─── config ──────────────────────────────────────────────────────────────────
 COMPOSE     := docker compose -f infra/docker-compose.yml
@@ -111,3 +111,10 @@ migrate:
 # ─── logs ────────────────────────────────────────────────────────────────────
 logs:
 	$(COMPOSE) logs -f
+
+# ─── screenshots (refresh docs/screenshots with the current UI) ──────────────
+# One-time: cd apps/web && npm i -D playwright && npx playwright install chromium
+# Then:     NEXUS_EMAIL=you@example.com NEXUS_PASSWORD=•••• make screenshots
+#           (or NEXUS_TOKEN=<jwt> make screenshots). Skips code-repo pages.
+screenshots:
+	cd apps/web && node scripts/capture-screenshots.mjs

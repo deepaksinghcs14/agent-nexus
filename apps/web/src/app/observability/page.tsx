@@ -4,18 +4,19 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Timer } from 'lucide-react'
 import { observabilityAPI } from '@/lib/api'
+import { PageHeader } from '@/components/ui/PageHeader'
 import type { LatencyData, LatencyByAgent, LatencyByModel, LatencyTrendDay } from '@/types'
 
 function latencyColor(secs: number): string {
-  if (secs < 2) return 'bg-green-100 text-green-700 dark:text-green-300'
-  if (secs < 5) return 'bg-amber-100 text-amber-700 dark:text-amber-300'
-  return 'bg-red-100 text-red-700 dark:text-red-300'
+  if (secs < 2) return 'bg-good/15 text-good'
+  if (secs < 5) return 'bg-warn/15 text-warn'
+  return 'bg-crit/15 text-crit dark:text-crit'
 }
 
 function successColor(rate: number): string {
-  if (rate >= 95) return 'text-green-600 dark:text-green-300'
-  if (rate >= 80) return 'text-amber-600 dark:text-amber-300'
-  return 'text-red-600 dark:text-red-300'
+  if (rate >= 95) return 'text-good dark:text-good'
+  if (rate >= 80) return 'text-warn dark:text-warn'
+  return 'text-crit'
 }
 
 function fmt(secs: number): string {
@@ -48,43 +49,43 @@ export default function ObservabilityPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Observability</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Latency and performance metrics for your agents</p>
-        </div>
+      <PageHeader
+        eyebrow="Observe"
+        title="Latency"
+        subtitle="Latency and performance metrics for your agents."
+        actions={
         <div className="flex gap-1">
           {DAYS_OPTIONS.map((d) => (
             <button
               key={d}
               onClick={() => setDays(d)}
-              className={`text-[12px] px-3 py-1 rounded-md border transition-colors ${
+              className={`text-[12px] px-3 py-1.5 rounded-lg border transition-colors ${
                 days === d
-                  ? 'bg-gray-900 text-white border-gray-900'
-                  : 'bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-gray-400'
+                  ? 'bg-accent text-white border-accent'
+                  : 'bg-surface text-muted-foreground border-border-strong hover:border-accent/50'
               }`}
             >
               {d}d
             </button>
           ))}
         </div>
-      </div>
+        }
+      />
 
       {error && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">
           {(error as Error).message}
         </div>
       )}
 
       {isLoading && (
-        <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">Loading latency data…</div>
+        <div className="py-12 text-center text-sm text-faint">Loading latency data…</div>
       )}
 
       {!isLoading && !error && byAgent.length === 0 && (
-        <div className="border border-dashed border-gray-200 dark:border-gray-700 rounded-xl py-16 text-center">
-          <Timer className="mx-auto text-gray-300 dark:text-gray-600 mb-3 w-8 h-8" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">No completed runs in this period.</p>
+        <div className="border border-dashed border-border-strong rounded-xl py-16 text-center">
+          <Timer className="mx-auto text-faint mb-3 w-8 h-8" />
+          <p className="text-sm text-muted-foreground">No completed runs in this period.</p>
         </div>
       )}
 
@@ -92,31 +93,31 @@ export default function ObservabilityPage() {
         <div className="space-y-8">
           {/* By Agent */}
           <section>
-            <h2 className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">By Agent</h2>
-            <div className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-x-auto">
+            <h2 className="text-[11px] font-medium text-faint uppercase tracking-wider mb-3">By Agent</h2>
+            <div className="border border-border rounded-xl overflow-x-auto">
               <div className="min-w-[600px]">
               <table className="w-full text-[13px]">
                 <thead>
-                  <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
-                    <th className="text-left px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">Agent</th>
-                    <th className="text-left px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">Provider / Model</th>
-                    <th className="text-center px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">P50</th>
-                    <th className="text-center px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">P95</th>
-                    <th className="text-center px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">Success</th>
-                    <th className="text-right px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">Runs</th>
-                    <th className="text-right px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">Avg in tok</th>
+                  <tr className="bg-muted border-b border-border">
+                    <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-[11px]">Agent</th>
+                    <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-[11px]">Provider / Model</th>
+                    <th className="text-center px-4 py-2.5 font-medium text-muted-foreground text-[11px]">P50</th>
+                    <th className="text-center px-4 py-2.5 font-medium text-muted-foreground text-[11px]">P95</th>
+                    <th className="text-center px-4 py-2.5 font-medium text-muted-foreground text-[11px]">Success</th>
+                    <th className="text-right px-4 py-2.5 font-medium text-muted-foreground text-[11px]">Runs</th>
+                    <th className="text-right px-4 py-2.5 font-medium text-muted-foreground text-[11px]">Avg in tok</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                <tbody className="divide-y divide-border">
                   {byAgent.map((row) => {
                     const successRate = row.run_count > 0 ? (row.success_count / row.run_count) * 100 : 0
                     return (
-                      <tr key={row.id} className="hover:bg-gray-50/50">
-                        <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">{row.name}</td>
-                        <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400">
+                      <tr key={row.id} className="hover:bg-muted/50">
+                        <td className="px-4 py-2.5 font-medium text-foreground">{row.name}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground">
                           <span className="capitalize">{row.provider}</span>
-                          <span className="text-gray-300 dark:text-gray-600 mx-1">/</span>
-                          <span className="text-[12px] text-gray-400 dark:text-gray-500">{row.model}</span>
+                          <span className="text-faint mx-1">/</span>
+                          <span className="text-[12px] text-faint">{row.model}</span>
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           <LatencyPill secs={row.p50_secs} />
@@ -127,8 +128,8 @@ export default function ObservabilityPage() {
                         <td className={`px-4 py-2.5 text-center text-[12px] font-medium ${successColor(successRate)}`}>
                           {successRate.toFixed(0)}%
                         </td>
-                        <td className="px-4 py-2.5 text-right text-gray-500 dark:text-gray-400">{row.run_count.toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-right text-gray-400 dark:text-gray-500">{Math.round(row.avg_input_tokens).toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right text-muted-foreground">{row.run_count.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right text-faint">{Math.round(row.avg_input_tokens).toLocaleString()}</td>
                       </tr>
                     )
                   })}
@@ -141,33 +142,33 @@ export default function ObservabilityPage() {
           {/* By Model */}
           {byModel.length > 0 && (
             <section>
-              <h2 className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">By Model</h2>
-              <div className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-x-auto">
+              <h2 className="text-[11px] font-medium text-faint uppercase tracking-wider mb-3">By Model</h2>
+              <div className="border border-border rounded-xl overflow-x-auto">
                 <div className="min-w-[480px]">
                 <table className="w-full text-[13px]">
                   <thead>
-                    <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
-                      <th className="text-left px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">Provider</th>
-                      <th className="text-left px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">Model</th>
-                      <th className="text-center px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">P50</th>
-                      <th className="text-center px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">P95</th>
-                      <th className="text-center px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">Tokens / sec</th>
-                      <th className="text-right px-4 py-2.5 font-medium text-gray-500 dark:text-gray-400 text-[11px]">Runs</th>
+                    <tr className="bg-muted border-b border-border">
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-[11px]">Provider</th>
+                      <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-[11px]">Model</th>
+                      <th className="text-center px-4 py-2.5 font-medium text-muted-foreground text-[11px]">P50</th>
+                      <th className="text-center px-4 py-2.5 font-medium text-muted-foreground text-[11px]">P95</th>
+                      <th className="text-center px-4 py-2.5 font-medium text-muted-foreground text-[11px]">Tokens / sec</th>
+                      <th className="text-right px-4 py-2.5 font-medium text-muted-foreground text-[11px]">Runs</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                  <tbody className="divide-y divide-border">
                     {byModel.map((row) => (
-                      <tr key={`${row.provider}/${row.model}`} className="hover:bg-gray-50/50">
-                        <td className="px-4 py-2.5 capitalize text-gray-900 dark:text-gray-100">{row.provider}</td>
-                        <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400 text-[12px] font-mono">{row.model}</td>
+                      <tr key={`${row.provider}/${row.model}`} className="hover:bg-muted/50">
+                        <td className="px-4 py-2.5 capitalize text-foreground">{row.provider}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground text-[12px] font-mono">{row.model}</td>
                         <td className="px-4 py-2.5 text-center">
                           <LatencyPill secs={row.p50_secs} />
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           <LatencyPill secs={row.p95_secs} />
                         </td>
-                        <td className="px-4 py-2.5 text-center text-gray-500 dark:text-gray-400">{row.tokens_per_sec.toFixed(1)}</td>
-                        <td className="px-4 py-2.5 text-right text-gray-500 dark:text-gray-400">{row.run_count.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-center text-muted-foreground">{row.tokens_per_sec.toFixed(1)}</td>
+                        <td className="px-4 py-2.5 text-right text-muted-foreground">{row.run_count.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -180,16 +181,16 @@ export default function ObservabilityPage() {
           {/* Daily Trend */}
           {trend.length > 0 && (
             <section>
-              <h2 className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-4">Daily Trend (P50 / P95)</h2>
-              <div className="border border-gray-100 dark:border-gray-800 rounded-xl p-4">
+              <h2 className="text-[11px] font-medium text-faint uppercase tracking-wider mb-4">Daily Trend (P50 / P95)</h2>
+              <div className="border border-border rounded-xl p-4">
                 {/* Legend */}
-                <div className="flex gap-4 mb-4 text-[11px] text-gray-400 dark:text-gray-500">
+                <div className="flex gap-4 mb-4 text-[11px] text-faint">
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-blue-400 inline-block" />
+                    <span className="w-2.5 h-2.5 rounded-sm bg-info inline-block" />
                     P50
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-purple-400 opacity-70 inline-block" />
+                    <span className="w-2.5 h-2.5 rounded-sm bg-accent opacity-70 inline-block" />
                     P95
                   </span>
                 </div>
@@ -200,23 +201,23 @@ export default function ObservabilityPage() {
                       <div className="flex items-end gap-0.5 h-24">
                         <div
                           title={`P50: ${fmt(d.p50_secs)} | ${d.run_count} runs`}
-                          className="w-3 bg-blue-400 rounded-t cursor-default"
+                          className="w-3 bg-info rounded-t cursor-default"
                           style={{ height: `${Math.max((d.p50_secs / maxP95) * 100, 2)}%` }}
                         />
                         <div
                           title={`P95: ${fmt(d.p95_secs)} | ${d.run_count} runs`}
-                          className="w-3 bg-purple-400 rounded-t opacity-70 cursor-default"
+                          className="w-3 bg-accent rounded-t opacity-70 cursor-default"
                           style={{ height: `${Math.max((d.p95_secs / maxP95) * 100, 2)}%` }}
                         />
                       </div>
-                      <span className="text-[9px] text-gray-400 dark:text-gray-500 whitespace-nowrap">
+                      <span className="text-[9px] text-faint whitespace-nowrap">
                         {new Date(d.day + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
                   ))}
                 </div>
                 {/* Y-axis hint */}
-                <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">
+                <p className="text-[10px] text-faint mt-1">
                   Max: {fmt(maxP95)}
                 </p>
               </div>

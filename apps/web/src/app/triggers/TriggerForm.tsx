@@ -78,33 +78,33 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
     <form onSubmit={handleSubmit} className="space-y-5">
       {/* Name */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-          Name <span className="text-red-500">*</span>
+        <label className="block text-sm font-medium text-foreground mb-1">
+          Name <span className="text-crit">*</span>
         </label>
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. GitHub PR Reviewer"
-          className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
         />
       </div>
 
       {/* Description */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+        <label className="block text-sm font-medium text-foreground mb-1">Description</label>
         <input
           type="text"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Optional — what does this trigger do?"
-          className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
         />
       </div>
 
       {/* Target type */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Target type</label>
+        <label className="block text-sm font-medium text-foreground mb-2">Target type</label>
         <div className="flex gap-3">
           {(['agent', 'workflow'] as const).map((type) => (
             <button
@@ -113,8 +113,8 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
               onClick={() => handleTargetTypeChange(type)}
               className={`px-4 py-2 rounded-md border text-sm font-medium transition-colors capitalize ${
                 targetType === type
-                  ? 'bg-purple-600 border-purple-400 text-white'
-                  : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-400'
+                  ? 'bg-accent border-accent/50 text-white'
+                  : 'border-border-strong text-muted-foreground hover:border-gray-400'
               }`}
             >
               {type}
@@ -125,13 +125,13 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
 
       {/* Target */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-          Target {targetType} <span className="text-red-500">*</span>
+        <label className="block text-sm font-medium text-foreground mb-1">
+          Target {targetType} <span className="text-crit">*</span>
         </label>
         <select
           value={targetId}
           onChange={(e) => setTargetId(e.target.value)}
-          className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
         >
           <option value="">Select a {targetType}…</option>
           {targets.map((t) => (
@@ -142,37 +142,37 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
 
       {/* Input template */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Input template</label>
+        <label className="block text-sm font-medium text-foreground mb-1">Input template</label>
         <textarea
           value={inputTemplate}
           onChange={(e) => setInputTemplate(e.target.value)}
           rows={3}
-          className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
         />
-        <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500 space-y-0.5">
+        <p className="mt-1.5 text-xs text-faint space-y-0.5">
           Go template evaluated against the inbound request. Available variables:
         </p>
-        <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-500 dark:text-gray-400">
-          <span><code className="font-mono text-purple-600 dark:text-purple-300">{'{{.RawBody}}'}</code> — full JSON body as string</span>
-          <span><code className="font-mono text-purple-600 dark:text-purple-300">{'{{.Body.field}}'}</code> — parsed JSON field</span>
-          <span><code className="font-mono text-purple-600 dark:text-purple-300">{'{{.Headers.X-Name}}'}</code> — request header</span>
-          <span><code className="font-mono text-purple-600 dark:text-purple-300">{'{{.Query.param}}'}</code> — query string param</span>
+        <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+          <span><code className="font-mono text-accent dark:text-accent-bright">{'{{.RawBody}}'}</code> — full JSON body as string</span>
+          <span><code className="font-mono text-accent dark:text-accent-bright">{'{{.Body.field}}'}</code> — parsed JSON field</span>
+          <span><code className="font-mono text-accent dark:text-accent-bright">{'{{.Headers.X-Name}}'}</code> — request header</span>
+          <span><code className="font-mono text-accent dark:text-accent-bright">{'{{.Query.param}}'}</code> — query string param</span>
         </div>
       </div>
 
       {/* Secret */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-          HMAC secret <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+        <label className="block text-sm font-medium text-foreground mb-1">
+          HMAC secret <span className="text-faint font-normal">(optional)</span>
         </label>
         <input
           type="password"
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
           placeholder="Leave blank for no signature verification"
-          className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-400"
+          className="w-full px-3 py-2 rounded-md border border-border-strong text-sm focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/50"
         />
-        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+        <p className="mt-1 text-xs text-faint">
           When set, inbound requests must include a valid{' '}
           <code className="font-mono">X-Hub-Signature-256: sha256=&lt;hex&gt;</code> header.
         </p>
@@ -183,27 +183,27 @@ export function TriggerForm({ trigger, prefillTargetType, prefillTargetId }: Pro
         <button
           type="button"
           onClick={() => setIsActive(!isActive)}
-          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isActive ? 'bg-purple-600' : 'bg-gray-200'}`}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isActive ? 'bg-accent' : 'bg-muted'}`}
         >
-          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white dark:bg-gray-900 shadow transition-transform ${isActive ? 'translate-x-4' : 'translate-x-1'}`} />
+          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-surface shadow transition-transform ${isActive ? 'translate-x-4' : 'translate-x-1'}`} />
         </button>
-        <span className="text-sm text-gray-700 dark:text-gray-300">{isActive ? 'Active' : 'Inactive'}</span>
+        <span className="text-sm text-foreground">{isActive ? 'Active' : 'Inactive'}</span>
       </div>
 
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && <p className="text-sm text-crit">{error}</p>}
 
       <div className="flex gap-3 pt-2">
         <button
           type="submit"
           disabled={saving}
-          className="px-5 py-2 rounded-md bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
+          className="px-5 py-2 rounded-md bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors disabled:opacity-50"
         >
           {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create trigger'}
         </button>
         <button
           type="button"
           onClick={() => router.push('/triggers')}
-          className="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          className="px-4 py-2 rounded-md border border-border-strong text-sm text-muted-foreground hover:bg-muted transition-colors"
         >
           Cancel
         </button>

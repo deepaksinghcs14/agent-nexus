@@ -41,28 +41,28 @@ export default function AdminClaudeCodePage() {
   return (
     <div className="p-4 sm:p-6 max-w-5xl">
       <div className="mb-5">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Claude Code</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+        <h1 className="text-xl font-semibold text-foreground">Claude Code</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
           Runner health and durable waits across all workspaces.
         </p>
       </div>
 
-      {isLoading && <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">Loading…</div>}
+      {isLoading && <div className="py-12 text-center text-sm text-faint">Loading…</div>}
 
       {data && (
         <>
           {/* Runner */}
           <div className={`flex flex-wrap items-center gap-3 border rounded-xl px-4 py-3 mb-4 ${
-            !data.runner_configured ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60'
-              : runnerOk ? (stub ? 'border-amber-200 bg-amber-50/60' : 'border-green-200 bg-green-50/50')
-              : 'border-red-200 bg-red-50/60'
+            !data.runner_configured ? 'border-border-strong bg-muted'
+              : runnerOk ? (stub ? 'border-warn/30 bg-warn/10/60' : 'border-good/30 bg-good/10/50')
+              : 'border-crit/30 bg-crit/10/60'
           }`}>
-            <Server size={16} className={!data.runner_configured ? 'text-gray-400 dark:text-gray-500' : runnerOk ? (stub ? 'text-amber-600 dark:text-amber-300' : 'text-green-600 dark:text-green-300') : 'text-red-500'} />
+            <Server size={16} className={!data.runner_configured ? 'text-faint' : runnerOk ? (stub ? 'text-warn dark:text-warn' : 'text-good dark:text-good') : 'text-crit'} />
             <div>
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              <p className="text-sm font-medium text-foreground">
                 Runner{data.runner_executor ? ` — ${data.runner_executor} mode` : ''}
               </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 {!data.runner_configured
                   ? 'RUNNER_URL is not set — repo sessions are disabled instance-wide'
                   : !runnerOk
@@ -77,33 +77,33 @@ export default function AdminClaudeCodePage() {
           {/* 24h outcomes */}
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-5">
             {statOrder.map((s) => (
-              <div key={s} className="bg-gray-50 dark:bg-gray-800/60 rounded-lg p-2.5 text-center">
-                <p className="text-lg font-semibold text-gray-800 dark:text-gray-200">{stats[s] ?? 0}</p>
+              <div key={s} className="bg-muted rounded-lg p-2.5 text-center">
+                <p className="text-lg font-semibold text-foreground">{stats[s] ?? 0}</p>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusColor(s)}`}>{s}</span>
               </div>
             ))}
           </div>
 
           {/* Waiting runs */}
-          <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-              <Clock size={14} className="text-purple-500" />
-              <p className="text-[13px] font-medium text-gray-700 dark:text-gray-300">
+          <div className="bg-surface border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+              <Clock size={14} className="text-accent dark:text-accent-bright" />
+              <p className="text-[13px] font-medium text-foreground">
                 Waiting runs ({waiting.length})
               </p>
-              <span className="text-[11px] text-gray-400 dark:text-gray-500">approval + session waits, all workspaces, oldest first</span>
+              <span className="text-[11px] text-faint">approval + session waits, all workspaces, oldest first</span>
             </div>
             {waiting.length === 0 ? (
-              <p className="flex items-center gap-2 px-4 py-6 text-sm text-gray-400 dark:text-gray-500">
-                <CheckCircle2 size={14} className="text-green-500" /> Nothing is waiting — no parked runs anywhere.
+              <p className="flex items-center gap-2 px-4 py-6 text-sm text-faint">
+                <CheckCircle2 size={14} className="text-good" /> Nothing is waiting — no parked runs anywhere.
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-[12px] min-w-[640px]">
                   <thead>
-                    <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
+                    <tr className="bg-muted border-b border-border">
                       {['Run', 'Workspace', 'Agent', 'Status', 'Durable', 'Waiting'].map((hd) => (
-                        <th key={hd} className="text-left px-4 py-2 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase">{hd}</th>
+                        <th key={hd} className="text-left px-4 py-2 text-[10px] font-medium text-faint uppercase">{hd}</th>
                       ))}
                     </tr>
                   </thead>
@@ -111,20 +111,20 @@ export default function AdminClaudeCodePage() {
                     {waiting.map((r) => {
                       const stale = Date.now() - new Date(r.waiting_since).getTime() > 6 * 3600_000
                       return (
-                        <tr key={r.run_id} className="border-b border-gray-50">
+                        <tr key={r.run_id} className="border-b border-border">
                           <td className="px-4 py-2">
-                            <Link href={`/runs/${r.run_id}`} className="font-mono text-purple-600 dark:text-purple-300 hover:underline">
+                            <Link href={`/runs/${r.run_id}`} className="font-mono text-accent dark:text-accent-bright hover:underline">
                               {r.run_id.slice(0, 8)}…
                             </Link>
                           </td>
-                          <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{r.workspace}</td>
-                          <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{r.agent_name || '—'}</td>
+                          <td className="px-4 py-2 text-foreground">{r.workspace}</td>
+                          <td className="px-4 py-2 text-foreground">{r.agent_name || '—'}</td>
                           <td className="px-4 py-2">
                             <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor(r.status)}`}>{r.status}</span>
                           </td>
-                          <td className="px-4 py-2 text-gray-500 dark:text-gray-400">{r.wait_type}</td>
+                          <td className="px-4 py-2 text-muted-foreground">{r.wait_type}</td>
                           <td className="px-4 py-2">
-                            <span className={`inline-flex items-center gap-1 ${stale ? 'text-amber-700 dark:text-amber-300 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
+                            <span className={`inline-flex items-center gap-1 ${stale ? 'text-warn font-medium' : 'text-muted-foreground'}`}>
                               {stale && <AlertTriangle size={11} />}
                               {relativeTime(r.waiting_since)}
                             </span>

@@ -22,8 +22,9 @@ export default function AdminPoliciesPage() {
     <div className="p-4 sm:p-6 max-w-2xl">
       <div className="flex flex-wrap items-center gap-3 justify-between mb-5">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Platform policies</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Global policy values used by the runtime</p>
+          <span className="eyebrow block mb-1">Admin</span>
+          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Platform policies</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Global policy values used by the runtime</p>
         </div>
         <button
           onClick={() => {
@@ -35,32 +36,32 @@ export default function AdminPoliciesPage() {
             }
           }}
           disabled={!policies.length || save.isPending}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white text-[12px] rounded-lg disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white text-[12px] rounded-lg disabled:opacity-50"
         >
           <Save className="w-3.5 h-3.5" /> {save.isPending ? 'Saving…' : 'Save changes'}
         </button>
       </div>
       {(error || actionError) && (
-        <div className="text-sm text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 rounded-lg p-3 mb-4">
+        <div className="text-sm text-crit bg-crit/10 border border-crit/30 rounded-lg p-3 mb-4">
           {actionError || (error as Error).message}
         </div>
       )}
-      {isLoading && <div className="py-12 text-center text-sm text-gray-400 dark:text-gray-500">Loading policies…</div>}
+      {isLoading && <div className="py-12 text-center text-sm text-faint">Loading policies…</div>}
       {!isLoading && !error && policies.length === 0 && (
-        <div className="border border-dashed border-gray-200 dark:border-gray-700 rounded-xl py-12 text-center">
-          <Shield className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">No policies configured.</p>
+        <div className="border border-dashed border-border-strong rounded-xl py-12 text-center">
+          <Shield className="mx-auto text-faint mb-3" />
+          <p className="text-sm text-muted-foreground">No policies configured.</p>
         </div>
       )}
       <div className="space-y-3">
         {policies.map((policy) => (
-          <div key={policy.id || policy.key} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl p-4">
-            <label className="text-[12px] font-medium text-gray-800 dark:text-gray-200 block mb-2">{policy.key}</label>
+          <div key={policy.id || policy.key} className="bg-surface border border-border rounded-xl p-4">
+            <label className="text-[12px] font-medium text-foreground block mb-2">{policy.key}</label>
             <textarea
               value={values[policy.key] ?? ''}
               onChange={(e) => setValues({ ...values, [policy.key]: e.target.value })}
               rows={3}
-              className="w-full text-xs font-mono px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg"
+              className="w-full text-xs font-mono px-3 py-2 border border-border-strong rounded-lg"
             />
           </div>
         ))}

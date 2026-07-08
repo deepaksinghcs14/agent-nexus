@@ -17,11 +17,11 @@ export function formatCost(usd: number): string {
 
 export function riskColor(risk: string): string {
   switch (risk) {
-    case 'low':      return 'bg-blue-50 dark:bg-blue-500/10 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800'
-    case 'medium':   return 'bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-    case 'high':     return 'bg-orange-50 dark:bg-orange-500/10 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800'
-    case 'critical': return 'bg-red-50 dark:bg-red-500/10 text-red-800 dark:text-red-300 border-red-200 dark:border-red-800'
-    default:         return 'bg-gray-50 dark:bg-gray-800/60 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+    case 'low':      return 'bg-info/10 text-info border-info/30'
+    case 'medium':   return 'bg-warn/10 text-warn border-warn/30'
+    case 'high':     return 'bg-warn/15 text-warn border-warn/40'
+    case 'critical': return 'bg-crit/10 text-crit border-crit/30'
+    default:         return 'bg-muted text-muted-foreground border-border'
   }
 }
 
@@ -29,16 +29,16 @@ export function statusColor(status: string): string {
   switch (status) {
     case 'success':
     case 'connected':
-    case 'active':      return 'bg-green-50 dark:bg-green-500/10 text-green-800 dark:text-green-300'
+    case 'active':      return 'bg-good/10 text-good border border-good/30'
     case 'running':
-    case 'syncing':     return 'bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300'
+    case 'syncing':     return 'bg-warn/10 text-warn border border-warn/30'
     case 'failed':
-    case 'error':       return 'bg-red-50 dark:bg-red-500/10 text-red-800 dark:text-red-300'
-    case 'approval_wait': return 'bg-purple-50 dark:bg-purple-500/10 text-purple-800 dark:text-purple-300'
-    case 'session_wait':  return 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-800 dark:text-indigo-300'
+    case 'error':       return 'bg-crit/10 text-crit border border-crit/30'
+    case 'approval_wait':
+    case 'session_wait': return 'bg-accent/10 text-accent dark:text-accent-bright border border-accent/25'
     case 'pending':
     case 'disconnected':
-    default:            return 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+    default:            return 'bg-muted text-muted-foreground border border-border'
   }
 }
 

@@ -37,7 +37,7 @@ export default function DocsTokenSelector() {
 
   return (
     <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-      <Key className="w-3.5 h-3.5 shrink-0" style={{ color: 'rgba(255,255,255,0.3)' }} />
+      <Key className="w-3.5 h-3.5 shrink-0 text-faint" />
 
       <div className="relative flex items-center min-w-0 flex-1 sm:flex-none">
         <input
@@ -45,35 +45,24 @@ export default function DocsTokenSelector() {
           value={value}
           onChange={(e) => handleChange(e.target.value)}
           placeholder="Paste API token (anx_...)"
-          className="w-full sm:w-52 md:w-64 pl-3 pr-7 py-1 text-xs font-mono rounded border bg-black/20 placeholder-white/20 focus:outline-none focus:border-[#7c3aed]"
-          style={{
-            borderColor: selectedTokenRaw ? '#7c3aed' : 'rgba(255,255,255,0.12)',
-            color: 'rgba(255,255,255,0.75)',
-          }}
+          className={`w-full sm:w-52 md:w-64 pl-3 pr-7 py-1 text-xs font-mono rounded border bg-surface-2 text-foreground placeholder-faint focus:outline-none focus:ring-1 focus:ring-accent ${selectedTokenRaw ? 'border-accent' : 'border-border-strong'}`}
         />
         {value && (
-          <button
-            onClick={handleClear}
-            className="absolute right-2 text-white/30 hover:text-white/70"
-          >
+          <button onClick={handleClear} className="absolute right-2 text-faint hover:text-foreground">
             <X className="w-3 h-3" />
           </button>
         )}
       </div>
 
       {selectedTokenRaw && (
-        <span className="hidden sm:flex items-center gap-1.5 text-xs text-green-400 shrink-0">
+        <span className="hidden sm:flex items-center gap-1.5 text-xs text-good shrink-0">
           <CheckCircle2 className="w-3.5 h-3.5" />
           {matched ? matched.name : 'Ready'}
         </span>
       )}
 
       {!selectedTokenRaw && (
-        <a
-          href="/settings/api-tokens"
-          className="hidden sm:block text-xs shrink-0"
-          style={{ color: 'rgba(255,255,255,0.25)' }}
-        >
+        <a href="/settings/api-tokens" className="hidden sm:block text-xs shrink-0 text-muted-foreground hover:text-foreground">
           Get a token →
         </a>
       )}

@@ -2,26 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  Paper & Phosphor — Agent Nexus design tokens.
+  Light ("Paper"): warm ivory ground, near-ink text, indigo signal accent.
+  Dark  ("Phosphor"): deep cool ink ground, luminous indigo accent.
+  Tokens are HSL triples consumed as hsl(var(--token)). The accent lineage is
+  the product logo indigo (#534AB7). Note: --muted is a subtle SURFACE tone
+  (shadcn convention: bg-muted), --muted-foreground is subtle TEXT.
+*/
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 248 63% 50%;
-    --radius: 0.5rem;
+    /* Font stacks — no build-time webfont fetch; use the face if installed,
+       otherwise fall back cleanly to system fonts. */
+    --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+    --background: 45 27% 94%;         /* #F4F2EC warm ivory ground */
+    --foreground: 210 20% 10%;        /* #151A1F near-ink text */
+    --surface: 40 30% 99%;            /* near-white card */
+    --surface-2: 44 33% 96%;          /* #FAF8F2 raised */
+    --muted: 44 33% 96%;              /* subtle surface (bg-muted) */
+    --muted-foreground: 210 12% 44%;  /* #63707C subtle text */
+    --faint: 207 13% 62%;             /* #93A0AB faint text */
+    --border: 43 22% 87%;             /* #E6E2D8 */
+    --border-strong: 42 22% 81%;      /* #D8D3C6 */
+    --input: 43 22% 87%;
+
+    --ring: 245 45% 50%;              /* indigo focus ring */
+
+    --good: 145 67% 37%;              /* #1F9D55 */
+    --warn: 38 79% 40%;               /* #B67C15 */
+    --crit: 11 66% 48%;               /* #CF4327 */
+    --info: 210 59% 44%;              /* #2F6DB0 */
+
+    --radius: 0.625rem;
   }
 
   .dark {
-    --background: 240 10% 6%;
-    --foreground: 210 20% 96%;
-    --muted: 240 6% 16%;
-    --muted-foreground: 215 14% 65%;
-    --border: 240 6% 20%;
-    --input: 240 6% 20%;
-    --ring: 248 63% 63%;
+    --background: 210 32% 6%;          /* #090D12 deep ink */
+    --foreground: 208 33% 93%;         /* #E8EEF4 */
+    --surface: 213 30% 9%;             /* #10161E card */
+    --surface-2: 213 29% 12%;          /* #141C26 raised */
+    --muted: 213 29% 12%;              /* subtle surface (bg-muted) */
+    --muted-foreground: 210 13% 55%;   /* #7E8D9C subtle text */
+    --faint: 210 15% 39%;              /* #566372 */
+    --border: 212 28% 17%;             /* #202B37 */
+    --border-strong: 213 24% 23%;      /* #2B3949 */
+    --input: 212 28% 17%;
+
+    --ring: 245 85% 74%;               /* luminous indigo */
+
+    --good: 133 48% 49%;               /* #3FB950 */
+    --warn: 41 94% 46%;                /* #E3A008 */
+    --crit: 6 85% 60%;                 /* #F0533F */
+    --info: 213 100% 67%;              /* #58A6FF */
   }
 
   * { @apply border-border; }
@@ -29,7 +63,16 @@
 }
 
 /* Custom scrollbar */
-::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.2); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.35); }
+::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / 0.28); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.45); }
+
+/* Mono eyebrow label used across the shell + cards */
+.eyebrow {
+  font-family: var(--font-mono, "JetBrains Mono", ui-monospace, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(var(--faint));
+}
