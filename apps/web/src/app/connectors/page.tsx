@@ -383,6 +383,14 @@ export default function ConnectorsPage() {
     },
     onError: (err: Error) => setActionError(err.message),
   })
+  const cancelSync = useMutation({
+    mutationFn: (id: string) => connectorsAPI.cancelSync(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['connectors'] })
+      queryClient.invalidateQueries({ queryKey: ['connector-jobs', id] })
+    },
+    onError: (err: Error) => setActionError(err.message),
+  })
   const remove = useMutation({
     mutationFn: (id: string) => connectorsAPI.delete(id),
     onSuccess: () => { setSelected(''); queryClient.invalidateQueries({ queryKey: ['connectors'] }) },
@@ -485,7 +493,9 @@ export default function ConnectorsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
           {connectors.map((connector) => {
             const cfg = connector.config as { path?: string; owner?: string; repo?: string; url?: string; space_keys?: string } | undefined
+            const syncing = connector.status === 'syncing'
             const isSyncing = sync.isPending && (sync.variables as string) === connector.id
+            const isCancelling = cancelSync.isPending && (cancelSync.variables as string) === connector.id
             const providerMeta = PROVIDERS.find((p) => p.id === connector.provider)
             const ProviderIcon = providerMeta?.Icon ?? FolderOpen
             const providerLabel = providerMeta?.label ?? connector.provider
@@ -518,14 +528,25 @@ export default function ConnectorsPage() {
                 )}
                 <p className="text-[10px] text-faint mb-3">{providerLabel}</p>
                 <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    onClick={() => sync.mutate(connector.id)}
-                    disabled={isSyncing}
-                    className="inline-flex items-center gap-1 px-2 py-1 border border-border-strong text-[11px] text-muted-foreground rounded-md hover:bg-muted disabled:opacity-50"
-                  >
-                    <RefreshCw size={11} className={isSyncing ? 'animate-spin' : ''} />
-                    {isSyncing ? 'Syncing…' : 'Sync'}
-                  </button>
+                  {syncing ? (
+                    <button
+                      onClick={() => cancelSync.mutate(connector.id)}
+                      disabled={isCancelling}
+                      className="inline-flex items-center gap-1 px-2 py-1 border border-crit/30 text-[11px] text-crit rounded-md hover:bg-crit/10 disabled:opacity-50"
+                    >
+                      {isCancelling ? <RefreshCw size={11} className="animate-spin" /> : <X size={11} />}
+                      {isCancelling ? 'Stopping…' : 'Stop sync'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => sync.mutate(connector.id)}
+                      disabled={isSyncing}
+                      className="inline-flex items-center gap-1 px-2 py-1 border border-border-strong text-[11px] text-muted-foreground rounded-md hover:bg-muted disabled:opacity-50"
+                    >
+                      <RefreshCw size={11} className={isSyncing ? 'animate-spin' : ''} />
+                      {isSyncing ? 'Syncing…' : 'Sync'}
+                    </button>
+                  )}
                   <button
                     onClick={() => { if (confirm('Delete this connector and all indexed documents?')) remove.mutate(connector.id) }}
                     className="ml-auto p-1 text-faint hover:text-crit"
@@ -578,6 +599,14 @@ export default function ConnectorsPage() {
                   </div>
                 )}
               </div>
+              <button
+                onClick={() => cancelSync.mutate(selectedConnector.id)}
+                disabled={cancelSync.isPending}
+                className="inline-flex items-center gap-1 px-2.5 py-1 border border-crit/30 text-[11px] font-medium text-crit rounded-md hover:bg-crit/10 disabled:opacity-50 flex-shrink-0"
+              >
+                <X size={11} />
+                {cancelSync.isPending ? 'Stopping…' : 'Stop'}
+              </button>
             </div>
           )}
 

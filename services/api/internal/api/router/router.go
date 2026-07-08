@@ -150,6 +150,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Get("/connectors/{id}", h.Connectors.Get)
 			r.Delete("/connectors/{id}", h.Connectors.Delete)
 			r.Post("/connectors/{id}/sync", h.Connectors.Sync)
+			r.Post("/connectors/{id}/sync/cancel", h.Connectors.CancelSync)
 			r.Get("/connectors/{id}/documents", h.Connectors.ListDocuments)
 			r.Get("/connectors/{id}/browse", h.Connectors.BrowseDocuments)
 			r.Get("/connectors/{id}/document-groups", h.Connectors.ListDocumentGroups)

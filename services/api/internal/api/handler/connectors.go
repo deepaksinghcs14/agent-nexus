@@ -3,12 +3,14 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -24,6 +26,7 @@ import (
 	githubprovider "github.com/deepaksingh/agent-nexus/services/api/internal/connector/providers/github"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/connector/syncstate"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
@@ -44,10 +47,42 @@ func getConnectorProvider(p string) connector.Provider {
 type ConnectorsHandler struct {
 	pool *pgxpool.Pool
 	cfg  *config.Config
+	// syncCancels maps a connector ID → the cancel func of its in-flight sync,
+	// so CancelSync can stop a running sync goroutine. Entries are removed when
+	// the sync finishes.
+	syncCancels sync.Map
 }
 
 func NewConnectorsHandler(p *pgxpool.Pool, c *config.Config) *ConnectorsHandler {
-	return &ConnectorsHandler{p, c}
+	return &ConnectorsHandler{pool: p, cfg: c}
+}
+
+// runSync starts a connector sync in a cancellable goroutine and registers its
+// cancel func. If the context is cancelled (via CancelSync), the job is left as
+// the cancel handler marked it (interrupted) instead of being failed.
+func (h *ConnectorsHandler) runSync(connID, wsID string, prov connector.Provider, embedder provider.Provider, rep *syncstate.Reporter) {
+	ctx, cancel := context.WithCancel(context.Background())
+	h.syncCancels.Store(connID, cancel)
+	go func() {
+		defer func() { h.syncCancels.Delete(connID); cancel() }()
+		pipeline := connector.NewPipeline(h.pool, h.cfg)
+		err := pipeline.Sync(ctx, connID, wsID, prov, embedder, rep)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				slog.Info("connector sync cancelled by user", "connector_id", connID)
+				return // CancelSync already marked the job interrupted
+			}
+			slog.Error("connector sync failed", "connector_id", connID, "error", err)
+			rep.Fail(err)
+			return
+		}
+		rep.Complete()
+		// GitHub connectors double as pipeline repo onboarding: every synced
+		// repo joins the session allowlist.
+		if n, err := catalog.AdoptFromConnector(ctx, h.pool, connID); err == nil && n > 0 {
+			slog.Info("repos adopted into session allowlist from connector sync", "connector_id", connID, "repos", n)
+		}
+	}()
 }
 
 const connectorSelect = `SELECT id::text,workspace_id::text,name,provider,type,auth_type,status,config,created_by::text,created_at,updated_at FROM connectors`
@@ -179,27 +214,47 @@ func (h *ConnectorsHandler) Sync(w http.ResponseWriter, r *http.Request) {
 	embedder := buildEmbedder(h.cfg)
 	rep := syncstate.New(h.pool, jobID, id)
 
-	go func() {
-		ctx := context.Background()
-		slog.Info("connector sync started", "connector_id", id, "provider", conn.Provider, "job_id", jobID)
-		pipeline := connector.NewPipeline(h.pool, h.cfg)
-		err := pipeline.Sync(ctx, id, ws, prov, embedder, rep)
-		if err != nil {
-			slog.Error("connector sync failed", "connector_id", id, "job_id", jobID, "error", err)
-			rep.Fail(err)
-		} else {
-			rep.Complete()
-			// GitHub connectors double as pipeline repo onboarding: every synced
-			// repo joins the session allowlist.
-			if n, err := catalog.AdoptFromConnector(ctx, h.pool, id); err == nil && n > 0 {
-				slog.Info("repos adopted into session allowlist from connector sync", "connector_id", id, "repos", n)
-			}
-		}
-	}()
+	slog.Info("connector sync started", "connector_id", id, "provider", conn.Provider, "job_id", jobID)
+	h.runSync(id, ws, prov, embedder, rep)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(j) //nolint:errcheck
+}
+
+// CancelSync handles POST /connectors/{id}/sync/cancel — stops an in-flight
+// sync. It signals the running goroutine to stop and marks the running job
+// 'interrupted' (preserving its checkpoint, so it can be resumed later, exactly
+// like a sync interrupted by a restart).
+func (h *ConnectorsHandler) CancelSync(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
+
+	// Scope the connector to the caller's workspace before touching anything.
+	var exists bool
+	if h.pool.QueryRow(r.Context(),
+		`SELECT EXISTS(SELECT 1 FROM connectors WHERE id=$1::uuid AND workspace_id=$2::uuid)`, id, ws).
+		Scan(&exists); !exists {
+		errs.Write(w, errs.NotFound("connector not found"))
+		return
+	}
+
+	cancel, ok := h.syncCancels.Load(id)
+	if !ok {
+		errs.Write(w, errs.BadRequest("no sync is currently running for this connector"))
+		return
+	}
+	cancel.(context.CancelFunc)()
+	h.syncCancels.Delete(id)
+
+	// Mark the running job interrupted and return the connector to a ready state.
+	h.pool.Exec(r.Context(), //nolint:errcheck
+		`UPDATE connector_sync_jobs SET status='interrupted', completed_at=NOW(), error_message='Cancelled by user'
+		 WHERE connector_id=$1::uuid AND status='running'`, id)
+	h.pool.Exec(r.Context(), `UPDATE connectors SET status='connected', updated_at=NOW() WHERE id=$1::uuid`, id) //nolint:errcheck
+
+	writeAudit(r, h.pool, "connector.sync_cancelled", "connector", id)
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"cancelled": true})
 }
 
 // RecoverInterruptedSyncs is called at server startup to handle syncs that were in-flight
@@ -278,20 +333,8 @@ func (h *ConnectorsHandler) launchSync(ctx context.Context, connID, wsID string,
 	embedder := buildEmbedder(h.cfg)
 	rep := syncstate.New(h.pool, jobID, connID)
 
-	go func() {
-		slog.Info("connector recovery: sync goroutine started", "connector_id", connID, "job_id", jobID)
-		pipeline := connector.NewPipeline(h.pool, h.cfg)
-		err := pipeline.Sync(context.Background(), connID, wsID, prov, embedder, rep)
-		if err != nil {
-			slog.Error("connector recovery: sync failed", "connector_id", connID, "error", err)
-			rep.Fail(err)
-		} else {
-			rep.Complete()
-			if n, err := catalog.AdoptFromConnector(context.Background(), h.pool, connID); err == nil && n > 0 {
-				slog.Info("repos adopted into session allowlist from connector sync", "connector_id", connID, "repos", n)
-			}
-		}
-	}()
+	slog.Info("connector recovery: sync goroutine started", "connector_id", connID, "job_id", jobID)
+	h.runSync(connID, wsID, prov, embedder, rep)
 }
 
 // ListDocuments returns paginated documents for a connector (20 per page).
