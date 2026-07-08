@@ -64,9 +64,9 @@ export default function MemoryPage() {
         const filled = Math.round(score * 5)
         return (
           <Row key={memory.id}>
-            <Cell className="!whitespace-normal">
-              <div className="text-[12.5px] text-foreground leading-relaxed max-w-xl">{memory.content}</div>
-              {memory.metadata?.reason && <div className="text-[11px] text-faint mt-0.5 max-w-xl line-clamp-1">{String(memory.metadata.reason)}</div>}
+            <Cell className="!whitespace-normal align-top">
+              <div className="text-[12.5px] text-foreground leading-relaxed break-words">{memory.content}</div>
+              {memory.metadata?.reason && <div className="text-[11px] text-faint mt-1 break-words">{String(memory.metadata.reason)}</div>}
             </Cell>
             <Cell>
               <span className={`font-mono text-[10px] px-2 py-0.5 rounded-full ${scopeColor(memory.scope)}`}>{memory.scope}</span>
