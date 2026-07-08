@@ -246,25 +246,24 @@ export default function ClaudeCodePage() {
                   <span className={cn('w-1.5 h-1.5 rounded-full', enabledOnly ? 'bg-good' : 'bg-faint')} />
                   Sessions enabled
                 </button>
-                {enabledRepos.length < repos.length ? (
-                  <button
-                    onClick={() => { if (confirm(`Enable coding sessions on all ${repos.length} repositories? Sessions can then modify any of them.`)) bulkSetSessions.mutate(true) }}
-                    disabled={bulkSetSessions.isPending}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[12px] font-medium border border-good/40 text-good bg-good/10 hover:bg-good/20 transition-colors disabled:opacity-50"
-                  >
-                    {bulkSetSessions.isPending ? <Loader2 size={12} className="animate-spin" /> : <span className="w-1.5 h-1.5 rounded-full bg-good" />}
-                    Enable all
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => { if (confirm(`Disable coding sessions on all ${repos.length} repositories?`)) bulkSetSessions.mutate(false) }}
-                    disabled={bulkSetSessions.isPending}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[12px] font-medium border border-border text-muted-foreground bg-surface hover:border-border-strong transition-colors disabled:opacity-50"
-                  >
-                    {bulkSetSessions.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
-                    Disable all
-                  </button>
-                )}
+                <button
+                  onClick={() => { if (confirm(`Enable coding sessions on all ${repos.length} repositories? Sessions can then modify any of them.`)) bulkSetSessions.mutate(true) }}
+                  disabled={bulkSetSessions.isPending || enabledRepos.length === repos.length}
+                  title={enabledRepos.length === repos.length ? 'All repositories already have sessions enabled' : undefined}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[12px] font-medium border border-good/40 text-good bg-good/10 hover:bg-good/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {bulkSetSessions.isPending && bulkSetSessions.variables === true ? <Loader2 size={12} className="animate-spin" /> : <span className="w-1.5 h-1.5 rounded-full bg-good" />}
+                  Enable all
+                </button>
+                <button
+                  onClick={() => { if (confirm(`Disable coding sessions on all ${enabledRepos.length} enabled repositories?`)) bulkSetSessions.mutate(false) }}
+                  disabled={bulkSetSessions.isPending || enabledRepos.length === 0}
+                  title={enabledRepos.length === 0 ? 'No repositories have sessions enabled' : undefined}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[12px] font-medium border border-border text-muted-foreground bg-surface hover:border-border-strong transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {bulkSetSessions.isPending && bulkSetSessions.variables === false ? <Loader2 size={12} className="animate-spin" /> : <span className="w-1.5 h-1.5 rounded-full bg-faint" />}
+                  Disable all
+                </button>
                 <span className="ml-auto font-mono text-[11px] text-faint tabular-nums">
                   {visibleRepos.length} of {repos.length} · {enabledRepos.length} enabled
                 </span>
