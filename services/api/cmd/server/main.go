@@ -105,7 +105,6 @@ func main() {
 	// In demo mode, skip http_request and write_file to prevent SSRF and disk abuse.
 	reg := tools.NewRegistry()
 	reg.Register(native.NewReadFileTool(cfg.StoragePath))
-	reg.Register(native.NewWebSearchTool())
 	reg.Register(native.NewSaveMemoryTool(pool))
 	reg.Register(native.NewListMemoriesTool())
 	reg.Register(native.NewRequestMemoryTool())
@@ -151,10 +150,6 @@ func main() {
 	reg.Register(native.NewLaunchReviewSessionTool(pool, cfg))
 	reg.Register(native.NewCreatePullRequestTool(pool, cfg))
 	reg.Register(native.NewGetBranchDiffTool(pool, cfg))
-	reg.Register(native.NewJiraGetIssueTool(pool, cfg))
-	reg.Register(native.NewJiraSearchTool(pool, cfg))
-	reg.Register(native.NewJiraAddCommentTool(pool, cfg))
-	reg.Register(native.NewJiraTransitionIssueTool(pool, cfg))
 	if !cfg.DemoMode {
 		reg.Register(native.NewWriteFileTool(cfg.StoragePath))
 		reg.Register(native.NewHTTPRequestTool())

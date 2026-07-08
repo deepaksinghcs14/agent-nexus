@@ -221,19 +221,15 @@ export const providersAPI = {
 }
 
 // Workspace pipeline credentials for repo sessions: Claude account token
-// (`claude setup-token` output), GitHub token, and Jira API-token credentials
-// (token auth for orgs whose Atlassian site blocks MCP OAuth). Each can be
-// set independently.
+// (`claude setup-token` output) and GitHub token. Each can be set
+// independently. Jira access itself goes through the MCP Atlassian preset.
 export const runnerCredsAPI = {
   get: () => api.get('/workspace/runner-credentials'),
   put: (body: {
     claude_token?: string
     github_token?: string
-    jira_base_url?: string
-    jira_email?: string
-    jira_api_token?: string
   }) => api.put('/workspace/runner-credentials', body),
-  delete: (field: 'claude' | 'github' | 'jira' | 'all' = 'all') =>
+  delete: (field: 'claude' | 'github' | 'all' = 'all') =>
     api.delete(`/workspace/runner-credentials?field=${field}`),
 }
 

@@ -159,7 +159,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"context_retrieval_enabled":{"type":"boolean","description":"Enable retrieval-augmented context from connected data sources (connectors)"},
 				"agentic_rag":{"type":"boolean","description":"Let the agent decide when/what to retrieve via native_retrieve_context tool instead of pre-run injection. Only used when context_retrieval_enabled=true."},
 				"tool_ids":{"type":"array","items":{"type":"string"},"description":"List of tool UUIDs to attach. Get these from list_tools."},
-				"tool_names":{"type":"array","items":{"type":"string"},"description":"List of tool names to attach (alternative to tool_ids, e.g. ['native_web_search','native_read_file']). Resolved by name."},
+				"tool_names":{"type":"array","items":{"type":"string"},"description":"List of tool names to attach (alternative to tool_ids, e.g. ['native_read_file','native_http_request']). Resolved by name."},
 				"connector_ids":{"type":"array","items":{"type":"string"},"description":"List of connector UUIDs to enable for context retrieval. Requires context_retrieval_enabled=true. Get IDs from list_connectors."},
 				"max_chunks":{"type":"integer","description":"Max context chunks to retrieve per run (default 8, only used when context_retrieval_enabled=true and agentic_rag=false)"},
 				"min_score":{"type":"number","description":"Minimum similarity score for context retrieval, 0-1 (default 0.5, only used when context_retrieval_enabled=true and agentic_rag=false)"},
@@ -188,7 +188,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"memory_scope":{"type":"string","enum":["conversation","agent","workspace"],"description":"Memory scope. Default: agent"},
 				"context_retrieval_enabled":{"type":"boolean","description":"Enable retrieval-augmented context from connectors"},
 				"agentic_rag":{"type":"boolean","description":"Let the agent decide when/what to retrieve. Only used when context_retrieval_enabled=true."},
-				"tool_names":{"type":"array","items":{"type":"string"},"description":"Tool names to attach, e.g. ['native_web_search']. Get from list_tools."},
+				"tool_names":{"type":"array","items":{"type":"string"},"description":"Tool names to attach, e.g. ['native_read_file']. Get from list_tools."},
 				"skill_names":{"type":"array","items":{"type":"string"},"description":"Skill names to attach. Get from list_skills."},
 				"connector_ids":{"type":"array","items":{"type":"string"},"description":"Connector UUIDs for context retrieval. Requires context_retrieval_enabled=true. Get from list_connectors."},
 				"max_chunks":{"type":"integer","description":"Max context chunks per run (default 8)"},
@@ -358,7 +358,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 			"type":"object",
 			"properties":{
 				"agent_id":{"type":"string","description":"UUID of the agent. Get from list_agents."},
-				"tool_name":{"type":"string","description":"Exact name of the tool to attach, e.g. 'native_web_search'. Get from list_tools."}
+				"tool_name":{"type":"string","description":"Exact name of the tool to attach, e.g. 'native_read_file'. Get from list_tools."}
 			},
 			"required":["agent_id","tool_name"]
 		}`),
@@ -370,7 +370,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 			"type":"object",
 			"properties":{
 				"agent_id":{"type":"string","description":"UUID of the agent. Get from list_agents."},
-				"tool_name":{"type":"string","description":"Exact name of the tool to detach, e.g. 'native_web_search'. Get from list_tools."}
+				"tool_name":{"type":"string","description":"Exact name of the tool to detach, e.g. 'native_read_file'. Get from list_tools."}
 			},
 			"required":["agent_id","tool_name"]
 		}`),
