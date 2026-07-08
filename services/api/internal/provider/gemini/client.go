@@ -393,12 +393,52 @@ func geminiRequest(req provider.CompletionRequest) map[string]any {
 			functionDecls = append(functionDecls, map[string]any{
 				"name":        t.Name,
 				"description": t.Description,
-				"parameters":  schema,
+				"parameters":  sanitizeGeminiSchema(schema),
 			})
 		}
 		body["tools"] = []map[string]any{{"function_declarations": functionDecls}}
 	}
 	return body
+}
+
+// geminiUnsupportedSchemaKeys are JSON Schema keywords Gemini's function-calling Schema
+// object rejects outright (400 INVALID_ARGUMENT: "Unknown name ... Cannot find field").
+// Native/HTTP tool schemas are hand-written and already clean, but MCP tool schemas come
+// from arbitrary third-party servers and are standard JSON Schema, which allows keywords
+// Gemini's restricted subset doesn't understand.
+var geminiUnsupportedSchemaKeys = map[string]bool{
+	"additionalProperties": true,
+	"$schema":              true,
+	"$id":                  true,
+	"$ref":                 true,
+	"const":                true,
+	"examples":             true,
+	"title":                true,
+}
+
+// sanitizeGeminiSchema recursively strips unsupported keywords from a tool's JSON Schema
+// so one incompatible tool (typically MCP-sourced) doesn't 400 the entire request — every
+// other provider (Anthropic, OpenAI, Ollama) accepts these schemas unmodified.
+func sanitizeGeminiSchema(v any) any {
+	switch val := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(val))
+		for k, vv := range val {
+			if geminiUnsupportedSchemaKeys[k] {
+				continue
+			}
+			out[k] = sanitizeGeminiSchema(vv)
+		}
+		return out
+	case []any:
+		out := make([]any, len(val))
+		for i, vv := range val {
+			out[i] = sanitizeGeminiSchema(vv)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 func geminiContent(role, text string) map[string]any {
