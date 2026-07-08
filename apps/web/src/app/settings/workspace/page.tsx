@@ -107,7 +107,7 @@ export default function WorkspaceSettingsPage() {
       )}
 
       <div className="space-y-5">
-        <section className="bg-surface border border-border rounded-xl p-6">
+        <section className="bg-surface border border-border rounded-xl p-6 shadow-card">
           <h2 className="text-sm font-medium text-foreground mb-4">General</h2>
           <label className="block text-xs font-medium text-foreground mb-1">Workspace name</label>
           <input
@@ -146,7 +146,7 @@ export default function WorkspaceSettingsPage() {
           </div>
         </section>
 
-        <section className="bg-surface border border-border rounded-xl p-6">
+        <section className="bg-surface border border-border rounded-xl p-6 shadow-card">
           <div className="flex items-center justify-between gap-4 mb-4">
             <h2 className="text-sm font-medium text-foreground">Members</h2>
             <span className="text-xs text-faint">{members.length} members</span>

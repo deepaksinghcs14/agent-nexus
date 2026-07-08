@@ -168,7 +168,7 @@ export default function APITokensPage() {
           <p className="text-sm text-muted-foreground">No API tokens yet. Create one to get started.</p>
         </div>
       ) : (
-        <div className="rounded-lg border border-border-strong overflow-hidden divide-y divide-border">
+        <div className="rounded-xl border border-border shadow-card overflow-hidden divide-y divide-border">
           {tokens.map((t) => (
             <div key={t.id} className="flex items-center justify-between px-4 py-3 bg-surface">
               <div className="min-w-0">

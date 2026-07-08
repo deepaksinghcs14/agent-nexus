@@ -260,7 +260,7 @@ export default function ProvidersPage() {
 
       <div className="space-y-2">
         {providers.map((p) => (
-          <div key={p.id} className="flex flex-wrap items-center gap-3 justify-between border border-border rounded-xl p-4 bg-surface">
+          <div key={p.id} className="flex flex-wrap items-center gap-3 justify-between border border-border rounded-xl p-4 bg-surface shadow-card">
             <div className="flex items-center gap-3">
               <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${providerColor(p.provider)}`}>
                 {p.provider}
