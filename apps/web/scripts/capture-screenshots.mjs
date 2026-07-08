@@ -103,25 +103,53 @@ async function login() {
   return access_token
 }
 
+// Pull the first N workflows so we can screenshot their canvases. Workflow
+// names are shown; if any of yours embed a private repo name, drop them here.
+async function workflowShots(token, n = 2) {
+  try {
+    const res = await fetch(`${API}/api/v1/workflows`, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) return []
+    const { data } = await res.json()
+    return (data || []).slice(0, n).map((wf, i) => ({
+      file: i === 0 ? '14_workflow_canvas' : `15_workflow_canvas_${i + 1}`,
+      url: `/workflows/${wf.id}`,
+      canvas: true,
+    }))
+  } catch { return [] }
+}
+
 async function main() {
   const token = TOKEN || (console.log('Logging in…'), await login())
 
   const browser = await chromium.launch()
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: SCALE })
-  // Seed the token into localStorage before any app script runs.
+  // Seed the token into localStorage before any app script runs…
   await context.addInitScript((t) => { try { localStorage.setItem('access_token', t) } catch {} }, token)
+  // …and the has_session cookie the Next middleware gates every route on
+  // (otherwise heavier routes redirect to /login before the client sets it).
+  await context.addCookies([{ name: 'has_session', value: '1', url: WEB }])
   const page = await context.newPage()
 
+  const allShots = [...SHOTS, ...(await workflowShots(token))]
+  const only = (process.env.ONLY || '').split(',').map((s) => s.trim()).filter(Boolean)
+  const shots = only.length ? allShots.filter((s) => only.includes(s.file)) : allShots
+
   let ok = 0
-  for (const shot of SHOTS) {
+  for (const shot of shots) {
     try {
       await page.goto(WEB + shot.url, { waitUntil: 'networkidle', timeout: 30000 })
-      await page.waitForTimeout(900)
+      await page.waitForTimeout(shot.canvas ? 2500 : 900) // React Flow needs longer to lay out
       if (shot.tab) {
-        // Click a tab by its label — scoped to <main> so it can't hit a
-        // same-named sidebar nav item (Tools / Skills / Memory) and navigate away.
-        const tab = page.locator('main').getByText(shot.tab, { exact: false }).first()
-        if (await tab.count()) { await tab.click().catch(() => {}); await page.waitForTimeout(700) }
+        // Click the actual tab control. Match on the accessible NAME anchored at
+        // the start (so "Tools 1"/"Sessions (8)" still match) via role=tab
+        // (Radix) or, failing that, a role=button in <main> (custom tab bars).
+        // Anchoring + role avoids matching the tab-bar container or same-named
+        // sidebar nav items.
+        const rx = new RegExp('^\\s*' + shot.tab.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        let target = page.getByRole('tab', { name: rx })
+        if (!(await target.count())) target = page.locator('main').getByRole('button', { name: rx })
+        target = target.first()
+        if (await target.count()) { await target.click().catch(() => {}); await page.waitForTimeout(800) }
       }
       const dest = resolve(OUT, `${shot.file}.png`)
       await page.screenshot({ path: dest })
@@ -133,7 +161,7 @@ async function main() {
   }
 
   await browser.close()
-  console.log(`\nDone: ${ok}/${SHOTS.length} captured into docs/screenshots/`)
+  console.log(`\nDone: ${ok}/${shots.length} captured into docs/screenshots/`)
   console.log('Skipped by design (code repos): Connectors, Claude Code Repositories tab, Conversations.')
 }
 
