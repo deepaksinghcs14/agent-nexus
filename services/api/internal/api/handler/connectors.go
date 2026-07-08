@@ -232,9 +232,9 @@ func (h *ConnectorsHandler) CancelSync(w http.ResponseWriter, r *http.Request) {
 
 	// Scope the connector to the caller's workspace before touching anything.
 	var exists bool
-	if h.pool.QueryRow(r.Context(),
+	if err := h.pool.QueryRow(r.Context(),
 		`SELECT EXISTS(SELECT 1 FROM connectors WHERE id=$1::uuid AND workspace_id=$2::uuid)`, id, ws).
-		Scan(&exists); !exists {
+		Scan(&exists); err != nil || !exists {
 		errs.Write(w, errs.NotFound("connector not found"))
 		return
 	}
