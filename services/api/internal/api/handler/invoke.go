@@ -267,7 +267,7 @@ func progressLabel(toolName string) string {
 		return "Looking up agents…"
 
 	// Web & HTTP
-	case "native_web_search", "web_search":
+	case "web_search", "brave_web_search":
 		return "Searching the web…"
 	case "native_http_request", "http_request":
 		return "Fetching data…"

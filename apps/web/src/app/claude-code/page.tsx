@@ -14,7 +14,6 @@ import type { Agent, Run } from '@/types'
 type RunnerCreds = {
   claude_connected: boolean
   github_connected: boolean
-  jira_connected: boolean
   github_env_fallback: boolean
 }
 
