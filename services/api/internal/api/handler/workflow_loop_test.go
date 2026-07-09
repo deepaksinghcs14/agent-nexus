@@ -15,6 +15,9 @@ import (
 	"strings"
 	"testing"
 
+	"errors"
+
+	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	"github.com/google/uuid"
 )
 
@@ -262,5 +265,48 @@ func TestWorkflowWebhookNodeAndEndDelivery(t *testing.T) {
 	delivery := fx.firstEvent("node_delivery")
 	if delivery == nil || delivery["ok"] != true {
 		t.Fatalf("node_delivery not emitted ok: %v", delivery)
+	}
+}
+
+// SaveGraph/GetGraph round trip through the WorkflowRepository: stable node
+// ids across saves, edge replacement, and the unknown-edge sentinel.
+func TestWorkflowGraphSaveRoundTrip(t *testing.T) {
+	fx := newWorkflowFixture(t, nil, []wfNodeSpec{}, []wfEdgeSpec{})
+	repo := repository.NewWorkflowRepository(fx.pool)
+	ctx := context.Background()
+
+	startID, agentID := uuid.NewString(), uuid.NewString()
+	nodes := []repository.WorkflowGraphNode{
+		{ID: startID, NodeType: "start", Config: json.RawMessage(`{}`)},
+		{ID: agentID, NodeType: "agent", AgentID: fx.agent.ID, PositionX: 100, Config: json.RawMessage(`{"label":"A"}`)},
+	}
+	edges := []repository.WorkflowGraphEdge{{SourceNodeID: startID, TargetNodeID: agentID}}
+	if err := repo.SaveGraph(ctx, fx.workflowID, nodes, edges); err != nil {
+		t.Fatalf("first save: %v", err)
+	}
+
+	// Re-save with moved node: id must be stable, position updated.
+	nodes[1].PositionX = 300
+	if err := repo.SaveGraph(ctx, fx.workflowID, nodes, edges); err != nil {
+		t.Fatalf("second save: %v", err)
+	}
+	gotNodes, gotEdges, err := repo.GetGraph(ctx, fx.workflowID)
+	if err != nil || len(gotNodes) != 2 || len(gotEdges) != 1 {
+		t.Fatalf("graph = %d nodes / %d edges (err %v), want 2/1", len(gotNodes), len(gotEdges), err)
+	}
+	var moved bool
+	for _, n := range gotNodes {
+		if n.ID == agentID && n.PositionX == 300 && n.AgentID == fx.agent.ID {
+			moved = true
+		}
+	}
+	if !moved {
+		t.Fatalf("agent node id not stable or position not updated: %+v", gotNodes)
+	}
+
+	// Edge referencing an unknown node must return the typed sentinel.
+	badEdges := []repository.WorkflowGraphEdge{{SourceNodeID: startID, TargetNodeID: "ghost"}}
+	if err := repo.SaveGraph(ctx, fx.workflowID, nodes, badEdges); !errors.Is(err, repository.ErrUnknownEdgeNode) {
+		t.Fatalf("bad edge err = %v, want ErrUnknownEdgeNode", err)
 	}
 }
