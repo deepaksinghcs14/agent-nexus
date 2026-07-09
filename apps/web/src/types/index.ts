@@ -550,7 +550,7 @@ export interface Workflow {
 export type AgentGroup = Workflow
 
 // Workflow graph types
-export type WorkflowNodeType = 'start' | 'end' | 'agent' | 'supervisor' | 'condition' | 'parallel' | 'join' | 'loop'
+export type WorkflowNodeType = 'start' | 'end' | 'agent' | 'supervisor' | 'condition' | 'parallel' | 'join' | 'loop' | 'tool' | 'webhook' | 'gateway'
 
 export interface WorkflowNode {
   id: string
@@ -608,6 +608,8 @@ export type SSEEventType =
   | 'node_started'
   | 'node_completed'
   | 'node_routed'
+  | 'node_resumed'
+  | 'node_delivery'
 
 export interface SSEEvent {
   type: SSEEventType

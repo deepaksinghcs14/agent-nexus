@@ -118,9 +118,9 @@ export default function ClaudeCodePipelineDoc() {
         <li>Webhook triggers created — run <code>infra/scripts/setup_pipeline.sh</code>, then point
             a Jira webhook (issue created/updated) and a GitHub webhook (pull_request events) at
             the printed URLs</li>
-        <li>Optional: connect Atlassian&apos;s hosted MCP server (MCP Servers → Connect (OAuth)) and
-            attach the synced Jira comment/transition tools to the orchestrator — without it the
-            pipeline works but skips Jira commenting</li>
+        <li>Optional: connect Atlassian&apos;s hosted MCP server (MCP Servers → Connect (OAuth)).
+            The orchestrator attaches the synced Jira tools it needs by itself at run time —
+            without a connected server the pipeline works but skips Jira commenting</li>
       </ol>
 
       <h2>Testing from the playground</h2>

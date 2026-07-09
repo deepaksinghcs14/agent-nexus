@@ -236,11 +236,11 @@ func (t *SaveWorkflowGraphTool) Definition() domain.Tool {
 					"type": "object",
 					"properties": map[string]any{
 						"id":         map[string]any{"type": "string", "description": "Client-side node ID used by edges, e.g. start, research, condition_1."},
-						"node_type":  map[string]any{"type": "string", "enum": []string{"start", "end", "agent", "supervisor", "condition", "parallel", "join", "loop"}},
+						"node_type":  map[string]any{"type": "string", "enum": []string{"start", "end", "agent", "supervisor", "condition", "parallel", "join", "loop", "tool", "webhook", "gateway"}},
 						"agent_id":   map[string]any{"type": "string", "description": "Required for agent and supervisor nodes."},
 						"position_x": map[string]any{"type": "number", "description": "Canvas X position."},
 						"position_y": map[string]any{"type": "number", "description": "Canvas Y position."},
-						"config":     map[string]any{"type": "object", "description": "Node config: condition uses {expression}; loop uses {exit_condition,max_iterations}; label is optional for display."},
+						"config":     map[string]any{"type": "object", "description": "Node config: condition uses {expression}; loop uses {exit_condition,max_iterations}; tool uses {tool_name,args} (approval-gated tools are refused at run time); webhook uses {url,method,headers,payload_template}; gateway uses {channel_id,peer_id,peer_kind,message_template}; end optionally delivers via {webhook_url} and/or {gateway_channel_id,gateway_peer_id}; label is optional for display. String values in tool args and templates may use {{input}} and {{original_input}}."},
 					},
 					"required": []string{"id", "node_type", "position_x", "position_y", "config"},
 				},
@@ -263,7 +263,7 @@ func (t *SaveWorkflowGraphTool) Definition() domain.Tool {
 	})
 	return domain.Tool{
 		Name:             "native_save_workflow_graph",
-		Description:      "Replace a workflow's graph with rich control-flow nodes and edges: start, end, agent, supervisor, condition, parallel, join, and loop.",
+		Description:      "Replace a workflow's graph with rich control-flow nodes and edges: start, end, agent, supervisor, condition, parallel, join, loop, plus integration nodes — tool (run one workspace tool), webhook (POST output to a URL), and gateway (send output as a chat message).",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),
@@ -468,6 +468,33 @@ func validateWorkflowGraph(ctx context.Context, pool *pgxpool.Pool, workspaceID 
 				return fmt.Errorf("%s node %q references unknown or inactive agent", node.Type, node.ID)
 			}
 		case "condition", "parallel", "join", "loop":
+		case "tool":
+			toolName, _ := node.Config["tool_name"].(string)
+			if toolName == "" {
+				return fmt.Errorf("tool node %q requires config.tool_name", node.ID)
+			}
+			var exists bool
+			if err := pool.QueryRow(ctx,
+				`SELECT EXISTS(SELECT 1 FROM tools WHERE name=$1 AND (workspace_id IS NULL OR workspace_id=$2::uuid) AND enabled=true)`,
+				toolName, workspaceID).Scan(&exists); err != nil || !exists {
+				return fmt.Errorf("tool node %q references unknown or disabled tool %q", node.ID, toolName)
+			}
+		case "webhook":
+			if u, _ := node.Config["url"].(string); u == "" {
+				return fmt.Errorf("webhook node %q requires config.url", node.ID)
+			}
+		case "gateway":
+			chID, _ := node.Config["channel_id"].(string)
+			peerID, _ := node.Config["peer_id"].(string)
+			if chID == "" || peerID == "" {
+				return fmt.Errorf("gateway node %q requires config.channel_id and config.peer_id", node.ID)
+			}
+			var exists bool
+			if err := pool.QueryRow(ctx,
+				`SELECT EXISTS(SELECT 1 FROM gateway_channels WHERE id=$1::uuid AND workspace_id=$2::uuid)`,
+				chID, workspaceID).Scan(&exists); err != nil || !exists {
+				return fmt.Errorf("gateway node %q references unknown gateway channel", node.ID)
+			}
 		default:
 			return fmt.Errorf("unsupported node_type %q for node %q", node.Type, node.ID)
 		}

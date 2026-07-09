@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { agentsAPI, evalsAPI } from '@/lib/api'
 import type { Agent, EvalSuite } from '@/types'
 import { FlaskConical, Plus, Trash2, ChevronRight } from 'lucide-react'
+import { PageHeader } from '@/components/ui/PageHeader'
 
 const GRADING_LABELS: Record<string, string> = {
   llm_judge: 'LLM Judge',
@@ -118,33 +119,32 @@ export default function EvalsPage() {
 
   return (
     <div className="p-4 sm:p-6">
-      <div className="flex flex-wrap items-center gap-3 justify-between mb-8">
-        <div>
-          <span className="eyebrow block mb-1">Observe</span>
-          <h1 className="text-[22px] font-bold tracking-tight text-foreground">Evals</h1>
-          <p className="text-sm text-muted-foreground mt-1">Test suites that run your agents against known inputs and grade their outputs.</p>
-        </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-md bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New suite
-        </button>
-      </div>
+      <PageHeader
+        eyebrow="Observe"
+        title="Evals"
+        subtitle="Test suites that run your agents against known inputs and grade their outputs."
+        actions={
+          <button
+            onClick={() => setShowCreate(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] bg-gradient-to-br from-accent to-accent-ink hover:opacity-95 text-white text-[13px] font-semibold shadow-card"
+          >
+            <Plus className="w-4 h-4" /> New suite
+          </button>
+        }
+      />
 
       {loading ? (
         <div className="py-10 text-center text-sm text-faint">Loading…</div>
       ) : suites.length === 0 ? (
-        <div className="py-16 text-center">
+        <div className="border border-dashed border-border-strong rounded-2xl py-16 text-center bg-surface">
           <FlaskConical className="w-10 h-10 text-faint mx-auto mb-3" />
           <p className="text-sm font-medium text-muted-foreground">No eval suites yet</p>
-          <p className="text-sm text-faint mt-1">Create a suite to start testing your agents systematically.</p>
+          <p className="text-sm text-faint mt-1 mb-4">Create a suite to start testing your agents systematically.</p>
           <button
             onClick={() => setShowCreate(true)}
-            className="mt-4 px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-md transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
           >
-            Create your first suite
+            <Plus className="w-4 h-4" /> Create your first suite
           </button>
         </div>
       ) : (

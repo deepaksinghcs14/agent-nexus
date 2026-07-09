@@ -59,6 +59,7 @@ You have access to these tools:
 - list_available_models: See what LLM providers and models the workspace has configured.
 - list_agents: See existing agents (useful when building workflows that reference them).
 - list_tools: See all available tools (native + MCP) that can be attached to an agent.
+- list_mcp_servers: See all connected MCP servers (e.g. Jira, GitHub, Slack) and how many tools each exposes.
 - list_connectors: See all connected data sources whose knowledge can be retrieved by agents.
 - create_agent: Create a fully configured AI agent — including tools, memory, and context retrieval.
 - create_workflow: Create a named workflow (the container for a multi-agent graph).
@@ -82,12 +83,14 @@ Guidelines:
 - ALWAYS call list_workflows before creating a workflow — if one exists that matches the user's intent, ask the user: "A workflow called '<name>' already exists. Do you want to update it, or create a new one?" and wait for their answer before proceeding.
 - Use distinct, descriptive names for every resource (agent or workflow) that reflect its specific purpose. Never use generic names like "Research Agent" or "Pipeline" — be specific, e.g. "Market Research Agent", "Daily News Pipeline".
 - Always call list_tools before create_agent if the user mentions web search, file reading, HTTP requests, or any tool capability.
+- When the user wants an agent connected to an external service that's set up as an MCP server (e.g. "give it Jira access", "let it post to Slack"), call list_mcp_servers and pass the matching server's id via mcp_server_ids — this attaches every tool that server exposes in one step. Only fall back to individual tool_names when the user wants a specific subset of a server's tools, not the whole integration.
 - Always call list_connectors before create_agent if the user mentions documents, knowledge base, or context retrieval.
 - Use sensible defaults: temperature=0.7, max_tokens=4096, max_steps=10, max_tool_calls=20, status="active".
 - Enable memory (memory_enabled=true, memory_scope="agent") for agents that need to remember past interactions.
 - Enable context retrieval (context_retrieval_enabled=true) for agents that need to search documents. Use agentic_rag=true when the agent should decide when/what to retrieve dynamically rather than getting a fixed pre-run injection.
 - For workflows, always include a start node (node_type="start") and an end node (node_type="end").
 - Use condition nodes for branching (yes/no edges), parallel+join nodes for concurrent execution, loop nodes for retry patterns.
+- Integration nodes need no agent: node_type="tool" runs one workspace tool directly (config {tool_name, args}; approval-gated tools are refused), node_type="webhook" POSTs the previous node's output to an external URL (config {url}), node_type="gateway" sends it as a message through a gateway channel (config {channel_id, peer_id}). An end node can additionally deliver the final output via config {webhook_url} and/or {gateway_channel_id, gateway_peer_id}.
 - For supervisor workflows: use node_type="supervisor" for the coordinating agent (not "agent"). Connect start→supervisor→end with normal edges. Connect supervisor→each team agent node with edges labelled "delegate" — these agents become callable tools the supervisor uses at runtime. The supervisor's LLM decides when and how to call each team agent. Always assign a real agent to the supervisor node via agent_id. IMPORTANT: when writing the supervisor agent's instructions, do NOT include tool names like "delegate_researcher" — the runtime discovers connected team agents and injects their exact names automatically. Write the supervisor's instructions to describe coordination strategy, task sequencing rationale, expected output format, and quality criteria only. When creating team agents for a supervisor workflow, always populate the description field with one sentence stating the agent's specialty (e.g. "Fact-checks claims for accuracy and flags unverified assertions") — this description is shown to the supervisor LLM as the team agent's tool description at runtime.
 - For node positions, use a horizontal layout: start at x=50 y=200, then space nodes 250px apart horizontally; branch parallel nodes ±150px vertically from the main axis. For supervisor team agents, place them to the right of the supervisor node at ±140px vertically.
 - For gateway channels: always call list_agents first to get the agent_id. For http channels, only name/agent_id/channel_type are needed. For whatsapp channels, advise the user to scan the QR code in the Gateway → channel page after creation.
@@ -134,6 +137,11 @@ var nexusToolDefs = []provider.ToolDefinition{
 		InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
 	},
 	{
+		Name:        "list_mcp_servers",
+		Description: "List all connected MCP servers in this workspace, with each server's id and how many tools it exposes. Call this when the user wants an agent to have access to an entire MCP integration (e.g. 'give it Jira access', 'connect it to Slack') — pass the server's id as mcp_server_ids to create_agent/propose_agent/update_agent to attach ALL of that server's tools at once, instead of listing individual tool names.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
+	},
+	{
 		Name:        "list_connectors",
 		Description: "List all data source connectors in this workspace. Call this before create_agent when the user mentions documents, knowledge base, context retrieval, or grounding from external sources.",
 		InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
@@ -160,6 +168,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"agentic_rag":{"type":"boolean","description":"Let the agent decide when/what to retrieve via native_retrieve_context tool instead of pre-run injection. Only used when context_retrieval_enabled=true."},
 				"tool_ids":{"type":"array","items":{"type":"string"},"description":"List of tool UUIDs to attach. Get these from list_tools."},
 				"tool_names":{"type":"array","items":{"type":"string"},"description":"List of tool names to attach (alternative to tool_ids, e.g. ['native_read_file','native_http_request']). Resolved by name."},
+				"mcp_server_ids":{"type":"array","items":{"type":"string"},"description":"List of MCP server UUIDs. ALL tools belonging to each server are attached automatically — use this instead of listing individual tool_names when the user wants to give the agent an entire MCP integration (e.g. 'give it Jira access'). Get server IDs from list_mcp_servers."},
 				"connector_ids":{"type":"array","items":{"type":"string"},"description":"List of connector UUIDs to enable for context retrieval. Requires context_retrieval_enabled=true. Get IDs from list_connectors."},
 				"max_chunks":{"type":"integer","description":"Max context chunks to retrieve per run (default 8, only used when context_retrieval_enabled=true and agentic_rag=false)"},
 				"min_score":{"type":"number","description":"Minimum similarity score for context retrieval, 0-1 (default 0.5, only used when context_retrieval_enabled=true and agentic_rag=false)"},
@@ -189,6 +198,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"context_retrieval_enabled":{"type":"boolean","description":"Enable retrieval-augmented context from connectors"},
 				"agentic_rag":{"type":"boolean","description":"Let the agent decide when/what to retrieve. Only used when context_retrieval_enabled=true."},
 				"tool_names":{"type":"array","items":{"type":"string"},"description":"Tool names to attach, e.g. ['native_read_file']. Get from list_tools."},
+				"mcp_server_ids":{"type":"array","items":{"type":"string"},"description":"List of MCP server UUIDs. ALL tools belonging to each server are attached automatically — use this instead of listing individual tool_names when the user wants to give the agent an entire MCP integration (e.g. 'give it Jira access'). Get server IDs from list_mcp_servers."},
 				"skill_names":{"type":"array","items":{"type":"string"},"description":"Skill names to attach. Get from list_skills."},
 				"connector_ids":{"type":"array","items":{"type":"string"},"description":"Connector UUIDs for context retrieval. Requires context_retrieval_enabled=true. Get from list_connectors."},
 				"max_chunks":{"type":"integer","description":"Max context chunks per run (default 8)"},
@@ -231,11 +241,11 @@ var nexusToolDefs = []provider.ToolDefinition{
 						"type":"object",
 						"properties":{
 							"id":{"type":"string","description":"Client-side ID used to reference this node in edges, e.g. 'n1','n2'"},
-							"node_type":{"type":"string","enum":["start","end","agent","supervisor","condition","parallel","join","loop"]},
+							"node_type":{"type":"string","enum":["start","end","agent","supervisor","condition","parallel","join","loop","tool","webhook","gateway"]},
 							"agent_id":{"type":"string","description":"Agent UUID — for node_type=agent or node_type=supervisor"},
 							"position_x":{"type":"number","description":"Canvas X position"},
 							"position_y":{"type":"number","description":"Canvas Y position"},
-							"config":{"type":"object","description":"Node config: {label} for agent, {expression} for condition (e.g. contains:APPROVED), {exit_condition, max_iterations} for loop"}
+							"config":{"type":"object","description":"Node config: {label} for agent, {expression} for condition (e.g. contains:APPROVED), {exit_condition, max_iterations} for loop, {tool_name, args} for tool, {url, method, headers, payload_template} for webhook, {channel_id, peer_id, peer_kind, message_template} for gateway. End nodes accept optional delivery config: {webhook_url} and/or {gateway_channel_id, gateway_peer_id}."}
 						},
 						"required":["id","node_type","position_x","position_y","config"]
 					}
@@ -346,6 +356,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"context_retrieval_enabled":{"type":"boolean","description":"Enable or disable retrieval-augmented context from connected data sources."},
 				"agentic_rag":{"type":"boolean","description":"Let the agent decide when/what to retrieve via native_retrieve_context instead of pre-run injection. Requires context_retrieval_enabled=true."},
 				"connector_ids":{"type":"array","items":{"type":"string"},"description":"Replace the agent's context connectors with these UUIDs. Requires context_retrieval_enabled=true. Get IDs from list_connectors."},
+				"mcp_server_ids":{"type":"array","items":{"type":"string"},"description":"List of MCP server UUIDs. ALL tools belonging to each server are attached to the agent (additive — existing tools are kept). Use this to give an already-created agent an entire MCP integration at once. Get server IDs from list_mcp_servers."},
 				"status":{"type":"string","enum":["active","paused","archived"],"description":"New agent status."}
 			},
 			"required":["agent_id"]
@@ -708,6 +719,8 @@ func (h *NexusAIHandler) executeTool(ctx context.Context, ws, uid, name string, 
 		return h.toolListWorkflows(ctx, ws)
 	case "list_tools":
 		return h.toolListTools(ctx, ws)
+	case "list_mcp_servers":
+		return h.toolListMCPServers(ctx, ws)
 	case "list_connectors":
 		return h.toolListConnectors(ctx, ws)
 	case "create_agent":
@@ -805,6 +818,77 @@ func (h *NexusAIHandler) toolListTools(ctx context.Context, ws string) (*toolRes
 	return &toolResult{Label: fmt.Sprintf("Listed %d tools", len(out)), Data: out}, nil
 }
 
+func (h *NexusAIHandler) toolListMCPServers(ctx context.Context, ws string) (*toolResult, error) {
+	rows, err := h.pool.Query(ctx,
+		`SELECT s.id::text, s.name, s.status, COUNT(t.id) AS tool_count
+		 FROM mcp_servers s
+		 LEFT JOIN tools t ON t.type='mcp' AND (t.config->>'server_id')=s.id::text
+		 WHERE s.workspace_id=$1::uuid
+		 GROUP BY s.id, s.name, s.status
+		 ORDER BY s.name`, ws)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list mcp servers: %w", err)
+	}
+	defer rows.Close()
+	type entry struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Status    string `json:"status"`
+		ToolCount int    `json:"tool_count"`
+	}
+	var out []entry
+	for rows.Next() {
+		var e entry
+		if err := rows.Scan(&e.ID, &e.Name, &e.Status, &e.ToolCount); err != nil {
+			continue
+		}
+		out = append(out, e)
+	}
+	return &toolResult{Label: fmt.Sprintf("Listed %d MCP servers", len(out)), Data: out}, nil
+}
+
+// resolveMCPServerToolNames expands MCP server IDs into the flat list of tool names each
+// server exposes, so "enable this whole MCP server" can reuse the existing name-based
+// attach logic (agent_tools INSERT ... SELECT id FROM tools WHERE name=...) instead of
+// needing a separate bulk-attach code path.
+func resolveMCPServerToolNames(ctx context.Context, pool *pgxpool.Pool, ws string, serverIDs []string) []string {
+	if len(serverIDs) == 0 {
+		return nil
+	}
+	rows, err := pool.Query(ctx,
+		`SELECT name FROM tools
+		 WHERE type='mcp' AND (config->>'server_id')=ANY($1) AND (workspace_id IS NULL OR workspace_id=$2::uuid)`,
+		serverIDs, ws)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var n string
+		if rows.Scan(&n) == nil {
+			names = append(names, n)
+		}
+	}
+	return names
+}
+
+// dedupeStrings removes repeated entries while preserving first-seen order — used after
+// merging explicit tool_names with names resolved from mcp_server_ids, since the same tool
+// could be named both ways.
+func dedupeStrings(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
 func (h *NexusAIHandler) toolListConnectors(ctx context.Context, ws string) (*toolResult, error) {
 	rows, err := h.pool.Query(ctx,
 		`SELECT id, name, provider, status FROM connectors WHERE workspace_id=$1::uuid ORDER BY name`, ws)
@@ -893,6 +977,7 @@ func (h *NexusAIHandler) toolCreateAgent(ctx context.Context, ws, uid string, in
 		AgenticRAG              bool     `json:"agentic_rag"`
 		ToolIDs                 []string `json:"tool_ids"`
 		ToolNames               []string `json:"tool_names"`
+		MCPServerIDs            []string `json:"mcp_server_ids"`
 		ConnectorIDs            []string `json:"connector_ids"`
 		MaxChunks               int      `json:"max_chunks"`
 		MinScore                float64  `json:"min_score"`
@@ -901,6 +986,7 @@ func (h *NexusAIHandler) toolCreateAgent(ctx context.Context, ws, uid string, in
 	if err := json.Unmarshal(input, &args); err != nil {
 		return nil, fmt.Errorf("invalid create_agent input: %w", err)
 	}
+	args.ToolNames = dedupeStrings(append(args.ToolNames, resolveMCPServerToolNames(ctx, h.pool, ws, args.MCPServerIDs)...))
 	if args.Name == "" || args.Instructions == "" || args.Provider == "" || args.Model == "" {
 		return nil, fmt.Errorf("create_agent requires name, instructions, provider, model")
 	}
@@ -1041,6 +1127,7 @@ func (h *NexusAIHandler) toolProposeAgent(ctx context.Context, ws string, input 
 		ContextRetrievalEnabled bool            `json:"context_retrieval_enabled"`
 		AgenticRAG              bool            `json:"agentic_rag"`
 		ToolNames               []string        `json:"tool_names"`
+		MCPServerIDs            []string        `json:"mcp_server_ids"`
 		SkillNames              []string        `json:"skill_names"`
 		ConnectorIDs            []string        `json:"connector_ids"`
 		MaxChunks               int             `json:"max_chunks"`
@@ -1051,6 +1138,7 @@ func (h *NexusAIHandler) toolProposeAgent(ctx context.Context, ws string, input 
 	if err := json.Unmarshal(input, &args); err != nil {
 		return nil, fmt.Errorf("invalid propose_agent input: %w", err)
 	}
+	args.ToolNames = dedupeStrings(append(args.ToolNames, resolveMCPServerToolNames(ctx, h.pool, ws, args.MCPServerIDs)...))
 	if args.Name == "" || args.Instructions == "" {
 		return nil, fmt.Errorf("propose_agent requires name and instructions")
 	}
@@ -1703,6 +1791,7 @@ func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input j
 		ContextRetrievalEnabled *bool    `json:"context_retrieval_enabled"`
 		AgenticRAG              *bool    `json:"agentic_rag"`
 		ConnectorIDs            []string `json:"connector_ids"`
+		MCPServerIDs            []string `json:"mcp_server_ids"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
 		return nil, fmt.Errorf("invalid update_agent input: %w", err)
@@ -1762,7 +1851,7 @@ func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input j
 	if args.AgenticRAG != nil {
 		clauses = append(clauses, setClause{"agentic_rag", *args.AgenticRAG})
 	}
-	if len(clauses) == 0 && args.ConnectorIDs == nil {
+	if len(clauses) == 0 && args.ConnectorIDs == nil && len(args.MCPServerIDs) == 0 {
 		return nil, fmt.Errorf("update_agent: no fields to update")
 	}
 
@@ -1808,8 +1897,31 @@ func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input j
 		}
 	}
 
+	// Attach every tool belonging to the given MCP servers — additive, existing tools
+	// (including ones from other servers) are left untouched.
+	attachedToolCount := 0
+	if toolNames := resolveMCPServerToolNames(ctx, h.pool, ws, args.MCPServerIDs); len(toolNames) > 0 {
+		tx, err := h.pool.Begin(ctx)
+		if err == nil {
+			for _, name := range toolNames {
+				tx.Exec(ctx, //nolint:errcheck
+					`INSERT INTO agent_tools(agent_id,tool_id,enabled)
+					 SELECT $1::uuid,id,true FROM tools WHERE name=$2 AND (workspace_id IS NULL OR workspace_id=$3::uuid)
+					 ON CONFLICT DO NOTHING`,
+					args.AgentID, name, ws)
+			}
+			tx.Commit(ctx) //nolint:errcheck
+			attachedToolCount = len(toolNames)
+		}
+	}
+
+	label := fmt.Sprintf("Updated agent \"%s\"", agentName)
+	if attachedToolCount > 0 {
+		label += fmt.Sprintf(" [attached %d MCP tool(s)]", attachedToolCount)
+	}
+
 	return &toolResult{
-		Label: fmt.Sprintf("Updated agent \"%s\"", agentName),
+		Label: label,
 		Link:  "/agents/" + args.AgentID,
 		Data:  map[string]any{"updated": true, "agent_id": args.AgentID},
 	}, nil
@@ -2040,6 +2152,8 @@ func toolStartLabel(toolName string, input json.RawMessage) string {
 		return "Listing existing agents..."
 	case "list_tools":
 		return "Listing available tools..."
+	case "list_mcp_servers":
+		return "Listing MCP servers..."
 	case "list_connectors":
 		return "Listing available connectors..."
 	case "list_gateway_channels":

@@ -594,7 +594,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			dbTool, toolExists := dbTools[call.Name]
+			dbTool, toolExists := resolveDBTool(call.Name, dbTools, toolCatalog)
 
 			// Approval gate for high-risk tools
 			if toolExists && dbTool.RequiresApproval {

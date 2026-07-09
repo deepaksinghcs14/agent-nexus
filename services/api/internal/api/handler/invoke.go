@@ -1160,7 +1160,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				continue
 			}
 
-			dbTool, toolExists := dbTools[call.Name]
+			dbTool, toolExists := resolveDBTool(call.Name, dbTools, toolCatalog)
 
 			if toolExists && dbTool.RequiresApproval {
 				var decision ApprovalDecision
@@ -1677,8 +1677,82 @@ func (h *InvokeHandler) executeGroupRun(
 				}
 
 			case "end":
-				// Terminal node — capture last output and stop this branch.
+				// Terminal node — capture last output, run any configured
+				// deliveries (webhook / gateway), and stop this branch.
 				nodeOutputs[node.ID] = lastOutput
+				if url, _ := node.Config["webhook_url"].(string); url != "" {
+					if _, err := h.executeWorkflowWebhook(ctx, map[string]any{"url": url}, workflowID, parentRunID, node.ID, lastOutput, originalInput); err != nil {
+						sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"webhook","ok":false,"error":%q}`, node.ID, err.Error()))
+					} else {
+						sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"webhook","ok":true}`, node.ID))
+					}
+				}
+				if chID, _ := node.Config["gateway_channel_id"].(string); chID != "" {
+					if err := h.deliverWorkflowGateway(ctx, ws, node.Config, "gateway_", parentRunID, lastOutput, originalInput); err != nil {
+						sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"gateway","ok":false,"error":%q}`, node.ID, err.Error()))
+					} else {
+						sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"gateway","ok":true}`, node.ID))
+					}
+				}
+
+			case "tool", "webhook":
+				// Integration nodes: side-effectful, no sub-run. On resume,
+				// reuse the checkpointed output so the side effect doesn't
+				// fire twice.
+				if cached, ok := resumedOutputs[node.ID]; ok && !consumedResume[node.ID] {
+					consumedResume[node.ID] = true
+					outputMu.Lock()
+					nodeOutputs[node.ID] = cached
+					outputMu.Unlock()
+					lastOutput = cached
+					prevNodeName = nodeName
+					sseEmit(fmt.Sprintf(`{"type":"node_resumed","node_id":%q,"node_name":%q}`, node.ID, nodeName))
+				} else {
+					var out string
+					var nodeErr error
+					if node.Type == "tool" {
+						out, nodeErr = h.executeWorkflowToolNode(ctx, ws, uid, parentRunID, node, lastOutput, originalInput)
+					} else {
+						out, nodeErr = h.executeWorkflowWebhook(ctx, node.Config, workflowID, parentRunID, node.ID, lastOutput, originalInput)
+					}
+					if nodeErr != nil {
+						// Surface the failure but keep walking: downstream
+						// condition nodes can branch on the error envelope.
+						sseEmit(fmt.Sprintf(`{"type":"error","node_id":%q,"error":%q}`, node.ID, nodeErr.Error()))
+						out = fmt.Sprintf(`{"error":%q}`, nodeErr.Error())
+					}
+					outputMu.Lock()
+					nodeOutputs[node.ID] = out
+					outputMu.Unlock()
+					lastOutput = out
+					prevNodeName = nodeName
+				}
+				for _, e := range adj[node.ID] {
+					if next, ok := nodeMap[e.Target]; ok {
+						queue = append(queue, next)
+					}
+				}
+
+			case "gateway":
+				// Sends the current output through a gateway channel, then
+				// passes it through unchanged. On resume, skip the re-send.
+				if _, ok := resumedOutputs[node.ID]; ok && !consumedResume[node.ID] {
+					consumedResume[node.ID] = true
+					sseEmit(fmt.Sprintf(`{"type":"node_resumed","node_id":%q,"node_name":%q}`, node.ID, nodeName))
+				} else if err := h.deliverWorkflowGateway(ctx, ws, node.Config, "", parentRunID, lastOutput, originalInput); err != nil {
+					sseEmit(fmt.Sprintf(`{"type":"error","node_id":%q,"error":%q}`, node.ID, err.Error()))
+				} else {
+					sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"gateway","ok":true}`, node.ID))
+				}
+				outputMu.Lock()
+				nodeOutputs[node.ID] = lastOutput
+				outputMu.Unlock()
+				prevNodeName = nodeName
+				for _, e := range adj[node.ID] {
+					if next, ok := nodeMap[e.Target]; ok {
+						queue = append(queue, next)
+					}
+				}
 
 			case "agent":
 				if node.AgentID == "" {
@@ -2380,7 +2454,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	}
 	// Discovery is workspace-wide, matching executeRun/Start, so native_list_tools and
 	// native_list_agent_skills (if attached to a supervisor agent) don't just report empty.
-	toolCatalogDefs, _, _ := loadWorkspaceToolCatalog(ctx, h.pool, ws)
+	toolCatalogDefs, toolCatalog, _ := loadWorkspaceToolCatalog(ctx, h.pool, ws)
 	supToolSummaries := make(map[string]string, len(toolCatalogDefs)+len(regularToolDefs))
 	for _, td := range toolCatalogDefs {
 		supToolSummaries[td.Name] = td.Description
@@ -2711,7 +2785,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 				continue
 			}
 
-			dbTool, toolExists := dbTools[call.Name]
+			dbTool, toolExists := resolveDBTool(call.Name, dbTools, toolCatalog)
 
 			if toolExists && dbTool.RequiresApproval {
 				arID := uuid.NewString()
@@ -2829,7 +2903,8 @@ func (h *InvokeHandler) executeSupervisorRun(
 		}
 		// Refresh the workspace catalogs too, so tools/skills created mid-run stay
 		// discoverable via native_list_tools/native_list_agent_skills.
-		if freshCatalogDefs, _, err := loadWorkspaceToolCatalog(ctx, h.pool, ws); err == nil {
+		if freshCatalogDefs, freshCatalog, err := loadWorkspaceToolCatalog(ctx, h.pool, ws); err == nil {
+			toolCatalog = freshCatalog
 			for _, td := range freshCatalogDefs {
 				supToolSummaries[td.Name] = td.Description
 			}

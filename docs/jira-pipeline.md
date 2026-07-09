@@ -65,8 +65,10 @@ Jira webhook ──▶ /webhook/{id} ──▶ Orchestrator agent run
    `NEXUS_API=… NEXUS_TOKEN=… PROVIDER=anthropic MODEL=claude-sonnet-4-6 ./infra/scripts/setup_pipeline.sh`
    — prints the Jira and GitHub webhook URLs to configure.
 5. **Connect Atlassian**: add an MCP server with URL
-   `https://mcp.atlassian.com/v1/mcp`, click **Connect (OAuth)**, grant access,
-   then attach the synced Jira comment/transition tools to the orchestrator.
+   `https://mcp.atlassian.com/v1/mcp`, click **Connect (OAuth)**, and grant
+   access. The orchestrator self-attaches the synced Jira tools it needs at run
+   time (`native_attach_tool`); attaching them manually in the UI still works
+   and skips that first-turn discovery step.
 6. **Schedule** the weekly docs-map refresh (the setup script prints the
    `curl` for a Railway cron).
 

@@ -17,7 +17,7 @@ function PlaygroundInner() {
   const searchParams = useSearchParams()
   const preselectedAgent = searchParams.get('agent') ?? ''
 
-  const { data } = useQuery({
+  const { data, isLoading: agentsLoading } = useQuery({
     queryKey: ['agents'],
     queryFn: () => agentsAPI.list() as Promise<{ data: Agent[] }>,
   })
@@ -58,7 +58,13 @@ function PlaygroundInner() {
         {/* Agent selection */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">Choose an agent</label>
-          {agents.length === 0 ? (
+          {agentsLoading ? (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="h-16 animate-pulse rounded-xl border border-border bg-muted/60" />
+              ))}
+            </div>
+          ) : agents.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border-strong p-6 text-center">
               <Bot size={24} className="text-faint mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">No agents yet.</p>

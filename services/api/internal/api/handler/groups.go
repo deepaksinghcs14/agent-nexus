@@ -321,6 +321,26 @@ func validateWorkflowGraph(nodes []saveGraphNode, edges []saveGraphEdge) []strin
 			if _, ok := cfg["max_iterations"]; !ok {
 				warnings = append(warnings, fmt.Sprintf("loop node %q has no max_iterations set", n.ID))
 			}
+		case "tool":
+			var cfg map[string]any
+			_ = json.Unmarshal(n.Config, &cfg)
+			if name, _ := cfg["tool_name"].(string); name == "" {
+				warnings = append(warnings, fmt.Sprintf("tool node %q has no tool selected", n.ID))
+			}
+		case "webhook":
+			var cfg map[string]any
+			_ = json.Unmarshal(n.Config, &cfg)
+			if u, _ := cfg["url"].(string); u == "" {
+				warnings = append(warnings, fmt.Sprintf("webhook node %q has no URL configured", n.ID))
+			}
+		case "gateway":
+			var cfg map[string]any
+			_ = json.Unmarshal(n.Config, &cfg)
+			chID, _ := cfg["channel_id"].(string)
+			peerID, _ := cfg["peer_id"].(string)
+			if chID == "" || peerID == "" {
+				warnings = append(warnings, fmt.Sprintf("gateway node %q needs a channel and recipient configured", n.ID))
+			}
 		}
 	}
 

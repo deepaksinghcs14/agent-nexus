@@ -193,14 +193,14 @@ func (t *AttachSkillTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"agent_id":   map[string]any{"type": "string", "description": "UUID of the agent to attach the skill to."},
+			"agent_id":   map[string]any{"type": "string", "description": "UUID of the agent to attach the skill to. Defaults to the calling agent — omit to give yourself the skill."},
 			"skill_name": map[string]any{"type": "string", "description": "Name of the skill to attach."},
 		},
-		"required": []string{"agent_id", "skill_name"},
+		"required": []string{"skill_name"},
 	})
 	return domain.Tool{
 		Name:             "native_attach_skill",
-		Description:      "Attach a skill to any agent by skill name.",
+		Description:      "Attach (enable) a workspace skill for an agent by skill name, along with the skill's required tools. Defaults to the calling agent — the skill is usable on your next turn.",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),
@@ -214,19 +214,17 @@ func (t *AttachSkillTool) Execute(_ map[string]any) (any, error) {
 	return nil, fmt.Errorf("native_attach_skill requires run context")
 }
 func (t *AttachSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
-	agentID, _ := input["agent_id"].(string)
 	skillName, _ := input["skill_name"].(string)
-	if agentID == "" {
-		if agentName, _ := input["agent_name"].(string); agentName != "" {
-			t.pool.QueryRow(ctx, `SELECT id::text FROM agents WHERE name=$1 AND workspace_id=$2::uuid LIMIT 1`, agentName, execCtx.WorkspaceID).Scan(&agentID) //nolint:errcheck
-		}
+	if skillName == "" {
+		return nil, fmt.Errorf("skill_name is required")
 	}
-	if agentID == "" || skillName == "" {
-		return nil, fmt.Errorf("agent_id is required — pass the UUID returned by native_create_agent")
+	agentID, err := resolveTargetAgent(ctx, t.pool, execCtx, input)
+	if err != nil {
+		return nil, err
 	}
 
 	var skillID string
-	err := t.pool.QueryRow(ctx,
+	err = t.pool.QueryRow(ctx,
 		`SELECT id::text FROM skills
 		 WHERE name=$1 AND (workspace_id=$2::uuid OR workspace_id IS NULL) AND enabled=true
 		 ORDER BY workspace_id NULLS LAST LIMIT 1`,
@@ -246,12 +244,31 @@ func (t *AttachSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 	}
 	attachRequiredToolsForSkill(ctx, t.pool, agentID, skillID) //nolint:errcheck
 
-	return map[string]any{
+	out := map[string]any{
 		"attached":   true,
 		"agent_id":   agentID,
 		"skill_id":   skillID,
 		"skill_name": skillName,
-	}, nil
+	}
+	if agentID == execCtx.AgentID {
+		// Self-attach: pre-activate the skill's required tools for the current run
+		// so a lazy-loading agent can use them right after the skill loads.
+		if execCtx.RequestTool != nil {
+			rows, rErr := t.pool.Query(ctx,
+				`SELECT unnest(required_tool_names) FROM skills WHERE id=$1::uuid AND required_tool_names <> '{}'`, skillID)
+			if rErr == nil {
+				for rows.Next() {
+					var toolName string
+					if rows.Scan(&toolName) == nil && toolName != "" {
+						execCtx.RequestTool(toolName)
+					}
+				}
+				rows.Close()
+			}
+		}
+		out["message"] = fmt.Sprintf("Skill %q attached to you — its instructions and tools are available on your next turn.", skillName)
+	}
+	return out, nil
 }
 
 func attachRequiredToolsForSkill(ctx context.Context, pool *pgxpool.Pool, agentID, skillID string) error {
@@ -285,14 +302,14 @@ func (t *DetachSkillTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"agent_id": map[string]any{"type": "string", "description": "UUID of the agent to detach the skill from."},
-			"skill_id": map[string]any{"type": "string", "description": "UUID of the skill to detach."},
+			"agent_id":   map[string]any{"type": "string", "description": "UUID of the agent to detach the skill from. Defaults to the calling agent."},
+			"skill_id":   map[string]any{"type": "string", "description": "UUID of the skill to detach. Either this or skill_name is required."},
+			"skill_name": map[string]any{"type": "string", "description": "Name of the skill to detach — alternative to skill_id."},
 		},
-		"required": []string{"agent_id", "skill_id"},
 	})
 	return domain.Tool{
 		Name:             "native_detach_skill",
-		Description:      "Detach a skill from any agent.",
+		Description:      "Detach (disable) a skill from an agent, by skill name or id. Defaults to the calling agent.",
 		Type:             "native",
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),
@@ -306,13 +323,28 @@ func (t *DetachSkillTool) Execute(_ map[string]any) (any, error) {
 	return nil, fmt.Errorf("native_detach_skill requires run context")
 }
 func (t *DetachSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
-	agentID, _ := input["agent_id"].(string)
+	agentID, err := resolveTargetAgent(ctx, t.pool, execCtx, input)
+	if err != nil {
+		return nil, err
+	}
 	skillID, _ := input["skill_id"].(string)
-	if agentID == "" || skillID == "" {
-		return nil, fmt.Errorf("agent_id and skill_id are required")
+	if skillID == "" {
+		if skillName, _ := input["skill_name"].(string); skillName != "" {
+			t.pool.QueryRow(ctx,
+				`SELECT id::text FROM skills
+				 WHERE name=$1 AND (workspace_id=$2::uuid OR workspace_id IS NULL)
+				 ORDER BY workspace_id NULLS LAST LIMIT 1`,
+				skillName, execCtx.WorkspaceID).Scan(&skillID) //nolint:errcheck
+			if skillID == "" {
+				return nil, fmt.Errorf("skill not found: %s", skillName)
+			}
+		}
+	}
+	if skillID == "" {
+		return nil, fmt.Errorf("skill_id or skill_name is required")
 	}
 
-	_, err := t.pool.Exec(ctx,
+	_, err = t.pool.Exec(ctx,
 		`DELETE FROM agent_skills WHERE agent_id=$1::uuid AND skill_id=$2::uuid`,
 		agentID, skillID)
 	if err != nil {

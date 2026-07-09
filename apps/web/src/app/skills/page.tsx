@@ -12,11 +12,12 @@ export default function SkillsPage() {
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [error, setError] = useState('')
 
   const load = () => {
     skillsAPI.list()
-      .then((r) => setSkills(((r as { data?: Skill[] }).data) ?? []))
-      .catch(() => {})
+      .then((r) => { setSkills(((r as { data?: Skill[] }).data) ?? []); setError('') })
+      .catch((e: Error) => setError(e.message || 'Failed to load skills'))
       .finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [])
@@ -24,7 +25,11 @@ export default function SkillsPage() {
   const remove = async (s: Skill) => {
     if (s.source === 'managed') return
     if (!confirm('Delete this skill? Agents using it will lose these instructions.')) return
-    await skillsAPI.delete(s.id).catch(() => {})
+    try {
+      await skillsAPI.delete(s.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete skill')
+    }
     load()
   }
 
@@ -55,6 +60,10 @@ export default function SkillsPage() {
           <Search className="w-3.5 h-3.5 text-faint" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search skills…" className="flex-1 text-[13px] bg-transparent outline-none" />
         </div>
+      )}
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-crit/30 bg-crit/10 px-3 py-2 text-sm text-crit">{error}</div>
       )}
 
       {loading ? (

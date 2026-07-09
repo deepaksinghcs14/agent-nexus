@@ -1,0 +1,159 @@
+package gemini
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestSanitizeGeminiSchemaStripsUnsupportedKeys(t *testing.T) {
+	raw := `{
+		"type": "object",
+		"$schema": "http://json-schema.org/draft-07/schema#",
+		"additionalProperties": false,
+		"properties": {
+			"query": {"type": "string", "description": "search text"},
+			"filters": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"additionalProperties": true,
+					"properties": {
+						"key": {"type": "string"},
+						"value": {"type": "string", "const": "x"}
+					}
+				}
+			}
+		},
+		"required": ["query"]
+	}`
+	var schema any
+	if err := json.Unmarshal([]byte(raw), &schema); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	sanitized := sanitizeGeminiSchema(schema)
+	b, err := json.Marshal(sanitized)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("unmarshal sanitized: %v", err)
+	}
+
+	for _, key := range []string{"additionalProperties", "$schema"} {
+		if _, ok := out[key]; ok {
+			t.Errorf("expected top-level %q to be stripped", key)
+		}
+	}
+
+	props, ok := out["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected properties to survive as a map, got %T", out["properties"])
+	}
+	filters, ok := props["filters"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected filters to survive as a map, got %T", props["filters"])
+	}
+	items, ok := filters["items"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected filters.items to survive as a map, got %T", filters["items"])
+	}
+	if _, ok := items["additionalProperties"]; ok {
+		t.Error("expected nested additionalProperties (inside array items) to be stripped")
+	}
+	itemProps, ok := items["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected filters.items.properties to survive as a map, got %T", items["properties"])
+	}
+	value, ok := itemProps["value"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected filters.items.properties.value to survive as a map, got %T", itemProps["value"])
+	}
+	if _, ok := value["const"]; ok {
+		t.Error("expected nested const to be stripped")
+	}
+
+	// Fields Gemini does support must survive untouched.
+	if out["type"] != "object" {
+		t.Errorf("expected type to survive, got %v", out["type"])
+	}
+	required, ok := out["required"].([]any)
+	if !ok || len(required) != 1 || required[0] != "query" {
+		t.Errorf("expected required:[query] to survive, got %v", out["required"])
+	}
+}
+
+func TestSanitizeGeminiSchemaDropsRequiredNamesNotInProperties(t *testing.T) {
+	raw := `{
+		"type": "object",
+		"properties": {
+			"query": {"type": "string"},
+			"limit": {"type": "integer"}
+		},
+		"required": ["query", "limit", "extra_field_from_pattern_properties"],
+		"nested": {
+			"type": "object",
+			"properties": {
+				"inner": {"type": "string"}
+			},
+			"required": ["inner", "missing_inner"]
+		},
+		"emptyAfterFilter": {
+			"type": "object",
+			"properties": {
+				"foo": {"type": "string"}
+			},
+			"required": ["only_invalid_name"]
+		}
+	}`
+	var schema any
+	if err := json.Unmarshal([]byte(raw), &schema); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	sanitized := sanitizeGeminiSchema(schema)
+	b, err := json.Marshal(sanitized)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		t.Fatalf("unmarshal sanitized: %v", err)
+	}
+
+	required, ok := out["required"].([]any)
+	if !ok {
+		t.Fatalf("expected top-level required to survive as a slice, got %T", out["required"])
+	}
+	if len(required) != 2 || required[0] != "query" || required[1] != "limit" {
+		t.Errorf("expected required to be [query, limit], got %v", required)
+	}
+
+	nested, ok := out["nested"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected nested to survive as a map, got %T", out["nested"])
+	}
+	nestedRequired, ok := nested["required"].([]any)
+	if !ok || len(nestedRequired) != 1 || nestedRequired[0] != "inner" {
+		t.Errorf("expected nested.required to be filtered down to [inner], got %v", nested["required"])
+	}
+
+	emptyAfterFilter, ok := out["emptyAfterFilter"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected emptyAfterFilter to survive as a map, got %T", out["emptyAfterFilter"])
+	}
+	if _, ok := emptyAfterFilter["required"]; ok {
+		t.Errorf("expected required to be dropped entirely once every entry is filtered out, got %v", emptyAfterFilter["required"])
+	}
+}
+
+func TestSanitizeGeminiSchemaPassesThroughScalarsAndNil(t *testing.T) {
+	if got := sanitizeGeminiSchema(nil); got != nil {
+		t.Errorf("expected nil to pass through unchanged, got %v", got)
+	}
+	if got := sanitizeGeminiSchema("plain string"); got != "plain string" {
+		t.Errorf("expected scalar to pass through unchanged, got %v", got)
+	}
+}

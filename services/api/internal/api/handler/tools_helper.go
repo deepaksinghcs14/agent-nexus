@@ -227,6 +227,24 @@ func lazyToolNotActiveError(toolName string, skillToolMap map[string]string) str
 	return fmt.Sprintf("tool %q is not active this turn — call native_request_tool(%q) first, then call it again next turn.", toolName, toolName)
 }
 
+// resolveDBTool looks up the tool config needed to dispatch a call: first the
+// attachment-scoped dbTools map (built by loadAgentToolDefs), then — since discovery
+// (native_list_tools) is workspace-wide, not attachment-scoped — the workspace catalog.
+// This makes "the agent can see it" and "the agent can call it" consistent: any tool visible
+// via native_list_tools actually works when called, instead of erroring with "not attached".
+// Native tools missing from dbTools still resolve fine through the registry fallback in the
+// caller's dispatch switch, so this only needs to cover non-native (http/mcp/code) types.
+func resolveDBTool(toolName string, dbTools map[string]domain.Tool, catalog map[string]domain.Tool) (domain.Tool, bool) {
+	if t, ok := dbTools[toolName]; ok {
+		return t, true
+	}
+	if t, ok := catalog[toolName]; ok && t.Type != "native" {
+		dbTools[toolName] = t
+		return t, true
+	}
+	return domain.Tool{}, false
+}
+
 // dedupeToolDefs removes repeated tool names while preserving the first
 // declaration order. Gemini rejects duplicate function declarations outright,
 // and the same rule keeps the other providers' tool lists clean.

@@ -15,7 +15,7 @@ import type { Tool } from '@/types'
 // ─── CodeMirror (dynamic — client only, avoids SSR window references) ────────
 
 const CodeEditor = dynamic(() => import('@/components/CodeEditor'), { ssr: false, loading: () => (
-  <div className="h-48 bg-gray-900 rounded-lg flex items-center justify-center text-sm text-muted-foreground">Loading editor…</div>
+  <div className="h-48 bg-muted rounded-lg flex items-center justify-center text-sm text-muted-foreground">Loading editor…</div>
 )})
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -225,7 +225,7 @@ function ToolRow({ tool, onToggle, onDelete, onEdit }: {
               </div>
             )}
             {tool.type === 'code' && cfg?.code && (
-              <pre className="px-4 py-3 bg-gray-900 text-good text-[11px] font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">{cfg.code}</pre>
+              <pre className="px-4 py-3 bg-zinc-950 text-good text-[11px] font-mono overflow-x-auto whitespace-pre-wrap leading-relaxed">{cfg.code}</pre>
             )}
           </td>
         </tr>
@@ -574,7 +574,7 @@ function CodeToolPanel({
         <button
           onClick={runTest}
           disabled={testing}
-          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-[12px] rounded-lg disabled:opacity-50 transition-colors"
+          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent-hover text-white text-[12px] rounded-lg disabled:opacity-50 transition-colors"
         >
           <Play size={11} /> {testing ? 'Running…' : 'Run test'}
         </button>

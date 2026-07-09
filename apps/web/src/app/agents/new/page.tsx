@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, ChevronDown, Save, X, Check, Search, GripVertical } from 'lucide-react'
-import { agentsAPI, connectorsAPI, providersAPI, skillsAPI, toolsAPI } from '@/lib/api'
-import type { Agent, AgentSkill, Connector, ModelInfo, ProviderCredential, Skill, Tool } from '@/types'
+import { agentsAPI, connectorsAPI, mcpAPI, providersAPI, skillsAPI, toolsAPI } from '@/lib/api'
+import type { Agent, AgentSkill, Connector, MCPServer, ModelInfo, ProviderCredential, Skill, Tool } from '@/types'
 import { NexusDraftPanel, type AgentDraft } from '@/components/NexusDraftPanel'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { FIELD_HELP } from '@/lib/field-help'
@@ -114,6 +114,10 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
     queryKey: ['tools'],
     queryFn: () => toolsAPI.list() as Promise<{ data: Tool[] }>,
   })
+  const { data: mcpServersData } = useQuery({
+    queryKey: ['mcp-servers'],
+    queryFn: () => mcpAPI.list() as Promise<{ data: MCPServer[] }>,
+  })
   const { data: connectorsData } = useQuery({
     queryKey: ['connectors'],
     queryFn: () => connectorsAPI.list() as Promise<{ data: Connector[] }>,
@@ -141,6 +145,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
   const availableTools = toolsData?.data ?? []
   const availableSkills = skillsData?.data ?? []
   const availableConnectors = connectorsData?.data ?? []
+  const availableMCPServers = mcpServersData?.data ?? []
 
   // Tools locked by an enabled skill
   const skillLockedTools = new Map<string, string>()
@@ -149,6 +154,29 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
       s.required_tool_names.forEach(n => skillLockedTools.set(n, s.name))
     }
   })
+
+  // Map server_id -> its tool names, so enabling a server can flip all of them at once
+  // in the same flat enabledTools map the rest of the Tools tab already uses.
+  const mcpServerTools = new Map<string, string[]>()
+  for (const tool of availableTools) {
+    if (tool.type === 'mcp') {
+      const serverId = (tool.config as Record<string, string> | undefined)?.server_id
+      if (serverId) {
+        if (!mcpServerTools.has(serverId)) mcpServerTools.set(serverId, [])
+        mcpServerTools.get(serverId)!.push(tool.name)
+      }
+    }
+  }
+  function toggleMCPServer(serverId: string, enable: boolean) {
+    const toolNames = mcpServerTools.get(serverId) ?? []
+    setEnabledTools(prev => {
+      const next = { ...prev }
+      for (const n of toolNames) {
+        if (!skillLockedTools.has(n)) next[n] = enable
+      }
+      return next
+    })
+  }
 
   // Derived counts for tab badges
   const enabledToolCount = Object.values(enabledTools).filter(Boolean).length
@@ -594,6 +622,36 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
               </span>
             )}
           </div>
+
+          {availableMCPServers.length > 0 && (
+            <div className="bg-surface border border-border rounded-xl overflow-hidden">
+              <div className="px-4 py-2.5 bg-muted border-b border-border">
+                <span className="text-[12px] font-semibold text-foreground">MCP Servers</span>
+                <span className="text-[10px] text-faint ml-2">Enable a server to attach all of its tools at once</span>
+              </div>
+              {availableMCPServers.map((server, i) => {
+                const toolNames = mcpServerTools.get(server.id) ?? []
+                const enabledCount = toolNames.filter(n => enabledTools[n] || skillLockedTools.has(n)).length
+                const allEnabled = toolNames.length > 0 && enabledCount === toolNames.length
+                const noneEnabled = enabledCount === 0
+                return (
+                  <div key={server.id} className={`flex items-center justify-between px-4 py-3 ${i < availableMCPServers.length - 1 ? 'border-b border-border' : ''}`}>
+                    <div className="min-w-0 mr-3">
+                      <p className="text-[13px] font-medium text-foreground">{server.name}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {toolNames.length === 0 ? 'No tools synced yet' : `${enabledCount} of ${toolNames.length} tools enabled${!allEnabled && !noneEnabled ? ' (partial)' : ''}`}
+                      </p>
+                    </div>
+                    <Toggle
+                      on={allEnabled}
+                      disabled={toolNames.length === 0}
+                      onToggle={() => toggleMCPServer(server.id, !allEnabled)}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
           {availableTools.length === 0 && (
             <div className="p-8 text-center text-[12px] text-faint bg-surface border border-border rounded-xl">No tools registered.</div>

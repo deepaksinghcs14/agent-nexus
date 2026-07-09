@@ -74,7 +74,7 @@ function ToolCard({ msg }: { msg: NexusMessage }) {
         {ev.result && !started && <p className="text-muted-foreground text-xs mt-0.5">{ev.result.name}</p>}
       </div>
       {ev.link && !started && !isError && (
-        <Link href={ev.link} className="flex items-center gap-1 text-xs text-accent dark:text-accent-bright hover:text-accent dark:text-accent-bright font-medium shrink-0">
+        <Link href={ev.link} className="flex items-center gap-1 text-xs text-accent hover:underline dark:text-accent-bright font-medium shrink-0">
           Open <ExternalLink size={11} />
         </Link>
       )}
