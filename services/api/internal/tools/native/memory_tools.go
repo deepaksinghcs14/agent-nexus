@@ -11,7 +11,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
 )
 
-type ListMemoriesTool struct{}
+type ListMemoriesTool struct{ tools.RequiresRunContext }
 
 func NewListMemoriesTool() *ListMemoriesTool { return &ListMemoriesTool{} }
 
@@ -44,15 +44,11 @@ func (t *ListMemoriesTool) Definition() domain.Tool {
 	}
 }
 
-func (t *ListMemoriesTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_list_memories requires run context")
-}
-
 func (t *ListMemoriesTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	return searchMemories(ctx, execCtx, input, false)
 }
 
-type RequestMemoryTool struct{}
+type RequestMemoryTool struct{ tools.RequiresRunContext }
 
 func NewRequestMemoryTool() *RequestMemoryTool { return &RequestMemoryTool{} }
 
@@ -84,10 +80,6 @@ func (t *RequestMemoryTool) Definition() domain.Tool {
 		TimeoutMs:        2000,
 		Enabled:          true,
 	}
-}
-
-func (t *RequestMemoryTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_request_memory requires run context")
 }
 
 func (t *RequestMemoryTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {

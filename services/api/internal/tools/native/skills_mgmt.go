@@ -13,9 +13,12 @@ import (
 
 // ── native_list_skills ────────────────────────────────────────────────────────
 
-type ListSkillsTool struct{ pool *pgxpool.Pool }
+type ListSkillsTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewListSkillsTool(pool *pgxpool.Pool) *ListSkillsTool { return &ListSkillsTool{pool} }
+func NewListSkillsTool(pool *pgxpool.Pool) *ListSkillsTool { return &ListSkillsTool{pool: pool} }
 
 func (t *ListSkillsTool) Definition() domain.Tool {
 	return domain.Tool{
@@ -29,9 +32,6 @@ func (t *ListSkillsTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *ListSkillsTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_list_skills requires run context")
 }
 func (t *ListSkillsTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, _ map[string]any) (any, error) {
 	rows, err := t.pool.Query(ctx,
@@ -62,9 +62,12 @@ func (t *ListSkillsTool) ExecuteWithContext(ctx context.Context, execCtx tools.E
 
 // ── native_create_skill ───────────────────────────────────────────────────────
 
-type CreateSkillTool struct{ pool *pgxpool.Pool }
+type CreateSkillTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewCreateSkillTool(pool *pgxpool.Pool) *CreateSkillTool { return &CreateSkillTool{pool} }
+func NewCreateSkillTool(pool *pgxpool.Pool) *CreateSkillTool { return &CreateSkillTool{pool: pool} }
 
 func (t *CreateSkillTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -89,9 +92,6 @@ func (t *CreateSkillTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *CreateSkillTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_create_skill requires run context")
 }
 func (t *CreateSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	name, _ := input["name"].(string)
@@ -137,9 +137,12 @@ func (t *CreateSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 
 // ── native_delete_skill ───────────────────────────────────────────────────────
 
-type DeleteSkillTool struct{ pool *pgxpool.Pool }
+type DeleteSkillTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewDeleteSkillTool(pool *pgxpool.Pool) *DeleteSkillTool { return &DeleteSkillTool{pool} }
+func NewDeleteSkillTool(pool *pgxpool.Pool) *DeleteSkillTool { return &DeleteSkillTool{pool: pool} }
 
 func (t *DeleteSkillTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -158,9 +161,6 @@ func (t *DeleteSkillTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *DeleteSkillTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_delete_skill requires run context")
 }
 func (t *DeleteSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	skillID, _ := input["skill_id"].(string)
@@ -185,9 +185,12 @@ func (t *DeleteSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 
 // ── native_attach_skill ───────────────────────────────────────────────────────
 
-type AttachSkillTool struct{ pool *pgxpool.Pool }
+type AttachSkillTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewAttachSkillTool(pool *pgxpool.Pool) *AttachSkillTool { return &AttachSkillTool{pool} }
+func NewAttachSkillTool(pool *pgxpool.Pool) *AttachSkillTool { return &AttachSkillTool{pool: pool} }
 
 func (t *AttachSkillTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -209,9 +212,6 @@ func (t *AttachSkillTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *AttachSkillTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_attach_skill requires run context")
 }
 func (t *AttachSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	skillName, _ := input["skill_name"].(string)
@@ -294,9 +294,12 @@ func attachRequiredToolsForSkill(ctx context.Context, pool *pgxpool.Pool, agentI
 
 // ── native_detach_skill ───────────────────────────────────────────────────────
 
-type DetachSkillTool struct{ pool *pgxpool.Pool }
+type DetachSkillTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewDetachSkillTool(pool *pgxpool.Pool) *DetachSkillTool { return &DetachSkillTool{pool} }
+func NewDetachSkillTool(pool *pgxpool.Pool) *DetachSkillTool { return &DetachSkillTool{pool: pool} }
 
 func (t *DetachSkillTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -318,9 +321,6 @@ func (t *DetachSkillTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *DetachSkillTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_detach_skill requires run context")
 }
 func (t *DetachSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	agentID, err := resolveTargetAgent(ctx, t.pool, execCtx, input)
@@ -360,9 +360,12 @@ func (t *DetachSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 
 // ── native_update_skill ───────────────────────────────────────────────────────
 
-type UpdateSkillTool struct{ pool *pgxpool.Pool }
+type UpdateSkillTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewUpdateSkillTool(pool *pgxpool.Pool) *UpdateSkillTool { return &UpdateSkillTool{pool} }
+func NewUpdateSkillTool(pool *pgxpool.Pool) *UpdateSkillTool { return &UpdateSkillTool{pool: pool} }
 
 func (t *UpdateSkillTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -386,9 +389,6 @@ func (t *UpdateSkillTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *UpdateSkillTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_update_skill requires run context")
 }
 func (t *UpdateSkillTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	skillID, _ := input["skill_id"].(string)

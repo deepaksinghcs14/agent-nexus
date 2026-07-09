@@ -18,6 +18,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/connector"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/migrate"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/catalogsync"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/logstream"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
@@ -104,55 +105,8 @@ func main() {
 	// Build tool registry and seed native tools into DB.
 	// In demo mode, skip http_request and write_file to prevent SSRF and disk abuse.
 	reg := tools.NewRegistry()
-	reg.Register(native.NewReadFileTool(cfg.StoragePath))
-	reg.Register(native.NewSaveMemoryTool(pool))
-	reg.Register(native.NewListMemoriesTool())
-	reg.Register(native.NewRequestMemoryTool())
-	reg.Register(native.NewListToolsTool())
-	reg.Register(native.NewRequestToolTool())
-	reg.Register(native.NewListAgentSkillsTool())
-	reg.Register(native.NewRequestSkillTool())
-	// Agent self-management tools
-	reg.Register(native.NewListAgentsTool(pool))
-	reg.Register(native.NewCallAgentTool(pool))
-	reg.Register(native.NewCreateAgentTool(pool))
-	reg.Register(native.NewDeleteAgentTool(pool))
-	reg.Register(native.NewListSkillsTool(pool))
-	reg.Register(native.NewCreateSkillTool(pool))
-	reg.Register(native.NewDeleteSkillTool(pool))
-	reg.Register(native.NewListHttpToolsTool(pool))
-	reg.Register(native.NewCreateHttpToolTool(pool))
-	reg.Register(native.NewDeleteToolTool(pool))
-	// Expanded self-management tools
-	reg.Register(native.NewUpdateAgentTool(pool))
-	reg.Register(native.NewAttachSkillTool(pool))
-	reg.Register(native.NewDetachSkillTool(pool))
-	reg.Register(native.NewUpdateSkillTool(pool))
-	reg.Register(native.NewListWorkspaceToolsTool(pool))
-	reg.Register(native.NewAttachToolTool(pool))
-	reg.Register(native.NewDetachToolTool(pool))
-	reg.Register(native.NewAttachConnectorTool(pool))
-	reg.Register(native.NewDetachConnectorTool(pool))
-	reg.Register(native.NewCreateCodeToolTool(pool))
-	reg.Register(native.NewListWorkflowsTool(pool))
-	reg.Register(native.NewCreateWorkflowTool(pool))
-	reg.Register(native.NewSaveWorkflowGraphTool(pool))
-	reg.Register(native.NewRunWorkflowTool(pool))
-	reg.Register(native.NewDeleteWorkflowTool(pool))
-	reg.Register(native.NewPromoteResourceTool(pool))
-	reg.Register(native.NewRetrieveContextTool(pool))
-	for _, t := range native.NewWhatsAppTools(pool, cfg) {
+	for _, t := range native.All(pool, cfg) {
 		reg.Register(t)
-	}
-	reg.Register(native.NewSendMessageTool())
-	reg.Register(native.NewAskUserTool())
-	reg.Register(native.NewLaunchRepoSessionTool(pool, cfg))
-	reg.Register(native.NewLaunchReviewSessionTool(pool, cfg))
-	reg.Register(native.NewCreatePullRequestTool(pool, cfg))
-	reg.Register(native.NewGetBranchDiffTool(pool, cfg))
-	if !cfg.DemoMode {
-		reg.Register(native.NewWriteFileTool(cfg.StoragePath))
-		reg.Register(native.NewHTTPRequestTool())
 	}
 	if err := reg.SeedDB(ctx, pool); err != nil {
 		slog.Warn("failed to seed native tools", "error", err)
@@ -162,6 +116,9 @@ func main() {
 	if err := syncRequiredSkillTools(ctx, pool); err != nil {
 		slog.Warn("failed to sync required skill tools", "error", err)
 	}
+	// Keep model pricing/context/deprecation data fresh from models.dev.
+	catalogsync.Start(ctx)
+
 	// Seed the protected Jira→PR pipeline agents into every workspace.
 	// Runs after tool seeding so agent_tools name lookups resolve.
 	if err := handler.SeedPipelineAgents(ctx, pool); err != nil {

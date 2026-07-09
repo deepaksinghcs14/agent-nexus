@@ -41,10 +41,13 @@ func resolveAgentAndConnector(ctx context.Context, pool *pgxpool.Pool, execCtx t
 
 // ── native_attach_connector ───────────────────────────────────────────────────
 
-type AttachConnectorTool struct{ pool *pgxpool.Pool }
+type AttachConnectorTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
 func NewAttachConnectorTool(pool *pgxpool.Pool) *AttachConnectorTool {
-	return &AttachConnectorTool{pool}
+	return &AttachConnectorTool{pool: pool}
 }
 
 func (t *AttachConnectorTool) Definition() domain.Tool {
@@ -64,10 +67,6 @@ func (t *AttachConnectorTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-
-func (t *AttachConnectorTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_attach_connector requires run context")
 }
 
 func (t *AttachConnectorTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
@@ -99,10 +98,13 @@ func (t *AttachConnectorTool) ExecuteWithContext(ctx context.Context, execCtx to
 
 // ── native_detach_connector ───────────────────────────────────────────────────
 
-type DetachConnectorTool struct{ pool *pgxpool.Pool }
+type DetachConnectorTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
 func NewDetachConnectorTool(pool *pgxpool.Pool) *DetachConnectorTool {
-	return &DetachConnectorTool{pool}
+	return &DetachConnectorTool{pool: pool}
 }
 
 func (t *DetachConnectorTool) Definition() domain.Tool {
@@ -122,10 +124,6 @@ func (t *DetachConnectorTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-
-func (t *DetachConnectorTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_detach_connector requires run context")
 }
 
 func (t *DetachConnectorTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {

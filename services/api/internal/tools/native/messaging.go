@@ -10,7 +10,7 @@ import (
 )
 
 // SendMessageTool lets an agent push a freeform message to the user mid-run.
-type SendMessageTool struct{}
+type SendMessageTool struct{ tools.RequiresRunContext }
 
 func NewSendMessageTool() *SendMessageTool { return &SendMessageTool{} }
 
@@ -23,10 +23,6 @@ func (t *SendMessageTool) Definition() domain.Tool {
 		RiskLevel:   "low",
 		TimeoutMs:   5000,
 	}
-}
-
-func (t *SendMessageTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_send_message requires run context")
 }
 
 func (t *SendMessageTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
@@ -44,7 +40,7 @@ func (t *SendMessageTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 }
 
 // AskUserTool pauses the run and waits for the user to answer a question.
-type AskUserTool struct{}
+type AskUserTool struct{ tools.RequiresRunContext }
 
 func NewAskUserTool() *AskUserTool { return &AskUserTool{} }
 
@@ -57,10 +53,6 @@ func (t *AskUserTool) Definition() domain.Tool {
 		RiskLevel:   "low",
 		TimeoutMs:   1800000,
 	}
-}
-
-func (t *AskUserTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_ask_user requires run context")
 }
 
 func (t *AskUserTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {

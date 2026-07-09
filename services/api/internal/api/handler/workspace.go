@@ -338,24 +338,19 @@ func (h *WorkspaceHandler) ensureRoles(ctx context.Context, workspaceID string) 
 	if err := h.pool.QueryRow(ctx, `SELECT owner_id::text FROM workspaces WHERE id=$1::uuid`, workspaceID).Scan(&ownerID); err != nil {
 		return err
 	}
-	tx, err := h.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	roles := []string{"owner", "admin", "member", "viewer"}
-	for _, role := range roles {
-		if _, err := tx.Exec(ctx, `INSERT INTO roles(workspace_id,name,permissions) VALUES($1::uuid,$2,'[]'::jsonb) ON CONFLICT(workspace_id,name) DO NOTHING`, workspaceID, role); err != nil {
-			return err
+	return repository.WithTx(ctx, h.pool, func(tx pgx.Tx) error {
+		roles := []string{"owner", "admin", "member", "viewer"}
+		for _, role := range roles {
+			if _, err := tx.Exec(ctx, `INSERT INTO roles(workspace_id,name,permissions) VALUES($1::uuid,$2,'[]'::jsonb) ON CONFLICT(workspace_id,name) DO NOTHING`, workspaceID, role); err != nil {
+				return err
+			}
 		}
-	}
-	if _, err := tx.Exec(ctx,
-		`INSERT INTO user_roles(user_id,workspace_id,role_id)
-		 SELECT $1::uuid,$2::uuid,id FROM roles WHERE workspace_id=$2::uuid AND name='owner'
-		 ON CONFLICT(user_id,workspace_id) DO NOTHING`, ownerID, workspaceID); err != nil {
+		_, err := tx.Exec(ctx,
+			`INSERT INTO user_roles(user_id,workspace_id,role_id)
+			 SELECT $1::uuid,$2::uuid,id FROM roles WHERE workspace_id=$2::uuid AND name='owner'
+			 ON CONFLICT(user_id,workspace_id) DO NOTHING`, ownerID, workspaceID)
 		return err
-	}
-	return tx.Commit(ctx)
+	})
 }
 
 func (h *WorkspaceHandler) canManage(ctx context.Context, userID, workspaceID string) bool {

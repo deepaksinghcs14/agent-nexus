@@ -13,7 +13,7 @@ import (
 
 // ListToolsTool returns a filtered summary of requestable tools for the current agent.
 // Used by agents with LazyToolLoading enabled so they can discover tools before requesting them.
-type ListToolsTool struct{}
+type ListToolsTool struct{ tools.RequiresRunContext }
 
 func NewListToolsTool() *ListToolsTool { return &ListToolsTool{} }
 
@@ -38,10 +38,6 @@ func (t *ListToolsTool) Definition() domain.Tool {
 		TimeoutMs:        2000,
 		Enabled:          true,
 	}
-}
-
-func (t *ListToolsTool) Execute(input map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_list_tools requires run context")
 }
 
 func (t *ListToolsTool) ExecuteWithContext(_ context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {

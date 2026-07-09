@@ -11,7 +11,7 @@ import (
 
 // RequestToolTool activates a specific tool for the current run (lazy loading mode).
 // After calling this, the named tool's full schema is injected on the next LLM turn.
-type RequestToolTool struct{}
+type RequestToolTool struct{ tools.RequiresRunContext }
 
 func NewRequestToolTool() *RequestToolTool { return &RequestToolTool{} }
 
@@ -39,10 +39,6 @@ func (t *RequestToolTool) Definition() domain.Tool {
 	}
 }
 
-func (t *RequestToolTool) Execute(input map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_request_tool requires run context")
-}
-
 func (t *RequestToolTool) ExecuteWithContext(_ context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	name, _ := input["name"].(string)
 	if name == "" {
@@ -54,9 +50,9 @@ func (t *RequestToolTool) ExecuteWithContext(_ context.Context, execCtx tools.Ex
 			activated := execCtx.RequestSkill(skillName)
 			if activated {
 				return map[string]any{
-					"activated":  true,
-					"via_skill":  skillName,
-					"message":    fmt.Sprintf("Tool %q is provided by skill %q — skill activated. The tool (and any other tools from that skill) will be available on the next turn.", name, skillName),
+					"activated": true,
+					"via_skill": skillName,
+					"message":   fmt.Sprintf("Tool %q is provided by skill %q — skill activated. The tool (and any other tools from that skill) will be available on the next turn.", name, skillName),
 				}, nil
 			}
 		}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
@@ -570,21 +571,17 @@ func (h *AgentsHandler) Import(w http.ResponseWriter, r *http.Request) {
 
 	// Attach tools by name (skip unknowns silently)
 	if len(imp.ToolNames) > 0 {
-		tx, err := h.pool.Begin(r.Context())
-		if err != nil {
-			errs.Write(w, errs.Internal("failed to attach tools"))
-			return
-		}
-		defer func() { _ = tx.Rollback(r.Context()) }()
-		for _, name := range imp.ToolNames {
-			if _, err := tx.Exec(r.Context(),
-				`INSERT INTO agent_tools(agent_id,tool_id,enabled) SELECT $1::uuid,id,true FROM tools WHERE name=$2 AND (workspace_id IS NULL OR workspace_id=$3::uuid) ON CONFLICT DO NOTHING`,
-				a.ID, name, wsID); err != nil {
-				errs.Write(w, errs.Internal("failed to attach tools"))
-				return
+		err := repository.WithTx(r.Context(), h.pool, func(tx pgx.Tx) error {
+			for _, name := range imp.ToolNames {
+				if _, err := tx.Exec(r.Context(),
+					`INSERT INTO agent_tools(agent_id,tool_id,enabled) SELECT $1::uuid,id,true FROM tools WHERE name=$2 AND (workspace_id IS NULL OR workspace_id=$3::uuid) ON CONFLICT DO NOTHING`,
+					a.ID, name, wsID); err != nil {
+					return err
+				}
 			}
-		}
-		if err := tx.Commit(r.Context()); err != nil {
+			return nil
+		})
+		if err != nil {
 			errs.Write(w, errs.Internal("failed to attach tools"))
 			return
 		}
@@ -592,21 +589,17 @@ func (h *AgentsHandler) Import(w http.ResponseWriter, r *http.Request) {
 
 	// Attach skills by name (skip unknowns silently)
 	if len(imp.Skills) > 0 {
-		tx, err := h.pool.Begin(r.Context())
-		if err != nil {
-			errs.Write(w, errs.Internal("failed to attach skills"))
-			return
-		}
-		defer func() { _ = tx.Rollback(r.Context()) }()
-		for _, es := range imp.Skills {
-			if _, err := tx.Exec(r.Context(),
-				`INSERT INTO agent_skills(agent_id,skill_id,enabled,activation_mode,order_index) SELECT $1::uuid,id,true,$2,$3 FROM skills WHERE name=$4 AND (workspace_id IS NULL OR workspace_id=$5::uuid) ON CONFLICT DO NOTHING`,
-				a.ID, defaultActivationMode(es.ActivationMode), es.OrderIndex, es.Name, wsID); err != nil {
-				errs.Write(w, errs.Internal("failed to attach skills"))
-				return
+		err := repository.WithTx(r.Context(), h.pool, func(tx pgx.Tx) error {
+			for _, es := range imp.Skills {
+				if _, err := tx.Exec(r.Context(),
+					`INSERT INTO agent_skills(agent_id,skill_id,enabled,activation_mode,order_index) SELECT $1::uuid,id,true,$2,$3 FROM skills WHERE name=$4 AND (workspace_id IS NULL OR workspace_id=$5::uuid) ON CONFLICT DO NOTHING`,
+					a.ID, defaultActivationMode(es.ActivationMode), es.OrderIndex, es.Name, wsID); err != nil {
+					return err
+				}
 			}
-		}
-		if err := tx.Commit(r.Context()); err != nil {
+			return nil
+		})
+		if err != nil {
 			errs.Write(w, errs.Internal("failed to attach skills"))
 			return
 		}

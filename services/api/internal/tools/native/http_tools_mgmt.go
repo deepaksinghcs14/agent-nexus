@@ -13,9 +13,14 @@ import (
 
 // ── native_list_http_tools ────────────────────────────────────────────────────
 
-type ListHttpToolsTool struct{ pool *pgxpool.Pool }
+type ListHttpToolsTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewListHttpToolsTool(pool *pgxpool.Pool) *ListHttpToolsTool { return &ListHttpToolsTool{pool} }
+func NewListHttpToolsTool(pool *pgxpool.Pool) *ListHttpToolsTool {
+	return &ListHttpToolsTool{pool: pool}
+}
 
 func (t *ListHttpToolsTool) Definition() domain.Tool {
 	return domain.Tool{
@@ -29,9 +34,6 @@ func (t *ListHttpToolsTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *ListHttpToolsTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_list_http_tools requires run context")
 }
 func (t *ListHttpToolsTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, _ map[string]any) (any, error) {
 	rows, err := t.pool.Query(ctx,
@@ -62,9 +64,14 @@ func (t *ListHttpToolsTool) ExecuteWithContext(ctx context.Context, execCtx tool
 
 // ── native_create_http_tool ───────────────────────────────────────────────────
 
-type CreateHttpToolTool struct{ pool *pgxpool.Pool }
+type CreateHttpToolTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewCreateHttpToolTool(pool *pgxpool.Pool) *CreateHttpToolTool { return &CreateHttpToolTool{pool} }
+func NewCreateHttpToolTool(pool *pgxpool.Pool) *CreateHttpToolTool {
+	return &CreateHttpToolTool{pool: pool}
+}
 
 func (t *CreateHttpToolTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -91,9 +98,6 @@ func (t *CreateHttpToolTool) Definition() domain.Tool {
 		TimeoutMs:        10000,
 		Enabled:          true,
 	}
-}
-func (t *CreateHttpToolTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_create_http_tool requires run context")
 }
 func (t *CreateHttpToolTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	name, _ := input["name"].(string)
@@ -161,9 +165,12 @@ func (t *CreateHttpToolTool) ExecuteWithContext(ctx context.Context, execCtx too
 
 // ── native_delete_tool ────────────────────────────────────────────────────────
 
-type DeleteToolTool struct{ pool *pgxpool.Pool }
+type DeleteToolTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewDeleteToolTool(pool *pgxpool.Pool) *DeleteToolTool { return &DeleteToolTool{pool} }
+func NewDeleteToolTool(pool *pgxpool.Pool) *DeleteToolTool { return &DeleteToolTool{pool: pool} }
 
 func (t *DeleteToolTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -182,9 +189,6 @@ func (t *DeleteToolTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *DeleteToolTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_delete_tool requires run context")
 }
 func (t *DeleteToolTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	toolID, _ := input["tool_id"].(string)

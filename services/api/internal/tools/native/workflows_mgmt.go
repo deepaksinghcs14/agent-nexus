@@ -14,9 +14,14 @@ import (
 
 // ── native_list_workflows ─────────────────────────────────────────────────────
 
-type ListWorkflowsTool struct{ pool *pgxpool.Pool }
+type ListWorkflowsTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewListWorkflowsTool(pool *pgxpool.Pool) *ListWorkflowsTool { return &ListWorkflowsTool{pool} }
+func NewListWorkflowsTool(pool *pgxpool.Pool) *ListWorkflowsTool {
+	return &ListWorkflowsTool{pool: pool}
+}
 
 func (t *ListWorkflowsTool) Definition() domain.Tool {
 	return domain.Tool{
@@ -30,9 +35,6 @@ func (t *ListWorkflowsTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *ListWorkflowsTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_list_workflows requires run context")
 }
 func (t *ListWorkflowsTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, _ map[string]any) (any, error) {
 	rows, err := t.pool.Query(ctx,
@@ -64,10 +66,13 @@ func (t *ListWorkflowsTool) ExecuteWithContext(ctx context.Context, execCtx tool
 
 // ── native_create_workflow ────────────────────────────────────────────────────
 
-type CreateWorkflowTool struct{ pool *pgxpool.Pool }
+type CreateWorkflowTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
 func NewCreateWorkflowTool(pool *pgxpool.Pool) *CreateWorkflowTool {
-	return &CreateWorkflowTool{pool}
+	return &CreateWorkflowTool{pool: pool}
 }
 
 func (t *CreateWorkflowTool) Definition() domain.Tool {
@@ -101,9 +106,6 @@ func (t *CreateWorkflowTool) Definition() domain.Tool {
 		TimeoutMs:        10000,
 		Enabled:          true,
 	}
-}
-func (t *CreateWorkflowTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_create_workflow requires run context")
 }
 func (t *CreateWorkflowTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	name, _ := input["name"].(string)
@@ -218,10 +220,13 @@ func max(a, b int) int {
 
 // ── native_save_workflow_graph ────────────────────────────────────────────────
 
-type SaveWorkflowGraphTool struct{ pool *pgxpool.Pool }
+type SaveWorkflowGraphTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
 func NewSaveWorkflowGraphTool(pool *pgxpool.Pool) *SaveWorkflowGraphTool {
-	return &SaveWorkflowGraphTool{pool}
+	return &SaveWorkflowGraphTool{pool: pool}
 }
 
 func (t *SaveWorkflowGraphTool) Definition() domain.Tool {
@@ -272,10 +277,6 @@ func (t *SaveWorkflowGraphTool) Definition() domain.Tool {
 		TimeoutMs:        10000,
 		Enabled:          true,
 	}
-}
-
-func (t *SaveWorkflowGraphTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_save_workflow_graph requires run context")
 }
 
 func (t *SaveWorkflowGraphTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
@@ -581,9 +582,12 @@ func numberValue(v any) float64 {
 
 // ── native_run_workflow ───────────────────────────────────────────────────────
 
-type RunWorkflowTool struct{ pool *pgxpool.Pool }
+type RunWorkflowTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewRunWorkflowTool(pool *pgxpool.Pool) *RunWorkflowTool { return &RunWorkflowTool{pool} }
+func NewRunWorkflowTool(pool *pgxpool.Pool) *RunWorkflowTool { return &RunWorkflowTool{pool: pool} }
 
 func (t *RunWorkflowTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -605,9 +609,6 @@ func (t *RunWorkflowTool) Definition() domain.Tool {
 		TimeoutMs:        900000,
 		Enabled:          true,
 	}
-}
-func (t *RunWorkflowTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_run_workflow requires run context")
 }
 func (t *RunWorkflowTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	workflowID, _ := input["workflow_id"].(string)
@@ -678,10 +679,13 @@ func (t *RunWorkflowTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 
 // ── native_delete_workflow ────────────────────────────────────────────────────
 
-type DeleteWorkflowTool struct{ pool *pgxpool.Pool }
+type DeleteWorkflowTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
 func NewDeleteWorkflowTool(pool *pgxpool.Pool) *DeleteWorkflowTool {
-	return &DeleteWorkflowTool{pool}
+	return &DeleteWorkflowTool{pool: pool}
 }
 
 func (t *DeleteWorkflowTool) Definition() domain.Tool {
@@ -703,9 +707,6 @@ func (t *DeleteWorkflowTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *DeleteWorkflowTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_delete_workflow requires run context")
 }
 func (t *DeleteWorkflowTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	workflowID, _ := input["workflow_id"].(string)

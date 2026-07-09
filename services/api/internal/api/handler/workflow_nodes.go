@@ -14,7 +14,6 @@ import (
 	gatewayservice "github.com/deepaksingh/agent-nexus/services/api/internal/gateway"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 )
 
 // Executors for the non-agent workflow nodes (tool / webhook / gateway) and
@@ -89,38 +88,15 @@ func (h *InvokeHandler) executeWorkflowToolNode(ctx context.Context, ws, uid, pa
 	}
 
 	start := time.Now()
-	var result *tools.ExecutionResult
-	switch t.Type {
-	case "http":
-		var httpCfg tools.HTTPToolConfig
-		_ = json.Unmarshal(t.Config, &httpCfg)
-		result = tools.ExecuteHTTP(ctx, httpCfg, toolInput, t.TimeoutMs)
-	case "mcp":
-		result = executeMCPTool(ctx, h.pool, h.cfg, t, toolInput)
-	case "code":
-		var codeCfg struct {
-			Code string `json:"code"`
-		}
-		_ = json.Unmarshal(t.Config, &codeCfg)
-		out, codeErr := native.ExecuteCodeTool(ctx, codeCfg.Code, toolInput)
-		result = &tools.ExecutionResult{LatencyMs: int(time.Since(start).Milliseconds())}
-		if codeErr != nil {
-			result.Error = codeErr.Error()
-		} else {
-			result.Output = out
-		}
-	default: // native
-		execCtx := tools.ExecutionContext{
-			WorkspaceID: ws,
-			UserID:      uid,
-			RunID:       parentRunID,
-			RootRunID:   parentRunID,
-		}
-		var execErr error
-		result, execErr = h.executor.ExecuteWithContext(ctx, execCtx, toolName, toolInput)
-		if execErr != nil {
-			return "", execErr
-		}
+	execCtx := tools.ExecutionContext{
+		WorkspaceID: ws,
+		UserID:      uid,
+		RunID:       parentRunID,
+		RootRunID:   parentRunID,
+	}
+	result, execErr := invokeToolByType(ctx, h.pool, h.cfg, h.executor, execCtx, t, true, toolName, toolInput)
+	if execErr != nil {
+		return "", execErr
 	}
 
 	latency := int(time.Since(start).Milliseconds())

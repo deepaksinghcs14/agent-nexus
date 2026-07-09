@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/api/sse"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
@@ -540,7 +542,7 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	emit := func(s string) { fmt.Fprintf(w, "data: %s\n\n", s); f.Flush() }
-	sseErr := func(msg string) { emit(fmt.Sprintf(`{"type":"error","error":%q}`, msg)) }
+	sseErr := func(msg string) { emit(sse.Error(msg)) }
 
 	// Keepalive: prevents proxy/browser timeouts during long LLM responses.
 	keepDone := make(chan struct{})
@@ -611,7 +613,7 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			switch event.Type {
 			case provider.EventDelta:
 				reply += event.Delta
-				emit(fmt.Sprintf(`{"type":"delta","content":%q}`, event.Delta))
+				emit(sse.Delta(event.Delta))
 			case provider.EventToolCall:
 				if event.ToolCall != nil {
 					slog.Info("nexus-ai: tool_call", "tool", event.ToolCall.Name, "id", event.ToolCall.ID)
@@ -647,12 +649,11 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		// Execute each tool call and append the result.
 		for _, call := range pendingCalls {
 			label := toolStartLabel(call.Name, call.Input)
-			emit(fmt.Sprintf(`{"type":"tool_started","tool":%q,"label":%q}`, call.Name, label))
+			emit(sse.ToolStartedLabel(call.Name, label))
 
 			result, execErr := h.executeTool(r.Context(), ws, uid, call.Name, call.Input)
 			if execErr != nil {
-				emit(fmt.Sprintf(`{"type":"tool_completed","tool":%q,"label":%q,"error":%q}`,
-					call.Name, "Error", execErr.Error()))
+				emit(sse.ToolCompleted(call.Name, "Error", execErr.Error()))
 				resultJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
 				messages = append(messages, provider.Message{
 					Role: "tool", ToolCallID: call.ID, ToolName: call.Name,
@@ -1047,8 +1048,7 @@ func (h *NexusAIHandler) toolCreateAgent(ctx context.Context, ws, uid string, in
 
 	// Attach tools if specified
 	if len(args.ToolIDs) > 0 || len(args.ToolNames) > 0 {
-		tx, err := h.pool.Begin(ctx)
-		if err == nil {
+		_ = repository.WithTx(ctx, h.pool, func(tx pgx.Tx) error { //nolint:errcheck
 			for _, id := range args.ToolIDs {
 				tx.Exec(ctx, //nolint:errcheck
 					`INSERT INTO agent_tools(agent_id,tool_id,enabled)
@@ -1062,14 +1062,13 @@ func (h *NexusAIHandler) toolCreateAgent(ctx context.Context, ws, uid string, in
 					 ON CONFLICT DO NOTHING`,
 					a.ID, name, ws)
 			}
-			tx.Commit(ctx) //nolint:errcheck
-		}
+			return nil
+		})
 	}
 
 	// Attach connectors if specified
 	if args.ContextRetrievalEnabled && len(args.ConnectorIDs) > 0 {
-		tx, err := h.pool.Begin(ctx)
-		if err == nil {
+		_ = repository.WithTx(ctx, h.pool, func(tx pgx.Tx) error { //nolint:errcheck
 			tx.Exec(ctx, `DELETE FROM agent_connectors WHERE agent_id=$1::uuid`, a.ID) //nolint:errcheck
 			for _, cid := range args.ConnectorIDs {
 				tx.Exec(ctx, //nolint:errcheck
@@ -1077,8 +1076,8 @@ func (h *NexusAIHandler) toolCreateAgent(ctx context.Context, ws, uid string, in
 					 VALUES($1::uuid,$2::uuid,$3,$4) ON CONFLICT(agent_id,connector_id) DO NOTHING`,
 					a.ID, cid, args.MaxChunks, args.MinScore)
 			}
-			tx.Commit(ctx) //nolint:errcheck
-		}
+			return nil
+		})
 	}
 
 	// Build a brief summary of what was configured
@@ -1274,7 +1273,7 @@ func (h *NexusAIHandler) toolProposeAgent(ctx context.Context, ws string, input 
 	draft := map[string]any{
 		"name":                      args.Name,
 		"description":               args.Description,
-		"instructions":             args.Instructions,
+		"instructions":              args.Instructions,
 		"provider":                  args.Provider,
 		"model":                     args.Model,
 		"temperature":               args.Temperature,
@@ -1769,8 +1768,8 @@ func (h *NexusAIHandler) toolAttachSkills(ctx context.Context, ws string, input 
 		Label: fmt.Sprintf("Attached %d skill(s) to agent \"%s\"", len(assignments), agentName),
 		Link:  "/agents/" + args.AgentID,
 		Data: map[string]any{
-			"agent_id":   args.AgentID,
-			"agent_name": agentName,
+			"agent_id":    args.AgentID,
+			"agent_name":  agentName,
 			"skill_count": len(assignments),
 		},
 	}, nil
@@ -1882,8 +1881,7 @@ func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input j
 
 	// Replace the agent's context connectors when connector_ids is provided.
 	if args.ConnectorIDs != nil {
-		tx, err := h.pool.Begin(ctx)
-		if err == nil {
+		_ = repository.WithTx(ctx, h.pool, func(tx pgx.Tx) error { //nolint:errcheck
 			tx.Exec(ctx, `DELETE FROM agent_connectors WHERE agent_id=$1::uuid`, args.AgentID) //nolint:errcheck
 			for _, cid := range args.ConnectorIDs {
 				tx.Exec(ctx, //nolint:errcheck
@@ -1893,16 +1891,15 @@ func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input j
 					 ON CONFLICT(agent_id,connector_id) DO NOTHING`,
 					args.AgentID, cid, ws)
 			}
-			tx.Commit(ctx) //nolint:errcheck
-		}
+			return nil
+		})
 	}
 
 	// Attach every tool belonging to the given MCP servers — additive, existing tools
 	// (including ones from other servers) are left untouched.
 	attachedToolCount := 0
 	if toolNames := resolveMCPServerToolNames(ctx, h.pool, ws, args.MCPServerIDs); len(toolNames) > 0 {
-		tx, err := h.pool.Begin(ctx)
-		if err == nil {
+		if repository.WithTx(ctx, h.pool, func(tx pgx.Tx) error {
 			for _, name := range toolNames {
 				tx.Exec(ctx, //nolint:errcheck
 					`INSERT INTO agent_tools(agent_id,tool_id,enabled)
@@ -1910,7 +1907,8 @@ func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input j
 					 ON CONFLICT DO NOTHING`,
 					args.AgentID, name, ws)
 			}
-			tx.Commit(ctx) //nolint:errcheck
+			return nil
+		}) == nil {
 			attachedToolCount = len(toolNames)
 		}
 	}

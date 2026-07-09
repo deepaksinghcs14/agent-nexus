@@ -142,3 +142,13 @@ func (r *Registry) SeedDB(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	return nil
 }
+
+// RequiresRunContext is embedded by context-aware native tools to satisfy the
+// NativeTool interface without each tool hand-writing the same dead Execute
+// stub. The executor always prefers ExecuteWithContext when implemented, so
+// this only fires if a context-aware tool is invoked through the plain path.
+type RequiresRunContext struct{}
+
+func (RequiresRunContext) Execute(map[string]any) (any, error) {
+	return nil, fmt.Errorf("this tool requires run context")
+}

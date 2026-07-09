@@ -7,6 +7,7 @@
 // - SSE node events carry node_id, node_name, node_type, result fields
 
 import React, { use, useCallback, useEffect, useMemo, useRef, useState, DragEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -53,7 +54,7 @@ import {
   Send,
 } from 'lucide-react'
 import { TriggersPanel } from './TriggersPanel'
-import { workflowsAPI, agentsAPI, invokeAPI, toolsAPI, gatewayAPI } from '@/lib/api'
+import { workflowsAPI, agentsAPI, invokeAPI, toolsAPI, gatewayAPI, providersAPI } from '@/lib/api'
 import type { Workflow, Agent, Tool, GatewayChannel, WorkflowGraph, WorkflowNode, WorkflowEdge, WorkflowNodeType, SSEEvent } from '@/types'
 
 // ---------------------------------------------------------------------------
@@ -1196,14 +1197,169 @@ Be specific and constructive. This report is used to brief the team on what to f
       ],
     },
   },
+  {
+    id: 'incident-notify',
+    name: 'Incident Triage & Notify',
+    description: 'Classify incidents → run a tool → page on-call via gateway → post to a webhook',
+    category: 'Ops',
+    nodes: [
+      { key: 'start',    type: 'start',     label: 'Start',               x: 50,   y: 240 },
+      { key: 'classify', type: 'agent',     label: 'Incident Classifier', x: 210,  y: 240 },
+      { key: 'cond',     type: 'condition', label: 'Critical?',           x: 470,  y: 240, config: { expression: 'contains:CRITICAL' } },
+      { key: 'brief',    type: 'agent',     label: 'Incident Commander',  x: 700,  y: 110, config: { label: 'Incident Commander' } },
+      { key: 'page',     type: 'gateway',   label: 'Page On-call',        x: 950,  y: 110, config: { label: 'Page On-call' } },
+      { key: 'log',      type: 'tool',      label: 'Log Incident',        x: 700,  y: 380, config: { label: 'Log Incident' } },
+      { key: 'join',     type: 'join',      label: 'Join',                x: 1180, y: 240 },
+      { key: 'hook',     type: 'webhook',   label: 'Status Page',         x: 1360, y: 240, config: { label: 'Status Page' } },
+      { key: 'end',      type: 'end',       label: 'End',                 x: 1580, y: 240 },
+    ],
+    edges: [
+      { from: 'start',    to: 'classify' },
+      { from: 'classify', to: 'cond' },
+      { from: 'cond',     to: 'brief', label: 'yes' },
+      { from: 'cond',     to: 'log',   label: 'no' },
+      { from: 'brief',    to: 'page' },
+      { from: 'page',     to: 'join' },
+      { from: 'log',      to: 'join' },
+      { from: 'join',     to: 'hook' },
+      { from: 'hook',     to: 'end' },
+    ],
+    guide: {
+      overview: 'Operational triage that exercises the integration nodes. A Classifier grades the incident; critical ones get a commander briefing sent to your on-call chat via a Gateway node, routine ones run a workspace Tool directly (no LLM). Both paths merge and post the outcome to an external Webhook (status page, incident tracker), and the End node can deliver the final output anywhere.',
+      agents: [
+        {
+          name: 'Incident Classifier',
+          role: 'Grade severity and summarize the incident',
+          systemPrompt: `You are an incident triage classifier. Given an incident report, output:\n\nSEVERITY: [CRITICAL | HIGH | MEDIUM | LOW]\nSUMMARY: one sentence.\nIMPACT: affected systems/users.\n\nInclude the word CRITICAL only when there is active user-facing impact or data risk — routing depends on it.`,
+          model: 'claude-haiku-4-5-20251001',
+        },
+        {
+          name: 'Incident Commander',
+          role: 'Write the on-call page for critical incidents',
+          systemPrompt: `You write on-call pages. Given a triaged critical incident, produce a message under 500 characters: what broke, current impact, first response step, and a severity tag. No markdown — it goes to chat.`,
+          model: 'claude-sonnet-4-6',
+        },
+      ],
+      steps: [
+        'Create the two agents and assign them to the Classifier and Commander nodes',
+        'Open the Gateway node and pick your WhatsApp channel + on-call recipient',
+        'Open the Tool node and select any workspace tool to run for routine incidents (e.g. a code tool that formats a log entry)',
+        'Open the Webhook node and set your status-page or incident-tracker URL — the previous node output is POSTed there',
+        'Optionally set a delivery webhook/gateway on the End node for the final summary',
+        'Run with e.g. "Checkout API returning 500s for all EU users since 14:00"',
+      ],
+    },
+  },
+  {
+    id: 'claude-code-delivery',
+    name: 'Claude Code Delivery Pipeline',
+    description: 'Ticket → supervisor plans with team → coding session → review loop → PR → notify',
+    category: 'Engineering',
+    nodes: [
+      { key: 'start',   type: 'start',      label: 'Start',                x: 50,   y: 300 },
+      { key: 'analyst', type: 'agent',      label: 'Ticket Analyst',       x: 210,  y: 300 },
+      { key: 'orch',    type: 'supervisor', label: 'Delivery Orchestrator', x: 470, y: 300 },
+      { key: 'repo',    type: 'agent',      label: 'Repo Selector',        x: 380,  y: 540, config: { label: 'Repo Selector' } },
+      { key: 'author',  type: 'agent',      label: 'Task Author',          x: 590,  y: 540, config: { label: 'Task Author' } },
+      { key: 'code',    type: 'tool',       label: 'Coding Session',       x: 760,  y: 300, config: { label: 'Coding Session', tool_name: 'native_launch_repo_session', args: { repo: 'owner/repo', ticket_key: 'WF-1', task_description: '{{input}}' } } },
+      { key: 'review',  type: 'tool',       label: 'Review Session',       x: 1010, y: 300, config: { label: 'Review Session', tool_name: 'native_launch_review_session', args: { repo: 'owner/repo', ticket_key: 'WF-1', task_description: '{{original_input}}' } } },
+      { key: 'gate',    type: 'condition',  label: 'Approved?',            x: 1260, y: 300, config: { expression: 'contains:approve' } },
+      { key: 'loop',    type: 'loop',       label: 'Fix Loop',             x: 1260, y: 90,  config: { exit_condition: 'contains:approve', max_iterations: 2 } },
+      { key: 'pr',      type: 'tool',       label: 'Open PR',              x: 1500, y: 300, config: { label: 'Open PR', tool_name: 'native_create_pull_request', args: { repo: 'owner/repo', title: '[WF-1] automated change', body: '{{input}}' } } },
+      { key: 'notify',  type: 'webhook',    label: 'Notify Team',          x: 1720, y: 300, config: { label: 'Notify Team' } },
+      { key: 'end',     type: 'end',        label: 'End',                  x: 1930, y: 300 },
+    ],
+    edges: [
+      { from: 'start',   to: 'analyst' },
+      { from: 'analyst', to: 'orch' },
+      { from: 'orch',    to: 'repo',   label: 'delegate' },
+      { from: 'orch',    to: 'author', label: 'delegate' },
+      { from: 'orch',    to: 'code' },
+      { from: 'code',    to: 'review' },
+      { from: 'review',  to: 'gate' },
+      { from: 'gate',    to: 'pr',   label: 'yes' },
+      { from: 'gate',    to: 'loop', label: 'no' },
+      { from: 'loop',    to: 'code', label: 'loop' },
+      { from: 'loop',    to: 'pr',   label: 'exit' },
+      { from: 'pr',      to: 'notify' },
+      { from: 'notify',  to: 'end' },
+    ],
+    guide: {
+      overview: 'The full autonomous delivery loop as a visual workflow — the same machinery behind the Jira→PR pipeline. A Ticket Analyst structures the request; the Delivery Orchestrator (supervisor) consults its team (Repo Selector, Task Author) to produce a self-contained task; Tool nodes then drive real Claude Code sessions in the runner — code, review, and (if the reviewer approves, with up to two fix iterations) an actual pull request — before a Webhook node notifies your team. Requires the runner service and a GitHub token to be configured, plus session-enabled repos.',
+      agents: [
+        {
+          name: 'Ticket Analyst',
+          role: 'Turn a raw request into a precise engineering ticket',
+          systemPrompt: `You turn raw requests into precise engineering tickets. Output:\n\n## Ticket\nTITLE: imperative one-liner\nCONTEXT: what exists today\nCHANGE: exactly what to build/fix\nACCEPTANCE: verifiable criteria\n\nBe specific; downstream automation executes this verbatim.`,
+          model: 'claude-sonnet-4-6',
+        },
+        {
+          name: 'Delivery Orchestrator',
+          role: 'Coordinate the delivery team and produce the final task description',
+          systemPrompt: `You coordinate an autonomous delivery team. Delegate to your team agents to pick the target repository and author the task, then produce ONE final, self-contained task description for a headless coding session. It must carry all context — the session cannot see this conversation. End with the task description only.`,
+          model: 'claude-opus-4-8',
+        },
+        {
+          name: 'Repo Selector',
+          role: 'Choose the target repository',
+          systemPrompt: `Given a ticket, name the most likely target repository and one sentence of reasoning. If a repo catalog tool is attached, search it; otherwise reason from the ticket.`,
+          model: 'claude-haiku-4-5-20251001',
+        },
+        {
+          name: 'Task Author',
+          role: 'Write the self-contained coding task',
+          systemPrompt: `Given a ticket and target repo, write the complete task description for a headless coding session: files likely involved, the change, constraints, and how to verify. Self-contained — assume no other context.`,
+          model: 'claude-sonnet-4-6',
+        },
+      ],
+      steps: [
+        'Create the four agents; assign Ticket Analyst + Delivery Orchestrator to their nodes, and Repo Selector + Task Author to the delegate nodes',
+        'Edit the three Tool nodes: set your real repo (owner/name) and ticket key in each args block — task_description templates from the flow via {{input}}',
+        'The Review Session verdict JSON contains "approve" or "block" — the condition and Fix Loop route on it (max 2 fix iterations, then the loop exits forward)',
+        'Set the Notify webhook URL (Slack incoming webhook, etc.)',
+        'Requires: runner service reachable (RUNNER_URL), GitHub token configured, and the target repo session-enabled on the Claude Code page',
+        'Run with a real change request, e.g. "Add rate limiting to the webhook ingress endpoint"',
+      ],
+    },
+  },
 ]
 
-function modelToProvider(model?: string): string {
-  if (!model) return 'anthropic'
-  if (model.startsWith('claude')) return 'anthropic'
-  if (model.startsWith('gpt') || model.startsWith('o1') || model.startsWith('o3')) return 'openai'
-  if (model.startsWith('gemini')) return 'gemini'
-  return 'anthropic'
+// Template agents specify an intended capability tier via their model hint;
+// at creation time the hint is resolved against the provider actually
+// connected in this workspace, so templates work whether the workspace runs
+// Anthropic, OpenAI, Gemini, or a local Ollama.
+type ModelTier = 'heavy' | 'balanced' | 'light'
+
+function tierForHint(hint?: string): ModelTier {
+  const h = (hint ?? '').toLowerCase()
+  if (/opus|o1-pro|gpt-4-turbo/.test(h)) return 'heavy'
+  if (/haiku|mini|flash|3\.5/.test(h)) return 'light'
+  return 'balanced'
+}
+
+const TIER_PATTERNS: Record<string, Record<ModelTier, RegExp[]>> = {
+  anthropic: { heavy: [/opus/], balanced: [/sonnet/], light: [/haiku/] },
+  openai: { heavy: [/^o1(?!-mini)/, /gpt-4o(?!-mini)/], balanced: [/gpt-4o(?!-mini)/, /gpt-4/], light: [/mini/, /gpt-3\.5/] },
+  gemini: { heavy: [/pro/], balanced: [/flash/], light: [/flash-lite/, /flash/] },
+}
+
+function modelVersion(id: string): number {
+  const m = id.match(/(\d+)(?:\.(\d+))?/)
+  return m ? parseInt(m[1], 10) + (m[2] ? parseInt(m[2], 10) / 100 : 0) : 0
+}
+
+function pickModelForTier(providerName: string, models: { id: string }[], tier: ModelTier): string | undefined {
+  for (const re of TIER_PATTERNS[providerName]?.[tier] ?? []) {
+    // Among all matches prefer the newest version, then the shortest id —
+    // providers keep deprecated pinned snapshots (e.g. gemini-2.0-flash-lite-001)
+    // in their listings that 404 at inference time.
+    const hits = models.filter((m) => re.test(m.id.toLowerCase()))
+    if (hits.length > 0) {
+      hits.sort((a, b) => modelVersion(b.id) - modelVersion(a.id) || a.id.length - b.id.length)
+      return hits[0].id
+    }
+  }
+  return models[0]?.id
 }
 
 // ---------------------------------------------------------------------------
@@ -1222,7 +1378,28 @@ function TemplateGalleryModal({
   const [createProgress, setCreateProgress] = useState<string[]>([])
   const [createError, setCreateError] = useState<string | null>(null)
 
+  // Resolve models against the provider connected in this workspace instead
+  // of hardcoding Anthropic.
+  const { data: provData } = useQuery({
+    queryKey: ['providers'],
+    queryFn: () => providersAPI.list() as Promise<{ data: { id: string; provider: string; is_active: boolean }[] }>,
+  })
+  const providerCreds = provData?.data ?? []
+  const activeCred = providerCreds.find((c) => c.is_active) ?? providerCreds[0]
+  const { data: modelsData } = useQuery({
+    queryKey: ['provider-models', activeCred?.id],
+    queryFn: () => providersAPI.models(activeCred!.id) as Promise<{ data: { id: string }[] }>,
+    enabled: !!activeCred,
+  })
+  const availableModels = modelsData?.data ?? []
+  const resolveModel = (hint?: string) =>
+    activeCred ? pickModelForTier(activeCred.provider, availableModels, tierForHint(hint)) : undefined
+
   async function handleCreateAndLoad() {
+    if (!activeCred) {
+      setCreateError('No LLM provider connected — add one under Settings → Providers before creating template agents.')
+      return
+    }
     setCreating(true)
     setCreateError(null)
     setCreateProgress([])
@@ -1234,8 +1411,8 @@ function TemplateGalleryModal({
           name: agentDef.name,
           description: agentDef.role,
           instructions: agentDef.systemPrompt,
-          provider: modelToProvider(agentDef.model),
-          model: agentDef.model ?? 'claude-sonnet-4-6',
+          provider: activeCred.provider,
+          model: resolveModel(agentDef.model) ?? agentDef.model ?? 'claude-sonnet-4-6',
           temperature: 0.7,
           max_tokens: 4096,
           memory_enabled: false,
@@ -1287,7 +1464,7 @@ function TemplateGalleryModal({
         </div>
 
         {/* Body: card list + detail panel */}
-        <div className="flex flex-1 flex-wrap overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-nowrap overflow-hidden">
           {/* Left: template cards */}
           <div className="flex w-56 min-w-44 flex-shrink-0 flex-col gap-2 overflow-y-auto border-r border-border p-3">
             {TEMPLATES.map((tpl) => {
@@ -1364,8 +1541,8 @@ function TemplateGalleryModal({
                       <div className="border-b border-border bg-muted/50 px-3.5 py-2.5">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[13px] font-semibold text-foreground">{agent.name}</span>
-                          {agent.model && (
-                            <span className="rounded-md bg-accent-light px-1.5 py-0.5 font-mono text-[10px] font-semibold text-accent dark:bg-accent/15 dark:text-accent-bright">{agent.model}</span>
+                          {(resolveModel(agent.model) ?? agent.model) && (
+                            <span className="rounded-md bg-accent-light px-1.5 py-0.5 font-mono text-[10px] font-semibold text-accent dark:bg-accent/15 dark:text-accent-bright">{resolveModel(agent.model) ?? agent.model}</span>
                           )}
                         </div>
                         <p className="m-0 mt-1 text-[11px] text-muted-foreground">{agent.role}</p>
@@ -1411,7 +1588,12 @@ function TemplateGalleryModal({
                   {createError}
                 </div>
               )}
-              {createProgress.length > 0 && (
+              {provData && !activeCred && (
+              <div className="mb-2.5 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-[11px] text-warn">
+                No LLM provider connected — template agents will use the provider you add under Settings → Providers.
+              </div>
+            )}
+            {createProgress.length > 0 && (
                 <div className="mb-2.5 flex flex-col gap-0.5 rounded-lg border border-accent/30 bg-accent-light/60 px-3 py-2 dark:bg-accent/10">
                   {createProgress.map((line, i) => (
                     <span key={i} className="font-mono text-[11px] text-accent dark:text-accent-bright">{line}</span>
@@ -1428,7 +1610,8 @@ function TemplateGalleryModal({
                 </button>
                 <button
                   onClick={handleCreateAndLoad}
-                  disabled={creating}
+                  disabled={creating || !activeCred}
+                  title={activeCred ? undefined : 'Connect an LLM provider first'}
                   className="flex items-center gap-1.5 rounded-[10px] bg-gradient-to-br from-accent to-accent-ink px-4 py-2 text-xs font-semibold text-white shadow-card transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {creating
@@ -1698,9 +1881,42 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   }, [dirty])
 
   // Run via SSE
+  // Streamed text accumulates in a ref and flushes to state at most ~12x/s.
+  // A setState per token froze the tab on large supervisor runs: every delta
+  // re-rendered the whole studio (canvas included), with cost growing as the
+  // output grew.
+  const pendingOutput = useRef<Record<string, string>>({})
+  const flushTimer = useRef<number | null>(null)
+  const queueOutput = useCallback((key: string, chunk: string) => {
+    pendingOutput.current[key] = (pendingOutput.current[key] ?? '') + chunk
+    if (flushTimer.current == null) {
+      flushTimer.current = window.setTimeout(() => {
+        const pending = pendingOutput.current
+        pendingOutput.current = {}
+        flushTimer.current = null
+        setRunOutput((prev) => {
+          const next = { ...prev }
+          for (const k in pending) next[k] = (next[k] ?? '') + pending[k]
+          return next
+        })
+      }, 80)
+    }
+  }, [])
+
+  // Output console follows the stream while the user is near the bottom;
+  // scrolling up to read pauses the follow until they return to the bottom.
+  const outputScrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = outputScrollRef.current
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < el.clientHeight
+    if (nearBottom) el.scrollTop = el.scrollHeight
+  }, [runOutput])
+
   const handleRun = async () => {
     if (!runInput.trim()) return
     setRunStatus('running')
+    pendingOutput.current = {}
     setRunOutput({})
     setRunError(null)
 
@@ -1735,9 +1951,22 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
       const decoder = new TextDecoder()
       let buf = ''
 
+      // Liveness guard: the engine emits a ping every 15s, so a silent minute
+      // means the stream is dead (server restart, dropped connection). Without
+      // this, reader.read() blocks forever and the panel spins until the tab
+      // is closed.
+      let lastEvent = Date.now()
+      const liveness = window.setInterval(() => {
+        if (Date.now() - lastEvent > 60_000) {
+          reader.cancel().catch(() => {})
+        }
+      }, 5_000)
+
+      try {
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
+        lastEvent = Date.now()
         buf += decoder.decode(value, { stream: true })
         const lines = buf.split('\n')
         buf = lines.pop() ?? ''
@@ -1752,20 +1981,23 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             } else if (evt.type === 'node_completed' && evt.node_id) {
               setNodes((nds) => nds.map((n) => n.id === evt.node_id ? { ...n, data: { ...n.data, status: 'done' as const } } : n))
               if (evt.result) {
-                setRunOutput((prev) => ({ ...prev, [evt.node_id!]: (prev[evt.node_id!] ?? '') + evt.result }))
+                queueOutput(evt.node_id!, evt.result)
               }
             } else if (evt.type === 'node_delivery' && evt.node_id) {
               const note = evt.ok
                 ? `\n▸ delivered via ${evt.target}`
                 : `\n▸ ${evt.target} delivery failed: ${evt.error ?? 'unknown error'}`
-              setRunOutput((prev) => ({ ...prev, [evt.node_id!]: (prev[evt.node_id!] ?? '') + note }))
+              queueOutput(evt.node_id!, note)
             } else if (evt.type === 'delta' && evt.node_id) {
-              setRunOutput((prev) => ({ ...prev, [evt.node_id!]: (prev[evt.node_id!] ?? '') + (evt.content ?? '') }))
+              queueOutput(evt.node_id, evt.content ?? '')
             } else if (evt.type === 'delta' && evt.content) {
-              setRunOutput((prev) => ({ ...prev, __main__: (prev.__main__ ?? '') + evt.content }))
+              queueOutput('__main__', evt.content)
             } else if (evt.type === 'run_completed') {
               setRunStatus('done')
             } else if (evt.type === 'error') {
+              if (evt.node_id) {
+                setNodes((nds) => nds.map((n) => n.id === evt.node_id ? { ...n, data: { ...n.data, status: 'error' as const } } : n))
+              }
               setRunError(evt.error ?? evt.message ?? 'Workflow execution error')
               setRunStatus('done')
             }
@@ -1774,7 +2006,15 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
           }
         }
       }
-      setRunStatus('done')
+      } finally {
+        window.clearInterval(liveness)
+      }
+      setRunStatus((prev) => {
+        if (prev === 'running') {
+          setRunError((e) => e ?? 'Stream ended without completing — the run may still be executing server-side. Check the Runs page.')
+        }
+        return 'done'
+      })
     } catch (err) {
       setRunError(err instanceof Error ? err.message : 'Network error — could not reach the server')
       setRunStatus('done')
@@ -2387,44 +2627,45 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         />
       )}
 
-      {/* Run panel */}
-      {runPanelOpen && (
-        <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[50vh] min-h-60 flex-col border-t border-zinc-800 bg-zinc-950">
-          <div className="flex flex-shrink-0 items-center gap-3 border-b border-zinc-800 px-4 py-2.5">
-            <span className="grid h-6 w-6 place-items-center rounded-md bg-accent/20 text-accent-bright">
+      {/* Run panel — portaled to <body> so ancestor overflow/transform styles
+          in the app shell can never clip or re-anchor the fixed drawer. */}
+      {runPanelOpen && createPortal(
+        <div className="fixed inset-x-0 bottom-0 z-50 flex h-[50vh] min-h-60 flex-col overflow-hidden border-t border-border bg-surface shadow-[0_-8px_24px_-12px_rgba(21,26,31,.18)]">
+          <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-4 py-2.5">
+            <span className="grid h-6 w-6 place-items-center rounded-md bg-accent-light text-accent dark:bg-accent/20 dark:text-accent-bright">
               <Play size={12} />
             </span>
-            <span className="text-xs font-semibold text-zinc-100">Run workflow</span>
+            <span className="text-xs font-semibold text-foreground">Run workflow</span>
             {runStatus === 'running' && (
-              <span className="flex items-center gap-1.5 font-mono text-[10px] text-accent-bright">
+              <span className="flex items-center gap-1.5 font-mono text-[10px] text-accent dark:text-accent-bright">
                 <Loader2 size={10} className="animate-spin" /> running
               </span>
             )}
             {runStatus === 'done' && !runError && (
-              <span className="font-mono text-[10px] text-emerald-400">completed</span>
+              <span className="font-mono text-[10px] text-good">completed</span>
             )}
             <div className="flex-1" />
             <button
               onClick={() => { setRunPanelOpen(false); setRunStatus('idle'); setRunError(null) }}
-              className="text-zinc-500 transition-colors hover:text-zinc-200"
+              className="text-faint transition-colors hover:text-foreground"
               aria-label="Close run panel"
             >
               <X size={14} />
             </button>
           </div>
 
-          <div className="flex flex-1 flex-wrap overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-nowrap overflow-hidden">
             {/* Input area */}
-            <div className="flex w-2/5 min-w-52 flex-shrink-0 flex-col gap-2 border-r border-zinc-800 p-3">
+            <div className="flex min-h-0 w-2/5 min-w-52 flex-shrink-0 flex-col gap-2 overflow-hidden border-r border-border p-3">
               <textarea
                 value={runInput}
                 onChange={(e) => setRunInput(e.target.value)}
                 onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleRun() }}
                 placeholder="Describe the task for this run… (⌘⏎ to run)"
-                className="flex-1 resize-none rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-accent/60"
+                className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground outline-none placeholder:text-faint focus:border-accent focus:ring-2 focus:ring-accent/20"
               />
               {runError && (
-                <div className="rounded-lg border border-red-900 bg-red-950/60 px-3 py-2 text-[11px] leading-snug text-red-300">
+                <div className="rounded-lg border border-crit/30 bg-crit/10 px-3 py-2 text-[11px] leading-snug text-crit">
                   {runError}
                 </div>
               )}
@@ -2441,9 +2682,9 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             </div>
 
             {/* Output area */}
-            <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-3">
+            <div ref={outputScrollRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
               {Object.keys(runOutput).length === 0 && (
-                <div className="mt-8 text-center font-mono text-[11px] text-zinc-600">
+                <div className="mt-8 text-center font-mono text-[11px] text-faint">
                   {runStatus === 'running' ? 'Waiting for the first node…' : 'Node outputs appear here as the run progresses.'}
                 </div>
               )}
@@ -2451,18 +2692,19 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                 const node = nodes.find((n) => n.id === nodeId)
                 const label = nodeId === '__main__' ? 'Output' : node?.data?.label || nodeId
                 return (
-                  <div key={nodeId} className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2.5">
+                  <div key={nodeId} className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
                     <div className="mb-1.5 flex items-center gap-1.5">
-                      <ChevronRight size={11} className="text-accent-bright" />
-                      <span className="text-[11px] font-semibold text-indigo-300">{label}</span>
+                      <ChevronRight size={11} className="text-accent dark:text-accent-bright" />
+                      <span className="text-[11px] font-semibold text-accent dark:text-accent-bright">{label}</span>
                     </div>
-                    <pre className="m-0 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-zinc-300">{text}</pre>
+                    <pre className="m-0 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-foreground/90">{text}</pre>
                   </div>
                 )
               })}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

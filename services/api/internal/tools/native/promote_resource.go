@@ -12,10 +12,13 @@ import (
 
 // PromoteResourceTool flips ephemeral=false on an agent, skill, tool, or workflow
 // created during this run, so it survives when cleanupEphemeralResources runs at run end.
-type PromoteResourceTool struct{ pool *pgxpool.Pool }
+type PromoteResourceTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
 func NewPromoteResourceTool(pool *pgxpool.Pool) *PromoteResourceTool {
-	return &PromoteResourceTool{pool}
+	return &PromoteResourceTool{pool: pool}
 }
 
 func (t *PromoteResourceTool) Definition() domain.Tool {
@@ -45,10 +48,6 @@ func (t *PromoteResourceTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-
-func (t *PromoteResourceTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_promote_resource requires run context")
 }
 
 func (t *PromoteResourceTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {

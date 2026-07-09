@@ -1,61 +1,12 @@
 package provider
 
-import (
-	"encoding/json"
-	"strings"
-)
-
-// contextWindows maps model name substrings to their context window size in tokens.
-// Longest / most-specific entries should be checked first (see ContextWindow below).
-var contextWindows = []struct {
-	substr string
-	tokens int
-}{
-	// Anthropic
-	{"claude-3-5-haiku", 200_000},
-	{"claude-3-5-sonnet", 200_000},
-	{"claude-3-7-sonnet", 200_000},
-	{"claude-opus-4", 200_000},
-	{"claude-sonnet-4", 200_000},
-	{"claude-haiku-4", 200_000},
-	{"claude-fable-5", 200_000},
-	{"claude", 200_000}, // catch-all for any Claude model
-
-	// OpenAI
-	{"gpt-4o-mini", 128_000},
-	{"gpt-4o", 128_000},
-	{"gpt-4-turbo", 128_000},
-	{"gpt-4-32k", 32_768},
-	{"gpt-4", 8_192},
-	{"gpt-3.5-turbo-16k", 16_385},
-	{"gpt-3.5-turbo", 16_385},
-	{"o1-mini", 128_000},
-	{"o1-preview", 128_000},
-	{"o1", 200_000},
-	{"o3", 200_000},
-
-	// Google
-	{"gemini-2.0-flash", 1_000_000},
-	{"gemini-1.5-pro", 1_000_000},
-	{"gemini-1.5-flash", 1_000_000},
-	{"gemini-1.0-pro", 30_720},
-	{"gemini", 1_000_000}, // catch-all
-
-	// Ollama / local models — conservative default
-	{"llama", 8_192},
-	{"mistral", 8_192},
-	{"phi", 8_192},
-	{"qwen", 8_192},
-}
+import "encoding/json"
 
 // ContextWindow returns the context window size in tokens for the given model name.
 // Returns 8 192 if the model is not recognised (safe conservative default).
 func ContextWindow(model string) int {
-	lower := strings.ToLower(model)
-	for _, entry := range contextWindows {
-		if strings.Contains(lower, entry.substr) {
-			return entry.tokens
-		}
+	if spec := LookupModel(model); spec != nil && spec.ContextWindow > 0 {
+		return spec.ContextWindow
 	}
 	return 8_192
 }

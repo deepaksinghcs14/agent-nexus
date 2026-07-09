@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/api/sse"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
@@ -26,7 +27,6 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/cost"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/memory"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
 
@@ -242,6 +242,17 @@ type invokeOpts struct {
 	resume           *runWaitState
 	resumeDecision   *ApprovalDecision
 	resumeToolResult *string
+	// delegateToolDefs, when non-empty, are offered to the model alongside the
+	// agent's own tools (supervisor mode). Pairs with the delegateHandlers
+	// param that intercepts calls to these names. Their presence forces eager
+	// tool loading and injects the team-agent listing into the system prompt.
+	delegateToolDefs []provider.ToolDefinition
+	// noApprovalPark keeps approval waits in-process (fail on timeout) even at
+	// depth 0 — supervisor sub-runs must not park mid-workflow.
+	noApprovalPark bool
+	// disableUserInput removes the WaitForUserInput capability (runs that can
+	// never pause for a human, e.g. workflow supervisor nodes).
+	disableUserInput bool
 }
 
 // progressLabel returns a short human-readable status for a tool that is about to execute.
@@ -489,7 +500,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			emit(s)
 		}
 	}
-	sseErr := func(msg string) { sseEmitOrNil(fmt.Sprintf(`{"type":"error","error":%q}`, msg)) }
+	sseErr := func(msg string) { sseEmitOrNil(sse.Error(msg)) }
 
 	llm, err := h.runs.providerFor(ctx, ws, a.Provider)
 	if err != nil {
@@ -601,10 +612,29 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	skillCatalog, _ := loadWorkspaceSkillCatalog(ctx, h.pool, ws)
-	instructions := a.Instructions + onDemandSkillsInstructions(skills.OnDemand)
+	instructions := a.Instructions
+	// Inject the live delegate tool listing so the LLM knows exactly which team
+	// agents are available and their exact tool names — without requiring the
+	// supervisor's Instructions to hardcode them. The "(injected at runtime)"
+	// label signals to the model that these names are dynamic.
+	if len(opts.delegateToolDefs) > 0 {
+		var delegateList strings.Builder
+		for _, td := range opts.delegateToolDefs {
+			delegateList.WriteString("- **" + td.Name + "**: " + td.Description + "\n")
+		}
+		instructions += "\n\n## Available Team Agents (injected at runtime)\n" +
+			"You MUST delegate work to your team agents using the tools below — do NOT produce a final answer without calling at least one team agent first.\n\n" +
+			delegateList.String() +
+			"\nCall each relevant team agent with a specific task string. After receiving all outputs, synthesize them into a comprehensive final response."
+	}
+	instructions += onDemandSkillsInstructions(skills.OnDemand)
 	if a.ContextRetrievalEnabled && a.AgenticRAG {
 		instructions += "\n\nTo look up information from your connected knowledge sources, use the `native_retrieve_context` tool. Always call it before answering questions that require specific knowledge from your documents, codebase, or indexed files. Do NOT call any tool named \"search\" — use `native_retrieve_context` instead."
 	}
+	// Supervisor-mode runs are always eager: delegate tools must be offered
+	// on turn one, and the lazy gate would otherwise reject their names.
+	lazyTools := a.LazyToolLoading && len(opts.delegateToolDefs) == 0
+
 	var initialMessages []provider.Message
 	var stableSystem string
 	if resuming {
@@ -620,9 +650,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			History:            history,
 			MemoryEnabled:      a.MemoryEnabled,
 			MemorySaveMode:     a.MemorySaveMode,
-			HasCallAgent:       hasCallAgent,
+			HasCallAgent:       hasCallAgent || len(opts.delegateToolDefs) > 0,
 			HasCreateAgent:     hasCreateAgent,
-			LazyToolLoading:    a.LazyToolLoading,
+			LazyToolLoading:    lazyTools,
 			ConvCompaction:     convCompaction,
 		})
 	}
@@ -631,6 +661,27 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	requestedTools := map[string]bool{}
 	if a.ContextRetrievalEnabled && a.AgenticRAG {
 		requestedTools["native_retrieve_context"] = true
+	}
+	// Tools that exist only to serve an on-demand skill stay hidden in
+	// non-lazy mode until the skill activates; lazy mode gates them through
+	// requestedTools instead.
+	hiddenToolNames := map[string]bool{}
+	for _, skill := range skills.OnDemand {
+		for _, name := range skill.RequiredToolNames {
+			if !skills.AlwaysRequired[name] {
+				hiddenToolNames[name] = true
+			}
+		}
+	}
+	activeSkillTools := map[string]bool{}
+	visibleToolDefs := func() []provider.ToolDefinition {
+		out := make([]provider.ToolDefinition, 0, len(allToolDefs))
+		for _, td := range allToolDefs {
+			if !hiddenToolNames[td.Name] || activeSkillTools[td.Name] {
+				out = append(out, td)
+			}
+		}
+		return out
 	}
 	if resuming {
 		for _, name := range opts.resume.RequestedTools {
@@ -652,6 +703,19 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	if resuming {
 		activeSkills = setOf(opts.resume.ActiveSkills)
 		activeMemoryIDs = setOf(opts.resume.ActiveMemoryIDs)
+		// Re-mark tools of already-active skills as visible so a resumed
+		// non-lazy run doesn't hide tools the pre-park turns unlocked.
+		for name := range activeSkills {
+			skill, ok := skills.OnDemand[name]
+			if !ok {
+				skill, ok = skillCatalog[name]
+			}
+			if ok {
+				for _, toolName := range skill.RequiredToolNames {
+					activeSkillTools[toolName] = true
+				}
+			}
+		}
 	}
 	var messages []provider.Message
 
@@ -740,6 +804,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			}
 			activeSkills[name] = true
 			for _, toolName := range skill.RequiredToolNames {
+				activeSkillTools[toolName] = true
 				requestedTools[toolName] = true
 				// Ensure the tool appears in toolSummaries so native_list_tools and
 				// native_request_tool can find it even if it isn't in agent_tools.
@@ -761,8 +826,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	execCtx.SendMessage = opts.SendMessage
 	capturedRunID := runID
 	execCtx.WaitForUserInput = func(ctx context.Context, question string) (string, error) {
-		sseEmitOrNil(fmt.Sprintf(`{"type":"user_input_required","run_id":%q,"question":%s}`,
-			capturedRunID, jsonOrStr([]byte(`"`+question+`"`))))
+		sseEmitOrNil(sse.UserInputRequired(capturedRunID, question))
 		if opts.SendMessage != nil {
 			opts.SendMessage(ctx, question) //nolint:errcheck
 		}
@@ -779,7 +843,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		}
 	}
 
-	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
+	sseEmitOrNil(sse.RunStarted(runID))
 
 	// ── Tool calling loop ──────────────────────────────────────────────────────
 	messages = initialMessages
@@ -804,6 +868,11 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	// parking would return to the parent as if the child had finished.
 	var curBatch []provider.ToolCall
 	var curCallIdx int
+	if opts.disableUserInput {
+		// Supervisor-mode runs execute inside a workflow and can never pause
+		// for a human answer.
+		execCtx.WaitForUserInput = nil
+	}
 	isChildRun := opts.invokeDepth > 0
 	if !isChildRun {
 		// Workflow-node runs arrive with depth 0 — detect them by lineage.
@@ -841,7 +910,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		}
 		ch := RegisterSessionWait(runID)
 		h.pool.Exec(waitCtx, `UPDATE runs SET status='session_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
-		sseEmitOrNil(fmt.Sprintf(`{"type":"session_wait","run_id":%q,"session":%q}`, runID, sessionKey))
+		sseEmitOrNil(sse.SessionWait(runID, sessionKey))
 
 		// Sessions run for minutes to hours; block only briefly for fast stubs
 		// and tests, then park. The runner's callback resumes the run.
@@ -857,7 +926,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	for {
 		// Build the tool list for this iteration.
 		var toolDefs []provider.ToolDefinition
-		if a.LazyToolLoading {
+		if lazyTools {
 			// Start with just the meta-tools; add any tools the agent has requested.
 			toolDefs = lazyMetaToolDefs(h.registry)
 			coveredByDB := map[string]bool{}
@@ -892,8 +961,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				}
 			}
 		} else {
-			toolDefs = append(lazyMetaToolDefs(h.registry), allToolDefs...)
+			toolDefs = append(lazyMetaToolDefs(h.registry), visibleToolDefs()...)
 		}
+		toolDefs = append(toolDefs, opts.delegateToolDefs...)
 		toolDefs = dedupeToolDefs(toolDefs)
 		allowedToolNames := map[string]bool{}
 		for _, td := range toolDefs {
@@ -911,8 +981,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		} else {
 			if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
 				messages = trimmed
-				sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`,
-					fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
+				sseEmitOrNil(sse.Delta(fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
 			}
 
 			modelStart := time.Now()
@@ -925,8 +994,8 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				Stream:              true,
 				StableSystemContent: stableSystem,
 			}, func(delta string) {
-				sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
-			}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
+				sseEmitOrNil(sse.Delta(delta))
+			}, "Return a direct, non-empty reply. Do not explain limitations. If you started a multi-step task, continue to the next step rather than asking for confirmation.")
 			if err != nil {
 				runErrMsg = err.Error()
 				sseErr(err.Error())
@@ -978,6 +1047,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				h.pool.Exec(ctx, //nolint:errcheck
 					`INSERT INTO messages(id,conversation_id,role,content,tool_calls,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4::jsonb,$5)`,
 					uuid.NewString(), convID, reply, actionLogJSON, usage.OutputTokens)
+				h.pool.Exec(ctx, //nolint:errcheck
+					`UPDATE conversations SET message_count=message_count+1, token_count=token_count+$2, updated_at=NOW() WHERE id=$1::uuid`,
+					convID, usage.OutputTokens)
 				h.runs.createStep(ctx, runID, domain.StepFinalResponse, //nolint:errcheck
 					map[string]any{},
 					map[string]any{"content": reply},
@@ -987,8 +1059,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				h.pool.Exec(dbCtx, //nolint:errcheck
 					`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
 					runID, reply, totalInput, totalOutput, costUSD)
-				sseEmitOrNil(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`,
-					runID, totalInput, totalOutput, costUSD))
+				sseEmitOrNil(sse.RunCompleted(runID, totalInput, totalOutput, costUSD))
 				// Memory extraction runs after marking run complete so gateway delivery
 				// is not blocked by the extra LLM call.
 				if shouldRunMemoryExtractor(a, memorySaveCalled) {
@@ -1043,7 +1114,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		{
 			var agentCallsInBatch []provider.ToolCall
 			for _, call := range pendingCalls {
-				if call.Name == "native_call_agent" {
+				if call.Name == "native_call_agent" || delegateHandlers[call.Name] != nil {
 					agentCallsInBatch = append(agentCallsInBatch, call)
 				}
 			}
@@ -1056,6 +1127,10 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				for _, call := range agentCallsInBatch {
 					capturedCall := call
 					go func() {
+						if handler, isDelegate := delegateHandlers[capturedCall.Name]; isDelegate {
+							resultsCh <- agentCallOut{id: capturedCall.ID, content: handler(ctx, capturedCall.Input)}
+							return
+						}
 						result, execErr := h.executor.ExecuteWithContext(ctx, execCtx, capturedCall.Name, capturedCall.Input)
 						var content string
 						if execErr != nil {
@@ -1094,8 +1169,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					map[string]any{"tool": call.Name, "input": call.Input},
 					map[string]any{"output": resultContent},
 					time.Now(), 0, call.Name, "")
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":0}`,
-					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent))))
+				sseEmitOrNil(sse.ToolCall(call.ID, call.Name, call.Input, []byte(resultContent), 0))
 				messages = append(messages, provider.Message{
 					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: resultContent,
 				})
@@ -1113,17 +1187,19 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			}
 			// Delegate tool — hand off to a team agent and return its output.
 			if handler, isDelegate := delegateHandlers[call.Name]; isDelegate {
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
-					call.ID, call.Name, jsonOrStr(call.Input)))
+				sseEmitOrNil(sse.ToolStarted(call.ID, call.Name, call.Input))
 				delegateStart := time.Now()
-				delegateOutput := handler(ctx, call.Input)
+				var delegateOutput string
+				if precomputed, ok := parallelAgentResults[call.ID]; ok {
+					delegateOutput = precomputed
+				} else {
+					delegateOutput = handler(ctx, call.Input)
+				}
 				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
 					map[string]any{"tool": call.Name, "input": call.Input},
 					map[string]any{"output": delegateOutput},
 					delegateStart, 0, call.Name, "")
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(delegateOutput)),
-					int(time.Since(delegateStart).Milliseconds())))
+				sseEmitOrNil(sse.ToolCall(call.ID, call.Name, call.Input, []byte(delegateOutput), int(time.Since(delegateStart).Milliseconds())))
 				messages = append(messages, provider.Message{
 					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: delegateOutput,
 				})
@@ -1140,14 +1216,13 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			// model this turn (e.g. it guessed a name from native_list_tools output) so it's
 			// forced through native_request_tool/native_request_skill — keeping traces honest
 			// about what was activated.
-			if a.LazyToolLoading && !allowedToolNames[call.Name] {
+			if lazyTools && !allowedToolNames[call.Name] {
 				gateErr := lazyToolNotActiveError(call.Name, execCtx.SkillToolMap)
 				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
 					map[string]any{"tool": call.Name, "input": call.Input},
 					map[string]any{"error": gateErr},
 					time.Now(), 0, call.Name, gateErr)
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":0}`,
-					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(fmt.Sprintf(`{"error":%q}`, gateErr)))))
+				sseEmitOrNil(sse.ToolCall(call.ID, call.Name, call.Input, []byte(fmt.Sprintf(`{"error":%q}`, gateErr)), 0))
 				messages = append(messages, provider.Message{
 					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: fmt.Sprintf(`{"error":%q}`, gateErr),
 				})
@@ -1176,7 +1251,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 						arID, runID, call.Name, call.Input)
 					h.pool.Exec(ctx, `UPDATE runs SET status='approval_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
 
-					if opts.invokeDepth == 0 {
+					if opts.invokeDepth == 0 && !opts.noApprovalPark {
 						// Snapshot the loop state so the run survives a process restart
 						// and can park if nobody approves before the in-process timeout.
 						st := &runWaitState{
@@ -1206,16 +1281,15 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					}
 
 					ch := RegisterApprovalWait(runID)
-					sseEmitOrNil(fmt.Sprintf(`{"type":"approval_required","tool":%q,"input":%s,"approval_id":%q}`,
-						call.Name, string(call.Input), arID))
+					sseEmitOrNil(sse.ApprovalRequired(call.Name, call.Input, arID))
 
 					var got bool
 					decision, got = awaitApprovalDecision(runID, ch, 10*time.Minute)
 					if !got {
-						if opts.invokeDepth == 0 {
+						if opts.invokeDepth == 0 && !opts.noApprovalPark {
 							// Park: free this goroutine and leave the run in approval_wait
 							// with its state persisted. The Approve endpoint resumes it.
-							sseEmitOrNil(fmt.Sprintf(`{"type":"approval_parked","run_id":%q,"approval_id":%q}`, runID, arID))
+							sseEmitOrNil(sse.ApprovalParked(runID, arID))
 							runParked = true
 							return
 						}
@@ -1233,8 +1307,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				}
 			}
 
-			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
-				call.ID, call.Name, jsonOrStr(call.Input)))
+			sseEmitOrNil(sse.ToolStarted(call.ID, call.Name, call.Input))
 			if execCtx.SendMessage != nil {
 				if label := progressLabel(call.Name); label != "" {
 					execCtx.SendMessage(ctx, label) //nolint:errcheck
@@ -1247,34 +1320,12 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				// Already executed concurrently in the parallel batch above; content is ready.
 				resultContent = precomputed
 			} else {
-				var result *tools.ExecutionResult
-				var execErr error
-				if toolExists && dbTool.Type == "http" {
-					var cfg tools.HTTPToolConfig
-					_ = json.Unmarshal(dbTool.Config, &cfg)
-					result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
-				} else if toolExists && dbTool.Type == "mcp" {
-					result = executeMCPTool(ctx, h.pool, h.cfg, dbTool, call.Input)
-				} else if toolExists && dbTool.Type == "code" {
-					var codeCfg struct {
-						Code string `json:"code"`
-					}
-					_ = json.Unmarshal(dbTool.Config, &codeCfg)
-					start := time.Now()
-					out, codeErr := native.ExecuteCodeTool(ctx, codeCfg.Code, call.Input)
-					result = &tools.ExecutionResult{LatencyMs: int(time.Since(start).Milliseconds())}
-					if codeErr != nil {
-						result.Error = codeErr.Error()
-					} else {
-						result.Output = out
-					}
-				} else {
-					result, execErr = h.executor.ExecuteWithContext(ctx, execCtx, call.Name, call.Input)
-				}
+				result, execErr := invokeToolByType(ctx, h.pool, h.cfg, h.executor, execCtx, dbTool, toolExists, call.Name, call.Input)
 				if errors.Is(execErr, tools.ErrRunParked) {
 					// The session tool persisted its wait state and the in-process
 					// wait expired. Exit without failing the run — the runner's
 					// callback resumes it via ResumeSessionRun.
+					sseEmitOrNil(sse.SessionParked(runID))
 					runParked = true
 					return
 				}
@@ -1301,8 +1352,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				map[string]any{"output": resultContent},
 				time.Now(), 0, call.Name, errMsg)
 
-			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-				call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
+			sseEmitOrNil(sse.ToolCall(call.ID, call.Name, call.Input, []byte(resultContent), latencyMs))
 
 			messages = append(messages, provider.Message{
 				Role:       "tool",
@@ -1430,7 +1480,7 @@ func (h *InvokeHandler) executeGroupRun(
 	runMarked := false
 	defer func() {
 		if r := recover(); r != nil {
-			sseEmit(fmt.Sprintf(`{"type":"error","error":"workflow panic: %v"}`, r))
+			sseEmit(sse.Error(fmt.Sprintf("workflow panic: %v", r)))
 		}
 		if !runMarked {
 			h.runs.failRun(context.Background(), parentRunID, "workflow terminated unexpectedly") //nolint:errcheck
@@ -1467,7 +1517,7 @@ func (h *InvokeHandler) executeGroupRun(
 		 FROM workflow_nodes WHERE workflow_id=$1::uuid ORDER BY created_at`,
 		workflowID)
 	if err != nil {
-		sseEmit(fmt.Sprintf(`{"type":"error","error":%q}`, "failed to load workflow nodes"))
+		sseEmit(sse.Error("failed to load workflow nodes"))
 		h.runs.failRun(ctx, parentRunID, "failed to load workflow nodes") //nolint:errcheck
 		return
 	}
@@ -1521,7 +1571,7 @@ func (h *InvokeHandler) executeGroupRun(
 		 FROM workflow_edges WHERE workflow_id=$1::uuid ORDER BY created_at`,
 		workflowID)
 	if err != nil {
-		sseEmit(fmt.Sprintf(`{"type":"error","error":%q}`, "failed to load workflow edges"))
+		sseEmit(sse.Error("failed to load workflow edges"))
 		h.runs.failRun(ctx, parentRunID, "failed to load workflow edges") //nolint:errcheck
 		return
 	}
@@ -1642,7 +1692,7 @@ func (h *InvokeHandler) executeGroupRun(
 			exceeded := totalSteps > maxTotalSteps
 			stepsMu.Unlock()
 			if exceeded {
-				sseEmit(fmt.Sprintf(`{"type":"error","error":"workflow exceeded maximum steps (%d) — possible infinite loop"}`, maxTotalSteps))
+				sseEmit(sse.Error(fmt.Sprintf("workflow exceeded maximum steps (%d) — possible infinite loop", maxTotalSteps)))
 				h.runs.failRun(ctx, parentRunID, fmt.Sprintf("workflow exceeded maximum steps (%d)", maxTotalSteps)) //nolint:errcheck
 				return
 			}
@@ -1662,8 +1712,7 @@ func (h *InvokeHandler) executeGroupRun(
 				}
 			}
 
-			sseEmit(fmt.Sprintf(`{"type":"node_started","node_id":%q,"node_type":%q,"node_name":%q}`,
-				node.ID, node.Type, nodeName))
+			sseEmit(sse.NodeStarted(node.ID, node.Type, nodeName))
 
 			switch node.Type {
 
@@ -1682,16 +1731,16 @@ func (h *InvokeHandler) executeGroupRun(
 				nodeOutputs[node.ID] = lastOutput
 				if url, _ := node.Config["webhook_url"].(string); url != "" {
 					if _, err := h.executeWorkflowWebhook(ctx, map[string]any{"url": url}, workflowID, parentRunID, node.ID, lastOutput, originalInput); err != nil {
-						sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"webhook","ok":false,"error":%q}`, node.ID, err.Error()))
+						sseEmit(sse.NodeDelivery(node.ID, "webhook", err))
 					} else {
-						sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"webhook","ok":true}`, node.ID))
+						sseEmit(sse.NodeDelivery(node.ID, "webhook", nil))
 					}
 				}
 				if chID, _ := node.Config["gateway_channel_id"].(string); chID != "" {
 					if err := h.deliverWorkflowGateway(ctx, ws, node.Config, "gateway_", parentRunID, lastOutput, originalInput); err != nil {
-						sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"gateway","ok":false,"error":%q}`, node.ID, err.Error()))
+						sseEmit(sse.NodeDelivery(node.ID, "gateway", err))
 					} else {
-						sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"gateway","ok":true}`, node.ID))
+						sseEmit(sse.NodeDelivery(node.ID, "gateway", nil))
 					}
 				}
 
@@ -1706,7 +1755,7 @@ func (h *InvokeHandler) executeGroupRun(
 					outputMu.Unlock()
 					lastOutput = cached
 					prevNodeName = nodeName
-					sseEmit(fmt.Sprintf(`{"type":"node_resumed","node_id":%q,"node_name":%q}`, node.ID, nodeName))
+					sseEmit(sse.NodeResumed(node.ID, nodeName))
 				} else {
 					var out string
 					var nodeErr error
@@ -1718,7 +1767,7 @@ func (h *InvokeHandler) executeGroupRun(
 					if nodeErr != nil {
 						// Surface the failure but keep walking: downstream
 						// condition nodes can branch on the error envelope.
-						sseEmit(fmt.Sprintf(`{"type":"error","node_id":%q,"error":%q}`, node.ID, nodeErr.Error()))
+						sseEmit(sse.ErrorForNode(node.ID, nodeErr.Error()))
 						out = fmt.Sprintf(`{"error":%q}`, nodeErr.Error())
 					}
 					outputMu.Lock()
@@ -1738,11 +1787,11 @@ func (h *InvokeHandler) executeGroupRun(
 				// passes it through unchanged. On resume, skip the re-send.
 				if _, ok := resumedOutputs[node.ID]; ok && !consumedResume[node.ID] {
 					consumedResume[node.ID] = true
-					sseEmit(fmt.Sprintf(`{"type":"node_resumed","node_id":%q,"node_name":%q}`, node.ID, nodeName))
+					sseEmit(sse.NodeResumed(node.ID, nodeName))
 				} else if err := h.deliverWorkflowGateway(ctx, ws, node.Config, "", parentRunID, lastOutput, originalInput); err != nil {
-					sseEmit(fmt.Sprintf(`{"type":"error","node_id":%q,"error":%q}`, node.ID, err.Error()))
+					sseEmit(sse.ErrorForNode(node.ID, err.Error()))
 				} else {
-					sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"gateway","ok":true}`, node.ID))
+					sseEmit(sse.NodeDelivery(node.ID, "gateway", nil))
 				}
 				outputMu.Lock()
 				nodeOutputs[node.ID] = lastOutput
@@ -1756,7 +1805,7 @@ func (h *InvokeHandler) executeGroupRun(
 
 			case "agent":
 				if node.AgentID == "" {
-					sseEmit(fmt.Sprintf(`{"type":"error","error":"agent node %s has no agent_id"}`, node.ID))
+					sseEmit(sse.Error(fmt.Sprintf("agent node %s has no agent_id", node.ID)))
 					continue
 				}
 
@@ -1767,7 +1816,7 @@ func (h *InvokeHandler) executeGroupRun(
 					outputMu.Unlock()
 					lastOutput = cached
 					prevNodeName = nodeName
-					sseEmit(fmt.Sprintf(`{"type":"node_resumed","node_id":%q,"node_name":%q}`, node.ID, nodeName))
+					sseEmit(sse.NodeResumed(node.ID, nodeName))
 					for _, e := range adj[node.ID] {
 						if next, ok := nodeMap[e.Target]; ok {
 							queue = append(queue, next)
@@ -1779,8 +1828,7 @@ func (h *InvokeHandler) executeGroupRun(
 				agents := repository.NewAgentRepository(h.pool)
 				a, err := agents.Get(ctx, node.AgentID, ws)
 				if err != nil {
-					sseEmit(fmt.Sprintf(`{"type":"error","error":%q}`,
-						fmt.Sprintf("agent node %s: agent not found", node.ID)))
+					sseEmit(sse.Error(fmt.Sprintf("agent node %s: agent not found", node.ID)))
 					continue
 				}
 
@@ -1835,9 +1883,18 @@ func (h *InvokeHandler) executeGroupRun(
 				// Read back the sub-run output using a background context — the
 				// request ctx may be cancelled if the SSE client disconnected, but
 				// we still need the output for downstream nodes.
-				var subOutput string
+				var subOutput, subStatus, subErrMsg string
 				_ = h.pool.QueryRow(context.Background(),
-					`SELECT COALESCE(output,'') FROM runs WHERE id=$1::uuid`, subRunID).Scan(&subOutput)
+					`SELECT COALESCE(output,''), status, COALESCE(error_message,'') FROM runs WHERE id=$1::uuid`, subRunID).Scan(&subOutput, &subStatus, &subErrMsg)
+				if subStatus == "failed" {
+					// A failed node must fail the workflow — not report
+					// node_completed and march on with empty output.
+					msg := fmt.Sprintf("%s failed: %s", nodeName, subErrMsg)
+					sseEmit(sse.ErrorForNode(node.ID, msg))
+					runMarked = true
+					h.runs.failRun(context.Background(), parentRunID, msg) //nolint:errcheck
+					return
+				}
 
 				outputMu.Lock()
 				nodeOutputs[node.ID] = subOutput
@@ -1887,12 +1944,11 @@ func (h *InvokeHandler) executeGroupRun(
 				}
 
 				if nextID == "" {
-					sseEmit(fmt.Sprintf(`{"type":"error","error":"condition node %s has no matching or fallback edge — branch stopped"}`, node.ID))
+					sseEmit(sse.Error(fmt.Sprintf("condition node %s has no matching or fallback edge — branch stopped", node.ID)))
 					continue
 				}
 
-				sseEmit(fmt.Sprintf(`{"type":"node_routed","node_id":%q,"result":%q,"next_node_id":%q}`,
-					node.ID, matched, nextID))
+				sseEmit(sse.NodeRouted(node.ID, matched, nextID))
 
 				if next, ok := nodeMap[nextID]; ok {
 					queue = append(queue, next)
@@ -1936,7 +1992,7 @@ func (h *InvokeHandler) executeGroupRun(
 						defer wg.Done()
 						defer func() {
 							if r := recover(); r != nil {
-								sseEmit(fmt.Sprintf(`{"type":"error","error":"parallel branch panic: %v"}`, r))
+								sseEmit(sse.Error(fmt.Sprintf("parallel branch panic: %v", r)))
 							}
 						}()
 						walkBranch(branchStart, bi, stopNodeIDs)
@@ -1998,8 +2054,7 @@ func (h *InvokeHandler) executeGroupRun(
 
 				condMet := evaluateExpression(exitCond, lastOutput)
 				done := iteration >= maxIter || condMet
-				sseEmit(fmt.Sprintf(`{"type":"node_routed","node_id":%q,"result":%q,"iteration":%d,"max":%d}`,
-					node.ID, map[bool]string{true: "exit", false: "continue"}[done], iteration, maxIter))
+				sseEmit(sse.NodeRoutedLoop(node.ID, map[bool]string{true: "exit", false: "continue"}[done], iteration, maxIter))
 				if done {
 					// Reset the counter so this loop can be re-entered later (e.g.
 					// when a condition node's "no" branch circles back through it).
@@ -2029,14 +2084,13 @@ func (h *InvokeHandler) executeGroupRun(
 
 			case "supervisor":
 				if node.AgentID == "" {
-					sseEmit(fmt.Sprintf(`{"type":"error","error":"supervisor node %s has no agent_id"}`, node.ID))
+					sseEmit(sse.Error(fmt.Sprintf("supervisor node %s has no agent_id", node.ID)))
 					continue
 				}
 				agentRepo := repository.NewAgentRepository(h.pool)
 				supAgent, err := agentRepo.Get(ctx, node.AgentID, ws)
 				if err != nil {
-					sseEmit(fmt.Sprintf(`{"type":"error","error":%q}`,
-						fmt.Sprintf("supervisor node %s: agent not found", node.ID)))
+					sseEmit(sse.Error(fmt.Sprintf("supervisor node %s: agent not found", node.ID)))
 					continue
 				}
 
@@ -2047,7 +2101,7 @@ func (h *InvokeHandler) executeGroupRun(
 					outputMu.Unlock()
 					lastOutput = cached
 					prevNodeName = nodeName
-					sseEmit(fmt.Sprintf(`{"type":"node_resumed","node_id":%q,"node_name":%q}`, node.ID, nodeName))
+					sseEmit(sse.NodeResumed(node.ID, nodeName))
 					for _, e := range adj[node.ID] {
 						if e.Label != "delegate" {
 							if next, ok := nodeMap[e.Target]; ok {
@@ -2133,8 +2187,7 @@ func (h *InvokeHandler) executeGroupRun(
 							`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id,trace_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8,$9::uuid)`,
 							dSubRunID, ws, capturedDA.ID, dSubConvID, uid, task, capturedSuperSubRunID, capturedDN.ID, parentRunID)
 						// Light up the delegate node in the canvas.
-						sseEmit(fmt.Sprintf(`{"type":"node_started","node_id":%q,"node_type":"agent","node_name":%q}`,
-							capturedDN.ID, capturedDA.Name))
+						sseEmit(sse.NodeStarted(capturedDN.ID, "agent", capturedDA.Name))
 						delEmit := func(line string) {
 							var m map[string]any
 							if json.Unmarshal([]byte(line), &m) == nil {
@@ -2152,8 +2205,7 @@ func (h *InvokeHandler) executeGroupRun(
 							sseEmit(line)
 						}
 						h.executeRun(callCtx, capturedDA, ws, uid, dSubRunID, dSubConvID, task, nil, delEmit, invokeOpts{})
-						sseEmit(fmt.Sprintf(`{"type":"node_completed","node_id":%q,"node_name":%q}`,
-							capturedDN.ID, capturedDA.Name))
+						sseEmit(sse.NodeCompleted(capturedDN.ID, capturedDA.Name))
 						var out string
 						_ = h.pool.QueryRow(context.Background(),
 							`SELECT COALESCE(output,'') FROM runs WHERE id=$1::uuid`, dSubRunID).Scan(&out)
@@ -2198,14 +2250,29 @@ func (h *InvokeHandler) executeGroupRun(
 					sseEmit(line)
 				}
 
-				// executeSupervisorRun merges delegate tool defs into the agent's tool
-				// list so the LLM can call team agents by name, and intercepts those
-				// calls via delegateHandlers to execute the real agent sub-runs.
-				h.executeSupervisorRun(ctx, supAgent, ws, uid, subRunID, subConvID, agentInput, delegateToolDefs, delegateHandlers, supEmit)
+				// executeRun in supervisor mode: delegate tool defs are merged into
+				// the agent's tool list so the LLM can call team agents by name, and
+				// delegateHandlers intercepts those calls to run the real sub-agents.
+				// Approval waits stay in-process and user-input pauses are disabled —
+				// a supervisor node cannot park or block its workflow on a human.
+				h.executeRun(ctx, supAgent, ws, uid, subRunID, subConvID, agentInput, delegateHandlers, supEmit, invokeOpts{
+					delegateToolDefs: delegateToolDefs,
+					noApprovalPark:   true,
+					disableUserInput: true,
+				})
 
-				var subOutput string
+				var subOutput, subStatus, subErrMsg string
 				_ = h.pool.QueryRow(context.Background(),
-					`SELECT COALESCE(output,'') FROM runs WHERE id=$1::uuid`, subRunID).Scan(&subOutput)
+					`SELECT COALESCE(output,''), status, COALESCE(error_message,'') FROM runs WHERE id=$1::uuid`, subRunID).Scan(&subOutput, &subStatus, &subErrMsg)
+				if subStatus == "failed" {
+					// A failed node must fail the workflow — not report
+					// node_completed and march on with empty output.
+					msg := fmt.Sprintf("%s failed: %s", nodeName, subErrMsg)
+					sseEmit(sse.ErrorForNode(node.ID, msg))
+					runMarked = true
+					h.runs.failRun(context.Background(), parentRunID, msg) //nolint:errcheck
+					return
+				}
 
 				outputMu.Lock()
 				nodeOutputs[node.ID] = subOutput
@@ -2224,8 +2291,7 @@ func (h *InvokeHandler) executeGroupRun(
 
 			} // end switch
 
-			sseEmit(fmt.Sprintf(`{"type":"node_completed","node_id":%q,"node_name":%q}`,
-				node.ID, nodeName))
+			sseEmit(sse.NodeCompleted(node.ID, nodeName))
 			saveCheckpoint()
 		}
 	}
@@ -2255,8 +2321,7 @@ func (h *InvokeHandler) executeGroupRun(
 		`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
 		parentRunID, finalOutput, totalInputTokens, totalOutputTokens, totalCostUSD)
 
-	sseEmit(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`,
-		parentRunID, totalInputTokens, totalOutputTokens, totalCostUSD))
+	sseEmit(sse.RunCompleted(parentRunID, totalInputTokens, totalOutputTokens, totalCostUSD))
 }
 
 // RecoverInterruptedWorkflowRuns resumes top-level workflow runs that were
@@ -2323,602 +2388,6 @@ func edgesTargeting(targetNodeID string, adj map[string][]wfEdge) []wfEdge {
 		}
 	}
 	return result
-}
-
-// executeSupervisorRun is like executeRun but also presents delegate tool definitions
-// to the LLM so the supervisor agent can call team agents by name.
-// delegateToolDefs are added to the agent's normal tool list before the first LLM call.
-// delegateHandlers intercept those tool calls and execute the corresponding agent.
-func (h *InvokeHandler) executeSupervisorRun(
-	ctx context.Context,
-	a *domain.Agent,
-	ws, uid, runID, convID, input string,
-	delegateToolDefs []provider.ToolDefinition,
-	delegateHandlers map[string]func(context.Context, json.RawMessage) string,
-	emit func(string),
-) {
-	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer dbCancel()
-
-	runCompleted := false
-	runErrMsg := "supervisor run terminated unexpectedly"
-	defer func() {
-		if !runCompleted {
-			h.runs.failRun(dbCtx, runID, runErrMsg) //nolint:errcheck
-		}
-		h.cleanupEphemeralResources(context.Background(), runID)
-	}()
-
-	sseEmitOrNil := func(s string) {
-		if emit != nil {
-			emit(s)
-		}
-	}
-	sseErr := func(msg string) { sseEmitOrNil(fmt.Sprintf(`{"type":"error","error":%q}`, msg)) }
-
-	llm, err := h.runs.providerFor(ctx, ws, a.Provider)
-	if err != nil {
-		runErrMsg = err.Error()
-		sseErr(err.Error())
-		return
-	}
-
-	contextChunks := []agentprompt.ContextChunk{}
-
-	var supConnSettings connectorSettings
-	if a.ContextRetrievalEnabled {
-		supConnSettings, _ = h.runs.agentConnectorSettings(ctx, a.ID)
-	}
-
-	if a.ContextRetrievalEnabled && !a.AgenticRAG {
-		start := time.Now()
-		var queryEmbedding []float32
-		if len(supConnSettings.IDs) > 0 {
-			queryEmbedding = tryEmbed(ctx, h.cfg, llm, input)
-		}
-		chunks, err := contextretrieval.NewRetriever(h.pool).Retrieve(ctx, ws, supConnSettings.IDs, queryEmbedding, supConnSettings.MaxChunks, supConnSettings.MinScore, input)
-		if err == nil {
-			for _, c := range chunks {
-				contextChunks = append(contextChunks, formatChunk(c))
-			}
-		}
-		h.runs.createStep(ctx, runID, domain.StepContextRetrieval, //nolint:errcheck
-			map[string]any{"connector_ids": supConnSettings.IDs},
-			map[string]any{"count": len(contextChunks)},
-			start, 0, "", errString(err))
-	}
-
-	var supConvCompaction string
-	_ = h.pool.QueryRow(ctx,
-		`SELECT COALESCE(compaction, '') FROM conversations WHERE id=$1::uuid`,
-		convID).Scan(&supConvCompaction)
-
-	supHistLimit := 4
-	if supConvCompaction == "" {
-		supHistLimit = a.MaxHistoryMessages
-		if supHistLimit <= 0 {
-			supHistLimit = 20
-		}
-	}
-	historyRows, err := h.pool.Query(ctx,
-		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,''), COALESCE(tool_calls::text,'')
-		 FROM messages WHERE conversation_id=$1::uuid
-		 ORDER BY created_at DESC LIMIT $2`,
-		convID, supHistLimit)
-	if err != nil {
-		runErrMsg = err.Error()
-		sseErr("failed to load conversation history")
-		return
-	}
-	defer historyRows.Close()
-	history := []provider.Message{}
-	for historyRows.Next() {
-		var role, content, toolCallID, toolName, toolCallsRaw string
-		if historyRows.Scan(&role, &content, &toolCallID, &toolName, &toolCallsRaw) == nil && (role == "user" || role == "assistant" || role == "tool") {
-			content = injectActionLog(role, content, toolCallsRaw)
-			if len(content) > 800 {
-				content = content[:800] + "…[truncated]"
-			}
-			history = append(history, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
-		}
-	}
-	// Reverse: query returned newest-first, LLM needs oldest-first.
-	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
-		history[i], history[j] = history[j], history[i]
-	}
-
-	// Regular agent tools + delegate tools merged into one list.
-	regularToolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
-
-	// Inject the live delegate tool listing so the LLM knows exactly which team
-	// agents are available and their exact tool names — without requiring the
-	// supervisor's Instructions to hardcode them. The "(injected at runtime)"
-	// label signals to the model that these names are dynamic.
-	supervisorInstructions := a.Instructions
-	if len(delegateToolDefs) > 0 {
-		var delegateList strings.Builder
-		for _, td := range delegateToolDefs {
-			delegateList.WriteString("- **" + td.Name + "**: " + td.Description + "\n")
-		}
-		supervisorInstructions += "\n\n## Available Team Agents (injected at runtime)\n" +
-			"You MUST delegate work to your team agents using the tools below — do NOT produce a final answer without calling at least one team agent first.\n\n" +
-			delegateList.String() +
-			"\nCall each relevant team agent with a specific task string. After receiving all outputs, synthesize them into a comprehensive final response."
-	}
-
-	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
-	skillCatalog, _ := loadWorkspaceSkillCatalog(ctx, h.pool, ws)
-	supervisorInstructions += onDemandSkillsInstructions(skills.OnDemand)
-	if a.ContextRetrievalEnabled && a.AgenticRAG {
-		supervisorInstructions += "\n\nTo look up information from your connected knowledge sources, use the `native_retrieve_context` tool. Always call it before answering questions that require specific knowledge from your documents, codebase, or indexed files. Do NOT call any tool named \"search\" — use `native_retrieve_context` instead."
-	}
-	// Discovery is workspace-wide, matching executeRun/Start, so native_list_tools and
-	// native_list_agent_skills (if attached to a supervisor agent) don't just report empty.
-	toolCatalogDefs, toolCatalog, _ := loadWorkspaceToolCatalog(ctx, h.pool, ws)
-	supToolSummaries := make(map[string]string, len(toolCatalogDefs)+len(regularToolDefs))
-	for _, td := range toolCatalogDefs {
-		supToolSummaries[td.Name] = td.Description
-	}
-	for _, td := range regularToolDefs {
-		if _, ok := supToolSummaries[td.Name]; !ok {
-			supToolSummaries[td.Name] = td.Description
-		}
-	}
-	supSkillSummaries := map[string]string{}
-	supSkillToolMap := map[string]string{}
-	for name, skill := range skillCatalog {
-		supSkillSummaries[name] = skill.Description
-		for _, toolName := range skill.RequiredToolNames {
-			supSkillToolMap[toolName] = name
-		}
-	}
-	supActiveSkills := map[string]bool{}
-	supHasCallAgent := false
-	supHasCreateAgent := false
-	for _, td := range regularToolDefs {
-		switch td.Name {
-		case "native_call_agent":
-			supHasCallAgent = true
-		case "native_create_agent":
-			supHasCreateAgent = true
-		}
-	}
-	supMessages, supStableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
-		SystemInstructions: supervisorInstructions,
-		Skills:             skills.Always,
-		ContextChunks:      contextChunks,
-		History:            history,
-		MemoryEnabled:      a.MemoryEnabled,
-		MemorySaveMode:     a.MemorySaveMode,
-		HasCallAgent:       supHasCallAgent || len(delegateToolDefs) > 0,
-		HasCreateAgent:     supHasCreateAgent,
-		ConvCompaction:     supConvCompaction,
-	})
-	regularToolDefs, dbTools = ensureMemoryToolDefs(regularToolDefs, dbTools)
-	if a.ContextRetrievalEnabled && a.AgenticRAG {
-		if rt, err := h.registry.Get("native_retrieve_context"); err == nil {
-			def := rt.Definition()
-			regularToolDefs = append(regularToolDefs, provider.ToolDefinition{Name: def.Name, Description: def.Description, InputSchema: def.InputSchema})
-			dbTools[def.Name] = def
-		}
-	}
-	toolDefs := append(regularToolDefs, delegateToolDefs...)
-
-	supRootTraceID := runID
-	var supCallAgentFn func(ctx context.Context, agentID, task string) (string, error)
-	if 0 < maxInvokeDepth {
-		supCallAgentFn = func(ctx context.Context, agentID, task string) (string, error) {
-			return h.runAgentInline(ctx, ws, uid, agentID, task, runID, supRootTraceID, 1)
-		}
-	}
-
-	var messages []provider.Message
-	activeMemoryIDs := map[string]bool{}
-	execCtx := tools.ExecutionContext{
-		WorkspaceID:       ws,
-		AgentID:           a.ID,
-		AgentProvider:     a.Provider,
-		AgentModel:        a.Model,
-		UserID:            uid,
-		RunID:             runID,
-		ConversationID:    convID,
-		ConnectorIDs:      supConnSettings.IDs,
-		ToolSummaries:     supToolSummaries,
-		AlwaysActiveTools: metaToolNameSet(),
-		InvokeDepth:       0,
-		RootRunID:         supRootTraceID,
-		CallAgent:         supCallAgentFn,
-		Embed: func(ctx context.Context, text string) ([]float32, error) {
-			v := tryEmbed(ctx, h.cfg, llm, text)
-			return v, nil
-		},
-		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
-			return h.runWorkflowInline(ctx, ws, uid, workflowID, input, runID)
-		},
-		CompressText: func(ctx context.Context, text string) (string, error) {
-			ch, cerr := llm.Complete(ctx, provider.CompletionRequest{
-				Model: a.Model,
-				Messages: []provider.Message{
-					{Role: "system", Content: "You are a memory compressor. Return ONLY the compressed memory — no preamble, no explanation."},
-					{Role: "user", Content: "Compress this to ≤100 words, preserving all key facts:\n" + text},
-				},
-				Temperature: 0,
-				MaxTokens:   200,
-				Stream:      true,
-			})
-			if cerr != nil {
-				return "", cerr
-			}
-			var result strings.Builder
-			for event := range ch {
-				if event.Type == provider.EventDelta {
-					result.WriteString(event.Delta)
-				}
-				if event.Type == provider.EventError {
-					return "", event.Error
-				}
-			}
-			return strings.TrimSpace(result.String()), nil
-		},
-		SearchMemory: func(ctx context.Context, query string, limit int) ([]domain.Memory, error) {
-			embedding := memoryEmbedding(ctx, llm, query)
-			return memory.NewEngine(h.pool).Retrieve(ctx, a.ID, ws, convID, embedding, limit, a.MinRelevanceScore)
-		},
-		RequestMemory: func(memories []domain.Memory) bool {
-			return appendMemoryContext(messages, memories, activeMemoryIDs) > 0
-		},
-		SkillSummaries: supSkillSummaries,
-		SkillToolMap:   supSkillToolMap,
-		RequestTool:    func(name string) {}, // no-op: all tools are always visible in supervisor runs
-		RequestSkill: func(name string) bool {
-			skill, ok := skills.OnDemand[name]
-			if !ok {
-				skill, ok = skillCatalog[name]
-			}
-			if !ok || supActiveSkills[name] {
-				return false
-			}
-			supActiveSkills[name] = true
-			if len(messages) > 0 {
-				messages[0].Content += "\n\n[Skill: " + skill.Name + "]\n" + skill.Content
-			}
-			h.runs.createStep(ctx, runID, domain.StepToolCall, map[string]any{"skill": skill.Name}, map[string]any{"activated": true}, time.Now(), 0, "native_request_skill", "") //nolint:errcheck
-			return true
-		},
-	}
-	_ = h.pool.QueryRow(ctx, `SELECT COALESCE(channel_session_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&execCtx.ChannelSessionID)
-	execCtx.SendMessage = nil      // supervisor runs are always embedded inside a workflow, never directly gateway-dispatched
-	execCtx.WaitForUserInput = nil // supervisor runs cannot pause for user input
-	// Supervisor runs are workflow children: sessions block in-process (their
-	// parent's graph walk lives on this stack, so durable parking is impossible).
-	execCtx.WaitForSession = h.blockingSessionWait(runID, sseEmitOrNil)
-
-	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
-
-	messages = supMessages
-	stepCount := 0
-	totalInput, totalOutput := 0, 0
-	memorySaveCalled := false
-	supFabricationRetried := false
-	actionLog := []string{}
-
-	for {
-		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
-			messages = trimmed
-			sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`,
-				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
-		}
-
-		modelStart := time.Now()
-		completion, err := completeWithEmptyRetry(ctx, llm, provider.CompletionRequest{
-			Model:               a.Model,
-			Messages:            messages,
-			Tools:               toolDefs,
-			Temperature:         a.Temperature,
-			MaxTokens:           a.MaxTokens,
-			Stream:              true,
-			StableSystemContent: supStableSystem,
-		}, func(delta string) {
-			sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
-		}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
-		if err != nil {
-			runErrMsg = err.Error()
-			sseErr(err.Error())
-			return
-		}
-
-		reply := completion.Reply
-		usage := completion.Usage
-		pendingCalls := completion.ToolCalls
-
-		totalInput += usage.InputTokens
-		totalOutput += usage.OutputTokens
-		h.runs.createStep(ctx, runID, domain.StepModelCall, //nolint:errcheck
-			map[string]any{"provider": a.Provider, "model": a.Model, "messages": len(messages)},
-			map[string]any{"content": reply, "tool_calls": len(pendingCalls)},
-			modelStart, usage.InputTokens+usage.OutputTokens, "", "")
-
-		if len(pendingCalls) == 0 {
-			// Fabrication guard — see the executeRun loop for rationale.
-			if fabricatesActionLog(reply) {
-				if !supFabricationRetried {
-					supFabricationRetried = true
-					messages[0].Content += fabricatedActionCorrection
-					continue
-				}
-				reply = fabricatedActionReply
-			}
-			if strings.TrimSpace(reply) == "" {
-				msg := "model returned an empty response"
-				runErrMsg = msg
-				sseErr(msg)
-				return
-			}
-			var actionLogJSON any
-			if len(actionLog) > 0 {
-				b, _ := json.Marshal(actionLog)
-				actionLogJSON = b
-			}
-			h.pool.Exec(ctx, //nolint:errcheck
-				`INSERT INTO messages(id,conversation_id,role,content,tool_calls,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4::jsonb,$5)`,
-				uuid.NewString(), convID, reply, actionLogJSON, usage.OutputTokens)
-			h.runs.createStep(ctx, runID, domain.StepFinalResponse, //nolint:errcheck
-				map[string]any{},
-				map[string]any{"content": reply},
-				time.Now(), usage.OutputTokens, "", "")
-			runCompleted = true
-			costUSD := cost.Estimate(a.Provider, a.Model, totalInput, totalOutput)
-			h.pool.Exec(dbCtx, //nolint:errcheck
-				`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
-				runID, reply, totalInput, totalOutput, costUSD)
-			sseEmitOrNil(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`,
-				runID, totalInput, totalOutput, costUSD))
-			if shouldRunMemoryExtractor(a, memorySaveCalled) {
-				aCopy, llmCopy, replySnap, inputSnap := a, llm, reply, input
-				go func() {
-					start := time.Now()
-					count, err := runMemoryExtractor(context.Background(), h.pool, llmCopy, aCopy, ws, uid, convID, runID, inputSnap, replySnap)
-					h.runs.createStep(context.Background(), runID, domain.StepToolCall, //nolint:errcheck
-						map[string]any{"tool": "memory_extractor"},
-						map[string]any{"saved": count},
-						start, 0, "memory_extractor", errString(err))
-				}()
-			}
-			{
-				threshold := a.CompactionThreshold
-				if threshold <= 0 {
-					threshold = 6
-				}
-				tokenThreshold := a.CompactionTokenThreshold
-				if tokenThreshold <= 0 {
-					tokenThreshold = 3000
-				}
-				if supConvCompaction != "" || len(history) >= threshold || totalInput > tokenThreshold {
-					llmCopy, modelSnap, convSnap, compSnap := llm, a.Model, convID, supConvCompaction
-					go func() {
-						sseEmitOrNil(`{"type":"compacting","status":"start"}`)
-						newCompaction, err := compactConversation(context.Background(), h.pool, llmCopy, modelSnap, convSnap, compSnap)
-						if err != nil || newCompaction == "" {
-							sseEmitOrNil(`{"type":"compacting","status":"done"}`)
-							return
-						}
-						h.pool.Exec(context.Background(), //nolint:errcheck
-							`UPDATE conversations SET compaction=$2, updated_at=NOW() WHERE id=$1::uuid`,
-							convSnap, newCompaction)
-						sseEmitOrNil(`{"type":"compacting","status":"done"}`)
-					}()
-				}
-			}
-			return
-		}
-
-		messages = append(messages, provider.Message{
-			Role:      "assistant",
-			Content:   reply,
-			ToolCalls: pendingCalls,
-		})
-
-		// Pre-compute: if there are multiple delegate calls in this batch, run them concurrently.
-		parallelDelegateResults := map[string]string{}
-		{
-			var delegateCallsInBatch []provider.ToolCall
-			for _, call := range pendingCalls {
-				if _, isDelegate := delegateHandlers[call.Name]; isDelegate {
-					delegateCallsInBatch = append(delegateCallsInBatch, call)
-				}
-			}
-			if len(delegateCallsInBatch) > 1 {
-				type delegateOut struct {
-					id      string
-					content string
-					latency int
-				}
-				resultsCh := make(chan delegateOut, len(delegateCallsInBatch))
-				for _, call := range delegateCallsInBatch {
-					capturedCall := call
-					capturedHandler := delegateHandlers[capturedCall.Name]
-					go func() {
-						start := time.Now()
-						output := capturedHandler(ctx, capturedCall.Input)
-						resultsCh <- delegateOut{id: capturedCall.ID, content: output, latency: int(time.Since(start).Milliseconds())}
-					}()
-				}
-				for range delegateCallsInBatch {
-					out := <-resultsCh
-					parallelDelegateResults[out.id] = out.content
-				}
-			}
-		}
-
-		for _, call := range pendingCalls {
-			if call.Name == "native_save_memory" {
-				memorySaveCalled = true
-			}
-			// Delegate tool — execute the team agent and return its output.
-			if handler, isDelegate := delegateHandlers[call.Name]; isDelegate {
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
-					call.ID, call.Name, jsonOrStr(call.Input)))
-				delegateStart := time.Now()
-				var delegateOutput string
-				if precomputed, ok := parallelDelegateResults[call.ID]; ok {
-					delegateOutput = precomputed
-				} else {
-					delegateOutput = handler(ctx, call.Input)
-				}
-				actionLog = append(actionLog, summarizeToolCall(call.Name, call.Input, ""))
-				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
-					map[string]any{"tool": call.Name, "input": call.Input},
-					map[string]any{"output": delegateOutput},
-					delegateStart, 0, call.Name, "")
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(delegateOutput)),
-					int(time.Since(delegateStart).Milliseconds())))
-				messages = append(messages, provider.Message{
-					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: delegateOutput,
-				})
-				stepCount++
-				if stepCount > a.MaxSteps {
-					runErrMsg = "max steps exceeded"
-					sseErr("max steps exceeded")
-					return
-				}
-				continue
-			}
-
-			dbTool, toolExists := resolveDBTool(call.Name, dbTools, toolCatalog)
-
-			if toolExists && dbTool.RequiresApproval {
-				arID := uuid.NewString()
-				h.pool.Exec(ctx, //nolint:errcheck
-					`INSERT INTO approval_requests(id,run_id,tool_name,tool_input,status)VALUES($1::uuid,$2::uuid,$3,$4::jsonb,'pending')`,
-					arID, runID, call.Name, call.Input)
-				h.pool.Exec(ctx, `UPDATE runs SET status='approval_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
-
-				ch := RegisterApprovalWait(runID)
-				sseEmitOrNil(fmt.Sprintf(`{"type":"approval_required","tool":%q,"input":%s,"approval_id":%q}`,
-					call.Name, string(call.Input), arID))
-
-				// Supervisor runs are workflow children — their parent's graph walk
-				// lives on this process's stack, so parking is not possible here.
-				decision, got := awaitApprovalDecision(runID, ch, 10*time.Minute)
-				if !got {
-					runErrMsg = "approval timed out"
-					sseErr("approval timed out after 10 minutes")
-					return
-				}
-				h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, runID) //nolint:errcheck
-
-				if decision.Decision == "rejected" {
-					messages = append(messages, provider.Message{Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: "Tool call rejected by user."})
-					continue
-				}
-			}
-
-			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
-				call.ID, call.Name, jsonOrStr(call.Input)))
-			if execCtx.SendMessage != nil {
-				if label := progressLabel(call.Name); label != "" {
-					execCtx.SendMessage(ctx, label) //nolint:errcheck
-				}
-			}
-
-			var result *tools.ExecutionResult
-			var execErr error
-			if toolExists && dbTool.Type == "http" {
-				var cfg tools.HTTPToolConfig
-				_ = json.Unmarshal(dbTool.Config, &cfg)
-				result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
-			} else if toolExists && dbTool.Type == "mcp" {
-				result = executeMCPTool(ctx, h.pool, h.cfg, dbTool, call.Input)
-			} else if toolExists && dbTool.Type == "code" {
-				var codeCfg struct {
-					Code string `json:"code"`
-				}
-				_ = json.Unmarshal(dbTool.Config, &codeCfg)
-				start := time.Now()
-				out, codeErr := native.ExecuteCodeTool(ctx, codeCfg.Code, call.Input)
-				result = &tools.ExecutionResult{LatencyMs: int(time.Since(start).Milliseconds())}
-				if codeErr != nil {
-					result.Error = codeErr.Error()
-				} else {
-					result.Output = out
-				}
-			} else {
-				result, execErr = h.executor.ExecuteWithContext(ctx, execCtx, call.Name, call.Input)
-			}
-			var resultContent, errMsg string
-			latencyMs := 0
-			if result != nil {
-				latencyMs = result.LatencyMs
-				if result.Error != "" {
-					errMsg = result.Error
-					resultContent = fmt.Sprintf(`{"error":%q}`, result.Error)
-				} else {
-					b, _ := json.Marshal(result.Output)
-					resultContent = string(b)
-				}
-			} else if execErr != nil {
-				errMsg = execErr.Error()
-				resultContent = fmt.Sprintf(`{"error":%q}`, execErr.Error())
-			}
-			if !execCtx.AlwaysActiveTools[call.Name] {
-				actionLog = append(actionLog, summarizeToolCall(call.Name, call.Input, errMsg))
-			}
-
-			h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
-				map[string]any{"tool": call.Name, "input": call.Input},
-				map[string]any{"output": resultContent},
-				time.Now(), 0, call.Name, errMsg)
-
-			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-				call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
-
-			messages = append(messages, provider.Message{
-				Role:       "tool",
-				ToolCallID: call.ID,
-				ToolName:   call.Name,
-				Content:    resultContent,
-				IsError:    errMsg != "",
-			})
-
-			stepCount++
-			if stepCount > a.MaxSteps {
-				runErrMsg = "max steps exceeded"
-				sseErr("max steps exceeded")
-				return
-			}
-		}
-		// Reload tool definitions to pick up tools created or attached mid-run.
-		if freshAll, freshDB, err := loadAgentToolDefs(ctx, h.pool, a.ID); err == nil {
-			freshAll, freshDB = ensureMemoryToolDefs(freshAll, freshDB)
-			if a.ContextRetrievalEnabled && a.AgenticRAG {
-				if rt, err := h.registry.Get("native_retrieve_context"); err == nil {
-					def := rt.Definition()
-					freshAll = append(freshAll, provider.ToolDefinition{Name: def.Name, Description: def.Description, InputSchema: def.InputSchema})
-					freshDB[def.Name] = def
-				}
-			}
-			regularToolDefs, dbTools = freshAll, freshDB
-			toolDefs = append(regularToolDefs, delegateToolDefs...)
-		}
-		// Refresh the workspace catalogs too, so tools/skills created mid-run stay
-		// discoverable via native_list_tools/native_list_agent_skills.
-		if freshCatalogDefs, freshCatalog, err := loadWorkspaceToolCatalog(ctx, h.pool, ws); err == nil {
-			toolCatalog = freshCatalog
-			for _, td := range freshCatalogDefs {
-				supToolSummaries[td.Name] = td.Description
-			}
-		}
-		if freshSkillCatalog, err := loadWorkspaceSkillCatalog(ctx, h.pool, ws); err == nil {
-			skillCatalog = freshSkillCatalog
-			for name, skill := range skillCatalog {
-				supSkillSummaries[name] = skill.Description
-				for _, toolName := range skill.RequiredToolNames {
-					supSkillToolMap[toolName] = name
-				}
-			}
-		}
-	}
 }
 
 // sanitizeToolName converts an agent name into a valid LLM tool name (lowercase, underscores).

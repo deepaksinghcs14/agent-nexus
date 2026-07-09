@@ -12,10 +12,13 @@ import (
 
 // ── native_list_workspace_tools ───────────────────────────────────────────────
 
-type ListWorkspaceToolsTool struct{ pool *pgxpool.Pool }
+type ListWorkspaceToolsTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
 func NewListWorkspaceToolsTool(pool *pgxpool.Pool) *ListWorkspaceToolsTool {
-	return &ListWorkspaceToolsTool{pool}
+	return &ListWorkspaceToolsTool{pool: pool}
 }
 
 func (t *ListWorkspaceToolsTool) Definition() domain.Tool {
@@ -30,10 +33,6 @@ func (t *ListWorkspaceToolsTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-
-func (t *ListWorkspaceToolsTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_list_workspace_tools requires run context")
 }
 
 func (t *ListWorkspaceToolsTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, _ map[string]any) (any, error) {
@@ -96,9 +95,12 @@ func resolveTargetAgent(ctx context.Context, pool *pgxpool.Pool, execCtx tools.E
 
 // ── native_attach_tool ────────────────────────────────────────────────────────
 
-type AttachToolTool struct{ pool *pgxpool.Pool }
+type AttachToolTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewAttachToolTool(pool *pgxpool.Pool) *AttachToolTool { return &AttachToolTool{pool} }
+func NewAttachToolTool(pool *pgxpool.Pool) *AttachToolTool { return &AttachToolTool{pool: pool} }
 
 func (t *AttachToolTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -120,10 +122,6 @@ func (t *AttachToolTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-
-func (t *AttachToolTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_attach_tool requires run context")
 }
 
 func (t *AttachToolTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
@@ -164,9 +162,12 @@ func (t *AttachToolTool) ExecuteWithContext(ctx context.Context, execCtx tools.E
 
 // ── native_detach_tool ────────────────────────────────────────────────────────
 
-type DetachToolTool struct{ pool *pgxpool.Pool }
+type DetachToolTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewDetachToolTool(pool *pgxpool.Pool) *DetachToolTool { return &DetachToolTool{pool} }
+func NewDetachToolTool(pool *pgxpool.Pool) *DetachToolTool { return &DetachToolTool{pool: pool} }
 
 func (t *DetachToolTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -188,10 +189,6 @@ func (t *DetachToolTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-
-func (t *DetachToolTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_detach_tool requires run context")
 }
 
 func (t *DetachToolTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {

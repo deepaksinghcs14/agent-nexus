@@ -1,0 +1,41 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "description": "LLM provider SDKs self-update: Renovate opens a bump PR the day a release ships; minor/patch bumps auto-merge when the full CI suite (including the agent-loop integration tests against Postgres) passes. Majors wait for a human because that's where SDKs break signatures.",
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "Provider SDKs — the wire-format guardians. Grouped so one PR bumps them together.",
+      "groupName": "llm-provider-sdks",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": [
+        "google.golang.org/genai",
+        "github.com/anthropics/anthropic-sdk-go",
+        "github.com/openai/openai-go"
+      ],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "platformAutomerge": true,
+      "schedule": ["at any time"]
+    },
+    {
+      "description": "Major SDK bumps need human eyes — signature breaks live here.",
+      "matchManagers": ["gomod"],
+      "matchPackageNames": [
+        "google.golang.org/genai",
+        "github.com/anthropics/anthropic-sdk-go",
+        "github.com/openai/openai-go"
+      ],
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "description": "Everything else: weekly, no automerge — keep noise low.",
+      "matchManagers": ["gomod", "npm"],
+      "matchPackageNames": ["!google.golang.org/genai", "!github.com/anthropics/anthropic-sdk-go", "!github.com/openai/openai-go"],
+      "schedule": ["before 6am on monday"],
+      "automerge": false
+    }
+  ],
+  "postUpdateOptions": ["gomodTidy", "gomodVendor"]
+}

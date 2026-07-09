@@ -13,12 +13,15 @@ import (
 type MemoryHandler struct {
 	pool *pgxpool.Pool
 	cfg  *config.Config
+	repo *repository.MemoryRepository
 }
 
-func NewMemoryHandler(p *pgxpool.Pool, c *config.Config) *MemoryHandler { return &MemoryHandler{p, c} }
+func NewMemoryHandler(p *pgxpool.Pool, c *config.Config) *MemoryHandler {
+	return &MemoryHandler{pool: p, cfg: c, repo: repository.NewMemoryRepository(p)}
+}
 func (h *MemoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	a, e := repository.NewMemoryRepository(h.pool).List(r.Context(), middleware.WorkspaceIDFromCtx(r.Context()), q.Get("agent_id"), q.Get("scope"), q.Get("q"), q.Get("status"), q.Get("source"))
+	a, e := h.repo.List(r.Context(), middleware.WorkspaceIDFromCtx(r.Context()), q.Get("agent_id"), q.Get("scope"), q.Get("q"), q.Get("status"), q.Get("source"))
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to list memories"))
 		return
@@ -48,7 +51,7 @@ func (h *MemoryHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MemoryHandler) Approve(w http.ResponseWriter, r *http.Request) {
-	if e := repository.NewMemoryRepository(h.pool).SetStatus(r.Context(), chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()), "active"); e != nil {
+	if e := h.repo.SetStatus(r.Context(), chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()), "active"); e != nil {
 		errs.Write(w, errs.Internal("failed to approve memory"))
 		return
 	}
@@ -56,7 +59,7 @@ func (h *MemoryHandler) Approve(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MemoryHandler) Reject(w http.ResponseWriter, r *http.Request) {
-	if e := repository.NewMemoryRepository(h.pool).SetStatus(r.Context(), chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()), "rejected"); e != nil {
+	if e := h.repo.SetStatus(r.Context(), chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()), "rejected"); e != nil {
 		errs.Write(w, errs.Internal("failed to reject memory"))
 		return
 	}

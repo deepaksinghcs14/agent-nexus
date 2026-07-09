@@ -2,158 +2,115 @@ package gemini
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
+
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
+	"google.golang.org/genai"
 )
 
-func TestSanitizeGeminiSchemaStripsUnsupportedKeys(t *testing.T) {
-	raw := `{
-		"type": "object",
-		"$schema": "http://json-schema.org/draft-07/schema#",
-		"additionalProperties": false,
-		"properties": {
-			"query": {"type": "string", "description": "search text"},
-			"filters": {
-				"type": "array",
-				"items": {
-					"type": "object",
-					"additionalProperties": true,
-					"properties": {
-						"key": {"type": "string"},
-						"value": {"type": "string", "const": "x"}
-					}
-				}
-			}
+// buildRequest must preserve the conversation-mapping semantics the loop
+// depends on: system merge, tool-call turns with thought signatures echoed,
+// and consecutive tool results grouped into one user turn.
+func TestBuildRequestConversationMapping(t *testing.T) {
+	req := provider.CompletionRequest{
+		Model:       "gemini-2.5-flash",
+		Temperature: 0.7,
+		MaxTokens:   1024,
+		Messages: []provider.Message{
+			{Role: "system", Content: "You are a test agent."},
+			{Role: "user", Content: "add 2 and 3"},
+			{Role: "assistant", ToolCalls: []provider.ToolCall{
+				{ID: "gemini-adder-1", Name: "adder", Input: json.RawMessage(`{"a":2,"b":3}`), ThoughtSignature: "sig-abc"},
+				{ID: "srv-42", Name: "checker", Input: json.RawMessage(`{}`)},
+			}},
+			{Role: "tool", ToolCallID: "gemini-adder-1", ToolName: "adder", Content: `{"sum":5}`},
+			{Role: "tool", ToolCallID: "srv-42", ToolName: "checker", Content: `ok`, IsError: false},
+			{Role: "assistant", Content: "the sum is 5"},
 		},
-		"required": ["query"]
-	}`
-	var schema any
-	if err := json.Unmarshal([]byte(raw), &schema); err != nil {
-		t.Fatalf("unmarshal: %v", err)
 	}
+	contents, config := buildRequest(req)
 
-	sanitized := sanitizeGeminiSchema(schema)
-	b, err := json.Marshal(sanitized)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
+	if config.SystemInstruction == nil || !strings.Contains(config.SystemInstruction.Parts[0].Text, "test agent") {
+		t.Fatalf("system instruction not mapped: %+v", config.SystemInstruction)
 	}
-
-	var out map[string]any
-	if err := json.Unmarshal(b, &out); err != nil {
-		t.Fatalf("unmarshal sanitized: %v", err)
+	if config.MaxOutputTokens != 1024 {
+		t.Fatalf("max tokens = %d", config.MaxOutputTokens)
 	}
-
-	for _, key := range []string{"additionalProperties", "$schema"} {
-		if _, ok := out[key]; ok {
-			t.Errorf("expected top-level %q to be stripped", key)
-		}
+	if config.ThinkingConfig != nil {
+		t.Fatal("thinking budget must not be set at temperature 0.7")
 	}
-
-	props, ok := out["properties"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected properties to survive as a map, got %T", out["properties"])
+	// user, model(toolcalls), user(grouped responses), model(text)
+	if len(contents) != 4 {
+		t.Fatalf("contents = %d turns, want 4", len(contents))
 	}
-	filters, ok := props["filters"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected filters to survive as a map, got %T", props["filters"])
+	modelTurn := contents[1]
+	if modelTurn.Role != genai.RoleModel || len(modelTurn.Parts) != 2 {
+		t.Fatalf("model turn wrong: %+v", modelTurn)
 	}
-	items, ok := filters["items"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected filters.items to survive as a map, got %T", filters["items"])
+	if string(modelTurn.Parts[0].ThoughtSignature) != "sig-abc" {
+		t.Fatalf("thought signature not echoed: %q", modelTurn.Parts[0].ThoughtSignature)
 	}
-	if _, ok := items["additionalProperties"]; ok {
-		t.Error("expected nested additionalProperties (inside array items) to be stripped")
+	if modelTurn.Parts[0].FunctionCall.ID != "" {
+		t.Fatal("synthetic tool-call id must not be echoed to the API")
 	}
-	itemProps, ok := items["properties"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected filters.items.properties to survive as a map, got %T", items["properties"])
+	if modelTurn.Parts[1].FunctionCall.ID != "srv-42" {
+		t.Fatal("server-assigned tool-call id must be echoed")
 	}
-	value, ok := itemProps["value"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected filters.items.properties.value to survive as a map, got %T", itemProps["value"])
+	respTurn := contents[2]
+	if len(respTurn.Parts) != 2 || respTurn.Parts[0].FunctionResponse == nil {
+		t.Fatalf("tool responses not grouped into one turn: %+v", respTurn)
 	}
-	if _, ok := value["const"]; ok {
-		t.Error("expected nested const to be stripped")
+	if respTurn.Parts[0].FunctionResponse.ID != "" {
+		t.Fatal("synthetic id must not be set on functionResponse")
 	}
-
-	// Fields Gemini does support must survive untouched.
-	if out["type"] != "object" {
-		t.Errorf("expected type to survive, got %v", out["type"])
+	if respTurn.Parts[1].FunctionResponse.ID != "srv-42" {
+		t.Fatal("server id must be set on functionResponse")
 	}
-	required, ok := out["required"].([]any)
-	if !ok || len(required) != 1 || required[0] != "query" {
-		t.Errorf("expected required:[query] to survive, got %v", out["required"])
+	if out := respTurn.Parts[0].FunctionResponse.Response["output"]; out == nil {
+		t.Fatalf("tool output not wrapped: %+v", respTurn.Parts[0].FunctionResponse.Response)
 	}
 }
 
-func TestSanitizeGeminiSchemaDropsRequiredNamesNotInProperties(t *testing.T) {
-	raw := `{
-		"type": "object",
-		"properties": {
-			"query": {"type": "string"},
-			"limit": {"type": "integer"}
+// Standard JSON Schema (with $schema/additionalProperties, which Gemini's
+// restricted Schema type rejects) must pass through verbatim via
+// ParametersJsonSchema — the SDK-era replacement for the old sanitizer.
+func TestBuildRequestToolSchemaPassthroughAndDedupe(t *testing.T) {
+	schema := json.RawMessage(`{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","additionalProperties":false,"properties":{"q":{"type":"string"}},"required":["q"]}`)
+	req := provider.CompletionRequest{
+		Temperature: 0.1,
+		Messages:    []provider.Message{{Role: "user", Content: "hi"}},
+		Tools: []provider.ToolDefinition{
+			{Name: "search", Description: "s", InputSchema: schema},
+			{Name: "search", Description: "dupe", InputSchema: schema},
+			{Name: "", InputSchema: schema},
 		},
-		"required": ["query", "limit", "extra_field_from_pattern_properties"],
-		"nested": {
-			"type": "object",
-			"properties": {
-				"inner": {"type": "string"}
-			},
-			"required": ["inner", "missing_inner"]
-		},
-		"emptyAfterFilter": {
-			"type": "object",
-			"properties": {
-				"foo": {"type": "string"}
-			},
-			"required": ["only_invalid_name"]
+	}
+	_, config := buildRequest(req)
+	decls := config.Tools[0].FunctionDeclarations
+	if len(decls) != 1 {
+		t.Fatalf("tool declarations = %d, want 1 (dedupe + drop empty name)", len(decls))
+	}
+	raw, _ := json.Marshal(decls[0].ParametersJsonSchema)
+	for _, key := range []string{"$schema", "additionalProperties", "required"} {
+		if !strings.Contains(string(raw), key) {
+			t.Fatalf("schema key %q lost in passthrough: %s", key, raw)
 		}
-	}`
-	var schema any
-	if err := json.Unmarshal([]byte(raw), &schema); err != nil {
-		t.Fatalf("unmarshal: %v", err)
 	}
-
-	sanitized := sanitizeGeminiSchema(schema)
-	b, err := json.Marshal(sanitized)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	var out map[string]any
-	if err := json.Unmarshal(b, &out); err != nil {
-		t.Fatalf("unmarshal sanitized: %v", err)
-	}
-
-	required, ok := out["required"].([]any)
-	if !ok {
-		t.Fatalf("expected top-level required to survive as a slice, got %T", out["required"])
-	}
-	if len(required) != 2 || required[0] != "query" || required[1] != "limit" {
-		t.Errorf("expected required to be [query, limit], got %v", required)
-	}
-
-	nested, ok := out["nested"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected nested to survive as a map, got %T", out["nested"])
-	}
-	nestedRequired, ok := nested["required"].([]any)
-	if !ok || len(nestedRequired) != 1 || nestedRequired[0] != "inner" {
-		t.Errorf("expected nested.required to be filtered down to [inner], got %v", nested["required"])
-	}
-
-	emptyAfterFilter, ok := out["emptyAfterFilter"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected emptyAfterFilter to survive as a map, got %T", out["emptyAfterFilter"])
-	}
-	if _, ok := emptyAfterFilter["required"]; ok {
-		t.Errorf("expected required to be dropped entirely once every entry is filtered out, got %v", emptyAfterFilter["required"])
+	if config.ThinkingConfig == nil || *config.ThinkingConfig.ThinkingBudget != 1024 {
+		t.Fatal("low-temperature requests must cap the thinking budget at 1024")
 	}
 }
 
-func TestSanitizeGeminiSchemaPassesThroughScalarsAndNil(t *testing.T) {
-	if got := sanitizeGeminiSchema(nil); got != nil {
-		t.Errorf("expected nil to pass through unchanged, got %v", got)
+// A tool message with unparseable content becomes a string output, and error
+// results carry the retry note.
+func TestFunctionResponsePart(t *testing.T) {
+	p := functionResponsePart(provider.Message{Role: "tool", ToolName: "x", Content: "plain text", ToolCallID: "gemini-x-1"})
+	if p.FunctionResponse.Response["output"] != "plain text" {
+		t.Fatalf("plain text output mangled: %+v", p.FunctionResponse.Response)
 	}
-	if got := sanitizeGeminiSchema("plain string"); got != "plain string" {
-		t.Errorf("expected scalar to pass through unchanged, got %v", got)
+	p = functionResponsePart(provider.Message{Role: "tool", ToolName: "x", Content: `{"boom":1}`, IsError: true})
+	if p.FunctionResponse.Response["error"] == nil || p.FunctionResponse.Response["note"] == nil {
+		t.Fatalf("error response missing error/note: %+v", p.FunctionResponse.Response)
 	}
 }

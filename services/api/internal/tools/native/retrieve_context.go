@@ -12,7 +12,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type RetrieveContextTool struct{ pool *pgxpool.Pool }
+type RetrieveContextTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
 func NewRetrieveContextTool(pool *pgxpool.Pool) *RetrieveContextTool {
 	return &RetrieveContextTool{pool: pool}
@@ -38,10 +41,6 @@ func (t *RetrieveContextTool) Definition() domain.Tool {
 		TimeoutMs:        10000,
 		Enabled:          true,
 	}
-}
-
-func (t *RetrieveContextTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_retrieve_context requires run context")
 }
 
 func (t *RetrieveContextTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
