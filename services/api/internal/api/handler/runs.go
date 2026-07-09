@@ -12,15 +12,10 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/anthropic"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/gemini"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/ollama"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/openai"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	agentprompt "github.com/deepaksingh/agent-nexus/services/api/internal/runtime/agent"
 	contextretrieval "github.com/deepaksingh/agent-nexus/services/api/internal/runtime/context"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
-	"github.com/deepaksingh/agent-nexus/services/api/pkg/encrypt"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -119,29 +114,7 @@ func (h *RunsHandler) providerFor(ctx context.Context, workspaceID, providerName
 	if err != nil {
 		return nil, fmt.Errorf("no active %s provider credential configured", providerName)
 	}
-	if cred.AuthType == "oauth" && cred.Provider == "gemini" {
-		accessToken, err := providers.GetDecryptedAccessToken(ctx, cred.ID, h.cfg.EncryptionKey, h.cfg.GoogleOAuthClientID, h.cfg.GoogleOAuthClientSecret)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get gemini oauth token: %w", err)
-		}
-		return gemini.New(accessToken, "oauth"), nil
-	}
-	apiKey, err := encrypt.Decrypt([]byte(h.cfg.EncryptionKey), encKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt provider credential")
-	}
-	switch cred.Provider {
-	case "openai":
-		return openai.New(apiKey, cred.BaseURL), nil
-	case "ollama":
-		return ollama.New(cred.BaseURL), nil
-	case "anthropic":
-		return anthropic.New(apiKey, cred.BaseURL), nil
-	case "gemini":
-		return gemini.New(apiKey, "api_key"), nil
-	default:
-		return nil, fmt.Errorf("provider %q is not supported", cred.Provider)
-	}
+	return providerFromCredential(ctx, h.cfg, providers, cred, encKey)
 }
 
 func (h *RunsHandler) createStep(ctx context.Context, runID string, stepType domain.StepType, input, output any, started time.Time, tokens int, toolName, errMsg string) error {

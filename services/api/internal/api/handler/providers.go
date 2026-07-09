@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,10 +20,6 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/anthropic"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/gemini"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/ollama"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/openai"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/encrypt"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
@@ -180,41 +175,7 @@ func (h *ProvidersHandler) ListModels(w http.ResponseWriter, r *http.Request) {
 // adapterFor instantiates the correct provider adapter for a credential.
 // Handles both API-key and OAuth credentials.
 func (h *ProvidersHandler) adapterFor(ctx context.Context, cred *domain.ProviderCredential, encKey string) (provider.Provider, error) {
-	if cred.AuthType == "oauth" && cred.Provider == "gemini" {
-		if h.cfg.GoogleOAuthClientID == "" {
-			return nil, fmt.Errorf("google oauth not configured")
-		}
-		accessToken, err := h.providers.GetDecryptedAccessToken(ctx, cred.ID, h.cfg.EncryptionKey, h.cfg.GoogleOAuthClientID, h.cfg.GoogleOAuthClientSecret)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get oauth access token: %w", err)
-		}
-		return gemini.New(accessToken, "oauth"), nil
-	}
-
-	if encKey == "" {
-		switch cred.Provider {
-		case "ollama":
-			return ollama.New(cred.BaseURL), nil
-		default:
-			return nil, fmt.Errorf("no api key configured for %s", cred.Provider)
-		}
-	}
-	apiKey, err := encrypt.Decrypt([]byte(h.cfg.EncryptionKey), encKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt api key: %w", err)
-	}
-	switch cred.Provider {
-	case "anthropic":
-		return anthropic.New(apiKey, cred.BaseURL), nil
-	case "openai":
-		return openai.New(apiKey, cred.BaseURL), nil
-	case "gemini":
-		return gemini.New(apiKey, "api_key"), nil
-	case "ollama":
-		return ollama.New(cred.BaseURL), nil
-	default:
-		return nil, fmt.Errorf("unsupported provider: %s", cred.Provider)
-	}
+	return providerFromCredential(ctx, h.cfg, h.providers, cred, encKey)
 }
 
 // OAuthGoogleAuthorize generates the Google OAuth URL and returns it as JSON.
