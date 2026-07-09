@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/api/sse"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
@@ -92,7 +93,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	emit := func(s string) { fmt.Fprintf(w, "data: %s\n\n", s); f.Flush() }
-	sseErr := func(msg string) { emit(fmt.Sprintf(`{"type":"error","error":%q}`, msg)) }
+	sseErr := func(msg string) { emit(sse.Error(msg)) }
 
 	if e := h.conversations.AddMessage(r.Context(), &domain.Message{ID: uuid.NewString(), ConversationID: c.ID, Role: "user", Content: q.Input}); e != nil {
 		sseErr("failed to save user message")
@@ -347,7 +348,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	emit(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, id))
+	emit(sse.RunStarted(id))
 
 	// ── Tool calling loop ──────────────────────────────────────────────────────
 	messages = initialMessages
@@ -462,7 +463,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			Stream:              true,
 			StableSystemContent: stableSystem,
 		}, func(delta string) {
-			emit(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
+			emit(sse.Delta(delta))
 		}, "Return a direct, non-empty reply. Do not explain limitations or say you cannot help. If you started a multi-step task, continue to the next step rather than asking for confirmation.")
 		if e != nil {
 			_ = h.failRun(r.Context(), id, e.Error())
@@ -520,7 +521,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			_ = h.createStep(r.Context(), id, domain.StepFinalResponse, map[string]any{}, map[string]any{"content": reply}, time.Now(), usage.OutputTokens, "", "")
 			costUSD := cost.Estimate(a.Provider, a.Model, totalInput, totalOutput)
 			_, _ = h.pool.Exec(r.Context(), `UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`, id, reply, totalInput, totalOutput, costUSD)
-			emit(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`, id, totalInput, totalOutput, costUSD))
+			emit(sse.RunCompleted(id, totalInput, totalOutput, costUSD))
 			if shouldRunMemoryExtractor(a, memorySaveCalled) {
 				aCopy, llmCopy, inputSnap, replySnap := a, llm, q.Input, reply
 				go func() {
@@ -632,15 +633,14 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				}
 
 				ch := RegisterApprovalWait(id)
-				emit(fmt.Sprintf(`{"type":"approval_required","tool":%q,"input":%s,"approval_id":%q}`,
-					call.Name, string(call.Input), arID))
+				emit(sse.ApprovalRequired(call.Name, call.Input, arID))
 
 				decision, got := awaitApprovalDecision(id, ch, 10*time.Minute)
 				if !got {
 					// Park: end the SSE stream and free this goroutine, leaving the
 					// run in approval_wait with its state persisted. The Approve
 					// endpoint resumes it headlessly (see ResumeApprovedRun).
-					emit(fmt.Sprintf(`{"type":"approval_parked","run_id":%q,"approval_id":%q}`, id, arID))
+					emit(sse.ApprovalParked(id, arID))
 					runParked = true
 					return
 				}
@@ -653,8 +653,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			emit(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
-				call.ID, call.Name, jsonOrStr(call.Input)))
+			emit(sse.ToolStarted(call.ID, call.Name, call.Input))
 
 			// Execute the tool — HTTP, code, and MCP tools bypass the native registry
 			result, execErr := invokeToolByType(r.Context(), h.pool, h.cfg, h.executor, execCtx, dbTool, toolExists, call.Name, call.Input)
@@ -662,7 +661,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				// The session tool persisted its wait state and the in-process
 				// wait expired. End the SSE stream without failing the run —
 				// the runner's callback resumes it via ResumeSessionRun.
-				emit(fmt.Sprintf(`{"type":"session_parked","run_id":%q}`, id))
+				emit(sse.SessionParked(id))
 				runParked = true
 				return
 			}
@@ -690,8 +689,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				map[string]any{"output": resultContent},
 				time.Now(), 0, call.Name, errMsg)
 
-			emit(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-				call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
+			emit(sse.ToolCall(call.ID, call.Name, call.Input, []byte(resultContent), latencyMs))
 
 			messages = append(messages, provider.Message{
 				Role:       "tool",

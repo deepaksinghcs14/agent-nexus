@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/api/sse"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
@@ -488,7 +489,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			emit(s)
 		}
 	}
-	sseErr := func(msg string) { sseEmitOrNil(fmt.Sprintf(`{"type":"error","error":%q}`, msg)) }
+	sseErr := func(msg string) { sseEmitOrNil(sse.Error(msg)) }
 
 	llm, err := h.runs.providerFor(ctx, ws, a.Provider)
 	if err != nil {
@@ -778,7 +779,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		}
 	}
 
-	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
+	sseEmitOrNil(sse.RunStarted(runID))
 
 	// ── Tool calling loop ──────────────────────────────────────────────────────
 	messages = initialMessages
@@ -924,7 +925,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				Stream:              true,
 				StableSystemContent: stableSystem,
 			}, func(delta string) {
-				sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
+				sseEmitOrNil(sse.Delta(delta))
 			}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
 			if err != nil {
 				runErrMsg = err.Error()
@@ -986,8 +987,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				h.pool.Exec(dbCtx, //nolint:errcheck
 					`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
 					runID, reply, totalInput, totalOutput, costUSD)
-				sseEmitOrNil(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`,
-					runID, totalInput, totalOutput, costUSD))
+				sseEmitOrNil(sse.RunCompleted(runID, totalInput, totalOutput, costUSD))
 				// Memory extraction runs after marking run complete so gateway delivery
 				// is not blocked by the extra LLM call.
 				if shouldRunMemoryExtractor(a, memorySaveCalled) {
@@ -1112,17 +1112,14 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			}
 			// Delegate tool — hand off to a team agent and return its output.
 			if handler, isDelegate := delegateHandlers[call.Name]; isDelegate {
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
-					call.ID, call.Name, jsonOrStr(call.Input)))
+				sseEmitOrNil(sse.ToolStarted(call.ID, call.Name, call.Input))
 				delegateStart := time.Now()
 				delegateOutput := handler(ctx, call.Input)
 				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
 					map[string]any{"tool": call.Name, "input": call.Input},
 					map[string]any{"output": delegateOutput},
 					delegateStart, 0, call.Name, "")
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(delegateOutput)),
-					int(time.Since(delegateStart).Milliseconds())))
+				sseEmitOrNil(sse.ToolCall(call.ID, call.Name, call.Input, []byte(delegateOutput), int(time.Since(delegateStart).Milliseconds())))
 				messages = append(messages, provider.Message{
 					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: delegateOutput,
 				})
@@ -1205,8 +1202,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					}
 
 					ch := RegisterApprovalWait(runID)
-					sseEmitOrNil(fmt.Sprintf(`{"type":"approval_required","tool":%q,"input":%s,"approval_id":%q}`,
-						call.Name, string(call.Input), arID))
+					sseEmitOrNil(sse.ApprovalRequired(call.Name, call.Input, arID))
 
 					var got bool
 					decision, got = awaitApprovalDecision(runID, ch, 10*time.Minute)
@@ -1214,7 +1210,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 						if opts.invokeDepth == 0 {
 							// Park: free this goroutine and leave the run in approval_wait
 							// with its state persisted. The Approve endpoint resumes it.
-							sseEmitOrNil(fmt.Sprintf(`{"type":"approval_parked","run_id":%q,"approval_id":%q}`, runID, arID))
+							sseEmitOrNil(sse.ApprovalParked(runID, arID))
 							runParked = true
 							return
 						}
@@ -1232,8 +1228,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				}
 			}
 
-			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
-				call.ID, call.Name, jsonOrStr(call.Input)))
+			sseEmitOrNil(sse.ToolStarted(call.ID, call.Name, call.Input))
 			if execCtx.SendMessage != nil {
 				if label := progressLabel(call.Name); label != "" {
 					execCtx.SendMessage(ctx, label) //nolint:errcheck
@@ -1277,8 +1272,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				map[string]any{"output": resultContent},
 				time.Now(), 0, call.Name, errMsg)
 
-			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-				call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
+			sseEmitOrNil(sse.ToolCall(call.ID, call.Name, call.Input, []byte(resultContent), latencyMs))
 
 			messages = append(messages, provider.Message{
 				Role:       "tool",
@@ -1638,8 +1632,7 @@ func (h *InvokeHandler) executeGroupRun(
 				}
 			}
 
-			sseEmit(fmt.Sprintf(`{"type":"node_started","node_id":%q,"node_type":%q,"node_name":%q}`,
-				node.ID, node.Type, nodeName))
+			sseEmit(sse.NodeStarted(node.ID, node.Type, nodeName))
 
 			switch node.Type {
 
@@ -1658,16 +1651,16 @@ func (h *InvokeHandler) executeGroupRun(
 				nodeOutputs[node.ID] = lastOutput
 				if url, _ := node.Config["webhook_url"].(string); url != "" {
 					if _, err := h.executeWorkflowWebhook(ctx, map[string]any{"url": url}, workflowID, parentRunID, node.ID, lastOutput, originalInput); err != nil {
-						sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"webhook","ok":false,"error":%q}`, node.ID, err.Error()))
+						sseEmit(sse.NodeDelivery(node.ID, "webhook", err))
 					} else {
-						sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"webhook","ok":true}`, node.ID))
+						sseEmit(sse.NodeDelivery(node.ID, "webhook", nil))
 					}
 				}
 				if chID, _ := node.Config["gateway_channel_id"].(string); chID != "" {
 					if err := h.deliverWorkflowGateway(ctx, ws, node.Config, "gateway_", parentRunID, lastOutput, originalInput); err != nil {
-						sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"gateway","ok":false,"error":%q}`, node.ID, err.Error()))
+						sseEmit(sse.NodeDelivery(node.ID, "gateway", err))
 					} else {
-						sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"gateway","ok":true}`, node.ID))
+						sseEmit(sse.NodeDelivery(node.ID, "gateway", nil))
 					}
 				}
 
@@ -1682,7 +1675,7 @@ func (h *InvokeHandler) executeGroupRun(
 					outputMu.Unlock()
 					lastOutput = cached
 					prevNodeName = nodeName
-					sseEmit(fmt.Sprintf(`{"type":"node_resumed","node_id":%q,"node_name":%q}`, node.ID, nodeName))
+					sseEmit(sse.NodeResumed(node.ID, nodeName))
 				} else {
 					var out string
 					var nodeErr error
@@ -1694,7 +1687,7 @@ func (h *InvokeHandler) executeGroupRun(
 					if nodeErr != nil {
 						// Surface the failure but keep walking: downstream
 						// condition nodes can branch on the error envelope.
-						sseEmit(fmt.Sprintf(`{"type":"error","node_id":%q,"error":%q}`, node.ID, nodeErr.Error()))
+						sseEmit(sse.ErrorForNode(node.ID, nodeErr.Error()))
 						out = fmt.Sprintf(`{"error":%q}`, nodeErr.Error())
 					}
 					outputMu.Lock()
@@ -1714,11 +1707,11 @@ func (h *InvokeHandler) executeGroupRun(
 				// passes it through unchanged. On resume, skip the re-send.
 				if _, ok := resumedOutputs[node.ID]; ok && !consumedResume[node.ID] {
 					consumedResume[node.ID] = true
-					sseEmit(fmt.Sprintf(`{"type":"node_resumed","node_id":%q,"node_name":%q}`, node.ID, nodeName))
+					sseEmit(sse.NodeResumed(node.ID, nodeName))
 				} else if err := h.deliverWorkflowGateway(ctx, ws, node.Config, "", parentRunID, lastOutput, originalInput); err != nil {
-					sseEmit(fmt.Sprintf(`{"type":"error","node_id":%q,"error":%q}`, node.ID, err.Error()))
+					sseEmit(sse.ErrorForNode(node.ID, err.Error()))
 				} else {
-					sseEmit(fmt.Sprintf(`{"type":"node_delivery","node_id":%q,"target":"gateway","ok":true}`, node.ID))
+					sseEmit(sse.NodeDelivery(node.ID, "gateway", nil))
 				}
 				outputMu.Lock()
 				nodeOutputs[node.ID] = lastOutput
@@ -1743,7 +1736,7 @@ func (h *InvokeHandler) executeGroupRun(
 					outputMu.Unlock()
 					lastOutput = cached
 					prevNodeName = nodeName
-					sseEmit(fmt.Sprintf(`{"type":"node_resumed","node_id":%q,"node_name":%q}`, node.ID, nodeName))
+					sseEmit(sse.NodeResumed(node.ID, nodeName))
 					for _, e := range adj[node.ID] {
 						if next, ok := nodeMap[e.Target]; ok {
 							queue = append(queue, next)
@@ -1867,8 +1860,7 @@ func (h *InvokeHandler) executeGroupRun(
 					continue
 				}
 
-				sseEmit(fmt.Sprintf(`{"type":"node_routed","node_id":%q,"result":%q,"next_node_id":%q}`,
-					node.ID, matched, nextID))
+				sseEmit(sse.NodeRouted(node.ID, matched, nextID))
 
 				if next, ok := nodeMap[nextID]; ok {
 					queue = append(queue, next)
@@ -1974,8 +1966,7 @@ func (h *InvokeHandler) executeGroupRun(
 
 				condMet := evaluateExpression(exitCond, lastOutput)
 				done := iteration >= maxIter || condMet
-				sseEmit(fmt.Sprintf(`{"type":"node_routed","node_id":%q,"result":%q,"iteration":%d,"max":%d}`,
-					node.ID, map[bool]string{true: "exit", false: "continue"}[done], iteration, maxIter))
+				sseEmit(sse.NodeRoutedLoop(node.ID, map[bool]string{true: "exit", false: "continue"}[done], iteration, maxIter))
 				if done {
 					// Reset the counter so this loop can be re-entered later (e.g.
 					// when a condition node's "no" branch circles back through it).
@@ -2023,7 +2014,7 @@ func (h *InvokeHandler) executeGroupRun(
 					outputMu.Unlock()
 					lastOutput = cached
 					prevNodeName = nodeName
-					sseEmit(fmt.Sprintf(`{"type":"node_resumed","node_id":%q,"node_name":%q}`, node.ID, nodeName))
+					sseEmit(sse.NodeResumed(node.ID, nodeName))
 					for _, e := range adj[node.ID] {
 						if e.Label != "delegate" {
 							if next, ok := nodeMap[e.Target]; ok {
@@ -2109,8 +2100,7 @@ func (h *InvokeHandler) executeGroupRun(
 							`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,parent_run_id,workflow_node_id,trace_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid,$8,$9::uuid)`,
 							dSubRunID, ws, capturedDA.ID, dSubConvID, uid, task, capturedSuperSubRunID, capturedDN.ID, parentRunID)
 						// Light up the delegate node in the canvas.
-						sseEmit(fmt.Sprintf(`{"type":"node_started","node_id":%q,"node_type":"agent","node_name":%q}`,
-							capturedDN.ID, capturedDA.Name))
+						sseEmit(sse.NodeStarted(capturedDN.ID, "agent", capturedDA.Name))
 						delEmit := func(line string) {
 							var m map[string]any
 							if json.Unmarshal([]byte(line), &m) == nil {
@@ -2128,8 +2118,7 @@ func (h *InvokeHandler) executeGroupRun(
 							sseEmit(line)
 						}
 						h.executeRun(callCtx, capturedDA, ws, uid, dSubRunID, dSubConvID, task, nil, delEmit, invokeOpts{})
-						sseEmit(fmt.Sprintf(`{"type":"node_completed","node_id":%q,"node_name":%q}`,
-							capturedDN.ID, capturedDA.Name))
+						sseEmit(sse.NodeCompleted(capturedDN.ID, capturedDA.Name))
 						var out string
 						_ = h.pool.QueryRow(context.Background(),
 							`SELECT COALESCE(output,'') FROM runs WHERE id=$1::uuid`, dSubRunID).Scan(&out)
@@ -2200,8 +2189,7 @@ func (h *InvokeHandler) executeGroupRun(
 
 			} // end switch
 
-			sseEmit(fmt.Sprintf(`{"type":"node_completed","node_id":%q,"node_name":%q}`,
-				node.ID, nodeName))
+			sseEmit(sse.NodeCompleted(node.ID, nodeName))
 			saveCheckpoint()
 		}
 	}
@@ -2231,8 +2219,7 @@ func (h *InvokeHandler) executeGroupRun(
 		`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
 		parentRunID, finalOutput, totalInputTokens, totalOutputTokens, totalCostUSD)
 
-	sseEmit(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`,
-		parentRunID, totalInputTokens, totalOutputTokens, totalCostUSD))
+	sseEmit(sse.RunCompleted(parentRunID, totalInputTokens, totalOutputTokens, totalCostUSD))
 }
 
 // RecoverInterruptedWorkflowRuns resumes top-level workflow runs that were
@@ -2330,7 +2317,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 			emit(s)
 		}
 	}
-	sseErr := func(msg string) { sseEmitOrNil(fmt.Sprintf(`{"type":"error","error":%q}`, msg)) }
+	sseErr := func(msg string) { sseEmitOrNil(sse.Error(msg)) }
 
 	llm, err := h.runs.providerFor(ctx, ws, a.Provider)
 	if err != nil {
@@ -2569,7 +2556,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	// parent's graph walk lives on this stack, so durable parking is impossible).
 	execCtx.WaitForSession = h.blockingSessionWait(runID, sseEmitOrNil)
 
-	sseEmitOrNil(fmt.Sprintf(`{"type":"run_started","run_id":%q}`, runID))
+	sseEmitOrNil(sse.RunStarted(runID))
 
 	messages = supMessages
 	stepCount := 0
@@ -2595,7 +2582,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 			Stream:              true,
 			StableSystemContent: supStableSystem,
 		}, func(delta string) {
-			sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`, delta))
+			sseEmitOrNil(sse.Delta(delta))
 		}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
 		if err != nil {
 			runErrMsg = err.Error()
@@ -2647,8 +2634,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 			h.pool.Exec(dbCtx, //nolint:errcheck
 				`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
 				runID, reply, totalInput, totalOutput, costUSD)
-			sseEmitOrNil(fmt.Sprintf(`{"type":"run_completed","run_id":%q,"usage":{"input":%d,"output":%d},"cost":%g}`,
-				runID, totalInput, totalOutput, costUSD))
+			sseEmitOrNil(sse.RunCompleted(runID, totalInput, totalOutput, costUSD))
 			if shouldRunMemoryExtractor(a, memorySaveCalled) {
 				aCopy, llmCopy, replySnap, inputSnap := a, llm, reply, input
 				go func() {
@@ -2732,8 +2718,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 			}
 			// Delegate tool — execute the team agent and return its output.
 			if handler, isDelegate := delegateHandlers[call.Name]; isDelegate {
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
-					call.ID, call.Name, jsonOrStr(call.Input)))
+				sseEmitOrNil(sse.ToolStarted(call.ID, call.Name, call.Input))
 				delegateStart := time.Now()
 				var delegateOutput string
 				if precomputed, ok := parallelDelegateResults[call.ID]; ok {
@@ -2746,9 +2731,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 					map[string]any{"tool": call.Name, "input": call.Input},
 					map[string]any{"output": delegateOutput},
 					delegateStart, 0, call.Name, "")
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(delegateOutput)),
-					int(time.Since(delegateStart).Milliseconds())))
+				sseEmitOrNil(sse.ToolCall(call.ID, call.Name, call.Input, []byte(delegateOutput), int(time.Since(delegateStart).Milliseconds())))
 				messages = append(messages, provider.Message{
 					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: delegateOutput,
 				})
@@ -2771,8 +2754,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 				h.pool.Exec(ctx, `UPDATE runs SET status='approval_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
 
 				ch := RegisterApprovalWait(runID)
-				sseEmitOrNil(fmt.Sprintf(`{"type":"approval_required","tool":%q,"input":%s,"approval_id":%q}`,
-					call.Name, string(call.Input), arID))
+				sseEmitOrNil(sse.ApprovalRequired(call.Name, call.Input, arID))
 
 				// Supervisor runs are workflow children — their parent's graph walk
 				// lives on this process's stack, so parking is not possible here.
@@ -2790,8 +2772,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 				}
 			}
 
-			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_started","call_id":%q,"tool":%q,"input":%s}`,
-				call.ID, call.Name, jsonOrStr(call.Input)))
+			sseEmitOrNil(sse.ToolStarted(call.ID, call.Name, call.Input))
 			if execCtx.SendMessage != nil {
 				if label := progressLabel(call.Name); label != "" {
 					execCtx.SendMessage(ctx, label) //nolint:errcheck
@@ -2823,8 +2804,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 				map[string]any{"output": resultContent},
 				time.Now(), 0, call.Name, errMsg)
 
-			sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":%d}`,
-				call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent)), latencyMs))
+			sseEmitOrNil(sse.ToolCall(call.ID, call.Name, call.Input, []byte(resultContent), latencyMs))
 
 			messages = append(messages, provider.Message{
 				Role:       "tool",

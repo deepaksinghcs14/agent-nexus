@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/api/sse"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
@@ -540,7 +541,7 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	emit := func(s string) { fmt.Fprintf(w, "data: %s\n\n", s); f.Flush() }
-	sseErr := func(msg string) { emit(fmt.Sprintf(`{"type":"error","error":%q}`, msg)) }
+	sseErr := func(msg string) { emit(sse.Error(msg)) }
 
 	// Keepalive: prevents proxy/browser timeouts during long LLM responses.
 	keepDone := make(chan struct{})
@@ -611,7 +612,7 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			switch event.Type {
 			case provider.EventDelta:
 				reply += event.Delta
-				emit(fmt.Sprintf(`{"type":"delta","content":%q}`, event.Delta))
+				emit(sse.Delta(event.Delta))
 			case provider.EventToolCall:
 				if event.ToolCall != nil {
 					slog.Info("nexus-ai: tool_call", "tool", event.ToolCall.Name, "id", event.ToolCall.ID)
