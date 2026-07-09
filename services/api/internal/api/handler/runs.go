@@ -30,6 +30,9 @@ type RunsHandler struct {
 	registry      *tools.Registry
 	executor      *tools.Executor
 	invokeH       *InvokeHandler // set post-construction via SetInvokeHandler to avoid circular init
+	// providerOverride, when non-nil, replaces credential-based provider
+	// resolution. Set only by tests.
+	providerOverride provider.Provider
 }
 
 func NewRunsHandler(p *pgxpool.Pool, c *config.Config, reg *tools.Registry, exec *tools.Executor) *RunsHandler {
@@ -109,6 +112,11 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *RunsHandler) providerFor(ctx context.Context, workspaceID, providerName string) (provider.Provider, error) {
+	// Test seam: the loop tests inject a scripted provider here so executeRun
+	// runs against real Postgres without a real LLM credential.
+	if h.providerOverride != nil {
+		return h.providerOverride, nil
+	}
 	providers := repository.NewProviderRepository(h.pool)
 	cred, encKey, err := providers.GetActiveByProvider(ctx, workspaceID, providerName)
 	if err != nil {
