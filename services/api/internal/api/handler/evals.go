@@ -27,16 +27,17 @@ type EvalHandler struct {
 	cfg     *config.Config
 	invokeH *InvokeHandler
 	runsH   *RunsHandler
+	repo    *repository.EvalRepository
 }
 
 func NewEvalHandler(pool *pgxpool.Pool, cfg *config.Config, invokeH *InvokeHandler, runsH *RunsHandler) *EvalHandler {
-	return &EvalHandler{pool: pool, cfg: cfg, invokeH: invokeH, runsH: runsH}
+	return &EvalHandler{pool: pool, cfg: cfg, invokeH: invokeH, runsH: runsH, repo: repository.NewEvalRepository(pool)}
 }
 
 // ListSuites handles GET /evals/suites
 func (h *EvalHandler) ListSuites(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	suites, err := repo.ListSuites(r.Context(), ws)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to list eval suites"))
@@ -73,7 +74,7 @@ func (h *EvalHandler) CreateSuite(w http.ResponseWriter, r *http.Request) {
 		Description: req.Description,
 		GradingMode: mode,
 	}
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	if err := repo.CreateSuite(r.Context(), suite); err != nil {
 		errs.Write(w, errs.Internal("failed to create eval suite"))
 		return
@@ -85,7 +86,7 @@ func (h *EvalHandler) CreateSuite(w http.ResponseWriter, r *http.Request) {
 func (h *EvalHandler) GetSuite(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	id := chi.URLParam(r, "id")
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	suite, err := repo.GetSuite(r.Context(), id, ws)
 	if err != nil {
 		errs.Write(w, errs.NotFound("eval suite not found"))
@@ -112,7 +113,7 @@ func (h *EvalHandler) UpdateSuite(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.BadRequest("name is required"))
 		return
 	}
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	suite, err := repo.GetSuite(r.Context(), id, ws)
 	if err != nil {
 		errs.Write(w, errs.NotFound("eval suite not found"))
@@ -135,7 +136,7 @@ func (h *EvalHandler) UpdateSuite(w http.ResponseWriter, r *http.Request) {
 func (h *EvalHandler) DeleteSuite(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	id := chi.URLParam(r, "id")
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	if err := repo.DeleteSuite(r.Context(), id, ws); err != nil {
 		errs.Write(w, errs.Internal("failed to delete eval suite"))
 		return
@@ -156,7 +157,7 @@ func (h *EvalHandler) CreateCase(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.BadRequest("input is required"))
 		return
 	}
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	if _, err := repo.GetSuite(r.Context(), suiteID, ws); err != nil {
 		errs.Write(w, errs.NotFound("eval suite not found"))
 		return
@@ -189,7 +190,7 @@ func (h *EvalHandler) UpdateCase(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.BadRequest("input is required"))
 		return
 	}
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	if _, err := repo.GetSuite(r.Context(), suiteID, ws); err != nil {
 		errs.Write(w, errs.NotFound("eval suite not found"))
 		return
@@ -213,7 +214,7 @@ func (h *EvalHandler) DeleteCase(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	suiteID := chi.URLParam(r, "id")
 	caseID := chi.URLParam(r, "caseId")
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	if _, err := repo.GetSuite(r.Context(), suiteID, ws); err != nil {
 		errs.Write(w, errs.NotFound("eval suite not found"))
 		return
@@ -230,7 +231,7 @@ func (h *EvalHandler) TriggerRun(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	uid := middleware.UserIDFromCtx(r.Context())
 	suiteID := chi.URLParam(r, "id")
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	suite, err := repo.GetSuite(r.Context(), suiteID, ws)
 	if err != nil {
 		errs.Write(w, errs.NotFound("eval suite not found"))
@@ -260,7 +261,7 @@ func (h *EvalHandler) TriggerRun(w http.ResponseWriter, r *http.Request) {
 func (h *EvalHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	suiteID := chi.URLParam(r, "id")
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	if _, err := repo.GetSuite(r.Context(), suiteID, ws); err != nil {
 		errs.Write(w, errs.NotFound("eval suite not found"))
 		return
@@ -280,7 +281,7 @@ func (h *EvalHandler) ListRuns(w http.ResponseWriter, r *http.Request) {
 func (h *EvalHandler) GetRun(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	runID := chi.URLParam(r, "runId")
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	run, err := repo.GetRun(r.Context(), runID, ws)
 	if err != nil {
 		errs.Write(w, errs.NotFound("eval run not found"))
@@ -294,7 +295,7 @@ func (h *EvalHandler) GetRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *EvalHandler) executeEvalRun(ctx context.Context, suite *domain.EvalSuite, cases []domain.EvalCase, run *domain.EvalRun, uid string) {
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	agents := repository.NewAgentRepository(h.pool)
 
 	now := time.Now()
@@ -515,7 +516,7 @@ func (h *EvalHandler) GenerateCases(w http.ResponseWriter, r *http.Request) {
 		req.Count = 20
 	}
 
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	suite, err := repo.GetSuite(r.Context(), suiteID, ws)
 	if err != nil {
 		errs.Write(w, errs.NotFound("eval suite not found"))
@@ -752,7 +753,7 @@ Call create_test_cases repeatedly in batches of up to 5 until you have created e
 func (h *EvalHandler) ExportCases(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	suiteID := chi.URLParam(r, "id")
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	suite, err := repo.GetSuite(r.Context(), suiteID, ws)
 	if err != nil {
 		errs.Write(w, errs.NotFound("eval suite not found"))
@@ -804,7 +805,7 @@ func (h *EvalHandler) ImportCases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	if _, err := repo.GetSuite(r.Context(), suiteID, ws); err != nil {
 		errs.Write(w, errs.NotFound("eval suite not found"))
 		return
@@ -837,7 +838,7 @@ func (h *EvalHandler) OverrideResult(w http.ResponseWriter, r *http.Request) {
 	resultID := chi.URLParam(r, "resultId")
 
 	// Verify run belongs to workspace
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	run, err := repo.GetRun(r.Context(), runID, ws)
 	if err != nil {
 		errs.Write(w, errs.NotFound("eval run not found"))
@@ -863,7 +864,7 @@ func (h *EvalHandler) FixCase(w http.ResponseWriter, r *http.Request) {
 	runID := chi.URLParam(r, "runId")
 	resultID := chi.URLParam(r, "resultId")
 
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	run, err := repo.GetRun(r.Context(), runID, ws)
 	if err != nil {
 		errs.Write(w, errs.NotFound("eval run not found"))
@@ -1122,7 +1123,7 @@ Only include fix types genuinely needed. fixes array: 1-3 items max.`,
 		return
 	}
 
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	if err := repo.UpdateRunAnalysis(ctx, runID, json.RawMessage(raw)); err != nil {
 		slog.Error("doAnalysis: UpdateRunAnalysis failed", "run_id", runID, "err", err)
 	}
@@ -1133,7 +1134,7 @@ func (h *EvalHandler) AnalyzeRun(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	runID := chi.URLParam(r, "runId")
 
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	run, err := repo.GetRun(r.Context(), runID, ws)
 	if err != nil {
 		errs.Write(w, errs.NotFound("eval run not found"))
@@ -1187,7 +1188,7 @@ func (h *EvalHandler) AnalyzeRun(w http.ResponseWriter, r *http.Request) {
 // Called from AgentsHandler.Update — runs async, never blocks the HTTP response.
 func (h *EvalHandler) TriggerAutoRunsForAgent(wsID, agentID, uid string) {
 	ctx := context.Background()
-	repo := repository.NewEvalRepository(h.pool)
+	repo := h.repo
 	suites, err := repo.ListAutoRunSuitesForAgent(ctx, agentID)
 	if err != nil || len(suites) == 0 {
 		return
@@ -1211,4 +1212,3 @@ func (h *EvalHandler) TriggerAutoRunsForAgent(wsID, agentID, uid string) {
 		go h.executeEvalRun(ctx, &suite, cases, run, uid)
 	}
 }
-
