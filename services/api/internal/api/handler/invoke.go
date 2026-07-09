@@ -632,6 +632,27 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	if a.ContextRetrievalEnabled && a.AgenticRAG {
 		requestedTools["native_retrieve_context"] = true
 	}
+	// Tools that exist only to serve an on-demand skill stay hidden in
+	// non-lazy mode until the skill activates; lazy mode gates them through
+	// requestedTools instead.
+	hiddenToolNames := map[string]bool{}
+	for _, skill := range skills.OnDemand {
+		for _, name := range skill.RequiredToolNames {
+			if !skills.AlwaysRequired[name] {
+				hiddenToolNames[name] = true
+			}
+		}
+	}
+	activeSkillTools := map[string]bool{}
+	visibleToolDefs := func() []provider.ToolDefinition {
+		out := make([]provider.ToolDefinition, 0, len(allToolDefs))
+		for _, td := range allToolDefs {
+			if !hiddenToolNames[td.Name] || activeSkillTools[td.Name] {
+				out = append(out, td)
+			}
+		}
+		return out
+	}
 	if resuming {
 		for _, name := range opts.resume.RequestedTools {
 			requestedTools[name] = true
@@ -652,6 +673,19 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	if resuming {
 		activeSkills = setOf(opts.resume.ActiveSkills)
 		activeMemoryIDs = setOf(opts.resume.ActiveMemoryIDs)
+		// Re-mark tools of already-active skills as visible so a resumed
+		// non-lazy run doesn't hide tools the pre-park turns unlocked.
+		for name := range activeSkills {
+			skill, ok := skills.OnDemand[name]
+			if !ok {
+				skill, ok = skillCatalog[name]
+			}
+			if ok {
+				for _, toolName := range skill.RequiredToolNames {
+					activeSkillTools[toolName] = true
+				}
+			}
+		}
 	}
 	var messages []provider.Message
 
@@ -740,6 +774,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			}
 			activeSkills[name] = true
 			for _, toolName := range skill.RequiredToolNames {
+				activeSkillTools[toolName] = true
 				requestedTools[toolName] = true
 				// Ensure the tool appears in toolSummaries so native_list_tools and
 				// native_request_tool can find it even if it isn't in agent_tools.
@@ -891,7 +926,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				}
 			}
 		} else {
-			toolDefs = append(lazyMetaToolDefs(h.registry), allToolDefs...)
+			toolDefs = append(lazyMetaToolDefs(h.registry), visibleToolDefs()...)
 		}
 		toolDefs = dedupeToolDefs(toolDefs)
 		allowedToolNames := map[string]bool{}
@@ -924,7 +959,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				StableSystemContent: stableSystem,
 			}, func(delta string) {
 				sseEmitOrNil(sse.Delta(delta))
-			}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
+			}, "Return a direct, non-empty reply. Do not explain limitations. If you started a multi-step task, continue to the next step rather than asking for confirmation.")
 			if err != nil {
 				runErrMsg = err.Error()
 				sseErr(err.Error())
@@ -976,6 +1011,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				h.pool.Exec(ctx, //nolint:errcheck
 					`INSERT INTO messages(id,conversation_id,role,content,tool_calls,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4::jsonb,$5)`,
 					uuid.NewString(), convID, reply, actionLogJSON, usage.OutputTokens)
+				h.pool.Exec(ctx, //nolint:errcheck
+					`UPDATE conversations SET message_count=message_count+1, token_count=token_count+$2, updated_at=NOW() WHERE id=$1::uuid`,
+					convID, usage.OutputTokens)
 				h.runs.createStep(ctx, runID, domain.StepFinalResponse, //nolint:errcheck
 					map[string]any{},
 					map[string]any{"content": reply},
@@ -1242,6 +1280,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					// The session tool persisted its wait state and the in-process
 					// wait expired. Exit without failing the run — the runner's
 					// callback resumes it via ResumeSessionRun.
+					sseEmitOrNil(sse.SessionParked(runID))
 					runParked = true
 					return
 				}
