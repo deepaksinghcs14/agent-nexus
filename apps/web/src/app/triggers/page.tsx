@@ -36,11 +36,12 @@ function CopyButton({ text }: { text: string }) {
 export default function TriggersPage() {
   const [triggers, setTriggers] = useState<WebhookTrigger[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   const load = () => {
     webhookTriggersAPI.list()
-      .then((r) => setTriggers(((r as { data?: WebhookTrigger[] }).data) ?? []))
-      .catch(() => {})
+      .then((r) => { setTriggers(((r as { data?: WebhookTrigger[] }).data) ?? []); setError('') })
+      .catch((e: Error) => setError(e.message || 'Failed to load triggers'))
       .finally(() => setLoading(false))
   }
 
@@ -48,12 +49,20 @@ export default function TriggersPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this webhook trigger? Any external services using this URL will stop working.')) return
-    await webhookTriggersAPI.delete(id).catch(() => {})
+    try {
+      await webhookTriggersAPI.delete(id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete trigger')
+    }
     load()
   }
 
   const handleToggle = async (t: WebhookTrigger) => {
-    await webhookTriggersAPI.update(t.id, { is_active: !t.is_active }).catch(() => {})
+    try {
+      await webhookTriggersAPI.update(t.id, { is_active: !t.is_active })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update trigger')
+    }
     load()
   }
 
@@ -69,6 +78,10 @@ export default function TriggersPage() {
           </Link>
         }
       />
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-crit/30 bg-crit/10 px-3 py-2 text-sm text-crit">{error}</div>
+      )}
 
       {loading ? (
         <div className="py-10 text-center text-sm text-faint">Loading…</div>
