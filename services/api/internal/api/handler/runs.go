@@ -23,7 +23,6 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/cost"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/memory"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/encrypt"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 	"github.com/go-chi/chi/v5"
@@ -658,30 +657,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 				call.ID, call.Name, jsonOrStr(call.Input)))
 
 			// Execute the tool — HTTP, code, and MCP tools bypass the native registry
-			var result *tools.ExecutionResult
-			var execErr error
-			if toolExists && dbTool.Type == "http" {
-				var cfg tools.HTTPToolConfig
-				_ = json.Unmarshal(dbTool.Config, &cfg)
-				result = tools.ExecuteHTTP(r.Context(), cfg, call.Input, dbTool.TimeoutMs)
-			} else if toolExists && dbTool.Type == "mcp" {
-				result = executeMCPTool(r.Context(), h.pool, h.cfg, dbTool, call.Input)
-			} else if toolExists && dbTool.Type == "code" {
-				var codeCfg struct {
-					Code string `json:"code"`
-				}
-				_ = json.Unmarshal(dbTool.Config, &codeCfg)
-				start := time.Now()
-				out, codeErr := native.ExecuteCodeTool(r.Context(), codeCfg.Code, call.Input)
-				result = &tools.ExecutionResult{LatencyMs: int(time.Since(start).Milliseconds())}
-				if codeErr != nil {
-					result.Error = codeErr.Error()
-				} else {
-					result.Output = out
-				}
-			} else {
-				result, execErr = h.executor.ExecuteWithContext(r.Context(), execCtx, call.Name, call.Input)
-			}
+			result, execErr := invokeToolByType(r.Context(), h.pool, h.cfg, h.executor, execCtx, dbTool, toolExists, call.Name, call.Input)
 			if errors.Is(execErr, tools.ErrRunParked) {
 				// The session tool persisted its wait state and the in-process
 				// wait expired. End the SSE stream without failing the run —

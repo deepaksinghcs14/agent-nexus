@@ -26,7 +26,6 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/cost"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/memory"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
 
@@ -1247,30 +1246,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				// Already executed concurrently in the parallel batch above; content is ready.
 				resultContent = precomputed
 			} else {
-				var result *tools.ExecutionResult
-				var execErr error
-				if toolExists && dbTool.Type == "http" {
-					var cfg tools.HTTPToolConfig
-					_ = json.Unmarshal(dbTool.Config, &cfg)
-					result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
-				} else if toolExists && dbTool.Type == "mcp" {
-					result = executeMCPTool(ctx, h.pool, h.cfg, dbTool, call.Input)
-				} else if toolExists && dbTool.Type == "code" {
-					var codeCfg struct {
-						Code string `json:"code"`
-					}
-					_ = json.Unmarshal(dbTool.Config, &codeCfg)
-					start := time.Now()
-					out, codeErr := native.ExecuteCodeTool(ctx, codeCfg.Code, call.Input)
-					result = &tools.ExecutionResult{LatencyMs: int(time.Since(start).Milliseconds())}
-					if codeErr != nil {
-						result.Error = codeErr.Error()
-					} else {
-						result.Output = out
-					}
-				} else {
-					result, execErr = h.executor.ExecuteWithContext(ctx, execCtx, call.Name, call.Input)
-				}
+				result, execErr := invokeToolByType(ctx, h.pool, h.cfg, h.executor, execCtx, dbTool, toolExists, call.Name, call.Input)
 				if errors.Is(execErr, tools.ErrRunParked) {
 					// The session tool persisted its wait state and the in-process
 					// wait expired. Exit without failing the run — the runner's
@@ -2822,30 +2798,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 				}
 			}
 
-			var result *tools.ExecutionResult
-			var execErr error
-			if toolExists && dbTool.Type == "http" {
-				var cfg tools.HTTPToolConfig
-				_ = json.Unmarshal(dbTool.Config, &cfg)
-				result = tools.ExecuteHTTP(ctx, cfg, call.Input, dbTool.TimeoutMs)
-			} else if toolExists && dbTool.Type == "mcp" {
-				result = executeMCPTool(ctx, h.pool, h.cfg, dbTool, call.Input)
-			} else if toolExists && dbTool.Type == "code" {
-				var codeCfg struct {
-					Code string `json:"code"`
-				}
-				_ = json.Unmarshal(dbTool.Config, &codeCfg)
-				start := time.Now()
-				out, codeErr := native.ExecuteCodeTool(ctx, codeCfg.Code, call.Input)
-				result = &tools.ExecutionResult{LatencyMs: int(time.Since(start).Milliseconds())}
-				if codeErr != nil {
-					result.Error = codeErr.Error()
-				} else {
-					result.Output = out
-				}
-			} else {
-				result, execErr = h.executor.ExecuteWithContext(ctx, execCtx, call.Name, call.Input)
-			}
+			result, execErr := invokeToolByType(ctx, h.pool, h.cfg, h.executor, execCtx, dbTool, toolExists, call.Name, call.Input)
 			var resultContent, errMsg string
 			latencyMs := 0
 			if result != nil {
