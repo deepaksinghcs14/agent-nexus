@@ -2,7 +2,7 @@ module github.com/deepaksingh/agent-nexus/services/api
 
 go 1.26
 
-toolchain go1.26.4
+toolchain go1.26.5
 
 require (
 	github.com/dop251/goja v0.0.0-20260618133527-c9b2ea77db59
