@@ -54,7 +54,7 @@ import {
   Send,
 } from 'lucide-react'
 import { TriggersPanel } from './TriggersPanel'
-import { workflowsAPI, agentsAPI, invokeAPI, toolsAPI, gatewayAPI } from '@/lib/api'
+import { workflowsAPI, agentsAPI, invokeAPI, toolsAPI, gatewayAPI, providersAPI } from '@/lib/api'
 import type { Workflow, Agent, Tool, GatewayChannel, WorkflowGraph, WorkflowNode, WorkflowEdge, WorkflowNodeType, SSEEvent } from '@/types'
 
 // ---------------------------------------------------------------------------
@@ -1199,12 +1199,31 @@ Be specific and constructive. This report is used to brief the team on what to f
   },
 ]
 
-function modelToProvider(model?: string): string {
-  if (!model) return 'anthropic'
-  if (model.startsWith('claude')) return 'anthropic'
-  if (model.startsWith('gpt') || model.startsWith('o1') || model.startsWith('o3')) return 'openai'
-  if (model.startsWith('gemini')) return 'gemini'
-  return 'anthropic'
+// Template agents specify an intended capability tier via their model hint;
+// at creation time the hint is resolved against the provider actually
+// connected in this workspace, so templates work whether the workspace runs
+// Anthropic, OpenAI, Gemini, or a local Ollama.
+type ModelTier = 'heavy' | 'balanced' | 'light'
+
+function tierForHint(hint?: string): ModelTier {
+  const h = (hint ?? '').toLowerCase()
+  if (/opus|o1-pro|gpt-4-turbo/.test(h)) return 'heavy'
+  if (/haiku|mini|flash|3\.5/.test(h)) return 'light'
+  return 'balanced'
+}
+
+const TIER_PATTERNS: Record<string, Record<ModelTier, RegExp[]>> = {
+  anthropic: { heavy: [/opus/], balanced: [/sonnet/], light: [/haiku/] },
+  openai: { heavy: [/^o1(?!-mini)/, /gpt-4o(?!-mini)/], balanced: [/gpt-4o(?!-mini)/, /gpt-4/], light: [/mini/, /gpt-3\.5/] },
+  gemini: { heavy: [/pro/], balanced: [/flash/], light: [/flash-lite/, /flash/] },
+}
+
+function pickModelForTier(providerName: string, models: { id: string }[], tier: ModelTier): string | undefined {
+  for (const re of TIER_PATTERNS[providerName]?.[tier] ?? []) {
+    const hit = models.find((m) => re.test(m.id.toLowerCase()))
+    if (hit) return hit.id
+  }
+  return models[0]?.id
 }
 
 // ---------------------------------------------------------------------------
@@ -1223,7 +1242,28 @@ function TemplateGalleryModal({
   const [createProgress, setCreateProgress] = useState<string[]>([])
   const [createError, setCreateError] = useState<string | null>(null)
 
+  // Resolve models against the provider connected in this workspace instead
+  // of hardcoding Anthropic.
+  const { data: provData } = useQuery({
+    queryKey: ['providers'],
+    queryFn: () => providersAPI.list() as Promise<{ data: { id: string; provider: string; is_active: boolean }[] }>,
+  })
+  const providerCreds = provData?.data ?? []
+  const activeCred = providerCreds.find((c) => c.is_active) ?? providerCreds[0]
+  const { data: modelsData } = useQuery({
+    queryKey: ['provider-models', activeCred?.id],
+    queryFn: () => providersAPI.models(activeCred!.id) as Promise<{ data: { id: string }[] }>,
+    enabled: !!activeCred,
+  })
+  const availableModels = modelsData?.data ?? []
+  const resolveModel = (hint?: string) =>
+    activeCred ? pickModelForTier(activeCred.provider, availableModels, tierForHint(hint)) : undefined
+
   async function handleCreateAndLoad() {
+    if (!activeCred) {
+      setCreateError('No LLM provider connected — add one under Settings → Providers before creating template agents.')
+      return
+    }
     setCreating(true)
     setCreateError(null)
     setCreateProgress([])
@@ -1235,8 +1275,8 @@ function TemplateGalleryModal({
           name: agentDef.name,
           description: agentDef.role,
           instructions: agentDef.systemPrompt,
-          provider: modelToProvider(agentDef.model),
-          model: agentDef.model ?? 'claude-sonnet-4-6',
+          provider: activeCred.provider,
+          model: resolveModel(agentDef.model) ?? agentDef.model ?? 'claude-sonnet-4-6',
           temperature: 0.7,
           max_tokens: 4096,
           memory_enabled: false,
@@ -1365,8 +1405,8 @@ function TemplateGalleryModal({
                       <div className="border-b border-border bg-muted/50 px-3.5 py-2.5">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[13px] font-semibold text-foreground">{agent.name}</span>
-                          {agent.model && (
-                            <span className="rounded-md bg-accent-light px-1.5 py-0.5 font-mono text-[10px] font-semibold text-accent dark:bg-accent/15 dark:text-accent-bright">{agent.model}</span>
+                          {(resolveModel(agent.model) ?? agent.model) && (
+                            <span className="rounded-md bg-accent-light px-1.5 py-0.5 font-mono text-[10px] font-semibold text-accent dark:bg-accent/15 dark:text-accent-bright">{resolveModel(agent.model) ?? agent.model}</span>
                           )}
                         </div>
                         <p className="m-0 mt-1 text-[11px] text-muted-foreground">{agent.role}</p>
@@ -1412,7 +1452,12 @@ function TemplateGalleryModal({
                   {createError}
                 </div>
               )}
-              {createProgress.length > 0 && (
+              {provData && !activeCred && (
+              <div className="mb-2.5 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-[11px] text-warn">
+                No LLM provider connected — template agents will use the provider you add under Settings → Providers.
+              </div>
+            )}
+            {createProgress.length > 0 && (
                 <div className="mb-2.5 flex flex-col gap-0.5 rounded-lg border border-accent/30 bg-accent-light/60 px-3 py-2 dark:bg-accent/10">
                   {createProgress.map((line, i) => (
                     <span key={i} className="font-mono text-[11px] text-accent dark:text-accent-bright">{line}</span>
@@ -1429,7 +1474,8 @@ function TemplateGalleryModal({
                 </button>
                 <button
                   onClick={handleCreateAndLoad}
-                  disabled={creating}
+                  disabled={creating || !activeCred}
+                  title={activeCred ? undefined : 'Connect an LLM provider first'}
                   className="flex items-center gap-1.5 rounded-[10px] bg-gradient-to-br from-accent to-accent-ink px-4 py-2 text-xs font-semibold text-white shadow-card transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {creating
