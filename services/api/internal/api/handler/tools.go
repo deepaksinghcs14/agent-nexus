@@ -86,6 +86,12 @@ func (h *ToolsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	t.ID = chi.URLParam(r, "id")
 	t.WorkspaceID = middleware.WorkspaceIDFromCtx(r.Context())
+	if len(t.InputSchema) == 0 {
+		t.InputSchema = json.RawMessage(`{}`)
+	}
+	if len(t.OutputSchema) == 0 {
+		t.OutputSchema = json.RawMessage(`{}`)
+	}
 	if len(t.Config) == 0 {
 		t.Config = json.RawMessage(`{}`)
 	}
