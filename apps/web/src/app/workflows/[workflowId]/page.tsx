@@ -1698,9 +1698,32 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   }, [dirty])
 
   // Run via SSE
+  // Streamed text accumulates in a ref and flushes to state at most ~12x/s.
+  // A setState per token froze the tab on large supervisor runs: every delta
+  // re-rendered the whole studio (canvas included), with cost growing as the
+  // output grew.
+  const pendingOutput = useRef<Record<string, string>>({})
+  const flushTimer = useRef<number | null>(null)
+  const queueOutput = useCallback((key: string, chunk: string) => {
+    pendingOutput.current[key] = (pendingOutput.current[key] ?? '') + chunk
+    if (flushTimer.current == null) {
+      flushTimer.current = window.setTimeout(() => {
+        const pending = pendingOutput.current
+        pendingOutput.current = {}
+        flushTimer.current = null
+        setRunOutput((prev) => {
+          const next = { ...prev }
+          for (const k in pending) next[k] = (next[k] ?? '') + pending[k]
+          return next
+        })
+      }, 80)
+    }
+  }, [])
+
   const handleRun = async () => {
     if (!runInput.trim()) return
     setRunStatus('running')
+    pendingOutput.current = {}
     setRunOutput({})
     setRunError(null)
 
@@ -1735,9 +1758,22 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
       const decoder = new TextDecoder()
       let buf = ''
 
+      // Liveness guard: the engine emits a ping every 15s, so a silent minute
+      // means the stream is dead (server restart, dropped connection). Without
+      // this, reader.read() blocks forever and the panel spins until the tab
+      // is closed.
+      let lastEvent = Date.now()
+      const liveness = window.setInterval(() => {
+        if (Date.now() - lastEvent > 60_000) {
+          reader.cancel().catch(() => {})
+        }
+      }, 5_000)
+
+      try {
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
+        lastEvent = Date.now()
         buf += decoder.decode(value, { stream: true })
         const lines = buf.split('\n')
         buf = lines.pop() ?? ''
@@ -1752,17 +1788,17 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             } else if (evt.type === 'node_completed' && evt.node_id) {
               setNodes((nds) => nds.map((n) => n.id === evt.node_id ? { ...n, data: { ...n.data, status: 'done' as const } } : n))
               if (evt.result) {
-                setRunOutput((prev) => ({ ...prev, [evt.node_id!]: (prev[evt.node_id!] ?? '') + evt.result }))
+                queueOutput(evt.node_id!, evt.result)
               }
             } else if (evt.type === 'node_delivery' && evt.node_id) {
               const note = evt.ok
                 ? `\n▸ delivered via ${evt.target}`
                 : `\n▸ ${evt.target} delivery failed: ${evt.error ?? 'unknown error'}`
-              setRunOutput((prev) => ({ ...prev, [evt.node_id!]: (prev[evt.node_id!] ?? '') + note }))
+              queueOutput(evt.node_id!, note)
             } else if (evt.type === 'delta' && evt.node_id) {
-              setRunOutput((prev) => ({ ...prev, [evt.node_id!]: (prev[evt.node_id!] ?? '') + (evt.content ?? '') }))
+              queueOutput(evt.node_id, evt.content ?? '')
             } else if (evt.type === 'delta' && evt.content) {
-              setRunOutput((prev) => ({ ...prev, __main__: (prev.__main__ ?? '') + evt.content }))
+              queueOutput('__main__', evt.content)
             } else if (evt.type === 'run_completed') {
               setRunStatus('done')
             } else if (evt.type === 'error') {
@@ -1774,7 +1810,15 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
           }
         }
       }
-      setRunStatus('done')
+      } finally {
+        window.clearInterval(liveness)
+      }
+      setRunStatus((prev) => {
+        if (prev === 'running') {
+          setRunError((e) => e ?? 'Stream ended without completing — the run may still be executing server-side. Check the Runs page.')
+        }
+        return 'done'
+      })
     } catch (err) {
       setRunError(err instanceof Error ? err.message : 'Network error — could not reach the server')
       setRunStatus('done')
