@@ -113,14 +113,6 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	h.invokeH.executeRun(r.Context(), a, ws, uid, id, c.ID, q.Input, nil, emit, invokeOpts{})
 }
 
-func jsonOrStr(b []byte) string {
-	if json.Valid(b) {
-		return string(b)
-	}
-	s, _ := json.Marshal(string(b))
-	return string(s)
-}
-
 func (h *RunsHandler) providerFor(ctx context.Context, workspaceID, providerName string) (provider.Provider, error) {
 	providers := repository.NewProviderRepository(h.pool)
 	cred, encKey, err := providers.GetActiveByProvider(ctx, workspaceID, providerName)

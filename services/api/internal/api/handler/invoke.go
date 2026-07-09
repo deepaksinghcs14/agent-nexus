@@ -242,6 +242,17 @@ type invokeOpts struct {
 	resume           *runWaitState
 	resumeDecision   *ApprovalDecision
 	resumeToolResult *string
+	// delegateToolDefs, when non-empty, are offered to the model alongside the
+	// agent's own tools (supervisor mode). Pairs with the delegateHandlers
+	// param that intercepts calls to these names. Their presence forces eager
+	// tool loading and injects the team-agent listing into the system prompt.
+	delegateToolDefs []provider.ToolDefinition
+	// noApprovalPark keeps approval waits in-process (fail on timeout) even at
+	// depth 0 — supervisor sub-runs must not park mid-workflow.
+	noApprovalPark bool
+	// disableUserInput removes the WaitForUserInput capability (runs that can
+	// never pause for a human, e.g. workflow supervisor nodes).
+	disableUserInput bool
 }
 
 // progressLabel returns a short human-readable status for a tool that is about to execute.
@@ -601,10 +612,29 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
 	skillCatalog, _ := loadWorkspaceSkillCatalog(ctx, h.pool, ws)
-	instructions := a.Instructions + onDemandSkillsInstructions(skills.OnDemand)
+	instructions := a.Instructions
+	// Inject the live delegate tool listing so the LLM knows exactly which team
+	// agents are available and their exact tool names — without requiring the
+	// supervisor's Instructions to hardcode them. The "(injected at runtime)"
+	// label signals to the model that these names are dynamic.
+	if len(opts.delegateToolDefs) > 0 {
+		var delegateList strings.Builder
+		for _, td := range opts.delegateToolDefs {
+			delegateList.WriteString("- **" + td.Name + "**: " + td.Description + "\n")
+		}
+		instructions += "\n\n## Available Team Agents (injected at runtime)\n" +
+			"You MUST delegate work to your team agents using the tools below — do NOT produce a final answer without calling at least one team agent first.\n\n" +
+			delegateList.String() +
+			"\nCall each relevant team agent with a specific task string. After receiving all outputs, synthesize them into a comprehensive final response."
+	}
+	instructions += onDemandSkillsInstructions(skills.OnDemand)
 	if a.ContextRetrievalEnabled && a.AgenticRAG {
 		instructions += "\n\nTo look up information from your connected knowledge sources, use the `native_retrieve_context` tool. Always call it before answering questions that require specific knowledge from your documents, codebase, or indexed files. Do NOT call any tool named \"search\" — use `native_retrieve_context` instead."
 	}
+	// Supervisor-mode runs are always eager: delegate tools must be offered
+	// on turn one, and the lazy gate would otherwise reject their names.
+	lazyTools := a.LazyToolLoading && len(opts.delegateToolDefs) == 0
+
 	var initialMessages []provider.Message
 	var stableSystem string
 	if resuming {
@@ -620,9 +650,9 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			History:            history,
 			MemoryEnabled:      a.MemoryEnabled,
 			MemorySaveMode:     a.MemorySaveMode,
-			HasCallAgent:       hasCallAgent,
+			HasCallAgent:       hasCallAgent || len(opts.delegateToolDefs) > 0,
 			HasCreateAgent:     hasCreateAgent,
-			LazyToolLoading:    a.LazyToolLoading,
+			LazyToolLoading:    lazyTools,
 			ConvCompaction:     convCompaction,
 		})
 	}
@@ -838,6 +868,11 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	// parking would return to the parent as if the child had finished.
 	var curBatch []provider.ToolCall
 	var curCallIdx int
+	if opts.disableUserInput {
+		// Supervisor-mode runs execute inside a workflow and can never pause
+		// for a human answer.
+		execCtx.WaitForUserInput = nil
+	}
 	isChildRun := opts.invokeDepth > 0
 	if !isChildRun {
 		// Workflow-node runs arrive with depth 0 — detect them by lineage.
@@ -891,7 +926,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	for {
 		// Build the tool list for this iteration.
 		var toolDefs []provider.ToolDefinition
-		if a.LazyToolLoading {
+		if lazyTools {
 			// Start with just the meta-tools; add any tools the agent has requested.
 			toolDefs = lazyMetaToolDefs(h.registry)
 			coveredByDB := map[string]bool{}
@@ -928,6 +963,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		} else {
 			toolDefs = append(lazyMetaToolDefs(h.registry), visibleToolDefs()...)
 		}
+		toolDefs = append(toolDefs, opts.delegateToolDefs...)
 		toolDefs = dedupeToolDefs(toolDefs)
 		allowedToolNames := map[string]bool{}
 		for _, td := range toolDefs {
@@ -1078,7 +1114,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		{
 			var agentCallsInBatch []provider.ToolCall
 			for _, call := range pendingCalls {
-				if call.Name == "native_call_agent" {
+				if call.Name == "native_call_agent" || delegateHandlers[call.Name] != nil {
 					agentCallsInBatch = append(agentCallsInBatch, call)
 				}
 			}
@@ -1091,6 +1127,10 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				for _, call := range agentCallsInBatch {
 					capturedCall := call
 					go func() {
+						if handler, isDelegate := delegateHandlers[capturedCall.Name]; isDelegate {
+							resultsCh <- agentCallOut{id: capturedCall.ID, content: handler(ctx, capturedCall.Input)}
+							return
+						}
 						result, execErr := h.executor.ExecuteWithContext(ctx, execCtx, capturedCall.Name, capturedCall.Input)
 						var content string
 						if execErr != nil {
@@ -1149,7 +1189,12 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			if handler, isDelegate := delegateHandlers[call.Name]; isDelegate {
 				sseEmitOrNil(sse.ToolStarted(call.ID, call.Name, call.Input))
 				delegateStart := time.Now()
-				delegateOutput := handler(ctx, call.Input)
+				var delegateOutput string
+				if precomputed, ok := parallelAgentResults[call.ID]; ok {
+					delegateOutput = precomputed
+				} else {
+					delegateOutput = handler(ctx, call.Input)
+				}
 				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
 					map[string]any{"tool": call.Name, "input": call.Input},
 					map[string]any{"output": delegateOutput},
@@ -1171,7 +1216,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			// model this turn (e.g. it guessed a name from native_list_tools output) so it's
 			// forced through native_request_tool/native_request_skill — keeping traces honest
 			// about what was activated.
-			if a.LazyToolLoading && !allowedToolNames[call.Name] {
+			if lazyTools && !allowedToolNames[call.Name] {
 				gateErr := lazyToolNotActiveError(call.Name, execCtx.SkillToolMap)
 				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
 					map[string]any{"tool": call.Name, "input": call.Input},
@@ -1206,7 +1251,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 						arID, runID, call.Name, call.Input)
 					h.pool.Exec(ctx, `UPDATE runs SET status='approval_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
 
-					if opts.invokeDepth == 0 {
+					if opts.invokeDepth == 0 && !opts.noApprovalPark {
 						// Snapshot the loop state so the run survives a process restart
 						// and can park if nobody approves before the in-process timeout.
 						st := &runWaitState{
@@ -1241,7 +1286,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					var got bool
 					decision, got = awaitApprovalDecision(runID, ch, 10*time.Minute)
 					if !got {
-						if opts.invokeDepth == 0 {
+						if opts.invokeDepth == 0 && !opts.noApprovalPark {
 							// Park: free this goroutine and leave the run in approval_wait
 							// with its state persisted. The Approve endpoint resumes it.
 							sseEmitOrNil(sse.ApprovalParked(runID, arID))
@@ -2196,10 +2241,16 @@ func (h *InvokeHandler) executeGroupRun(
 					sseEmit(line)
 				}
 
-				// executeSupervisorRun merges delegate tool defs into the agent's tool
-				// list so the LLM can call team agents by name, and intercepts those
-				// calls via delegateHandlers to execute the real agent sub-runs.
-				h.executeSupervisorRun(ctx, supAgent, ws, uid, subRunID, subConvID, agentInput, delegateToolDefs, delegateHandlers, supEmit)
+				// executeRun in supervisor mode: delegate tool defs are merged into
+				// the agent's tool list so the LLM can call team agents by name, and
+				// delegateHandlers intercepts those calls to run the real sub-agents.
+				// Approval waits stay in-process and user-input pauses are disabled —
+				// a supervisor node cannot park or block its workflow on a human.
+				h.executeRun(ctx, supAgent, ws, uid, subRunID, subConvID, agentInput, delegateHandlers, supEmit, invokeOpts{
+					delegateToolDefs: delegateToolDefs,
+					noApprovalPark:   true,
+					disableUserInput: true,
+				})
 
 				var subOutput string
 				_ = h.pool.QueryRow(context.Background(),
@@ -2321,570 +2372,6 @@ func edgesTargeting(targetNodeID string, adj map[string][]wfEdge) []wfEdge {
 	return result
 }
 
-// executeSupervisorRun is like executeRun but also presents delegate tool definitions
-// to the LLM so the supervisor agent can call team agents by name.
-// delegateToolDefs are added to the agent's normal tool list before the first LLM call.
-// delegateHandlers intercept those tool calls and execute the corresponding agent.
-func (h *InvokeHandler) executeSupervisorRun(
-	ctx context.Context,
-	a *domain.Agent,
-	ws, uid, runID, convID, input string,
-	delegateToolDefs []provider.ToolDefinition,
-	delegateHandlers map[string]func(context.Context, json.RawMessage) string,
-	emit func(string),
-) {
-	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer dbCancel()
-
-	runCompleted := false
-	runErrMsg := "supervisor run terminated unexpectedly"
-	defer func() {
-		if !runCompleted {
-			h.runs.failRun(dbCtx, runID, runErrMsg) //nolint:errcheck
-		}
-		h.cleanupEphemeralResources(context.Background(), runID)
-	}()
-
-	sseEmitOrNil := func(s string) {
-		if emit != nil {
-			emit(s)
-		}
-	}
-	sseErr := func(msg string) { sseEmitOrNil(sse.Error(msg)) }
-
-	llm, err := h.runs.providerFor(ctx, ws, a.Provider)
-	if err != nil {
-		runErrMsg = err.Error()
-		sseErr(err.Error())
-		return
-	}
-
-	contextChunks := []agentprompt.ContextChunk{}
-
-	var supConnSettings connectorSettings
-	if a.ContextRetrievalEnabled {
-		supConnSettings, _ = h.runs.agentConnectorSettings(ctx, a.ID)
-	}
-
-	if a.ContextRetrievalEnabled && !a.AgenticRAG {
-		start := time.Now()
-		var queryEmbedding []float32
-		if len(supConnSettings.IDs) > 0 {
-			queryEmbedding = tryEmbed(ctx, h.cfg, llm, input)
-		}
-		chunks, err := contextretrieval.NewRetriever(h.pool).Retrieve(ctx, ws, supConnSettings.IDs, queryEmbedding, supConnSettings.MaxChunks, supConnSettings.MinScore, input)
-		if err == nil {
-			for _, c := range chunks {
-				contextChunks = append(contextChunks, formatChunk(c))
-			}
-		}
-		h.runs.createStep(ctx, runID, domain.StepContextRetrieval, //nolint:errcheck
-			map[string]any{"connector_ids": supConnSettings.IDs},
-			map[string]any{"count": len(contextChunks)},
-			start, 0, "", errString(err))
-	}
-
-	var supConvCompaction string
-	_ = h.pool.QueryRow(ctx,
-		`SELECT COALESCE(compaction, '') FROM conversations WHERE id=$1::uuid`,
-		convID).Scan(&supConvCompaction)
-
-	supHistLimit := 4
-	if supConvCompaction == "" {
-		supHistLimit = a.MaxHistoryMessages
-		if supHistLimit <= 0 {
-			supHistLimit = 20
-		}
-	}
-	historyRows, err := h.pool.Query(ctx,
-		`SELECT role, content, COALESCE(tool_call_id,''), COALESCE(tool_name,''), COALESCE(tool_calls::text,'')
-		 FROM messages WHERE conversation_id=$1::uuid
-		 ORDER BY created_at DESC LIMIT $2`,
-		convID, supHistLimit)
-	if err != nil {
-		runErrMsg = err.Error()
-		sseErr("failed to load conversation history")
-		return
-	}
-	defer historyRows.Close()
-	history := []provider.Message{}
-	for historyRows.Next() {
-		var role, content, toolCallID, toolName, toolCallsRaw string
-		if historyRows.Scan(&role, &content, &toolCallID, &toolName, &toolCallsRaw) == nil && (role == "user" || role == "assistant" || role == "tool") {
-			content = injectActionLog(role, content, toolCallsRaw)
-			if len(content) > 800 {
-				content = content[:800] + "…[truncated]"
-			}
-			history = append(history, provider.Message{Role: role, Content: content, ToolCallID: toolCallID, ToolName: toolName})
-		}
-	}
-	// Reverse: query returned newest-first, LLM needs oldest-first.
-	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
-		history[i], history[j] = history[j], history[i]
-	}
-
-	// Regular agent tools + delegate tools merged into one list.
-	regularToolDefs, dbTools, _ := loadAgentToolDefs(ctx, h.pool, a.ID)
-
-	// Inject the live delegate tool listing so the LLM knows exactly which team
-	// agents are available and their exact tool names — without requiring the
-	// supervisor's Instructions to hardcode them. The "(injected at runtime)"
-	// label signals to the model that these names are dynamic.
-	supervisorInstructions := a.Instructions
-	if len(delegateToolDefs) > 0 {
-		var delegateList strings.Builder
-		for _, td := range delegateToolDefs {
-			delegateList.WriteString("- **" + td.Name + "**: " + td.Description + "\n")
-		}
-		supervisorInstructions += "\n\n## Available Team Agents (injected at runtime)\n" +
-			"You MUST delegate work to your team agents using the tools below — do NOT produce a final answer without calling at least one team agent first.\n\n" +
-			delegateList.String() +
-			"\nCall each relevant team agent with a specific task string. After receiving all outputs, synthesize them into a comprehensive final response."
-	}
-
-	skills, _ := loadAgentSkills(ctx, h.pool, a.ID)
-	skillCatalog, _ := loadWorkspaceSkillCatalog(ctx, h.pool, ws)
-	supervisorInstructions += onDemandSkillsInstructions(skills.OnDemand)
-	if a.ContextRetrievalEnabled && a.AgenticRAG {
-		supervisorInstructions += "\n\nTo look up information from your connected knowledge sources, use the `native_retrieve_context` tool. Always call it before answering questions that require specific knowledge from your documents, codebase, or indexed files. Do NOT call any tool named \"search\" — use `native_retrieve_context` instead."
-	}
-	// Discovery is workspace-wide, matching executeRun/Start, so native_list_tools and
-	// native_list_agent_skills (if attached to a supervisor agent) don't just report empty.
-	toolCatalogDefs, toolCatalog, _ := loadWorkspaceToolCatalog(ctx, h.pool, ws)
-	supToolSummaries := make(map[string]string, len(toolCatalogDefs)+len(regularToolDefs))
-	for _, td := range toolCatalogDefs {
-		supToolSummaries[td.Name] = td.Description
-	}
-	for _, td := range regularToolDefs {
-		if _, ok := supToolSummaries[td.Name]; !ok {
-			supToolSummaries[td.Name] = td.Description
-		}
-	}
-	supSkillSummaries := map[string]string{}
-	supSkillToolMap := map[string]string{}
-	for name, skill := range skillCatalog {
-		supSkillSummaries[name] = skill.Description
-		for _, toolName := range skill.RequiredToolNames {
-			supSkillToolMap[toolName] = name
-		}
-	}
-	supActiveSkills := map[string]bool{}
-	supHasCallAgent := false
-	supHasCreateAgent := false
-	for _, td := range regularToolDefs {
-		switch td.Name {
-		case "native_call_agent":
-			supHasCallAgent = true
-		case "native_create_agent":
-			supHasCreateAgent = true
-		}
-	}
-	supMessages, supStableSystem := agentprompt.NewBuilder().Build(agentprompt.BuildRequest{
-		SystemInstructions: supervisorInstructions,
-		Skills:             skills.Always,
-		ContextChunks:      contextChunks,
-		History:            history,
-		MemoryEnabled:      a.MemoryEnabled,
-		MemorySaveMode:     a.MemorySaveMode,
-		HasCallAgent:       supHasCallAgent || len(delegateToolDefs) > 0,
-		HasCreateAgent:     supHasCreateAgent,
-		ConvCompaction:     supConvCompaction,
-	})
-	regularToolDefs, dbTools = ensureMemoryToolDefs(regularToolDefs, dbTools)
-	if a.ContextRetrievalEnabled && a.AgenticRAG {
-		if rt, err := h.registry.Get("native_retrieve_context"); err == nil {
-			def := rt.Definition()
-			regularToolDefs = append(regularToolDefs, provider.ToolDefinition{Name: def.Name, Description: def.Description, InputSchema: def.InputSchema})
-			dbTools[def.Name] = def
-		}
-	}
-	toolDefs := append(regularToolDefs, delegateToolDefs...)
-
-	supRootTraceID := runID
-	var supCallAgentFn func(ctx context.Context, agentID, task string) (string, error)
-	if 0 < maxInvokeDepth {
-		supCallAgentFn = func(ctx context.Context, agentID, task string) (string, error) {
-			return h.runAgentInline(ctx, ws, uid, agentID, task, runID, supRootTraceID, 1)
-		}
-	}
-
-	var messages []provider.Message
-	activeMemoryIDs := map[string]bool{}
-	execCtx := tools.ExecutionContext{
-		WorkspaceID:       ws,
-		AgentID:           a.ID,
-		AgentProvider:     a.Provider,
-		AgentModel:        a.Model,
-		UserID:            uid,
-		RunID:             runID,
-		ConversationID:    convID,
-		ConnectorIDs:      supConnSettings.IDs,
-		ToolSummaries:     supToolSummaries,
-		AlwaysActiveTools: metaToolNameSet(),
-		InvokeDepth:       0,
-		RootRunID:         supRootTraceID,
-		CallAgent:         supCallAgentFn,
-		Embed: func(ctx context.Context, text string) ([]float32, error) {
-			v := tryEmbed(ctx, h.cfg, llm, text)
-			return v, nil
-		},
-		RunWorkflow: func(ctx context.Context, workflowID, input string) (string, error) {
-			return h.runWorkflowInline(ctx, ws, uid, workflowID, input, runID)
-		},
-		CompressText: func(ctx context.Context, text string) (string, error) {
-			ch, cerr := llm.Complete(ctx, provider.CompletionRequest{
-				Model: a.Model,
-				Messages: []provider.Message{
-					{Role: "system", Content: "You are a memory compressor. Return ONLY the compressed memory — no preamble, no explanation."},
-					{Role: "user", Content: "Compress this to ≤100 words, preserving all key facts:\n" + text},
-				},
-				Temperature: 0,
-				MaxTokens:   200,
-				Stream:      true,
-			})
-			if cerr != nil {
-				return "", cerr
-			}
-			var result strings.Builder
-			for event := range ch {
-				if event.Type == provider.EventDelta {
-					result.WriteString(event.Delta)
-				}
-				if event.Type == provider.EventError {
-					return "", event.Error
-				}
-			}
-			return strings.TrimSpace(result.String()), nil
-		},
-		SearchMemory: func(ctx context.Context, query string, limit int) ([]domain.Memory, error) {
-			embedding := memoryEmbedding(ctx, llm, query)
-			return memory.NewEngine(h.pool).Retrieve(ctx, a.ID, ws, convID, embedding, limit, a.MinRelevanceScore)
-		},
-		RequestMemory: func(memories []domain.Memory) bool {
-			return appendMemoryContext(messages, memories, activeMemoryIDs) > 0
-		},
-		SkillSummaries: supSkillSummaries,
-		SkillToolMap:   supSkillToolMap,
-		RequestTool:    func(name string) {}, // no-op: all tools are always visible in supervisor runs
-		RequestSkill: func(name string) bool {
-			skill, ok := skills.OnDemand[name]
-			if !ok {
-				skill, ok = skillCatalog[name]
-			}
-			if !ok || supActiveSkills[name] {
-				return false
-			}
-			supActiveSkills[name] = true
-			if len(messages) > 0 {
-				messages[0].Content += "\n\n[Skill: " + skill.Name + "]\n" + skill.Content
-			}
-			h.runs.createStep(ctx, runID, domain.StepToolCall, map[string]any{"skill": skill.Name}, map[string]any{"activated": true}, time.Now(), 0, "native_request_skill", "") //nolint:errcheck
-			return true
-		},
-	}
-	_ = h.pool.QueryRow(ctx, `SELECT COALESCE(channel_session_id::text,'') FROM runs WHERE id=$1::uuid`, runID).Scan(&execCtx.ChannelSessionID)
-	execCtx.SendMessage = nil      // supervisor runs are always embedded inside a workflow, never directly gateway-dispatched
-	execCtx.WaitForUserInput = nil // supervisor runs cannot pause for user input
-	// Supervisor runs are workflow children: sessions block in-process (their
-	// parent's graph walk lives on this stack, so durable parking is impossible).
-	execCtx.WaitForSession = h.blockingSessionWait(runID, sseEmitOrNil)
-
-	sseEmitOrNil(sse.RunStarted(runID))
-
-	messages = supMessages
-	stepCount := 0
-	totalInput, totalOutput := 0, 0
-	memorySaveCalled := false
-	supFabricationRetried := false
-	actionLog := []string{}
-
-	for {
-		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
-			messages = trimmed
-			sseEmitOrNil(sse.Delta(fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
-		}
-
-		modelStart := time.Now()
-		completion, err := completeWithEmptyRetry(ctx, llm, provider.CompletionRequest{
-			Model:               a.Model,
-			Messages:            messages,
-			Tools:               toolDefs,
-			Temperature:         a.Temperature,
-			MaxTokens:           a.MaxTokens,
-			Stream:              true,
-			StableSystemContent: supStableSystem,
-		}, func(delta string) {
-			sseEmitOrNil(sse.Delta(delta))
-		}, "Return a direct, non-empty reply. Do not explain limitations. Reply as Deepak would naturally reply, and make sure the message is not blank.")
-		if err != nil {
-			runErrMsg = err.Error()
-			sseErr(err.Error())
-			return
-		}
-
-		reply := completion.Reply
-		usage := completion.Usage
-		pendingCalls := completion.ToolCalls
-
-		totalInput += usage.InputTokens
-		totalOutput += usage.OutputTokens
-		h.runs.createStep(ctx, runID, domain.StepModelCall, //nolint:errcheck
-			map[string]any{"provider": a.Provider, "model": a.Model, "messages": len(messages)},
-			map[string]any{"content": reply, "tool_calls": len(pendingCalls)},
-			modelStart, usage.InputTokens+usage.OutputTokens, "", "")
-
-		if len(pendingCalls) == 0 {
-			// Fabrication guard — see the executeRun loop for rationale.
-			if fabricatesActionLog(reply) {
-				if !supFabricationRetried {
-					supFabricationRetried = true
-					messages[0].Content += fabricatedActionCorrection
-					continue
-				}
-				reply = fabricatedActionReply
-			}
-			if strings.TrimSpace(reply) == "" {
-				msg := "model returned an empty response"
-				runErrMsg = msg
-				sseErr(msg)
-				return
-			}
-			var actionLogJSON any
-			if len(actionLog) > 0 {
-				b, _ := json.Marshal(actionLog)
-				actionLogJSON = b
-			}
-			h.pool.Exec(ctx, //nolint:errcheck
-				`INSERT INTO messages(id,conversation_id,role,content,tool_calls,tokens) VALUES($1::uuid,$2::uuid,'assistant',$3,$4::jsonb,$5)`,
-				uuid.NewString(), convID, reply, actionLogJSON, usage.OutputTokens)
-			h.runs.createStep(ctx, runID, domain.StepFinalResponse, //nolint:errcheck
-				map[string]any{},
-				map[string]any{"content": reply},
-				time.Now(), usage.OutputTokens, "", "")
-			runCompleted = true
-			costUSD := cost.Estimate(a.Provider, a.Model, totalInput, totalOutput)
-			h.pool.Exec(dbCtx, //nolint:errcheck
-				`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
-				runID, reply, totalInput, totalOutput, costUSD)
-			sseEmitOrNil(sse.RunCompleted(runID, totalInput, totalOutput, costUSD))
-			if shouldRunMemoryExtractor(a, memorySaveCalled) {
-				aCopy, llmCopy, replySnap, inputSnap := a, llm, reply, input
-				go func() {
-					start := time.Now()
-					count, err := runMemoryExtractor(context.Background(), h.pool, llmCopy, aCopy, ws, uid, convID, runID, inputSnap, replySnap)
-					h.runs.createStep(context.Background(), runID, domain.StepToolCall, //nolint:errcheck
-						map[string]any{"tool": "memory_extractor"},
-						map[string]any{"saved": count},
-						start, 0, "memory_extractor", errString(err))
-				}()
-			}
-			{
-				threshold := a.CompactionThreshold
-				if threshold <= 0 {
-					threshold = 6
-				}
-				tokenThreshold := a.CompactionTokenThreshold
-				if tokenThreshold <= 0 {
-					tokenThreshold = 3000
-				}
-				if supConvCompaction != "" || len(history) >= threshold || totalInput > tokenThreshold {
-					llmCopy, modelSnap, convSnap, compSnap := llm, a.Model, convID, supConvCompaction
-					go func() {
-						sseEmitOrNil(`{"type":"compacting","status":"start"}`)
-						newCompaction, err := compactConversation(context.Background(), h.pool, llmCopy, modelSnap, convSnap, compSnap)
-						if err != nil || newCompaction == "" {
-							sseEmitOrNil(`{"type":"compacting","status":"done"}`)
-							return
-						}
-						h.pool.Exec(context.Background(), //nolint:errcheck
-							`UPDATE conversations SET compaction=$2, updated_at=NOW() WHERE id=$1::uuid`,
-							convSnap, newCompaction)
-						sseEmitOrNil(`{"type":"compacting","status":"done"}`)
-					}()
-				}
-			}
-			return
-		}
-
-		messages = append(messages, provider.Message{
-			Role:      "assistant",
-			Content:   reply,
-			ToolCalls: pendingCalls,
-		})
-
-		// Pre-compute: if there are multiple delegate calls in this batch, run them concurrently.
-		parallelDelegateResults := map[string]string{}
-		{
-			var delegateCallsInBatch []provider.ToolCall
-			for _, call := range pendingCalls {
-				if _, isDelegate := delegateHandlers[call.Name]; isDelegate {
-					delegateCallsInBatch = append(delegateCallsInBatch, call)
-				}
-			}
-			if len(delegateCallsInBatch) > 1 {
-				type delegateOut struct {
-					id      string
-					content string
-					latency int
-				}
-				resultsCh := make(chan delegateOut, len(delegateCallsInBatch))
-				for _, call := range delegateCallsInBatch {
-					capturedCall := call
-					capturedHandler := delegateHandlers[capturedCall.Name]
-					go func() {
-						start := time.Now()
-						output := capturedHandler(ctx, capturedCall.Input)
-						resultsCh <- delegateOut{id: capturedCall.ID, content: output, latency: int(time.Since(start).Milliseconds())}
-					}()
-				}
-				for range delegateCallsInBatch {
-					out := <-resultsCh
-					parallelDelegateResults[out.id] = out.content
-				}
-			}
-		}
-
-		for _, call := range pendingCalls {
-			if call.Name == "native_save_memory" {
-				memorySaveCalled = true
-			}
-			// Delegate tool — execute the team agent and return its output.
-			if handler, isDelegate := delegateHandlers[call.Name]; isDelegate {
-				sseEmitOrNil(sse.ToolStarted(call.ID, call.Name, call.Input))
-				delegateStart := time.Now()
-				var delegateOutput string
-				if precomputed, ok := parallelDelegateResults[call.ID]; ok {
-					delegateOutput = precomputed
-				} else {
-					delegateOutput = handler(ctx, call.Input)
-				}
-				actionLog = append(actionLog, summarizeToolCall(call.Name, call.Input, ""))
-				h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
-					map[string]any{"tool": call.Name, "input": call.Input},
-					map[string]any{"output": delegateOutput},
-					delegateStart, 0, call.Name, "")
-				sseEmitOrNil(sse.ToolCall(call.ID, call.Name, call.Input, []byte(delegateOutput), int(time.Since(delegateStart).Milliseconds())))
-				messages = append(messages, provider.Message{
-					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: delegateOutput,
-				})
-				stepCount++
-				if stepCount > a.MaxSteps {
-					runErrMsg = "max steps exceeded"
-					sseErr("max steps exceeded")
-					return
-				}
-				continue
-			}
-
-			dbTool, toolExists := resolveDBTool(call.Name, dbTools, toolCatalog)
-
-			if toolExists && dbTool.RequiresApproval {
-				arID := uuid.NewString()
-				h.pool.Exec(ctx, //nolint:errcheck
-					`INSERT INTO approval_requests(id,run_id,tool_name,tool_input,status)VALUES($1::uuid,$2::uuid,$3,$4::jsonb,'pending')`,
-					arID, runID, call.Name, call.Input)
-				h.pool.Exec(ctx, `UPDATE runs SET status='approval_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
-
-				ch := RegisterApprovalWait(runID)
-				sseEmitOrNil(sse.ApprovalRequired(call.Name, call.Input, arID))
-
-				// Supervisor runs are workflow children — their parent's graph walk
-				// lives on this process's stack, so parking is not possible here.
-				decision, got := awaitApprovalDecision(runID, ch, 10*time.Minute)
-				if !got {
-					runErrMsg = "approval timed out"
-					sseErr("approval timed out after 10 minutes")
-					return
-				}
-				h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, runID) //nolint:errcheck
-
-				if decision.Decision == "rejected" {
-					messages = append(messages, provider.Message{Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: "Tool call rejected by user."})
-					continue
-				}
-			}
-
-			sseEmitOrNil(sse.ToolStarted(call.ID, call.Name, call.Input))
-			if execCtx.SendMessage != nil {
-				if label := progressLabel(call.Name); label != "" {
-					execCtx.SendMessage(ctx, label) //nolint:errcheck
-				}
-			}
-
-			result, execErr := invokeToolByType(ctx, h.pool, h.cfg, h.executor, execCtx, dbTool, toolExists, call.Name, call.Input)
-			var resultContent, errMsg string
-			latencyMs := 0
-			if result != nil {
-				latencyMs = result.LatencyMs
-				if result.Error != "" {
-					errMsg = result.Error
-					resultContent = fmt.Sprintf(`{"error":%q}`, result.Error)
-				} else {
-					b, _ := json.Marshal(result.Output)
-					resultContent = string(b)
-				}
-			} else if execErr != nil {
-				errMsg = execErr.Error()
-				resultContent = fmt.Sprintf(`{"error":%q}`, execErr.Error())
-			}
-			if !execCtx.AlwaysActiveTools[call.Name] {
-				actionLog = append(actionLog, summarizeToolCall(call.Name, call.Input, errMsg))
-			}
-
-			h.runs.createStep(ctx, runID, domain.StepToolCall, //nolint:errcheck
-				map[string]any{"tool": call.Name, "input": call.Input},
-				map[string]any{"output": resultContent},
-				time.Now(), 0, call.Name, errMsg)
-
-			sseEmitOrNil(sse.ToolCall(call.ID, call.Name, call.Input, []byte(resultContent), latencyMs))
-
-			messages = append(messages, provider.Message{
-				Role:       "tool",
-				ToolCallID: call.ID,
-				ToolName:   call.Name,
-				Content:    resultContent,
-				IsError:    errMsg != "",
-			})
-
-			stepCount++
-			if stepCount > a.MaxSteps {
-				runErrMsg = "max steps exceeded"
-				sseErr("max steps exceeded")
-				return
-			}
-		}
-		// Reload tool definitions to pick up tools created or attached mid-run.
-		if freshAll, freshDB, err := loadAgentToolDefs(ctx, h.pool, a.ID); err == nil {
-			freshAll, freshDB = ensureMemoryToolDefs(freshAll, freshDB)
-			if a.ContextRetrievalEnabled && a.AgenticRAG {
-				if rt, err := h.registry.Get("native_retrieve_context"); err == nil {
-					def := rt.Definition()
-					freshAll = append(freshAll, provider.ToolDefinition{Name: def.Name, Description: def.Description, InputSchema: def.InputSchema})
-					freshDB[def.Name] = def
-				}
-			}
-			regularToolDefs, dbTools = freshAll, freshDB
-			toolDefs = append(regularToolDefs, delegateToolDefs...)
-		}
-		// Refresh the workspace catalogs too, so tools/skills created mid-run stay
-		// discoverable via native_list_tools/native_list_agent_skills.
-		if freshCatalogDefs, freshCatalog, err := loadWorkspaceToolCatalog(ctx, h.pool, ws); err == nil {
-			toolCatalog = freshCatalog
-			for _, td := range freshCatalogDefs {
-				supToolSummaries[td.Name] = td.Description
-			}
-		}
-		if freshSkillCatalog, err := loadWorkspaceSkillCatalog(ctx, h.pool, ws); err == nil {
-			skillCatalog = freshSkillCatalog
-			for name, skill := range skillCatalog {
-				supSkillSummaries[name] = skill.Description
-				for _, toolName := range skill.RequiredToolNames {
-					supSkillToolMap[toolName] = name
-				}
-			}
-		}
-	}
-}
 
 // sanitizeToolName converts an agent name into a valid LLM tool name (lowercase, underscores).
 func sanitizeToolName(name string) string {
