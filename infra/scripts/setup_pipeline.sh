@@ -8,8 +8,8 @@
 #     GITHUB_TOKEN configured
 #   - An LLM provider credential configured in the workspace
 #   - Repos onboarded via: go run ./services/api/cmd/catalog-ingest -repo ... -workspace ...
-#   - (Optional) Atlassian MCP server connected via the OAuth flow; attach its
-#     jira/confluence tools to the orchestrator afterwards
+#   - (Optional) Atlassian MCP server connected via the OAuth flow; the
+#     orchestrator self-attaches its jira/confluence tools at run time
 #
 # The three pipeline agents (Jira Pipeline Orchestrator, Code Review Agent,
 # Docs Map Maintainer) are seeded automatically as protected system agents —
@@ -112,8 +112,9 @@ cat <<EOF
 Remaining manual steps:
  1. Atlassian: create the MCP server (url https://mcp.atlassian.com/v1/mcp),
     click "Connect (OAuth)" on the MCP Servers page (or POST
-    /api/v1/mcp-servers/{id}/oauth/start), then attach the synced jira
-    comment/transition tools to agent $ORCH_ID.
+    /api/v1/mcp-servers/{id}/oauth/start). The orchestrator self-attaches the
+    synced jira tools it needs at run time; pre-attaching them to agent
+    $ORCH_ID in the UI is optional.
  2. Point a Jira webhook (issue created/updated) at the jira trigger URL above.
  3. Point a GitHub org/repo webhook (pull_request events) at the github trigger URL.
  4. Weekly docs-map refresh: schedule (e.g. Railway cron)

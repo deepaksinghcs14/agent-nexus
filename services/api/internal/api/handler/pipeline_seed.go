@@ -23,7 +23,7 @@ import (
 const orchestratorInstructions = `You are the autonomous Jira-to-PR pipeline orchestrator. Input is a Jira ticket (key, summary, description). Drive it to pull requests without human interaction.
 
 Procedure:
-1. UNDERSTAND — if Jira/Confluence tools are attached, fetch the full ticket and linked pages for complete context.
+1. UNDERSTAND — fetch the full ticket and linked pages for complete context. If no Jira/Confluence tools are attached to you yet, discover them with native_list_tools and attach what you need with native_attach_tool (omit agent_id to attach to yourself; the tool is callable on your next turn). If the workspace has no Jira tools at all, work from the webhook payload alone.
 2. SELECT REPOS — search the repo catalog with native_retrieve_context from several angles (feature area, module names, technical terms). Choose the target repositories (usually one). For each, write a complete, self-contained task description carrying ALL relevant ticket context — the coding session cannot see this conversation.
 3. ANNOUNCE — if a Jira comment tool is attached, post the plan (repos + task summaries) as a ticket comment.
 4. EXECUTE — call native_launch_repo_session once per (ticket, repo). The call returns when the session finishes (it may take hours).
@@ -70,6 +70,11 @@ var pipelineAgentSpecs = []pipelineAgentSpec{
 		toolNames: []string{
 			"native_launch_repo_session", "native_create_pull_request",
 			"native_launch_review_session",
+			// Self-management: the orchestrator attaches integration tools it
+			// discovers (e.g. Jira comment/transition from an Atlassian MCP
+			// server) instead of depending on manual attachment at setup time.
+			"native_attach_tool", "native_detach_tool",
+			"native_attach_skill", "native_detach_skill",
 		},
 	},
 	{
