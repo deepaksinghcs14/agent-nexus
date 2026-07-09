@@ -1,17 +1,18 @@
 'use client'
 
-// Assumptions:
-// - @xyflow/react v12 is installed
+// Workflow Studio — visual builder for workflow graphs.
+// - @xyflow/react v12 canvas, house design tokens (Paper & Phosphor)
 // - workflowsAPI.getGraph / saveGraph hit /api/v1/workflows/:id/graph
 // - invokeAPI.workflow hits /api/v1/invoke/workflows/:id with { input, stream: true }
-// - SSE node events carry node_id, node_name, node_type, result fields (added to SSEEvent type)
+// - SSE node events carry node_id, node_name, node_type, result fields
 
-import React, { use, useCallback, useEffect, useRef, useState, DragEvent } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import React, { use, useCallback, useEffect, useMemo, useRef, useState, DragEvent } from 'react'
+import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ReactFlow,
   Background,
+  BackgroundVariant,
   Controls,
   MiniMap,
   addEdge,
@@ -33,20 +34,45 @@ import {
   Save,
   Play,
   GitBranch,
-  Merge,
+  GitMerge,
   RefreshCcw,
   X,
   ChevronRight,
   Loader2,
   LayoutTemplate,
-  ChevronDown,
-  ChevronUp,
   BookOpen,
   Zap,
+  Crown,
+  Bot,
+  Wrench,
+  Webhook as WebhookIcon,
+  MessagesSquare,
+  Split,
+  Flag,
+  CircleDot,
+  Send,
 } from 'lucide-react'
 import { TriggersPanel } from './TriggersPanel'
-import { workflowsAPI, agentsAPI, invokeAPI } from '@/lib/api'
-import type { Workflow, Agent, WorkflowGraph, WorkflowNode, WorkflowEdge, WorkflowNodeType, SSEEvent } from '@/types'
+import { workflowsAPI, agentsAPI, invokeAPI, toolsAPI, gatewayAPI } from '@/lib/api'
+import type { Workflow, Agent, Tool, GatewayChannel, WorkflowGraph, WorkflowNode, WorkflowEdge, WorkflowNodeType, SSEEvent } from '@/types'
+
+// ---------------------------------------------------------------------------
+// Node theme — one accent per node type, used for handles, icons, minimap.
+// Hex (not CSS vars) because React Flow needs concrete values in JS.
+// ---------------------------------------------------------------------------
+const NODE_THEME: Record<string, { accent: string; icon: React.ElementType; title: string; blurb: string }> = {
+  start:      { accent: '#10b981', icon: Play,           title: 'Start',      blurb: 'Entry point of every run' },
+  end:        { accent: '#f43f5e', icon: Flag,           title: 'End',        blurb: 'Finish; optionally deliver the result' },
+  agent:      { accent: '#534AB7', icon: Bot,            title: 'Agent',      blurb: 'Run an agent on the current input' },
+  supervisor: { accent: '#d97706', icon: Crown,          title: 'Supervisor', blurb: 'Coordinates team agents as tools' },
+  condition:  { accent: '#f59e0b', icon: Split,          title: 'Condition',  blurb: 'Branch on the previous output' },
+  parallel:   { accent: '#64748b', icon: GitBranch,      title: 'Parallel',   blurb: 'Fan out into concurrent branches' },
+  join:       { accent: '#64748b', icon: GitMerge,       title: 'Join',       blurb: 'Merge parallel branches' },
+  loop:       { accent: '#8b5cf6', icon: RefreshCcw,     title: 'Loop',       blurb: 'Repeat until a condition is met' },
+  tool:       { accent: '#14b8a6', icon: Wrench,         title: 'Tool',       blurb: 'Call one workspace tool directly' },
+  webhook:    { accent: '#0ea5e9', icon: WebhookIcon,    title: 'Webhook',    blurb: 'POST the output to an external URL' },
+  gateway:    { accent: '#ec4899', icon: MessagesSquare, title: 'Gateway',    blurb: 'Send the output as a chat message' },
+}
 
 // ---------------------------------------------------------------------------
 // Type augmentation for node data
@@ -85,11 +111,12 @@ function toRFNode(n: WorkflowNode, agents: Agent[]): Node<NodeData> {
 }
 
 function edgeColor(label?: string | null) {
-  if (label === 'yes') return '#22c55e'
-  if (label === 'no') return '#ef4444'
+  if (label === 'yes') return '#10b981'
+  if (label === 'no') return '#f43f5e'
   if (label === 'loop') return '#8b5cf6'
+  if (label === 'exit') return '#10b981'
   if (label === 'delegate') return '#d97706'
-  return '#534AB7'
+  return '#94a3b8'
 }
 
 function labelToSourceHandle(label?: string | null): string | undefined {
@@ -101,23 +128,32 @@ function labelToSourceHandle(label?: string | null): string | undefined {
   return undefined
 }
 
+// mkEdgeProps centralises the visual treatment of an edge for a given label
+// so every creation path (load, connect, template, relabel) looks identical.
+function mkEdgeProps(label?: string | null): Partial<Edge> {
+  const color = edgeColor(label)
+  const isDelegate = label === 'delegate'
+  return {
+    type: 'smoothstep',
+    animated: true,
+    zIndex: 1000,
+    label: label || undefined,
+    markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+    style: { stroke: color, strokeWidth: isDelegate ? 1.5 : 2, strokeDasharray: isDelegate ? '6 3' : undefined, opacity: 0.9 },
+    labelStyle: { fontSize: 10, fill: color, fontWeight: 700, fontFamily: 'var(--font-mono, monospace)' },
+    labelBgStyle: { fill: 'var(--wf-label-bg)', fillOpacity: 0.95 },
+    labelBgPadding: [4, 2] as [number, number],
+    labelBgBorderRadius: 4,
+  }
+}
+
 function toRFEdge(e: WorkflowEdge): Edge {
-  const color = edgeColor(e.label)
-  const sourceHandle = labelToSourceHandle(e.label)
-  const isDelegate = e.label === 'delegate'
   return {
     id: e.id || `e-${e.source_node_id}-${e.target_node_id}`,
     source: e.source_node_id,
     target: e.target_node_id,
-    sourceHandle: sourceHandle,
-    label: e.label || undefined,
-    type: 'smoothstep',
-    animated: true,
-    zIndex: 1000,
-    markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
-    style: { stroke: color, strokeWidth: isDelegate ? 2 : 2.5, strokeDasharray: isDelegate ? '6 3' : undefined },
-    labelStyle: { fontSize: 10, fill: color, fontWeight: 700 },
-    labelBgStyle: { fill: '#fff', fillOpacity: 0.9 },
+    sourceHandle: labelToSourceHandle(e.label),
+    ...mkEdgeProps(e.label),
   }
 }
 
@@ -125,207 +161,239 @@ function toRFEdge(e: WorkflowEdge): Edge {
 // Custom node components
 // ---------------------------------------------------------------------------
 
-function EndNode({ data }: NodeProps) {
-  const nodeData = data as NodeData
-  const glow = nodeData.status === 'running' ? '0 0 0 3px rgba(239,68,68,0.5)' : nodeData.status === 'done' ? '0 0 0 2px #22c55e' : 'none'
-  return (
-    <div style={{
-      width: 64, height: 64, borderRadius: '50%', background: '#ef4444',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: glow, position: 'relative', color: '#fff', fontSize: 11, fontWeight: 700,
-      fontFamily: 'Inter, sans-serif',
-    }}>
-      {nodeData.status === 'done' && (
-        <div style={{ position: 'absolute', top: -6, right: -6, background: '#22c55e', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>✓</div>
-      )}
-      End
-      <Handle type="target" position={Position.Left} style={{ background: '#ef4444', width: 10, height: 10, border: '2px solid #fff' }} />
-    </div>
-  )
+const HANDLE_CLS = '!w-3 !h-3 !border-2 !border-[var(--wf-label-bg)]'
+
+function statusRing(status?: string) {
+  if (status === 'running') return 'ring-2 ring-accent/60 shadow-[0_0_0_4px_rgba(83,74,183,0.12)]'
+  if (status === 'done') return 'ring-2 ring-good/60'
+  if (status === 'error') return 'ring-2 ring-crit/60'
+  return ''
 }
 
-function StartNode({ data }: NodeProps) {
-  const nodeData = data as NodeData
-  const glow = nodeData.status === 'running' ? '0 0 0 3px rgba(83,74,183,0.6)' : nodeData.status === 'done' ? '0 0 0 2px #22c55e' : 'none'
-  return (
-    <div style={{
-      width: 64, height: 64, borderRadius: '50%', background: '#22c55e',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      boxShadow: glow, position: 'relative', color: '#fff', fontSize: 11, fontWeight: 700,
-      fontFamily: 'Inter, sans-serif',
-    }}>
-      {nodeData.status === 'done' && (
-        <div style={{ position: 'absolute', top: -6, right: -6, background: '#22c55e', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>✓</div>
-      )}
-      Start
-      <Handle type="source" position={Position.Right} style={{ background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
-    </div>
-  )
+function StatusPip({ status }: { status?: string }) {
+  if (status === 'done') {
+    return (
+      <span className="absolute -top-2 -right-2 grid h-5 w-5 place-items-center rounded-full bg-good text-[10px] font-bold text-white shadow">✓</span>
+    )
+  }
+  if (status === 'running') {
+    return (
+      <span className="absolute -top-2 -right-2 grid h-5 w-5 place-items-center rounded-full bg-accent shadow">
+        <Loader2 size={11} className="animate-spin text-white" />
+      </span>
+    )
+  }
+  if (status === 'error') {
+    return (
+      <span className="absolute -top-2 -right-2 grid h-5 w-5 place-items-center rounded-full bg-crit text-[10px] font-bold text-white shadow">!</span>
+    )
+  }
+  return null
 }
 
-function AgentNode({ data }: NodeProps) {
-  const nodeData = data as NodeData
-  const borderColor = nodeData.status === 'running' ? '#534AB7' : nodeData.status === 'done' ? '#22c55e' : nodeData.status === 'error' ? '#ef4444' : '#534AB7'
-  const glow = nodeData.status === 'running' ? '0 0 0 3px rgba(83,74,183,0.45)' : 'none'
+// Shared card body for rectangular nodes.
+function NodeCard({
+  type, title, subtitle, status, selected, children, minWidth = 168,
+}: {
+  type: string; title: string; subtitle?: React.ReactNode; status?: string; selected?: boolean
+  children?: React.ReactNode; minWidth?: number
+}) {
+  const theme = NODE_THEME[type] ?? NODE_THEME.agent
+  const Icon = theme.icon
   return (
-    <div style={{
-      minWidth: 160, background: '#fff', border: `2px solid ${borderColor}`,
-      borderRadius: 10, padding: '10px 14px', fontFamily: 'Inter, sans-serif',
-      boxShadow: glow, position: 'relative',
-    }}>
-      {nodeData.status === 'done' && (
-        <div style={{ position: 'absolute', top: -7, right: -7, background: '#22c55e', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>✓</div>
-      )}
-      {nodeData.status === 'running' && (
-        <div style={{ position: 'absolute', top: -7, right: -7, background: '#534AB7', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: 8, height: 8, border: '1.5px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+    <div
+      className={`relative rounded-xl border bg-surface shadow-card transition-shadow ${statusRing(status)} ${selected ? 'border-accent/60' : 'border-border'}`}
+      style={{ minWidth }}
+    >
+      <StatusPip status={status} />
+      <div className="flex items-center gap-2.5 px-3.5 py-2.5">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg" style={{ background: `${theme.accent}18`, color: theme.accent }}>
+          <Icon size={14} />
+        </span>
+        <div className="min-w-0">
+          <div className="truncate text-xs font-semibold text-foreground">{title}</div>
+          {subtitle && <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{subtitle}</div>}
         </div>
-      )}
-      <Handle type="target" position={Position.Left} style={{ background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#1a1825', marginBottom: 4 }}>{nodeData.label}</div>
-      {nodeData.agent_model && (
-        <div style={{ display: 'flex', gap: 4 }}>
-          <span style={{ fontSize: 10, background: '#f1f0ff', color: '#534AB7', borderRadius: 4, padding: '1px 6px' }}>{nodeData.agent_model}</span>
-          {nodeData.agent_provider && <span style={{ fontSize: 10, background: '#f4f4f5', color: '#71717a', borderRadius: 4, padding: '1px 6px' }}>{nodeData.agent_provider}</span>}
-        </div>
-      )}
-      <Handle type="source" position={Position.Right} style={{ background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
-    </div>
-  )
-}
-
-function ConditionNode({ data }: NodeProps) {
-  const nodeData = data as NodeData
-  const expr = (nodeData.config?.expression as string) || 'condition'
-  const glow = nodeData.status === 'running' ? '0 0 0 3px rgba(245,158,11,0.5)' : 'none'
-  return (
-    <div style={{ position: 'relative', width: 100, height: 100, fontFamily: 'Inter, sans-serif' }}>
-      <div style={{
-        position: 'absolute', inset: 0,
-        transform: 'rotate(45deg)', background: '#fff',
-        border: '2px solid #f59e0b', borderRadius: 6,
-        boxShadow: glow,
-      }} />
-      <div style={{
-        position: 'absolute', inset: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexDirection: 'column', padding: 8,
-      }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: '#92400e', marginBottom: 2 }}>COND</div>
-        <div style={{ fontSize: 9, color: '#b45309', textAlign: 'center', maxWidth: 70, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{expr}</div>
       </div>
-      <Handle type="target" position={Position.Left} style={{ top: '50%', background: '#f59e0b', width: 10, height: 10, border: '2px solid #fff' }} />
-      <Handle type="source" id="yes" position={Position.Right} style={{ top: '50%', background: '#22c55e', width: 10, height: 10, border: '2px solid #fff' }} />
-      <Handle type="source" id="no" position={Position.Bottom} style={{ left: '50%', background: '#ef4444', width: 10, height: 10, border: '2px solid #fff' }} />
-      <div style={{ position: 'absolute', right: -22, top: '44%', fontSize: 9, color: '#22c55e', fontWeight: 700 }}>yes</div>
-      <div style={{ position: 'absolute', bottom: -18, left: '44%', fontSize: 9, color: '#ef4444', fontWeight: 700 }}>no</div>
+      {children}
     </div>
   )
 }
 
-function ParallelNode({ data }: NodeProps) {
-  const nodeData = data as NodeData
-  const glow = nodeData.status === 'running' ? '0 0 0 3px rgba(83,74,183,0.45)' : 'none'
+function StartNode({ data, selected }: NodeProps) {
+  const d = data as NodeData
+  const theme = NODE_THEME.start
+  const hasDelivery = false
+  void hasDelivery
   return (
-    <div style={{
-      width: 130, height: 44, background: '#f1f0ff', border: '2px solid #534AB7',
-      borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      gap: 8, fontFamily: 'Inter, sans-serif', boxShadow: glow,
-    }}>
-      <Handle type="target" position={Position.Left} style={{ background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#534AB7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="6" y1="3" x2="6" y2="15" /><path d="M21 3H3" /><path d="M12 3v18" /><path d="M3 21l4-4" /><path d="M21 21l-4-4" />
-      </svg>
-      <span style={{ fontSize: 11, fontWeight: 700, color: '#534AB7' }}>PARALLEL</span>
-      <Handle type="source" id="s1" position={Position.Right} style={{ top: '25%', background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
-      <Handle type="source" id="s2" position={Position.Right} style={{ top: '50%', background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
-      <Handle type="source" id="s3" position={Position.Right} style={{ top: '75%', background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
+    <div className={`relative flex items-center gap-2 rounded-full border bg-surface py-2 pl-2.5 pr-4 shadow-card ${statusRing(d.status)} ${selected ? 'border-accent/60' : 'border-border'}`}>
+      <StatusPip status={d.status} />
+      <span className="grid h-7 w-7 place-items-center rounded-full" style={{ background: `${theme.accent}18`, color: theme.accent }}>
+        <Play size={13} />
+      </span>
+      <span className="text-xs font-semibold text-foreground">Start</span>
+      <Handle type="source" position={Position.Right} className={HANDLE_CLS} style={{ background: theme.accent }} />
     </div>
   )
 }
 
-function JoinNode({ data }: NodeProps) {
-  const nodeData = data as NodeData
-  const glow = nodeData.status === 'running' ? '0 0 0 3px rgba(83,74,183,0.45)' : 'none'
+function EndNode({ data, selected }: NodeProps) {
+  const d = data as NodeData
+  const theme = NODE_THEME.end
+  const cfg = d.config || {}
+  const deliversWebhook = !!(cfg.webhook_url as string)
+  const deliversGateway = !!(cfg.gateway_channel_id as string)
   return (
-    <div style={{
-      width: 130, height: 44, background: '#f1f0ff', border: '2px solid #534AB7',
-      borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      gap: 8, fontFamily: 'Inter, sans-serif', boxShadow: glow,
-    }}>
-      <Handle type="target" id="t1" position={Position.Left} style={{ top: '25%', background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
-      <Handle type="target" id="t2" position={Position.Left} style={{ top: '50%', background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
-      <Handle type="target" id="t3" position={Position.Left} style={{ top: '75%', background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#534AB7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 12H3" /><path d="M3 3l4 4" /><path d="M3 21l4-4" /><line x1="18" y1="3" x2="18" y2="21" />
-      </svg>
-      <span style={{ fontSize: 11, fontWeight: 700, color: '#534AB7' }}>JOIN</span>
-      <Handle type="source" position={Position.Right} style={{ background: '#534AB7', width: 10, height: 10, border: '2px solid #fff' }} />
+    <div className={`relative flex items-center gap-2 rounded-full border bg-surface py-2 pl-2.5 pr-4 shadow-card ${statusRing(d.status)} ${selected ? 'border-accent/60' : 'border-border'}`}>
+      <StatusPip status={d.status} />
+      <span className="grid h-7 w-7 place-items-center rounded-full" style={{ background: `${theme.accent}18`, color: theme.accent }}>
+        <Flag size={13} />
+      </span>
+      <span className="text-xs font-semibold text-foreground">End</span>
+      {(deliversWebhook || deliversGateway) && (
+        <span className="flex items-center gap-1 text-muted-foreground">
+          {deliversWebhook && <WebhookIcon size={11} style={{ color: NODE_THEME.webhook.accent }} />}
+          {deliversGateway && <MessagesSquare size={11} style={{ color: NODE_THEME.gateway.accent }} />}
+        </span>
+      )}
+      <Handle type="target" position={Position.Left} className={HANDLE_CLS} style={{ background: theme.accent }} />
     </div>
   )
 }
 
-function LoopNode({ data }: NodeProps) {
-  const nodeData = data as NodeData
-  const expr = (nodeData.config?.exit_condition as string) || 'exit condition'
-  const glow = nodeData.status === 'running' ? '0 0 0 3px rgba(83,74,183,0.45)' : 'none'
+function AgentNode({ data, selected }: NodeProps) {
+  const d = data as NodeData
   return (
-    <div style={{
-      minWidth: 150, background: '#fff', border: '2px solid #8b5cf6',
-      borderRadius: 10, padding: '10px 14px', fontFamily: 'Inter, sans-serif',
-      boxShadow: glow, position: 'relative',
-    }}>
-      <Handle type="target" position={Position.Top} style={{ left: '50%', background: '#8b5cf6', width: 10, height: 10, border: '2px solid #fff' }} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" />
-        </svg>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6' }}>LOOP</span>
+    <NodeCard
+      type="agent"
+      title={d.label}
+      status={d.status}
+      selected={selected}
+      subtitle={d.agent_model
+        ? <span className="font-mono">{d.agent_model}{d.agent_provider ? ` · ${d.agent_provider}` : ''}</span>
+        : <span className="text-warn">no agent assigned</span>}
+    >
+      <Handle type="target" position={Position.Left} className={HANDLE_CLS} style={{ background: NODE_THEME.agent.accent }} />
+      <Handle type="source" position={Position.Right} className={HANDLE_CLS} style={{ background: NODE_THEME.agent.accent }} />
+    </NodeCard>
+  )
+}
+
+function SupervisorNode({ data, selected }: NodeProps) {
+  const d = data as NodeData
+  return (
+    <NodeCard
+      type="supervisor"
+      title={d.label}
+      status={d.status}
+      selected={selected}
+      subtitle={d.agent_model
+        ? <span className="font-mono">{d.agent_model}{d.agent_provider ? ` · ${d.agent_provider}` : ''}</span>
+        : <span className="text-warn">no agent assigned</span>}
+    >
+      <Handle type="target" position={Position.Left} className={HANDLE_CLS} style={{ background: NODE_THEME.supervisor.accent }} />
+      <Handle type="source" id="forward" position={Position.Right} className={HANDLE_CLS} style={{ background: NODE_THEME.supervisor.accent }} />
+      <Handle type="source" id="delegate" position={Position.Bottom} className={HANDLE_CLS} style={{ background: '#92400e' }} />
+      <div className="pointer-events-none absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap font-mono text-[9px] font-bold" style={{ color: NODE_THEME.supervisor.accent }}>
+        delegate ↓
       </div>
-      <div style={{ fontSize: 9, color: '#a78bfa', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{expr}</div>
-      <Handle type="source" id="continue" position={Position.Left} style={{ top: '50%', background: '#8b5cf6', width: 10, height: 10, border: '2px solid #fff' }} />
-      <Handle type="source" id="exit" position={Position.Right} style={{ top: '50%', background: '#22c55e', width: 10, height: 10, border: '2px solid #fff' }} />
-      <div style={{ position: 'absolute', left: -28, top: '44%', fontSize: 9, color: '#8b5cf6' }}>↩ cont</div>
-      <div style={{ position: 'absolute', right: -28, top: '44%', fontSize: 9, color: '#22c55e' }}>exit →</div>
-    </div>
+    </NodeCard>
   )
 }
 
-function SupervisorNode({ data }: NodeProps) {
-  const nodeData = data as NodeData
-  const borderColor = nodeData.status === 'done' ? '#22c55e' : nodeData.status === 'error' ? '#ef4444' : '#d97706'
-  const glow = nodeData.status === 'running' ? '0 0 0 3px rgba(217,119,6,0.45)' : 'none'
+function ConditionNode({ data, selected }: NodeProps) {
+  const d = data as NodeData
+  const expr = (d.config?.expression as string) || 'no expression'
   return (
-    <div style={{
-      minWidth: 160, background: '#fffbeb', border: `2px solid ${borderColor}`,
-      borderRadius: 10, padding: '10px 14px', fontFamily: 'Inter, sans-serif',
-      boxShadow: glow, position: 'relative',
-    }}>
-      {nodeData.status === 'done' && (
-        <div style={{ position: 'absolute', top: -7, right: -7, background: '#22c55e', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#fff' }}>✓</div>
-      )}
-      {nodeData.status === 'running' && (
-        <div style={{ position: 'absolute', top: -7, right: -7, background: '#d97706', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: 8, height: 8, border: '1.5px solid #fff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-        </div>
-      )}
-      <Handle type="target" position={Position.Left} style={{ background: '#d97706', width: 10, height: 10, border: '2px solid #fff' }} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-        <span style={{ fontSize: 14, lineHeight: 1 }}>👑</span>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e' }}>{nodeData.label}</div>
-      </div>
-      {nodeData.agent_model && (
-        <div style={{ display: 'flex', gap: 4 }}>
-          <span style={{ fontSize: 10, background: '#fef3c7', color: '#d97706', borderRadius: 4, padding: '1px 6px' }}>{nodeData.agent_model}</span>
-          {nodeData.agent_provider && <span style={{ fontSize: 10, background: '#f4f4f5', color: '#71717a', borderRadius: 4, padding: '1px 6px' }}>{nodeData.agent_provider}</span>}
-        </div>
-      )}
-      {/* Forward handle — connects to next pipeline node */}
-      <Handle type="source" id="forward" position={Position.Right} style={{ background: '#d97706', width: 10, height: 10, border: '2px solid #fff' }} />
-      {/* Delegate handle — drag from here to team agent nodes; auto-labeled "delegate" */}
-      <Handle type="source" id="delegate" position={Position.Bottom} style={{ background: '#92400e', width: 10, height: 10, border: '2px solid #fff' }} />
-      <div style={{ position: 'absolute', bottom: -18, left: '50%', transform: 'translateX(-50%)', fontSize: 9, color: '#92400e', fontWeight: 700, whiteSpace: 'nowrap' }}>delegate ↓</div>
-    </div>
+    <NodeCard type="condition" title={d.label === 'condition' ? 'Condition' : d.label} status={d.status} selected={selected}
+      subtitle={<span className="font-mono">{expr}</span>} minWidth={160}>
+      <Handle type="target" position={Position.Left} className={HANDLE_CLS} style={{ background: NODE_THEME.condition.accent }} />
+      <Handle type="source" id="yes" position={Position.Right} className={HANDLE_CLS} style={{ background: '#10b981' }} />
+      <Handle type="source" id="no" position={Position.Bottom} className={HANDLE_CLS} style={{ background: '#f43f5e' }} />
+      <div className="pointer-events-none absolute -right-7 top-1/2 -translate-y-1/2 font-mono text-[9px] font-bold text-good">yes</div>
+      <div className="pointer-events-none absolute -bottom-4.5 left-1/2 -translate-x-1/2 font-mono text-[9px] font-bold text-crit" style={{ bottom: -16 }}>no</div>
+    </NodeCard>
+  )
+}
+
+function ParallelNode({ data, selected }: NodeProps) {
+  const d = data as NodeData
+  return (
+    <NodeCard type="parallel" title="Parallel" subtitle="fan out" status={d.status} selected={selected} minWidth={132}>
+      <Handle type="target" position={Position.Left} className={HANDLE_CLS} style={{ background: NODE_THEME.parallel.accent }} />
+      <Handle type="source" id="s1" position={Position.Right} className={HANDLE_CLS} style={{ top: '30%', background: NODE_THEME.parallel.accent }} />
+      <Handle type="source" id="s2" position={Position.Right} className={HANDLE_CLS} style={{ top: '55%', background: NODE_THEME.parallel.accent }} />
+      <Handle type="source" id="s3" position={Position.Right} className={HANDLE_CLS} style={{ top: '80%', background: NODE_THEME.parallel.accent }} />
+    </NodeCard>
+  )
+}
+
+function JoinNode({ data, selected }: NodeProps) {
+  const d = data as NodeData
+  return (
+    <NodeCard type="join" title="Join" subtitle="merge branches" status={d.status} selected={selected} minWidth={132}>
+      <Handle type="target" id="t1" position={Position.Left} className={HANDLE_CLS} style={{ top: '30%', background: NODE_THEME.join.accent }} />
+      <Handle type="target" id="t2" position={Position.Left} className={HANDLE_CLS} style={{ top: '55%', background: NODE_THEME.join.accent }} />
+      <Handle type="target" id="t3" position={Position.Left} className={HANDLE_CLS} style={{ top: '80%', background: NODE_THEME.join.accent }} />
+      <Handle type="source" position={Position.Right} className={HANDLE_CLS} style={{ background: NODE_THEME.join.accent }} />
+    </NodeCard>
+  )
+}
+
+function LoopNode({ data, selected }: NodeProps) {
+  const d = data as NodeData
+  const expr = (d.config?.exit_condition as string) || 'no exit condition'
+  const maxIter = (d.config?.max_iterations as number) || 5
+  return (
+    <NodeCard type="loop" title="Loop" status={d.status} selected={selected}
+      subtitle={<span className="font-mono">{expr} · max {maxIter}</span>} minWidth={160}>
+      <Handle type="target" position={Position.Top} className={HANDLE_CLS} style={{ background: NODE_THEME.loop.accent }} />
+      <Handle type="source" id="continue" position={Position.Left} className={HANDLE_CLS} style={{ background: NODE_THEME.loop.accent }} />
+      <Handle type="source" id="exit" position={Position.Right} className={HANDLE_CLS} style={{ background: '#10b981' }} />
+      <div className="pointer-events-none absolute -left-8 top-1/2 -translate-y-1/2 font-mono text-[9px] font-bold" style={{ color: NODE_THEME.loop.accent }}>↩ loop</div>
+      <div className="pointer-events-none absolute -right-8 top-1/2 -translate-y-1/2 font-mono text-[9px] font-bold text-good">exit →</div>
+    </NodeCard>
+  )
+}
+
+function ToolNode({ data, selected }: NodeProps) {
+  const d = data as NodeData
+  const toolName = (d.config?.tool_name as string) || ''
+  return (
+    <NodeCard type="tool" title={d.label && d.label !== 'tool' ? d.label : 'Tool'} status={d.status} selected={selected}
+      subtitle={toolName ? <span className="font-mono">{toolName}</span> : <span className="text-warn">no tool selected</span>}>
+      <Handle type="target" position={Position.Left} className={HANDLE_CLS} style={{ background: NODE_THEME.tool.accent }} />
+      <Handle type="source" position={Position.Right} className={HANDLE_CLS} style={{ background: NODE_THEME.tool.accent }} />
+    </NodeCard>
+  )
+}
+
+function hostOf(url?: string): string {
+  if (!url) return ''
+  try { return new URL(url).host } catch { return url.slice(0, 32) }
+}
+
+function WebhookNode({ data, selected }: NodeProps) {
+  const d = data as NodeData
+  const url = (d.config?.url as string) || ''
+  return (
+    <NodeCard type="webhook" title={d.label && d.label !== 'webhook' ? d.label : 'Webhook'} status={d.status} selected={selected}
+      subtitle={url ? <span className="font-mono">{((d.config?.method as string) || 'POST').toUpperCase()} {hostOf(url)}</span> : <span className="text-warn">no URL configured</span>}>
+      <Handle type="target" position={Position.Left} className={HANDLE_CLS} style={{ background: NODE_THEME.webhook.accent }} />
+      <Handle type="source" position={Position.Right} className={HANDLE_CLS} style={{ background: NODE_THEME.webhook.accent }} />
+    </NodeCard>
+  )
+}
+
+function GatewayNode({ data, selected }: NodeProps) {
+  const d = data as NodeData
+  const peer = (d.config?.peer_id as string) || ''
+  return (
+    <NodeCard type="gateway" title={d.label && d.label !== 'gateway' ? d.label : 'Gateway'} status={d.status} selected={selected}
+      subtitle={peer ? <span className="font-mono flex items-center gap-1"><Send size={9} /> {peer}</span> : <span className="text-warn">no recipient set</span>}>
+      <Handle type="target" position={Position.Left} className={HANDLE_CLS} style={{ background: NODE_THEME.gateway.accent }} />
+      <Handle type="source" position={Position.Right} className={HANDLE_CLS} style={{ background: NODE_THEME.gateway.accent }} />
+    </NodeCard>
   )
 }
 
@@ -338,20 +406,19 @@ const nodeTypes = {
   parallel: ParallelNode,
   join: JoinNode,
   loop: LoopNode,
+  tool: ToolNode,
+  webhook: WebhookNode,
+  gateway: GatewayNode,
 }
 
 // ---------------------------------------------------------------------------
-// Palette items
+// Palette — grouped, with one-line blurbs
 // ---------------------------------------------------------------------------
-const PALETTE_ITEMS: { type: WorkflowNodeType; label: string; icon: React.ReactNode; color: string }[] = [
-  { type: 'start',      label: 'Start',      icon: <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#22c55e' }} />, color: '#22c55e' },
-  { type: 'end',        label: 'End',        icon: <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#ef4444' }} />, color: '#ef4444' },
-  { type: 'agent',      label: 'Agent',      icon: <div style={{ width: 20, height: 14, border: '2px solid #534AB7', borderRadius: 4 }} />, color: '#534AB7' },
-  { type: 'supervisor', label: 'Supervisor', icon: <span style={{ fontSize: 16, lineHeight: 1 }}>👑</span>, color: '#d97706' },
-  { type: 'condition',  label: 'Condition',  icon: <div style={{ width: 16, height: 16, border: '2px solid #f59e0b', transform: 'rotate(45deg)' }} />, color: '#f59e0b' },
-  { type: 'parallel',   label: 'Parallel',   icon: <GitBranch size={16} color="#534AB7" />, color: '#534AB7' },
-  { type: 'join',       label: 'Join',       icon: <Merge size={16} color="#534AB7" />, color: '#534AB7' },
-  { type: 'loop',       label: 'Loop',       icon: <RefreshCcw size={16} color="#8b5cf6" />, color: '#8b5cf6' },
+const PALETTE_GROUPS: { name: string; items: WorkflowNodeType[] }[] = [
+  { name: 'Flow',         items: ['start', 'end'] },
+  { name: 'Run',          items: ['agent', 'supervisor', 'tool'] },
+  { name: 'Logic',        items: ['condition', 'parallel', 'join', 'loop'] },
+  { name: 'Integrations', items: ['webhook', 'gateway'] },
 ]
 
 // ---------------------------------------------------------------------------
@@ -1189,71 +1256,59 @@ function TemplateGalleryModal({
     }
   }
 
-  const categoryColors: Record<string, { bg: string; text: string }> = {
-    Marketing:   { bg: '#fce7f3', text: '#9d174d' },
-    Support:     { bg: '#dbeafe', text: '#1e40af' },
-    Research:    { bg: '#d1fae5', text: '#065f46' },
-    Engineering: { bg: '#ede9fe', text: '#5b21b6' },
-    Supervisor:  { bg: '#fef3c7', text: '#92400e' },
+  const categoryHue: Record<string, string> = {
+    Marketing:   '#ec4899',
+    Support:     '#0ea5e9',
+    Research:    '#10b981',
+    Engineering: '#8b5cf6',
+    Supervisor:  '#d97706',
   }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 200,
-      background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{
-        background: '#fff', borderRadius: 16, width: '95vw', maxWidth: 900, height: '85vh',
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-      }}>
+      <div className="flex h-[85vh] w-[95vw] max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
         {/* Header */}
-        <div style={{
-          padding: '16px 20px', borderBottom: '1px solid #e5e7eb',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <BookOpen size={16} color="#534AB7" />
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>Workflow Templates</span>
-            <span style={{ fontSize: 11, color: '#9ca3af' }}>— select a template to get started</span>
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-border px-5 py-4">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-accent-light text-accent dark:bg-accent/15 dark:text-accent-bright">
+              <BookOpen size={14} />
+            </span>
+            <div>
+              <div className="text-sm font-semibold text-foreground">Workflow templates</div>
+              <div className="text-[11px] text-muted-foreground">Proven patterns to start from</div>
+            </div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
+          <button onClick={onClose} className="text-faint transition-colors hover:text-foreground" aria-label="Close templates">
             <X size={16} />
           </button>
         </div>
 
-        {/* Body: card grid + detail panel */}
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden', flexWrap: 'wrap' }}>
+        {/* Body: card list + detail panel */}
+        <div className="flex flex-1 flex-wrap overflow-hidden">
           {/* Left: template cards */}
-          <div style={{
-            width: 220, minWidth: 180, flexShrink: 0, borderRight: '1px solid #e5e7eb',
-            padding: '12px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8,
-          }}>
+          <div className="flex w-56 min-w-44 flex-shrink-0 flex-col gap-2 overflow-y-auto border-r border-border p-3">
             {TEMPLATES.map((tpl) => {
-              const cat = categoryColors[tpl.category] ?? { bg: '#f3f4f6', text: '#374151' }
+              const hue = categoryHue[tpl.category] ?? '#64748b'
               const isActive = selected.id === tpl.id
               return (
                 <button
                   key={tpl.id}
                   onClick={() => { setSelected(tpl); setGuideTab('overview') }}
-                  style={{
-                    padding: '12px', borderRadius: 10, textAlign: 'left', cursor: 'pointer',
-                    border: `2px solid ${isActive ? '#534AB7' : '#e5e7eb'}`,
-                    background: isActive ? '#f1f0ff' : '#fff',
-                    transition: 'border-color 0.15s',
-                  }}
+                  className={`rounded-xl border p-3 text-left transition-colors ${
+                    isActive ? 'border-accent/60 bg-accent-light/60 dark:bg-accent/10' : 'border-border bg-surface hover:bg-muted'
+                  }`}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: isActive ? '#534AB7' : '#111827' }}>{tpl.name}</span>
-                    <span style={{
-                      fontSize: 9, padding: '2px 6px', borderRadius: 4, fontWeight: 700,
-                      background: cat.bg, color: cat.text,
-                    }}>{tpl.category}</span>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className={`text-xs font-semibold ${isActive ? 'text-accent dark:text-accent-bright' : 'text-foreground'}`}>{tpl.name}</span>
+                    <span className="rounded-full px-1.5 py-0.5 font-mono text-[9px] font-semibold" style={{ background: `${hue}1a`, color: hue }}>
+                      {tpl.category}
+                    </span>
                   </div>
-                  <p style={{ fontSize: 11, color: '#6b7280', margin: 0, lineHeight: 1.4 }}>{tpl.description}</p>
-                  <p style={{ fontSize: 10, color: '#9ca3af', marginTop: 6 }}>
+                  <p className="m-0 text-[11px] leading-snug text-muted-foreground">{tpl.description}</p>
+                  <p className="mt-1.5 font-mono text-[10px] text-faint">
                     {tpl.nodes.filter((n) => n.type === 'agent').length} agents · {tpl.nodes.length} nodes
                   </p>
                 </button>
@@ -1262,43 +1317,37 @@ function TemplateGalleryModal({
           </div>
 
           {/* Right: guide detail */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="flex flex-1 flex-col overflow-hidden">
             {/* Tab bar */}
-            <div style={{
-              display: 'flex', gap: 0, borderBottom: '1px solid #e5e7eb', padding: '0 20px', flexShrink: 0,
-            }}>
+            <div className="flex flex-shrink-0 border-b border-border px-5">
               {(['overview', 'agents', 'steps'] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setGuideTab(tab)}
-                  style={{
-                    padding: '12px 16px', fontSize: 12, fontWeight: guideTab === tab ? 700 : 500,
-                    color: guideTab === tab ? '#534AB7' : '#6b7280',
-                    borderBottom: `2px solid ${guideTab === tab ? '#534AB7' : 'transparent'}`,
-                    background: 'none', border: 'none', borderRadius: 0, cursor: 'pointer',
-                    textTransform: 'capitalize',
-                  }}
+                  className={`border-b-2 px-4 py-3 text-xs transition-colors ${
+                    guideTab === tab
+                      ? 'border-accent font-semibold text-accent dark:text-accent-bright'
+                      : 'border-transparent font-medium text-muted-foreground hover:text-foreground'
+                  }`}
                 >
-                  {tab === 'overview' ? 'Overview' : tab === 'agents' ? `Agents (${selected.guide.agents.length})` : 'Setup Guide'}
+                  {tab === 'overview' ? 'Overview' : tab === 'agents' ? `Agents (${selected.guide.agents.length})` : 'Setup guide'}
                 </button>
               ))}
             </div>
 
             {/* Tab content */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+            <div className="flex-1 overflow-y-auto p-5">
               {guideTab === 'overview' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, margin: 0 }}>{selected.guide.overview}</p>
+                <div className="flex flex-col gap-4">
+                  <p className="m-0 whitespace-pre-line text-[13px] leading-relaxed text-foreground">{selected.guide.overview}</p>
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 8 }}>Workflow nodes</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    <div className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-wider text-faint">Workflow nodes</div>
+                    <div className="flex flex-wrap gap-1.5">
                       {selected.nodes.map((n) => {
-                        const color = n.type === 'start' ? '#22c55e' : n.type === 'end' ? '#ef4444' : n.type === 'condition' ? '#f59e0b' : n.type === 'loop' ? '#8b5cf6' : n.type === 'supervisor' ? '#d97706' : '#534AB7'
+                        const accent = (NODE_THEME[n.type] ?? NODE_THEME.agent).accent
                         return (
-                          <span key={n.key} style={{
-                            fontSize: 11, padding: '3px 8px', borderRadius: 6,
-                            background: `${color}15`, color, border: `1px solid ${color}30`, fontWeight: 500,
-                          }}>
+                          <span key={n.key} className="rounded-md border px-2 py-0.5 text-[11px] font-medium"
+                            style={{ background: `${accent}12`, color: accent, borderColor: `${accent}30` }}>
                             {n.label}
                           </span>
                         )
@@ -1309,31 +1358,26 @@ function TemplateGalleryModal({
               )}
 
               {guideTab === 'agents' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div className="flex flex-col gap-4">
                   {selected.guide.agents.map((agent, i) => (
-                    <div key={i} style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-                      <div style={{ padding: '10px 14px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>{agent.name}</span>
+                    <div key={i} className="overflow-hidden rounded-xl border border-border">
+                      <div className="border-b border-border bg-muted/50 px-3.5 py-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[13px] font-semibold text-foreground">{agent.name}</span>
                           {agent.model && (
-                            <span style={{ fontSize: 10, padding: '2px 6px', background: '#ede9fe', color: '#534AB7', borderRadius: 4, fontWeight: 600 }}>{agent.model}</span>
+                            <span className="rounded-md bg-accent-light px-1.5 py-0.5 font-mono text-[10px] font-semibold text-accent dark:bg-accent/15 dark:text-accent-bright">{agent.model}</span>
                           )}
                         </div>
-                        <p style={{ fontSize: 11, color: '#6b7280', margin: '4px 0 0' }}>{agent.role}</p>
+                        <p className="m-0 mt-1 text-[11px] text-muted-foreground">{agent.role}</p>
                       </div>
-                      <div style={{ padding: '10px 14px' }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 }}>System Prompt</div>
-                        <pre style={{
-                          fontSize: 11, color: '#374151', background: '#f9fafb', borderRadius: 6,
-                          padding: '10px 12px', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                          border: '1px solid #e5e7eb', lineHeight: 1.5, fontFamily: 'monospace',
-                          maxHeight: 200, overflowY: 'auto',
-                        }}>{agent.systemPrompt}</pre>
+                      <div className="px-3.5 py-3">
+                        <div className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-faint">System prompt</div>
+                        <pre className="m-0 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/40 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-foreground">{agent.systemPrompt}</pre>
                         {agent.tools && agent.tools.length > 0 && (
-                          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>TOOLS:</span>
+                          <div className="mt-2 flex items-center gap-1.5">
+                            <span className="font-mono text-[10px] font-semibold text-faint">TOOLS:</span>
                             {agent.tools.map((t) => (
-                              <span key={t} style={{ fontSize: 10, padding: '2px 6px', background: '#fef3c7', color: '#92400e', borderRadius: 4, fontWeight: 600 }}>{t}</span>
+                              <span key={t} className="rounded-md bg-warn/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-warn">{t}</span>
                             ))}
                           </div>
                         )}
@@ -1344,20 +1388,16 @@ function TemplateGalleryModal({
               )}
 
               {guideTab === 'steps' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 8px', lineHeight: 1.5 }}>
-                    Follow these steps to set up this workflow in Agent Nexus:
+                <div className="flex flex-col gap-3">
+                  <p className="m-0 mb-1 text-xs leading-relaxed text-muted-foreground">
+                    Follow these steps to set up this workflow:
                   </p>
                   {selected.guide.steps.map((step, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                      <div style={{
-                        width: 24, height: 24, borderRadius: '50%', background: '#f1f0ff',
-                        color: '#534AB7', fontSize: 11, fontWeight: 700,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                      }}>
+                    <div key={i} className="flex items-start gap-3">
+                      <span className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-full bg-accent-light font-mono text-[11px] font-bold text-accent dark:bg-accent/15 dark:text-accent-bright">
                         {i + 1}
-                      </div>
-                      <p style={{ fontSize: 12, color: '#374151', margin: 0, lineHeight: 1.6 }}>{step}</p>
+                      </span>
+                      <p className="m-0 text-xs leading-relaxed text-foreground">{step}</p>
                     </div>
                   ))}
                 </div>
@@ -1365,44 +1405,34 @@ function TemplateGalleryModal({
             </div>
 
             {/* Action bar */}
-            <div style={{ padding: '12px 20px', borderTop: '1px solid #e5e7eb', flexShrink: 0 }}>
+            <div className="flex-shrink-0 border-t border-border px-5 py-3">
               {createError && (
-                <div style={{ marginBottom: 10, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, fontSize: 11, color: '#dc2626' }}>
+                <div className="mb-2.5 rounded-lg border border-crit/30 bg-crit/10 px-3 py-2 text-[11px] text-crit">
                   {createError}
                 </div>
               )}
               {createProgress.length > 0 && (
-                <div style={{ marginBottom: 10, padding: '8px 12px', background: '#f1f0ff', border: '1px solid #c4b5fd', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div className="mb-2.5 flex flex-col gap-0.5 rounded-lg border border-accent/30 bg-accent-light/60 px-3 py-2 dark:bg-accent/10">
                   {createProgress.map((line, i) => (
-                    <span key={i} style={{ fontSize: 11, color: '#534AB7' }}>{line}</span>
+                    <span key={i} className="font-mono text-[11px] text-accent dark:text-accent-bright">{line}</span>
                   ))}
                 </div>
               )}
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <div className="flex justify-end gap-2">
                 <button
                   onClick={() => onSelect(selected)}
                   disabled={creating}
-                  style={{
-                    padding: '9px 16px', background: '#fff', color: '#534AB7',
-                    border: '1px solid #c4b5fd', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                    cursor: creating ? 'not-allowed' : 'pointer', opacity: creating ? 0.5 : 1,
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}
+                  className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <LayoutTemplate size={13} /> Load template only
                 </button>
                 <button
                   onClick={handleCreateAndLoad}
                   disabled={creating}
-                  style={{
-                    padding: '9px 20px', background: creating ? '#a5b4fc' : '#534AB7', color: '#fff',
-                    border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700,
-                    cursor: creating ? 'not-allowed' : 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}
+                  className="flex items-center gap-1.5 rounded-[10px] bg-gradient-to-br from-accent to-accent-ink px-4 py-2 text-xs font-semibold text-white shadow-card transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {creating
-                    ? <><Loader2 size={13} style={{ animation: 'spin 0.7s linear infinite' }} /> Creating…</>
+                    ? <><Loader2 size={13} className="animate-spin" /> Creating…</>
                     : <><Play size={13} /> Create agents & load</>
                   }
                 </button>
@@ -1424,8 +1454,8 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null)
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<any>([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+  const [nodes, setNodes, onNodesChangeRaw] = useNodesState<any>([])
+  const [edges, setEdges, onEdgesChangeRaw] = useEdgesState<Edge>([])
   const [selectedNode, setSelectedNode] = useState<Node<NodeData> | null>(null)
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null)
   const [runPanelOpen, setRunPanelOpen] = useState(false)
@@ -1436,6 +1466,20 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [saveWarnings, setSaveWarnings] = useState<string[]>([])
   const [runError, setRunError] = useState<string | null>(null)
+  const [dirty, setDirty] = useState(false)
+
+  // Structural canvas changes mark the graph dirty; selection churn and
+  // in-flight drags don't.
+  const onNodesChange = useCallback((changes: Parameters<typeof onNodesChangeRaw>[0]) => {
+    onNodesChangeRaw(changes)
+    if (changes.some((c) => c.type === 'remove' || c.type === 'add' || (c.type === 'position' && c.dragging === false))) {
+      setDirty(true)
+    }
+  }, [onNodesChangeRaw])
+  const onEdgesChange = useCallback((changes: Parameters<typeof onEdgesChangeRaw>[0]) => {
+    onEdgesChangeRaw(changes)
+    if (changes.some((c) => c.type === 'remove' || c.type === 'add')) setDirty(true)
+  }, [onEdgesChangeRaw])
 
   // Fetch group
   const { data: groupData } = useQuery({
@@ -1449,6 +1493,22 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
     queryFn: () => agentsAPI.list() as Promise<{ data: Agent[] }>,
   })
   const agents = agentsData?.data ?? []
+
+  // Workspace tools (tool-node picker) and gateway channels (gateway/end
+  // delivery pickers). Fetched lazily-ish: cheap lists, cached by react-query.
+  const { data: toolsData } = useQuery({
+    queryKey: ['tools'],
+    queryFn: () => toolsAPI.list() as Promise<{ data: Tool[] }>,
+  })
+  const workspaceTools = useMemo(
+    () => (toolsData?.data ?? []).filter((t) => t.enabled),
+    [toolsData],
+  )
+  const { data: channelsData } = useQuery({
+    queryKey: ['gateway-channels'],
+    queryFn: () => gatewayAPI.listChannels() as Promise<{ data: GatewayChannel[] }>,
+  })
+  const gatewayChannels = channelsData?.data ?? []
 
   // Fetch graph — TanStack Query v5 removed onSuccess; use useEffect instead
   const { data: graphData, isLoading: graphLoading } = useQuery({
@@ -1479,21 +1539,8 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
       else if (connection.sourceHandle === 'exit') label = 'exit'
       else if (connection.sourceHandle === 'delegate') label = 'delegate'
 
-      const color = edgeColor(label)
-      const isDelegate = label === 'delegate'
-      setEdges((eds) =>
-        addEdge({
-          ...connection,
-          type: 'smoothstep',
-          animated: true,
-          zIndex: 1000,
-          label: label ?? undefined,
-          markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
-          style: { stroke: color, strokeWidth: isDelegate ? 2 : 2.5, strokeDasharray: isDelegate ? '6 3' : undefined },
-          labelStyle: { fontSize: 10, fill: color, fontWeight: 700 },
-          labelBgStyle: { fill: '#fff', fillOpacity: 0.9 },
-        }, eds)
-      )
+      setEdges((eds) => addEdge({ ...connection, ...mkEdgeProps(label) }, eds))
+      setDirty(true)
     },
     [setEdges]
   )
@@ -1519,25 +1566,16 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         },
       }
     }))
-    setEdges(tpl.edges.map((e) => {
-      const color = edgeColor(e.label)
-      const isDelegate = e.label === 'delegate'
-      return {
-        id: `e-${getId(e.from)}-${getId(e.to)}`,
-        source: getId(e.from), target: getId(e.to),
-        type: 'smoothstep', animated: true,
-        zIndex: 1000,
-        label: e.label ?? undefined,
-        sourceHandle: e.label === 'yes' ? 'yes' : e.label === 'no' ? 'no' : e.label === 'loop' ? 'continue' : e.label === 'exit' ? 'exit' : e.label === 'delegate' ? 'delegate' : undefined,
-        markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
-        style: { stroke: color, strokeWidth: isDelegate ? 2 : 2.5, strokeDasharray: isDelegate ? '6 3' : undefined },
-        labelStyle: { fontSize: 10, fill: color, fontWeight: 700 },
-        labelBgStyle: { fill: '#fff', fillOpacity: 0.9 },
-      }
-    }))
+    setEdges(tpl.edges.map((e) => ({
+      id: `e-${getId(e.from)}-${getId(e.to)}`,
+      source: getId(e.from), target: getId(e.to),
+      sourceHandle: labelToSourceHandle(e.label),
+      ...mkEdgeProps(e.label),
+    })))
     if (createdAgents) {
       queryClient.invalidateQueries({ queryKey: ['agents'] })
     }
+    setDirty(true)
     setTemplateGalleryOpen(false)
   }, [nodes.length, setNodes, setEdges, queryClient])
 
@@ -1559,6 +1597,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         data: { label: type, node_type: type, config: {}, status: 'idle' },
       }
       setNodes((nds) => [...nds, newNode])
+      setDirty(true)
     },
     [rfInstance, setNodes]
   )
@@ -1579,24 +1618,15 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   }, [])
 
   const updateEdgeLabel = useCallback((edgeId: string, newLabel: string) => {
-    setEdges((eds) => eds.map((e) => {
-      if (e.id !== edgeId) return e
-      const color = edgeColor(newLabel || undefined)
-      const isDelegate = newLabel === 'delegate'
-      return {
-        ...e,
-        label: newLabel || undefined,
-        style: { stroke: color, strokeWidth: isDelegate ? 2 : 2.5, strokeDasharray: isDelegate ? '6 3' : undefined },
-        markerEnd: { type: MarkerType.ArrowClosed, color, width: 18, height: 18 },
-        labelStyle: { fontSize: 10, fill: color, fontWeight: 700 },
-      }
-    }))
+    setEdges((eds) => eds.map((e) => e.id === edgeId ? { ...e, ...mkEdgeProps(newLabel || undefined) } : e))
     setSelectedEdge((prev) => prev?.id === edgeId ? { ...prev, label: newLabel || undefined } : prev)
+    setDirty(true)
   }, [setEdges])
 
   const deleteEdge = useCallback((edgeId: string) => {
     setEdges((eds) => eds.filter((e) => e.id !== edgeId))
     setSelectedEdge(null)
+    setDirty(true)
   }, [setEdges])
 
   const updateNodeConfig = useCallback(
@@ -1636,18 +1666,36 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         })),
       }
       const res = await workflowsAPI.saveGraph(groupId, graph)
-      // Node ids are stable across saves now (the server upserts by id
-      // instead of reminting), so the canvas doesn't need to discard local
-      // state (selection, panel) and re-sync from a refetch.
+      // Node ids are stable across saves (the server upserts by id), so the
+      // canvas doesn't need to discard local state and re-sync from a refetch.
       setSaveWarnings(res.warnings ?? [])
       queryClient.invalidateQueries({ queryKey: ['workflow-graph', groupId] })
       setSaveStatus('saved')
+      setDirty(false)
       setTimeout(() => setSaveStatus('idle'), 2000)
     } catch {
       setSaveStatus('error')
       setTimeout(() => setSaveStatus('idle'), 3000)
     }
   }
+
+  // Cmd/Ctrl+S saves; warn before leaving with unsaved changes.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        handleSave()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+  useEffect(() => {
+    if (!dirty) return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [dirty])
 
   // Run via SSE
   const handleRun = async () => {
@@ -1698,7 +1746,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
           const raw = line.slice(5).trim()
           if (!raw || raw === '[DONE]') continue
           try {
-            const evt = JSON.parse(raw) as SSEEvent
+            const evt = JSON.parse(raw) as SSEEvent & { target?: string; ok?: boolean }
             if (evt.type === 'node_started' && evt.node_id) {
               setNodes((nds) => nds.map((n) => n.id === evt.node_id ? { ...n, data: { ...n.data, status: 'running' as const } } : n))
             } else if (evt.type === 'node_completed' && evt.node_id) {
@@ -1706,6 +1754,11 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               if (evt.result) {
                 setRunOutput((prev) => ({ ...prev, [evt.node_id!]: (prev[evt.node_id!] ?? '') + evt.result }))
               }
+            } else if (evt.type === 'node_delivery' && evt.node_id) {
+              const note = evt.ok
+                ? `\n▸ delivered via ${evt.target}`
+                : `\n▸ ${evt.target} delivery failed: ${evt.error ?? 'unknown error'}`
+              setRunOutput((prev) => ({ ...prev, [evt.node_id!]: (prev[evt.node_id!] ?? '') + note }))
             } else if (evt.type === 'delta' && evt.node_id) {
               setRunOutput((prev) => ({ ...prev, [evt.node_id!]: (prev[evt.node_id!] ?? '') + (evt.content ?? '') }))
             } else if (evt.type === 'delta' && evt.content) {
@@ -1729,88 +1782,90 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   }
 
   const hasNodes = nodes.length > 0
-  const hasRightPanel = !!(selectedNode || selectedEdge) || triggersPanelOpen
-  const canvasWidth = hasRightPanel ? 'calc(100% - 460px)' : '100%'
+  const selectedTheme = selectedNode ? (NODE_THEME[selectedNode.data.node_type] ?? NODE_THEME.agent) : null
+
+  const inputCls = 'w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20 placeholder:text-faint'
+  const hintCls = 'mt-1.5 text-[10px] leading-relaxed text-faint'
+  const infoBoxCls = 'rounded-lg border border-border bg-muted/50 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground'
+
+  // Patch one key inside the node's config object.
+  const patchConfig = (key: string, value: unknown) => {
+    if (!selectedNode) return
+    updateNodeConfig(selectedNode.id, { config: { ...selectedNode.data.config, [key]: value } })
+  }
+
+  const selectedToolMeta = selectedNode?.data.node_type === 'tool'
+    ? workspaceTools.find((t) => t.name === (selectedNode.data.config?.tool_name as string))
+    : undefined
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', fontFamily: 'Inter, sans-serif', background: '#f8f8fb' }}>
-      {/* Spin animation */}
+    <div className="flex h-full flex-col overflow-hidden bg-background">
       <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .rf-node-running div { animation: spin 0.7s linear infinite; }
+        :root { --wf-label-bg: #ffffff; --wf-dots: #d6d6de; }
+        .dark { --wf-label-bg: #1b1926; --wf-dots: #2e2c3a; }
+        .react-flow__controls { border-radius: 10px; overflow: hidden; border: 1px solid hsl(var(--border)); box-shadow: 0 1px 2px rgba(21,26,31,.06); }
+        .react-flow__controls-button { background: hsl(var(--surface)); border-bottom: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); width: 26px; height: 26px; }
+        .react-flow__controls-button:hover { background: hsl(var(--muted)); }
+        .react-flow__controls-button svg { fill: currentColor; }
+        .react-flow__minimap { border-radius: 10px; }
+        .react-flow__edge-textbg { rx: 4px; }
       `}</style>
 
       {/* Top bar */}
-      <div style={{
-        minHeight: 48, borderBottom: '1px solid #e5e7eb', background: '#fff',
-        display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px',
-        flexShrink: 0, overflowX: 'auto',
-      }}>
+      <div className="flex min-h-12 flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border bg-surface px-3">
         <button
           onClick={() => router.push('/workflows')}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#6b7280', fontSize: 13, background: 'none', border: 'none', cursor: 'pointer' }}
+          className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <ArrowLeft size={14} /> Back
+          <ArrowLeft size={14} /> Workflows
         </button>
-        <div style={{ width: 1, height: 20, background: '#e5e7eb' }} />
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{groupData?.name ?? 'Workflow'}</span>
+        <div className="h-5 w-px bg-border" />
+        <span className="truncate text-sm font-semibold text-foreground">{groupData?.name ?? 'Workflow'}</span>
         {groupData?.mode && (
-          <span style={{
-            fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
-            padding: '2px 8px', borderRadius: 10,
-            background: groupData.mode === 'pipeline' ? '#f1f0ff' : '#fef3c7',
-            color: groupData.mode === 'pipeline' ? '#534AB7' : '#92400e',
-            textTransform: 'uppercase',
-          }}>
+          <span className="rounded-full border border-border bg-muted px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
             {groupData.mode}
           </span>
         )}
-        <div style={{ flex: 1 }} />
+        {dirty && (
+          <span className="flex items-center gap-1 font-mono text-[10px] text-warn">
+            <CircleDot size={9} /> unsaved
+          </span>
+        )}
+        <div className="flex-1" />
         <button
           onClick={() => setTemplateGalleryOpen(true)}
           title="Browse workflow templates"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            background: '#fff', color: '#534AB7', border: '1px solid #c4b5fd',
-          }}
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
         >
           <LayoutTemplate size={13} /> Templates
         </button>
         <button
           onClick={() => { setTriggersPanelOpen(v => !v); setSelectedNode(null); setSelectedEdge(null) }}
-          title="Webhook triggers for this workflow"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            background: triggersPanelOpen ? '#f1f0ff' : '#fff',
-            color: triggersPanelOpen ? '#534AB7' : '#374151',
-            border: `1px solid ${triggersPanelOpen ? '#c4b5fd' : '#e5e7eb'}`,
-          }}
+          title="Webhook triggers that start this workflow"
+          className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+            triggersPanelOpen
+              ? 'border-accent/40 bg-accent-light text-accent dark:bg-accent/15 dark:text-accent-bright'
+              : 'border-border bg-surface text-foreground hover:bg-muted'
+          }`}
         >
           <Zap size={13} /> Triggers
         </button>
         <button
           onClick={handleSave}
           disabled={saveStatus === 'saving'}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            background: saveStatus === 'saved' ? '#22c55e' : saveStatus === 'error' ? '#ef4444' : '#fff',
-            color: saveStatus === 'saved' || saveStatus === 'error' ? '#fff' : '#374151',
-            border: '1px solid #e5e7eb',
-          }}
+          title="Save (⌘S)"
+          className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+            saveStatus === 'saved' ? 'border-good/40 bg-good/10 text-good'
+            : saveStatus === 'error' ? 'border-crit/40 bg-crit/10 text-crit'
+            : 'border-border bg-surface text-foreground hover:bg-muted'
+          }`}
         >
-          {saveStatus === 'saving' ? <Loader2 size={13} style={{ animation: 'spin 0.7s linear infinite' }} /> : <Save size={13} />}
-          {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Error' : 'Save'}
+          {saveStatus === 'saving' ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+          {saveStatus === 'saving' ? 'Saving…' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Save failed' : 'Save'}
         </button>
         <button
           onClick={() => setRunPanelOpen(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-            background: '#534AB7', color: '#fff', border: 'none',
-          }}
+          className="flex items-center gap-1.5 rounded-[10px] bg-gradient-to-br from-accent to-accent-ink px-4 py-1.5 text-xs font-semibold text-white shadow-card transition-opacity hover:opacity-90"
         >
           <Play size={13} /> Run
         </button>
@@ -1818,20 +1873,16 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 
       {/* Save validation warnings */}
       {saveWarnings.length > 0 && (
-        <div style={{
-          flexShrink: 0, background: '#fffbeb', borderBottom: '1px solid #fde68a',
-          padding: '8px 16px', display: 'flex', alignItems: 'flex-start', gap: 8,
-          flexWrap: 'wrap',
-        }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#92400e', flexShrink: 0 }}>Save warnings:</span>
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none', flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div className="flex flex-shrink-0 flex-wrap items-start gap-2 border-b border-warn/30 bg-warn/10 px-4 py-2">
+          <span className="flex-shrink-0 text-xs font-semibold text-warn">Save warnings:</span>
+          <ul className="m-0 flex min-w-0 flex-1 list-none flex-col gap-0.5 p-0">
             {saveWarnings.map((warning, i) => (
-              <li key={i} style={{ fontSize: 12, color: '#92400e' }}>{warning}</li>
+              <li key={i} className="text-xs text-warn">{warning}</li>
             ))}
           </ul>
           <button
             onClick={() => setSaveWarnings([])}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400e', fontSize: 12, fontWeight: 600, flexShrink: 0 }}
+            className="flex-shrink-0 text-xs font-semibold text-warn hover:underline"
           >
             Dismiss
           </button>
@@ -1839,50 +1890,55 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
       )}
 
       {/* Body */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div className="flex flex-1 overflow-hidden">
         {/* Palette */}
-        <div style={{
-          width: 180, flexShrink: 0, background: '#fff', borderRight: '1px solid #e5e7eb',
-          padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 4,
-          overflowY: 'auto',
-        }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', letterSpacing: 0.8, marginBottom: 8, textTransform: 'uppercase' }}>Nodes</div>
-          {PALETTE_ITEMS.map((item) => (
-            <div
-              key={item.type}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData('application/reactflow', item.type)
-                e.dataTransfer.effectAllowed = 'move'
-              }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 10px', borderRadius: 8, cursor: 'grab',
-                border: `1px solid ${item.color}22`, background: `${item.color}08`,
-                userSelect: 'none',
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = `${item.color}18` }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = `${item.color}08` }}
-            >
-              <div style={{ width: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{item.icon}</div>
-              <span style={{ fontSize: 12, fontWeight: 500, color: '#374151' }}>{item.label}</span>
+        <div className="w-56 flex-shrink-0 space-y-4 overflow-y-auto border-r border-border bg-surface p-3">
+          {PALETTE_GROUPS.map((group) => (
+            <div key={group.name}>
+              <div className="mb-1.5 px-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-faint">{group.name}</div>
+              <div className="space-y-0.5">
+                {group.items.map((type) => {
+                  const theme = NODE_THEME[type]
+                  const Icon = theme.icon
+                  return (
+                    <div
+                      key={type}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('application/reactflow', type)
+                        e.dataTransfer.effectAllowed = 'move'
+                      }}
+                      className="flex cursor-grab select-none items-center gap-2.5 rounded-lg border border-transparent px-2 py-1.5 transition-colors hover:border-border hover:bg-muted active:cursor-grabbing"
+                      title={theme.blurb}
+                    >
+                      <span className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-md" style={{ background: `${theme.accent}18`, color: theme.accent }}>
+                        <Icon size={12.5} />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium text-foreground">{theme.title}</div>
+                        <div className="truncate text-[10px] leading-tight text-faint">{theme.blurb}</div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           ))}
-          <div style={{ marginTop: 16, padding: '10px', background: '#f9fafb', borderRadius: 8, fontSize: 10, color: '#9ca3af', lineHeight: 1.5 }}>
-            Drag a node onto the canvas to add it to your workflow.
+          <div className="rounded-lg border border-dashed border-border px-2.5 py-2 text-[10px] leading-relaxed text-faint">
+            Drag a node onto the canvas, then connect handles to draw edges. Press ⌫ to delete a selection.
           </div>
         </div>
 
         {/* Canvas */}
         <div
           ref={reactFlowWrapper}
-          style={{ flex: 1, height: '100%', position: 'relative' }}
+          className="relative h-full flex-1"
           onDragOver={onDragOver}
           onDrop={onDrop}
         >
           {graphLoading && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, background: 'rgba(255,255,255,0.8)' }}>
-              <Loader2 size={24} style={{ animation: 'spin 0.7s linear infinite', color: '#534AB7' }} />
+            <div className="absolute inset-0 z-10 grid place-items-center bg-background/70 backdrop-blur-[1px]">
+              <Loader2 size={24} className="animate-spin text-accent" />
             </div>
           )}
           <ReactFlow
@@ -1898,32 +1954,35 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             nodeTypes={nodeTypes}
             fitView
             elevateEdgesOnSelect
-            style={{ background: '#f8f8fb' }}
+            className="!bg-background"
             deleteKeyCode="Backspace"
           >
-            <Background color="#e5e7eb" gap={20} />
-            <Controls style={{ bottom: 20, left: 20 }} />
+            <Background variant={BackgroundVariant.Dots} color="var(--wf-dots)" gap={18} size={1.4} />
+            <Controls style={{ bottom: 20, left: 20 }} showInteractive={false} />
             <MiniMap
-              nodeColor={(n) => {
-                const t = (n as Node<NodeData>).data?.node_type
-                if (t === 'start') return '#22c55e'
-                if (t === 'end') return '#ef4444'
-                if (t === 'condition') return '#f59e0b'
-                if (t === 'loop') return '#8b5cf6'
-                return '#534AB7'
-              }}
-              style={{ bottom: 20, right: 20, border: '1px solid #e5e7eb', borderRadius: 8 }}
+              pannable
+              zoomable
+              nodeColor={(n) => (NODE_THEME[(n as Node<NodeData>).data?.node_type ?? 'agent'] ?? NODE_THEME.agent).accent}
+              nodeStrokeWidth={0}
+              style={{ bottom: 20, right: 20, width: 160, height: 110, border: '1px solid hsl(var(--border))', borderRadius: 10, background: 'hsl(var(--surface))' }}
+              maskColor="hsl(var(--muted) / 0.7)"
             />
-            {!hasNodes && (
-              <div style={{
-                position: 'absolute', inset: 0, display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                pointerEvents: 'none', zIndex: 5,
-              }}>
-                <div style={{ textAlign: 'center', color: '#9ca3af' }}>
-                  <GitBranch size={36} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
-                  <p style={{ fontSize: 13, fontWeight: 500 }}>Drag nodes from the left panel to start building your workflow</p>
-                  <p style={{ fontSize: 11, marginTop: 4, opacity: 0.7 }}>Connect nodes by dragging from a handle to another</p>
+            {!hasNodes && !graphLoading && (
+              <div className="pointer-events-none absolute inset-0 z-[5] grid place-items-center">
+                <div className="pointer-events-auto flex max-w-sm flex-col items-center rounded-2xl border border-dashed border-border bg-surface/80 px-8 py-8 text-center shadow-card backdrop-blur-sm">
+                  <span className="mb-3 grid h-11 w-11 place-items-center rounded-xl bg-accent-light text-accent dark:bg-accent/15 dark:text-accent-bright">
+                    <GitBranch size={20} />
+                  </span>
+                  <p className="text-sm font-semibold text-foreground">Design your workflow</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Drag nodes from the left panel and connect their handles — or start from a proven template.
+                  </p>
+                  <button
+                    onClick={() => setTemplateGalleryOpen(true)}
+                    className="mt-4 flex items-center gap-1.5 rounded-[10px] bg-gradient-to-br from-accent to-accent-ink px-4 py-2 text-xs font-semibold text-white shadow-card transition-opacity hover:opacity-90"
+                  >
+                    <LayoutTemplate size={13} /> Browse templates
+                  </button>
                 </div>
               </div>
             )}
@@ -1932,66 +1991,53 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 
         {/* Edge config panel */}
         {selectedEdge && !selectedNode && (
-          <div style={{
-            width: 280, flexShrink: 0, background: '#fff', borderLeft: '1px solid #e5e7eb',
-            padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Edge Config
-              </span>
-              <button onClick={() => setSelectedEdge(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
+          <div className="flex w-80 flex-shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-surface p-4">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Edge</span>
+              <button onClick={() => setSelectedEdge(null)} className="text-faint transition-colors hover:text-foreground" aria-label="Close edge panel">
                 <X size={14} />
               </button>
             </div>
 
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>Label</div>
+            <ConfigField label="Label">
               <input
                 value={(selectedEdge.label as string) || ''}
                 onChange={(e) => updateEdgeLabel(selectedEdge.id, e.target.value)}
-                style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', boxSizing: 'border-box' }}
+                className={inputCls}
                 placeholder="e.g. yes, no, loop, exit"
               />
-              <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {['yes', 'no', 'loop', 'exit', 'delegate'].map((preset) => (
                   <button
                     key={preset}
                     onClick={() => updateEdgeLabel(selectedEdge.id, preset)}
-                    style={{
-                      padding: '2px 8px', fontSize: 10, borderRadius: 4, cursor: 'pointer', border: 'none',
-                      background: selectedEdge.label === preset ? edgeColor(preset) : '#f3f4f6',
-                      color: selectedEdge.label === preset ? '#fff' : '#374151',
-                      fontWeight: 600,
-                    }}
+                    className="rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold transition-opacity hover:opacity-80"
+                    style={selectedEdge.label === preset
+                      ? { background: edgeColor(preset), color: '#fff' }
+                      : { background: `${edgeColor(preset)}1a`, color: edgeColor(preset) }}
                   >
                     {preset}
                   </button>
                 ))}
                 <button
                   onClick={() => updateEdgeLabel(selectedEdge.id, '')}
-                  style={{ padding: '2px 8px', fontSize: 10, borderRadius: 4, cursor: 'pointer', border: 'none', background: '#f3f4f6', color: '#9ca3af' }}
+                  className="rounded-md bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground hover:text-foreground"
                 >
                   clear
                 </button>
               </div>
-            </div>
+            </ConfigField>
 
-            <div style={{ fontSize: 11, color: '#9ca3af', background: '#f9fafb', borderRadius: 8, padding: '8px 10px' }}>
+            <div className={infoBoxCls}>
               <strong>yes / no</strong> — condition routing<br />
-              <strong>loop</strong> — loop back edge<br />
-              <strong>exit</strong> — loop exit edge<br />
+              <strong>loop</strong> — loop-back edge · <strong>exit</strong> — loop exit<br />
               <strong>delegate</strong> — supervisor → team agent (dashed)<br />
               <strong>(empty)</strong> — default / unconditional
             </div>
 
             <button
               onClick={() => deleteEdge(selectedEdge.id)}
-              style={{
-                marginTop: 'auto', padding: '7px 12px', fontSize: 12, borderRadius: 8,
-                background: '#fff', color: '#ef4444', border: '1px solid #fecaca',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-              }}
+              className="mt-auto flex items-center justify-center gap-1.5 rounded-lg border border-crit/30 px-3 py-2 text-xs font-medium text-crit transition-colors hover:bg-crit/10"
             >
               <X size={12} /> Remove edge
             </button>
@@ -2007,48 +2053,40 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         )}
 
         {/* Node config panel */}
-        {selectedNode && (
-          <div style={{
-            width: 280, flexShrink: 0, background: '#fff', borderLeft: '1px solid #e5e7eb',
-            padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Node Config
+        {selectedNode && selectedTheme && (
+          <div className="flex w-80 flex-shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-surface p-4">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <span className="grid h-6 w-6 place-items-center rounded-md" style={{ background: `${selectedTheme.accent}18`, color: selectedTheme.accent }}>
+                  <selectedTheme.icon size={12.5} />
+                </span>
+                <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {selectedNode.data.node_type}
+                </span>
               </span>
-              <button onClick={() => setSelectedNode(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
+              <button onClick={() => setSelectedNode(null)} className="text-faint transition-colors hover:text-foreground" aria-label="Close node panel">
                 <X size={14} />
               </button>
             </div>
 
-            <div>
-              <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 4, fontWeight: 600 }}>TYPE</div>
-              <span style={{
-                fontSize: 11, padding: '2px 8px', borderRadius: 6,
-                background: selectedNode.data.node_type === 'supervisor' ? '#fef3c7' : '#f1f0ff',
-                color: selectedNode.data.node_type === 'supervisor' ? '#92400e' : '#534AB7',
-                fontWeight: 700,
-              }}>
-                {selectedNode.data.node_type === 'supervisor' ? '👑 supervisor' : selectedNode.data.node_type as string}
-              </span>
-            </div>
-
             {/* Label */}
-            <ConfigField label="Label">
-              <input
-                value={(selectedNode.data.config?.label as string) || selectedNode.data.label || ''}
-                onChange={(e) => updateNodeConfig(selectedNode.id, {
-                  label: e.target.value,
-                  config: { ...selectedNode.data.config, label: e.target.value },
-                })}
-                style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', boxSizing: 'border-box' }}
-                placeholder="Node label"
-              />
-            </ConfigField>
+            {selectedNode.data.node_type !== 'start' && (
+              <ConfigField label="Label">
+                <input
+                  value={(selectedNode.data.config?.label as string) || selectedNode.data.label || ''}
+                  onChange={(e) => updateNodeConfig(selectedNode.id, {
+                    label: e.target.value,
+                    config: { ...selectedNode.data.config, label: e.target.value },
+                  })}
+                  className={inputCls}
+                  placeholder="Node label"
+                />
+              </ConfigField>
+            )}
 
             {/* Agent / Supervisor node: agent picker */}
             {(selectedNode.data.node_type === 'agent' || selectedNode.data.node_type === 'supervisor') && (
-              <ConfigField label={selectedNode.data.node_type === 'supervisor' ? 'Supervisor Agent' : 'Agent'}>
+              <ConfigField label={selectedNode.data.node_type === 'supervisor' ? 'Supervisor agent' : 'Agent'}>
                 <select
                   value={(selectedNode.data.agent_id as string) || ''}
                   onChange={(e) => {
@@ -2061,7 +2099,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                       agent_provider: agent?.provider,
                     })
                   }}
-                  style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: `1px solid ${selectedNode.data.node_type === 'supervisor' ? '#fde68a' : '#e5e7eb'}`, borderRadius: 6, background: '#fff', outline: 'none', boxSizing: 'border-box' }}
+                  className={inputCls}
                 >
                   <option value="">Select agent…</option>
                   {agents.map((a) => (
@@ -2069,14 +2107,14 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                   ))}
                 </select>
                 {selectedNode.data.agent_model && (
-                  <div style={{ marginTop: 4, display: 'flex', gap: 4 }}>
-                    <span style={{ fontSize: 10, background: selectedNode.data.node_type === 'supervisor' ? '#fef3c7' : '#f1f0ff', color: selectedNode.data.node_type === 'supervisor' ? '#d97706' : '#534AB7', borderRadius: 4, padding: '1px 6px' }}>{selectedNode.data.agent_model as string}</span>
-                    <span style={{ fontSize: 10, background: '#f4f4f5', color: '#71717a', borderRadius: 4, padding: '1px 6px' }}>{selectedNode.data.agent_provider as string}</span>
+                  <div className="mt-2 flex gap-1.5">
+                    <span className="rounded-md bg-accent-light px-1.5 py-0.5 font-mono text-[10px] text-accent dark:bg-accent/15 dark:text-accent-bright">{selectedNode.data.agent_model as string}</span>
+                    <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{selectedNode.data.agent_provider as string}</span>
                   </div>
                 )}
                 {selectedNode.data.node_type === 'supervisor' && (
-                  <div style={{ fontSize: 10, color: '#d97706', marginTop: 6, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 8px', lineHeight: 1.5 }}>
-                    This agent runs in an agentic loop, calling team agents (connected via dashed delegate edges) as tools. Use a capable model (e.g. claude-sonnet or opus).
+                  <div className={`${hintCls} !text-warn`}>
+                    Runs in an agentic loop, calling team agents (dashed delegate edges) as tools. Use a capable model.
                   </div>
                 )}
               </ConfigField>
@@ -2087,14 +2125,12 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               <ConfigField label="Expression">
                 <input
                   value={(selectedNode.data.config?.expression as string) || ''}
-                  onChange={(e) => updateNodeConfig(selectedNode.id, {
-                    config: { ...selectedNode.data.config, expression: e.target.value },
-                  })}
-                  style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', boxSizing: 'border-box' }}
-                  placeholder="e.g. contains:approved"
+                  onChange={(e) => patchConfig('expression', e.target.value)}
+                  className={`${inputCls} font-mono`}
+                  placeholder="contains:APPROVED"
                 />
-                <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>
-                  e.g. contains:approved, not_contains:error, equals:done
+                <div className={hintCls}>
+                  Evaluated against the previous node&apos;s output: <code>contains:</code>, <code>not_contains:</code>, <code>equals:</code>
                 </div>
               </ConfigField>
             )}
@@ -2102,55 +2138,229 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             {/* Loop node */}
             {selectedNode.data.node_type === 'loop' && (
               <>
-                <ConfigField label="Exit Condition">
+                <ConfigField label="Exit condition">
                   <input
                     value={(selectedNode.data.config?.exit_condition as string) || ''}
-                    onChange={(e) => updateNodeConfig(selectedNode.id, {
-                      config: { ...selectedNode.data.config, exit_condition: e.target.value },
-                    })}
-                    style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', boxSizing: 'border-box' }}
-                    placeholder="e.g. contains:done"
+                    onChange={(e) => patchConfig('exit_condition', e.target.value)}
+                    className={`${inputCls} font-mono`}
+                    placeholder="contains:done"
                   />
-                  <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>
-                    Loops while condition is NOT met. Same syntax as condition node.
-                  </div>
+                  <div className={hintCls}>Loops while the condition is NOT met. Same syntax as the condition node.</div>
                 </ConfigField>
-                <ConfigField label="Max Iterations">
+                <ConfigField label="Max iterations">
                   <input
                     type="number"
                     min={1}
                     max={100}
                     value={(selectedNode.data.config?.max_iterations as number) || 5}
-                    onChange={(e) => updateNodeConfig(selectedNode.id, {
-                      config: { ...selectedNode.data.config, max_iterations: parseInt(e.target.value, 10) || 5 },
-                    })}
-                    style={{ width: '100%', padding: '6px 8px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 6, outline: 'none', boxSizing: 'border-box' }}
+                    onChange={(e) => patchConfig('max_iterations', parseInt(e.target.value, 10) || 5)}
+                    className={inputCls}
                   />
                 </ConfigField>
-                <div style={{ fontSize: 11, color: '#9ca3af', background: '#f9fafb', borderRadius: 8, padding: '8px 10px' }}>
-                  Draw an edge from the <strong>↩ cont</strong> handle to the node you want to loop back to.
-                  It will be auto-labeled <code style={{ background: '#ede9fe', padding: '1px 4px', borderRadius: 3 }}>loop</code>.
-                  Draw from <strong>exit →</strong> for the forward path.
+                <div className={infoBoxCls}>
+                  Drag from <strong>↩ loop</strong> back to the node to repeat (edge auto-labelled <code>loop</code>), and from <strong>exit →</strong> to the forward path.
                 </div>
               </>
             )}
 
-            {/* Start / Parallel / Join / Supervisor: info */}
-            {(selectedNode.data.node_type === 'start' || selectedNode.data.node_type === 'parallel' || selectedNode.data.node_type === 'join') && (
-              <div style={{ fontSize: 11, color: '#9ca3af', background: '#f9fafb', borderRadius: 8, padding: '8px 10px', lineHeight: 1.6 }}>
-                {selectedNode.data.node_type === 'start' && 'Entry point of the workflow. Every run begins here. Draw one edge from the right handle to the first node.'}
-                {selectedNode.data.node_type === 'parallel' && 'Fan-out: connects to multiple downstream nodes that run concurrently. Use a Join node to collect their outputs when done.'}
+            {/* Tool node */}
+            {selectedNode.data.node_type === 'tool' && (
+              <>
+                <ConfigField label="Tool">
+                  <select
+                    value={(selectedNode.data.config?.tool_name as string) || ''}
+                    onChange={(e) => {
+                      const t = workspaceTools.find((wt) => wt.name === e.target.value)
+                      updateNodeConfig(selectedNode.id, {
+                        label: (selectedNode.data.config?.label as string) || t?.name || selectedNode.data.label,
+                        config: { ...selectedNode.data.config, tool_name: e.target.value },
+                      })
+                    }}
+                    className={`${inputCls} font-mono`}
+                  >
+                    <option value="">Select tool…</option>
+                    {workspaceTools.map((t) => (
+                      <option key={t.id} value={t.name}>{t.name} ({t.type})</option>
+                    ))}
+                  </select>
+                  {selectedToolMeta?.description && <div className={hintCls}>{selectedToolMeta.description}</div>}
+                  {selectedToolMeta?.requires_approval && (
+                    <div className={`${hintCls} !text-warn`}>
+                      This tool requires approval — workflow tool nodes run unattended, so the run will refuse it. Clear the approval flag or call it from an agent node instead.
+                    </div>
+                  )}
+                </ConfigField>
+                <ConfigField label="Arguments (JSON, optional)">
+                  <textarea
+                    value={(selectedNode.data.config?.args_text as string) ?? (selectedNode.data.config?.args ? JSON.stringify(selectedNode.data.config.args, null, 2) : '')}
+                    onChange={(e) => {
+                      const text = e.target.value
+                      let next: Record<string, unknown> = { ...selectedNode.data.config, args_text: text }
+                      if (!text.trim()) {
+                        const { args: _drop, args_text: _drop2, ...rest } = next
+                        next = rest
+                      } else {
+                        try { next.args = JSON.parse(text) } catch { /* keep last valid args */ }
+                      }
+                      updateNodeConfig(selectedNode.id, { config: next })
+                    }}
+                    rows={5}
+                    className={`${inputCls} resize-y font-mono`}
+                    placeholder={'{\n  "query": "{{input}}"\n}'}
+                  />
+                  <div className={hintCls}>
+                    String values may use <code>{'{{input}}'}</code> (previous output) and <code>{'{{original_input}}'}</code>. Without arguments the tool receives <code>{'{"input": …}'}</code>.
+                  </div>
+                  {typeof selectedNode.data.config?.args_text === 'string' && (selectedNode.data.config.args_text as string).trim() !== '' && (() => {
+                    try { JSON.parse(selectedNode.data.config.args_text as string); return null } catch { return <div className={`${hintCls} !text-crit`}>Invalid JSON — the last valid value will be used.</div> }
+                  })()}
+                </ConfigField>
+              </>
+            )}
+
+            {/* Webhook node */}
+            {selectedNode.data.node_type === 'webhook' && (
+              <>
+                <ConfigField label="URL">
+                  <input
+                    value={(selectedNode.data.config?.url as string) || ''}
+                    onChange={(e) => patchConfig('url', e.target.value)}
+                    className={`${inputCls} font-mono`}
+                    placeholder="https://example.com/hook"
+                  />
+                </ConfigField>
+                <ConfigField label="Method">
+                  <select
+                    value={((selectedNode.data.config?.method as string) || 'POST').toUpperCase()}
+                    onChange={(e) => patchConfig('method', e.target.value)}
+                    className={inputCls}
+                  >
+                    {['POST', 'PUT', 'PATCH', 'GET'].map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </ConfigField>
+                <ConfigField label="Payload template (optional)">
+                  <textarea
+                    value={(selectedNode.data.config?.payload_template as string) || ''}
+                    onChange={(e) => patchConfig('payload_template', e.target.value || undefined)}
+                    rows={4}
+                    className={`${inputCls} resize-y font-mono`}
+                    placeholder={'{"text": "{{input}}"}'}
+                  />
+                  <div className={hintCls}>
+                    Default payload: JSON with <code>workflow_id</code>, <code>run_id</code>, <code>node_id</code> and <code>input</code>. The response body becomes this node&apos;s output.
+                  </div>
+                </ConfigField>
+              </>
+            )}
+
+            {/* Gateway node */}
+            {selectedNode.data.node_type === 'gateway' && (
+              <>
+                <ConfigField label="Channel">
+                  <select
+                    value={(selectedNode.data.config?.channel_id as string) || ''}
+                    onChange={(e) => patchConfig('channel_id', e.target.value)}
+                    className={inputCls}
+                  >
+                    <option value="">Select channel…</option>
+                    {gatewayChannels.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.channel_type})</option>
+                    ))}
+                  </select>
+                  {gatewayChannels.length === 0 && (
+                    <div className={hintCls}>No gateway channels yet — create one on the Gateway page.</div>
+                  )}
+                </ConfigField>
+                <ConfigField label="Recipient">
+                  <input
+                    value={(selectedNode.data.config?.peer_id as string) || ''}
+                    onChange={(e) => patchConfig('peer_id', e.target.value)}
+                    className={`${inputCls} font-mono`}
+                    placeholder="+15551234567 or JID"
+                  />
+                </ConfigField>
+                <ConfigField label="Message template (optional)">
+                  <textarea
+                    value={(selectedNode.data.config?.message_template as string) || ''}
+                    onChange={(e) => patchConfig('message_template', e.target.value || undefined)}
+                    rows={3}
+                    className={`${inputCls} resize-y`}
+                    placeholder="Workflow update: {{input}}"
+                  />
+                  <div className={hintCls}>Defaults to the previous node&apos;s output. The output passes through unchanged.</div>
+                </ConfigField>
+              </>
+            )}
+
+            {/* Start node: inbound attachments */}
+            {selectedNode.data.node_type === 'start' && (
+              <>
+                <div className={infoBoxCls}>
+                  Entry point — every run begins here with the trigger&apos;s input.
+                </div>
+                <ConfigField label="Inbound webhook">
+                  <button
+                    onClick={() => { setSelectedNode(null); setSelectedEdge(null); setTriggersPanelOpen(true) }}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                  >
+                    <Zap size={12} /> Manage webhook triggers
+                  </button>
+                  <div className={hintCls}>
+                    Webhook triggers start this workflow from external events (Jira, GitHub, custom systems) with a templated input.
+                  </div>
+                </ConfigField>
+              </>
+            )}
+
+            {/* End node: delivery config */}
+            {selectedNode.data.node_type === 'end' && (
+              <>
+                <div className={infoBoxCls}>
+                  Terminal node. Optionally deliver the final output when the run finishes here.
+                </div>
+                <ConfigField label="Deliver to webhook (optional)">
+                  <input
+                    value={(selectedNode.data.config?.webhook_url as string) || ''}
+                    onChange={(e) => patchConfig('webhook_url', e.target.value || undefined)}
+                    className={`${inputCls} font-mono`}
+                    placeholder="https://example.com/hook"
+                  />
+                  <div className={hintCls}>POSTs JSON with <code>workflow_id</code>, <code>run_id</code> and the final output.</div>
+                </ConfigField>
+                <ConfigField label="Deliver to gateway (optional)">
+                  <select
+                    value={(selectedNode.data.config?.gateway_channel_id as string) || ''}
+                    onChange={(e) => patchConfig('gateway_channel_id', e.target.value || undefined)}
+                    className={inputCls}
+                  >
+                    <option value="">No gateway delivery</option>
+                    {gatewayChannels.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.channel_type})</option>
+                    ))}
+                  </select>
+                  {!!(selectedNode.data.config?.gateway_channel_id as string) && (
+                    <input
+                      value={(selectedNode.data.config?.gateway_peer_id as string) || ''}
+                      onChange={(e) => patchConfig('gateway_peer_id', e.target.value || undefined)}
+                      className={`${inputCls} mt-2 font-mono`}
+                      placeholder="Recipient: +15551234567 or JID"
+                    />
+                  )}
+                </ConfigField>
+              </>
+            )}
+
+            {/* Parallel / Join: info */}
+            {(selectedNode.data.node_type === 'parallel' || selectedNode.data.node_type === 'join') && (
+              <div className={infoBoxCls}>
+                {selectedNode.data.node_type === 'parallel' && 'Fan-out: each outgoing edge runs concurrently. Use a Join node to collect the branch outputs.'}
                 {selectedNode.data.node_type === 'join' && 'Merges outputs from parallel branches into a single concatenated output before continuing.'}
               </div>
             )}
 
             {selectedNode.data.node_type === 'supervisor' && !selectedNode.data.agent_id && (
-              <div style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', lineHeight: 1.6 }}>
-                <strong>How supervisor works:</strong><br />
-                1. Select a coordinator agent above.<br />
-                2. Drag from the <strong>→ right handle</strong> to the next pipeline node (forward flow).<br />
-                3. Drag from the <strong>↓ bottom handle</strong> to each team agent node — edges are auto-labeled <code style={{ background: '#fde68a', padding: '1px 3px', borderRadius: 2 }}>delegate</code>.<br />
-                4. At runtime, team agents become callable tools for the supervisor&apos;s LLM.
+              <div className={infoBoxCls}>
+                <strong>How supervisor works:</strong> pick a coordinator agent, drag from the right handle to the next pipeline node, and from the bottom handle to each team agent (auto-labelled <code>delegate</code>). At runtime team agents become callable tools.
               </div>
             )}
 
@@ -2159,12 +2369,9 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                 setNodes((nds) => nds.filter((n) => n.id !== selectedNode.id))
                 setEdges((eds) => eds.filter((e) => e.source !== selectedNode.id && e.target !== selectedNode.id))
                 setSelectedNode(null)
+                setDirty(true)
               }}
-              style={{
-                marginTop: 'auto', padding: '7px 12px', fontSize: 12, borderRadius: 8,
-                background: '#fff', color: '#ef4444', border: '1px solid #fecaca',
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-              }}
+              className="mt-auto flex items-center justify-center gap-1.5 rounded-lg border border-crit/30 px-3 py-2 text-xs font-medium text-crit transition-colors hover:bg-crit/10"
             >
               <X size={12} /> Remove node
             </button>
@@ -2182,88 +2389,77 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 
       {/* Run panel */}
       {runPanelOpen && (
-        <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0,
-          background: '#13111f', borderTop: '1px solid #2d2b3d',
-          display: 'flex', flexDirection: 'column', zIndex: 50,
-          maxHeight: '50vh', minHeight: 240,
-        }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
-            borderBottom: '1px solid #2d2b3d', flexShrink: 0,
-          }}>
-            <Play size={13} color="#534AB7" />
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e0ff' }}>Run Workflow</span>
-            <div style={{ flex: 1 }} />
+        <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[50vh] min-h-60 flex-col border-t border-zinc-800 bg-zinc-950">
+          <div className="flex flex-shrink-0 items-center gap-3 border-b border-zinc-800 px-4 py-2.5">
+            <span className="grid h-6 w-6 place-items-center rounded-md bg-accent/20 text-accent-bright">
+              <Play size={12} />
+            </span>
+            <span className="text-xs font-semibold text-zinc-100">Run workflow</span>
+            {runStatus === 'running' && (
+              <span className="flex items-center gap-1.5 font-mono text-[10px] text-accent-bright">
+                <Loader2 size={10} className="animate-spin" /> running
+              </span>
+            )}
+            {runStatus === 'done' && !runError && (
+              <span className="font-mono text-[10px] text-emerald-400">completed</span>
+            )}
+            <div className="flex-1" />
             <button
               onClick={() => { setRunPanelOpen(false); setRunStatus('idle'); setRunError(null) }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}
+              className="text-zinc-500 transition-colors hover:text-zinc-200"
+              aria-label="Close run panel"
             >
               <X size={14} />
             </button>
           </div>
 
-          <div style={{ display: 'flex', flex: 1, overflow: 'hidden', flexWrap: 'wrap' }}>
+          <div className="flex flex-1 flex-wrap overflow-hidden">
             {/* Input area */}
-            <div style={{ minWidth: 200, width: '40%', flexShrink: 0, padding: '12px', display: 'flex', flexDirection: 'column', gap: 8, borderRight: '1px solid #2d2b3d' }}>
+            <div className="flex w-2/5 min-w-52 flex-shrink-0 flex-col gap-2 border-r border-zinc-800 p-3">
               <textarea
                 value={runInput}
                 onChange={(e) => setRunInput(e.target.value)}
-                placeholder="Enter input for the pipeline…"
-                style={{
-                  flex: 1, resize: 'none', background: '#1e1c2e', border: '1px solid #3d3b52',
-                  borderRadius: 8, padding: '8px 10px', fontSize: 12, color: '#e5e7eb',
-                  outline: 'none', fontFamily: 'Inter, sans-serif',
-                }}
+                onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleRun() }}
+                placeholder="Describe the task for this run… (⌘⏎ to run)"
+                className="flex-1 resize-none rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-accent/60"
               />
               {runError && (
-                <div style={{
-                  background: '#3d1a1a', border: '1px solid #7f1d1d', borderRadius: 8,
-                  padding: '8px 10px', fontSize: 11, color: '#fca5a5', lineHeight: 1.4,
-                }}>
+                <div className="rounded-lg border border-red-900 bg-red-950/60 px-3 py-2 text-[11px] leading-snug text-red-300">
                   {runError}
                 </div>
               )}
               <button
                 onClick={handleRun}
                 disabled={!runInput.trim() || runStatus === 'running'}
-                style={{
-                  padding: '8px 16px', background: runStatus === 'running' ? '#3d3b52' : '#534AB7',
-                  color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                  cursor: runStatus === 'running' ? 'not-allowed' : 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                }}
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-br from-accent to-accent-ink px-4 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {runStatus === 'running'
-                  ? <><Loader2 size={12} style={{ animation: 'spin 0.7s linear infinite' }} /> Running…</>
-                  : <><Play size={12} /> Execute Pipeline</>
+                  ? <><Loader2 size={12} className="animate-spin" /> Running…</>
+                  : <><Play size={12} /> Run workflow</>
                 }
               </button>
             </div>
 
             {/* Output area */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {Object.keys(runOutput).length === 0 && runStatus === 'idle' && (
-                <div style={{ color: '#4b5563', fontSize: 12, marginTop: 20, textAlign: 'center' }}>
-                  Output will appear here once you execute the pipeline.
+            <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-3">
+              {Object.keys(runOutput).length === 0 && (
+                <div className="mt-8 text-center font-mono text-[11px] text-zinc-600">
+                  {runStatus === 'running' ? 'Waiting for the first node…' : 'Node outputs appear here as the run progresses.'}
                 </div>
               )}
               {Object.entries(runOutput).map(([nodeId, text]) => {
                 const node = nodes.find((n) => n.id === nodeId)
                 const label = nodeId === '__main__' ? 'Output' : node?.data?.label || nodeId
                 return (
-                  <div key={nodeId} style={{ background: '#1e1c2e', borderRadius: 8, padding: '10px 12px', border: '1px solid #2d2b3d' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                      <ChevronRight size={11} color="#534AB7" />
-                      <span style={{ fontSize: 11, fontWeight: 700, color: '#a5b4fc' }}>{label}</span>
+                  <div key={nodeId} className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2.5">
+                    <div className="mb-1.5 flex items-center gap-1.5">
+                      <ChevronRight size={11} className="text-accent-bright" />
+                      <span className="text-[11px] font-semibold text-indigo-300">{label}</span>
                     </div>
-                    <pre style={{ fontSize: 11, color: '#d1d5db', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace' }}>{text}</pre>
+                    <pre className="m-0 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-zinc-300">{text}</pre>
                   </div>
                 )
               })}
-              {runStatus === 'done' && Object.keys(runOutput).length > 0 && (
-                <div style={{ fontSize: 11, color: '#22c55e', textAlign: 'center', padding: '4px 0' }}>Pipeline completed.</div>
-              )}
             </div>
           </div>
         </div>
@@ -2275,7 +2471,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 function ConfigField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
+      <div className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-faint">{label}</div>
       {children}
     </div>
   )
