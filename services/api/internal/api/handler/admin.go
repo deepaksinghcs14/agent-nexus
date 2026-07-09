@@ -9,6 +9,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/logstream"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"net/http"
 	"strings"
@@ -286,16 +287,16 @@ func (h *AdminHandler) Usage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	errs.WriteJSON(w, 200, map[string]any{
-		"runs":                  totalRuns,
-		"tokens":                totalTokens,
-		"cost":                  totalCost,
-		"webhook_triggers":      webhookTriggers,
-		"total_workspaces":      totalWorkspaces,
-		"total_agents":          totalAgents,
-		"total_connectors":      totalConnectors,
+		"runs":                   totalRuns,
+		"tokens":                 totalTokens,
+		"cost":                   totalCost,
+		"webhook_triggers":       webhookTriggers,
+		"total_workspaces":       totalWorkspaces,
+		"total_agents":           totalAgents,
+		"total_connectors":       totalConnectors,
 		"total_gateway_channels": totalGatewayChannels,
-		"total_eval_suites":     totalEvalSuites,
-		"top_workspaces":        topWorkspaces,
+		"total_eval_suites":      totalEvalSuites,
+		"top_workspaces":         topWorkspaces,
 	})
 }
 func (h *AdminHandler) GetPolicies(w http.ResponseWriter, r *http.Request) {
@@ -327,20 +328,15 @@ func (h *AdminHandler) SetPolicies(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.BadRequest("invalid request body"))
 		return
 	}
-	tx, e := h.pool.Begin(r.Context())
-	if e != nil {
-		errs.Write(w, errs.Internal("failed to save policies"))
-		return
-	}
-	defer func() { _ = tx.Rollback(r.Context()) }()
-	for _, p := range q.Policies {
-		_, e = tx.Exec(r.Context(), `INSERT INTO policies(workspace_id,key,value)VALUES(NULL,$1,$2)ON CONFLICT(workspace_id,key)DO UPDATE SET value=$2,updated_at=NOW()`, p.Key, p.Value)
-		if e != nil {
-			errs.Write(w, errs.Internal("failed to save policies"))
-			return
+	err := repository.WithTx(r.Context(), h.pool, func(tx pgx.Tx) error {
+		for _, p := range q.Policies {
+			if _, e := tx.Exec(r.Context(), `INSERT INTO policies(workspace_id,key,value)VALUES(NULL,$1,$2)ON CONFLICT(workspace_id,key)DO UPDATE SET value=$2,updated_at=NOW()`, p.Key, p.Value); e != nil {
+				return e
+			}
 		}
-	}
-	if tx.Commit(r.Context()) != nil {
+		return nil
+	})
+	if err != nil {
 		errs.Write(w, errs.Internal("failed to save policies"))
 		return
 	}

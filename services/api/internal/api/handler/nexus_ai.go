@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
@@ -1047,8 +1048,7 @@ func (h *NexusAIHandler) toolCreateAgent(ctx context.Context, ws, uid string, in
 
 	// Attach tools if specified
 	if len(args.ToolIDs) > 0 || len(args.ToolNames) > 0 {
-		tx, err := h.pool.Begin(ctx)
-		if err == nil {
+		_ = repository.WithTx(ctx, h.pool, func(tx pgx.Tx) error { //nolint:errcheck
 			for _, id := range args.ToolIDs {
 				tx.Exec(ctx, //nolint:errcheck
 					`INSERT INTO agent_tools(agent_id,tool_id,enabled)
@@ -1062,14 +1062,13 @@ func (h *NexusAIHandler) toolCreateAgent(ctx context.Context, ws, uid string, in
 					 ON CONFLICT DO NOTHING`,
 					a.ID, name, ws)
 			}
-			tx.Commit(ctx) //nolint:errcheck
-		}
+			return nil
+		})
 	}
 
 	// Attach connectors if specified
 	if args.ContextRetrievalEnabled && len(args.ConnectorIDs) > 0 {
-		tx, err := h.pool.Begin(ctx)
-		if err == nil {
+		_ = repository.WithTx(ctx, h.pool, func(tx pgx.Tx) error { //nolint:errcheck
 			tx.Exec(ctx, `DELETE FROM agent_connectors WHERE agent_id=$1::uuid`, a.ID) //nolint:errcheck
 			for _, cid := range args.ConnectorIDs {
 				tx.Exec(ctx, //nolint:errcheck
@@ -1077,8 +1076,8 @@ func (h *NexusAIHandler) toolCreateAgent(ctx context.Context, ws, uid string, in
 					 VALUES($1::uuid,$2::uuid,$3,$4) ON CONFLICT(agent_id,connector_id) DO NOTHING`,
 					a.ID, cid, args.MaxChunks, args.MinScore)
 			}
-			tx.Commit(ctx) //nolint:errcheck
-		}
+			return nil
+		})
 	}
 
 	// Build a brief summary of what was configured
@@ -1882,8 +1881,7 @@ func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input j
 
 	// Replace the agent's context connectors when connector_ids is provided.
 	if args.ConnectorIDs != nil {
-		tx, err := h.pool.Begin(ctx)
-		if err == nil {
+		_ = repository.WithTx(ctx, h.pool, func(tx pgx.Tx) error { //nolint:errcheck
 			tx.Exec(ctx, `DELETE FROM agent_connectors WHERE agent_id=$1::uuid`, args.AgentID) //nolint:errcheck
 			for _, cid := range args.ConnectorIDs {
 				tx.Exec(ctx, //nolint:errcheck
@@ -1893,16 +1891,15 @@ func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input j
 					 ON CONFLICT(agent_id,connector_id) DO NOTHING`,
 					args.AgentID, cid, ws)
 			}
-			tx.Commit(ctx) //nolint:errcheck
-		}
+			return nil
+		})
 	}
 
 	// Attach every tool belonging to the given MCP servers — additive, existing tools
 	// (including ones from other servers) are left untouched.
 	attachedToolCount := 0
 	if toolNames := resolveMCPServerToolNames(ctx, h.pool, ws, args.MCPServerIDs); len(toolNames) > 0 {
-		tx, err := h.pool.Begin(ctx)
-		if err == nil {
+		if repository.WithTx(ctx, h.pool, func(tx pgx.Tx) error {
 			for _, name := range toolNames {
 				tx.Exec(ctx, //nolint:errcheck
 					`INSERT INTO agent_tools(agent_id,tool_id,enabled)
@@ -1910,7 +1907,8 @@ func (h *NexusAIHandler) toolUpdateAgent(ctx context.Context, ws string, input j
 					 ON CONFLICT DO NOTHING`,
 					args.AgentID, name, ws)
 			}
-			tx.Commit(ctx) //nolint:errcheck
+			return nil
+		}) == nil {
 			attachedToolCount = len(toolNames)
 		}
 	}

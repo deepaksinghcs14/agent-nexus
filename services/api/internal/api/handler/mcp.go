@@ -9,11 +9,13 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
 
@@ -153,41 +155,37 @@ func (h *MCPHandler) syncServerTools(ctx context.Context, s domain.MCPServer) (i
 	}
 
 	// Replace all tools for this server atomically.
-	tx, txErr := h.pool.Begin(ctx)
-	if txErr != nil {
-		return 0, fmt.Errorf("failed to begin transaction: %w", txErr)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	tx.Exec(ctx, `DELETE FROM mcp_tools WHERE server_id=$1::uuid`, s.ID) //nolint:errcheck
-	for _, t := range tools {
-		mcpID := uuid.NewString()
-		tx.Exec(ctx, //nolint:errcheck
-			`INSERT INTO mcp_tools(id,server_id,name,description,input_schema,risk_level,enabled)
+	err = repository.WithTx(ctx, h.pool, func(tx pgx.Tx) error {
+		tx.Exec(ctx, `DELETE FROM mcp_tools WHERE server_id=$1::uuid`, s.ID) //nolint:errcheck
+		for _, t := range tools {
+			mcpID := uuid.NewString()
+			tx.Exec(ctx, //nolint:errcheck
+				`INSERT INTO mcp_tools(id,server_id,name,description,input_schema,risk_level,enabled)
 			 VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7)
 			 ON CONFLICT(server_id,name) DO UPDATE SET description=$4,input_schema=$5,risk_level=$6,updated_at=NOW()`,
-			mcpID, s.ID, t.Name, t.Description, t.InputSchema, t.RiskLevel, t.Enabled,
-		)
-		// Mirror into tools table so agent assignment (agent_tools FK) works.
-		// Use a deterministic UUID so re-syncs don't orphan existing agent_tools rows.
-		// Do NOT overwrite risk_level on conflict — preserve user edits.
-		toolsID := mcpToolsID(s.WorkspaceID, s.ID, t.Name)
-		cfg, _ := json.Marshal(map[string]string{"server_id": s.ID, "server_name": s.Name})
-		tx.Exec(ctx, //nolint:errcheck
-			`INSERT INTO tools(id,workspace_id,name,description,type,input_schema,output_schema,config,risk_level,requires_approval,timeout_ms,enabled)
+				mcpID, s.ID, t.Name, t.Description, t.InputSchema, t.RiskLevel, t.Enabled,
+			)
+			// Mirror into tools table so agent assignment (agent_tools FK) works.
+			// Use a deterministic UUID so re-syncs don't orphan existing agent_tools rows.
+			// Do NOT overwrite risk_level on conflict — preserve user edits.
+			toolsID := mcpToolsID(s.WorkspaceID, s.ID, t.Name)
+			cfg, _ := json.Marshal(map[string]string{"server_id": s.ID, "server_name": s.Name})
+			tx.Exec(ctx, //nolint:errcheck
+				`INSERT INTO tools(id,workspace_id,name,description,type,input_schema,output_schema,config,risk_level,requires_approval,timeout_ms,enabled)
 			 VALUES($1::uuid,$2::uuid,$3,$4,'mcp',$5,'{}',$6,$7,false,30000,true)
 			 ON CONFLICT(workspace_id,name) DO UPDATE SET
 			   description=EXCLUDED.description,
 			   input_schema=EXCLUDED.input_schema,
 			   config=EXCLUDED.config,
 			   updated_at=NOW()`,
-			toolsID, s.WorkspaceID, t.Name, t.Description, t.InputSchema, cfg, t.RiskLevel,
-		)
-	}
-	tx.Exec(ctx, `UPDATE mcp_servers SET status='connected',tools_synced_at=NOW(),updated_at=NOW() WHERE id=$1::uuid`, s.ID) //nolint:errcheck
-
-	if err := tx.Commit(ctx); err != nil {
-		return 0, fmt.Errorf("failed to commit sync: %w", err)
+				toolsID, s.WorkspaceID, t.Name, t.Description, t.InputSchema, cfg, t.RiskLevel,
+			)
+		}
+		tx.Exec(ctx, `UPDATE mcp_servers SET status='connected',tools_synced_at=NOW(),updated_at=NOW() WHERE id=$1::uuid`, s.ID) //nolint:errcheck
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("failed to sync tools: %w", err)
 	}
 	return len(tools), nil
 }
