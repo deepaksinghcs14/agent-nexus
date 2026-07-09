@@ -2372,7 +2372,6 @@ func edgesTargeting(targetNodeID string, adj map[string][]wfEdge) []wfEdge {
 	return result
 }
 
-
 // sanitizeToolName converts an agent name into a valid LLM tool name (lowercase, underscores).
 func sanitizeToolName(name string) string {
 	var b strings.Builder
