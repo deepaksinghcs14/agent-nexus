@@ -333,8 +333,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 			return true
 		},
 		WaitForUserInput: func(ctx context.Context, question string) (string, error) {
-			emit(fmt.Sprintf(`{"type":"user_input_required","run_id":%q,"question":%s}`,
-				capturedRunID, jsonOrStr([]byte(`"`+question+`"`))))
+			emit(sse.UserInputRequired(capturedRunID, question))
 			ch := RegisterUserInputWait(capturedRunID)
 			h.pool.Exec(ctx, `UPDATE runs SET status='user_input_wait' WHERE id=$1::uuid`, capturedRunID) //nolint:errcheck
 			select {
@@ -393,7 +392,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		}
 		ch := RegisterSessionWait(id)
 		h.pool.Exec(waitCtx, `UPDATE runs SET status='session_wait' WHERE id=$1::uuid`, id) //nolint:errcheck
-		emit(fmt.Sprintf(`{"type":"session_wait","run_id":%q,"session":%q}`, id, sessionKey))
+		emit(sse.SessionWait(id, sessionKey))
 
 		content, got := awaitSessionResult(id, ch, 60*time.Second)
 		if !got {
@@ -449,8 +448,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 		}
 		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
 			messages = trimmed
-			emit(fmt.Sprintf(`{"type":"delta","content":%q}`,
-				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
+			emit(sse.Delta(fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
 		}
 
 		modelStart := time.Now()
@@ -580,8 +578,7 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 					map[string]any{"tool": call.Name, "input": call.Input},
 					map[string]any{"error": gateErr},
 					time.Now(), 0, call.Name, gateErr)
-				emit(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":0}`,
-					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(fmt.Sprintf(`{"error":%q}`, gateErr)))))
+				emit(sse.ToolCall(call.ID, call.Name, call.Input, []byte(fmt.Sprintf(`{"error":%q}`, gateErr)), 0))
 				messages = append(messages, provider.Message{
 					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: fmt.Sprintf(`{"error":%q}`, gateErr),
 				})

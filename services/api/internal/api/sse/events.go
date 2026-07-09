@@ -117,3 +117,19 @@ func NodeDelivery(nodeID, target string, err error) string {
 	}
 	return evt("node_delivery", f)
 }
+
+func UserInputRequired(runID, question string) string {
+	return evt("user_input_required", map[string]any{"run_id": runID, "question": question})
+}
+
+func ToolStartedLabel(tool, label string) string {
+	return evt("tool_started", map[string]any{"tool": tool, "label": label})
+}
+
+func ToolCompleted(tool, label, errMsg string) string {
+	return evt("tool_completed", map[string]any{"tool": tool, "label": label, "error": errMsg})
+}
+
+func SessionWait(runID, sessionKey string) string {
+	return evt("session_wait", map[string]any{"run_id": runID, "session": sessionKey})
+}

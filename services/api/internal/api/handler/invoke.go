@@ -761,8 +761,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	execCtx.SendMessage = opts.SendMessage
 	capturedRunID := runID
 	execCtx.WaitForUserInput = func(ctx context.Context, question string) (string, error) {
-		sseEmitOrNil(fmt.Sprintf(`{"type":"user_input_required","run_id":%q,"question":%s}`,
-			capturedRunID, jsonOrStr([]byte(`"`+question+`"`))))
+		sseEmitOrNil(sse.UserInputRequired(capturedRunID, question))
 		if opts.SendMessage != nil {
 			opts.SendMessage(ctx, question) //nolint:errcheck
 		}
@@ -841,7 +840,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		}
 		ch := RegisterSessionWait(runID)
 		h.pool.Exec(waitCtx, `UPDATE runs SET status='session_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
-		sseEmitOrNil(fmt.Sprintf(`{"type":"session_wait","run_id":%q,"session":%q}`, runID, sessionKey))
+		sseEmitOrNil(sse.SessionWait(runID, sessionKey))
 
 		// Sessions run for minutes to hours; block only briefly for fast stubs
 		// and tests, then park. The runner's callback resumes the run.
@@ -911,8 +910,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		} else {
 			if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
 				messages = trimmed
-				sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`,
-					fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
+				sseEmitOrNil(sse.Delta(fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
 			}
 
 			modelStart := time.Now()
@@ -1093,8 +1091,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					map[string]any{"tool": call.Name, "input": call.Input},
 					map[string]any{"output": resultContent},
 					time.Now(), 0, call.Name, "")
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":0}`,
-					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(resultContent))))
+				sseEmitOrNil(sse.ToolCall(call.ID, call.Name, call.Input, []byte(resultContent), 0))
 				messages = append(messages, provider.Message{
 					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: resultContent,
 				})
@@ -1142,8 +1139,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					map[string]any{"tool": call.Name, "input": call.Input},
 					map[string]any{"error": gateErr},
 					time.Now(), 0, call.Name, gateErr)
-				sseEmitOrNil(fmt.Sprintf(`{"type":"tool_call","call_id":%q,"tool":%q,"input":%s,"output":%s,"latency_ms":0}`,
-					call.ID, call.Name, jsonOrStr(call.Input), jsonOrStr([]byte(fmt.Sprintf(`{"error":%q}`, gateErr)))))
+				sseEmitOrNil(sse.ToolCall(call.ID, call.Name, call.Input, []byte(fmt.Sprintf(`{"error":%q}`, gateErr)), 0))
 				messages = append(messages, provider.Message{
 					Role: "tool", ToolCallID: call.ID, ToolName: call.Name, Content: fmt.Sprintf(`{"error":%q}`, gateErr),
 				})
@@ -1400,7 +1396,7 @@ func (h *InvokeHandler) executeGroupRun(
 	runMarked := false
 	defer func() {
 		if r := recover(); r != nil {
-			sseEmit(fmt.Sprintf(`{"type":"error","error":"workflow panic: %v"}`, r))
+			sseEmit(sse.Error(fmt.Sprintf("workflow panic: %v", r)))
 		}
 		if !runMarked {
 			h.runs.failRun(context.Background(), parentRunID, "workflow terminated unexpectedly") //nolint:errcheck
@@ -1437,7 +1433,7 @@ func (h *InvokeHandler) executeGroupRun(
 		 FROM workflow_nodes WHERE workflow_id=$1::uuid ORDER BY created_at`,
 		workflowID)
 	if err != nil {
-		sseEmit(fmt.Sprintf(`{"type":"error","error":%q}`, "failed to load workflow nodes"))
+		sseEmit(sse.Error("failed to load workflow nodes"))
 		h.runs.failRun(ctx, parentRunID, "failed to load workflow nodes") //nolint:errcheck
 		return
 	}
@@ -1491,7 +1487,7 @@ func (h *InvokeHandler) executeGroupRun(
 		 FROM workflow_edges WHERE workflow_id=$1::uuid ORDER BY created_at`,
 		workflowID)
 	if err != nil {
-		sseEmit(fmt.Sprintf(`{"type":"error","error":%q}`, "failed to load workflow edges"))
+		sseEmit(sse.Error("failed to load workflow edges"))
 		h.runs.failRun(ctx, parentRunID, "failed to load workflow edges") //nolint:errcheck
 		return
 	}
@@ -1612,7 +1608,7 @@ func (h *InvokeHandler) executeGroupRun(
 			exceeded := totalSteps > maxTotalSteps
 			stepsMu.Unlock()
 			if exceeded {
-				sseEmit(fmt.Sprintf(`{"type":"error","error":"workflow exceeded maximum steps (%d) — possible infinite loop"}`, maxTotalSteps))
+				sseEmit(sse.Error(fmt.Sprintf("workflow exceeded maximum steps (%d) — possible infinite loop", maxTotalSteps)))
 				h.runs.failRun(ctx, parentRunID, fmt.Sprintf("workflow exceeded maximum steps (%d)", maxTotalSteps)) //nolint:errcheck
 				return
 			}
@@ -1725,7 +1721,7 @@ func (h *InvokeHandler) executeGroupRun(
 
 			case "agent":
 				if node.AgentID == "" {
-					sseEmit(fmt.Sprintf(`{"type":"error","error":"agent node %s has no agent_id"}`, node.ID))
+					sseEmit(sse.Error(fmt.Sprintf("agent node %s has no agent_id", node.ID)))
 					continue
 				}
 
@@ -1748,8 +1744,7 @@ func (h *InvokeHandler) executeGroupRun(
 				agents := repository.NewAgentRepository(h.pool)
 				a, err := agents.Get(ctx, node.AgentID, ws)
 				if err != nil {
-					sseEmit(fmt.Sprintf(`{"type":"error","error":%q}`,
-						fmt.Sprintf("agent node %s: agent not found", node.ID)))
+					sseEmit(sse.Error(fmt.Sprintf("agent node %s: agent not found", node.ID)))
 					continue
 				}
 
@@ -1856,7 +1851,7 @@ func (h *InvokeHandler) executeGroupRun(
 				}
 
 				if nextID == "" {
-					sseEmit(fmt.Sprintf(`{"type":"error","error":"condition node %s has no matching or fallback edge — branch stopped"}`, node.ID))
+					sseEmit(sse.Error(fmt.Sprintf("condition node %s has no matching or fallback edge — branch stopped", node.ID)))
 					continue
 				}
 
@@ -1904,7 +1899,7 @@ func (h *InvokeHandler) executeGroupRun(
 						defer wg.Done()
 						defer func() {
 							if r := recover(); r != nil {
-								sseEmit(fmt.Sprintf(`{"type":"error","error":"parallel branch panic: %v"}`, r))
+								sseEmit(sse.Error(fmt.Sprintf("parallel branch panic: %v", r)))
 							}
 						}()
 						walkBranch(branchStart, bi, stopNodeIDs)
@@ -1996,14 +1991,13 @@ func (h *InvokeHandler) executeGroupRun(
 
 			case "supervisor":
 				if node.AgentID == "" {
-					sseEmit(fmt.Sprintf(`{"type":"error","error":"supervisor node %s has no agent_id"}`, node.ID))
+					sseEmit(sse.Error(fmt.Sprintf("supervisor node %s has no agent_id", node.ID)))
 					continue
 				}
 				agentRepo := repository.NewAgentRepository(h.pool)
 				supAgent, err := agentRepo.Get(ctx, node.AgentID, ws)
 				if err != nil {
-					sseEmit(fmt.Sprintf(`{"type":"error","error":%q}`,
-						fmt.Sprintf("supervisor node %s: agent not found", node.ID)))
+					sseEmit(sse.Error(fmt.Sprintf("supervisor node %s: agent not found", node.ID)))
 					continue
 				}
 
@@ -2568,8 +2562,7 @@ func (h *InvokeHandler) executeSupervisorRun(
 	for {
 		if trimmed, n := provider.TruncateMessages(messages, a.Model, a.MaxTokens); n > 0 {
 			messages = trimmed
-			sseEmitOrNil(fmt.Sprintf(`{"type":"delta","content":%q}`,
-				fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
+			sseEmitOrNil(sse.Delta(fmt.Sprintf("[Context trimmed: dropped %d older messages to fit within model context window]\n\n", n)))
 		}
 
 		modelStart := time.Now()

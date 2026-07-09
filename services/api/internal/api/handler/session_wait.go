@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/deepaksingh/agent-nexus/services/api/internal/api/sse"
+
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 )
 
@@ -155,7 +157,7 @@ func (h *InvokeHandler) blockingSessionWait(runID string, emitFn func(string)) f
 		ch := RegisterSessionWait(runID)
 		h.pool.Exec(waitCtx, `UPDATE runs SET status='session_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
 		if emitFn != nil {
-			emitFn(fmt.Sprintf(`{"type":"session_wait","run_id":%q,"session":%q}`, runID, sessionKey))
+			emitFn(sse.SessionWait(runID, sessionKey))
 		}
 		content, got := awaitSessionResult(runID, ch, timeout)
 		h.pool.Exec(waitCtx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, runID) //nolint:errcheck

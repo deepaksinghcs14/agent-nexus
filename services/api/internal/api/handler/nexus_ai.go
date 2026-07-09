@@ -648,12 +648,11 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		// Execute each tool call and append the result.
 		for _, call := range pendingCalls {
 			label := toolStartLabel(call.Name, call.Input)
-			emit(fmt.Sprintf(`{"type":"tool_started","tool":%q,"label":%q}`, call.Name, label))
+			emit(sse.ToolStartedLabel(call.Name, label))
 
 			result, execErr := h.executeTool(r.Context(), ws, uid, call.Name, call.Input)
 			if execErr != nil {
-				emit(fmt.Sprintf(`{"type":"tool_completed","tool":%q,"label":%q,"error":%q}`,
-					call.Name, "Error", execErr.Error()))
+				emit(sse.ToolCompleted(call.Name, "Error", execErr.Error()))
 				resultJSON, _ := json.Marshal(map[string]string{"error": execErr.Error()})
 				messages = append(messages, provider.Message{
 					Role: "tool", ToolCallID: call.ID, ToolName: call.Name,
@@ -1275,7 +1274,7 @@ func (h *NexusAIHandler) toolProposeAgent(ctx context.Context, ws string, input 
 	draft := map[string]any{
 		"name":                      args.Name,
 		"description":               args.Description,
-		"instructions":             args.Instructions,
+		"instructions":              args.Instructions,
 		"provider":                  args.Provider,
 		"model":                     args.Model,
 		"temperature":               args.Temperature,
@@ -1770,8 +1769,8 @@ func (h *NexusAIHandler) toolAttachSkills(ctx context.Context, ws string, input 
 		Label: fmt.Sprintf("Attached %d skill(s) to agent \"%s\"", len(assignments), agentName),
 		Link:  "/agents/" + args.AgentID,
 		Data: map[string]any{
-			"agent_id":   args.AgentID,
-			"agent_name": agentName,
+			"agent_id":    args.AgentID,
+			"agent_name":  agentName,
 			"skill_count": len(assignments),
 		},
 	}, nil
