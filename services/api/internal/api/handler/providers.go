@@ -169,7 +169,15 @@ func (h *ProvidersHandler) ListModels(w http.ResponseWriter, r *http.Request) {
 		errs.WriteJSON(w, http.StatusOK, map[string]any{"data": staticModels(cred.Provider)})
 		return
 	}
-	errs.WriteJSON(w, http.StatusOK, map[string]any{"data": models})
+	// Providers keep retired models in their listings long after inference
+	// starts 404ing them; the synced catalog knows which are dead.
+	live := models[:0]
+	for _, m := range models {
+		if !provider.IsDeprecatedModel(m.ID) {
+			live = append(live, m)
+		}
+	}
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"data": live})
 }
 
 // adapterFor instantiates the correct provider adapter for a credential.

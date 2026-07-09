@@ -1,6 +1,10 @@
 package provider
 
-import "strings"
+import (
+	"sort"
+	"strings"
+	"sync"
+)
 
 // ModelSpec is one row of the model catalog: everything the platform knows
 // about a model family, keyed by a name fragment. Previously this data was
@@ -17,6 +21,41 @@ type ModelSpec struct {
 	// unknown (callers fall back to per-provider defaults).
 	InUSDPerMTok  float64
 	OutUSDPerMTok float64
+	// Deprecated marks models the provider has retired or scheduled for
+	// shutdown — surfaced so model pickers can hide them.
+	Deprecated bool
+}
+
+// overlay holds specs synced at runtime (see catalogsync); it is consulted
+// before the static Catalog so community-maintained data wins when present.
+var (
+	overlayMu sync.RWMutex
+	overlay   []ModelSpec
+)
+
+// SetCatalogOverlay replaces the runtime overlay. Entries are sorted
+// longest-match-first so specific ids beat family fragments.
+func SetCatalogOverlay(specs []ModelSpec) {
+	sorted := make([]ModelSpec, len(specs))
+	copy(sorted, specs)
+	sort.Slice(sorted, func(i, j int) bool { return len(sorted[i].Match) > len(sorted[j].Match) })
+	overlayMu.Lock()
+	overlay = sorted
+	overlayMu.Unlock()
+}
+
+// IsDeprecatedModel reports whether the synced catalog marks the model
+// deprecated. Unknown models are not deprecated.
+func IsDeprecatedModel(model string) bool {
+	lower := strings.ToLower(strings.TrimSpace(model))
+	overlayMu.RLock()
+	defer overlayMu.RUnlock()
+	for i := range overlay {
+		if strings.Contains(lower, overlay[i].Match) {
+			return overlay[i].Deprecated
+		}
+	}
+	return false
 }
 
 // Catalog is ordered most-specific-first within each family.
@@ -66,10 +105,20 @@ var Catalog = []ModelSpec{
 	{Match: "qwen", ContextWindow: 8_192},
 }
 
-// LookupModel returns the first catalog row whose fragment appears in the
-// model name, or nil when the model is unknown.
+// LookupModel returns the best catalog row for the model name — runtime
+// overlay first (fresh, community-synced), then the static table — or nil
+// when the model is unknown.
 func LookupModel(model string) *ModelSpec {
 	lower := strings.ToLower(strings.TrimSpace(model))
+	overlayMu.RLock()
+	for i := range overlay {
+		if strings.Contains(lower, overlay[i].Match) {
+			spec := overlay[i]
+			overlayMu.RUnlock()
+			return &spec
+		}
+	}
+	overlayMu.RUnlock()
 	for i := range Catalog {
 		if strings.Contains(lower, Catalog[i].Match) {
 			return &Catalog[i]

@@ -18,6 +18,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/connector"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/migrate"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/catalogsync"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/runtime/logstream"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
@@ -115,6 +116,9 @@ func main() {
 	if err := syncRequiredSkillTools(ctx, pool); err != nil {
 		slog.Warn("failed to sync required skill tools", "error", err)
 	}
+	// Keep model pricing/context/deprecation data fresh from models.dev.
+	catalogsync.Start(ctx)
+
 	// Seed the protected Jira→PR pipeline agents into every workspace.
 	// Runs after tool seeding so agent_tools name lookups resolve.
 	if err := handler.SeedPipelineAgents(ctx, pool); err != nil {
