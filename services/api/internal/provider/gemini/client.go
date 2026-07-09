@@ -102,9 +102,10 @@ func streamGemini(ctx context.Context, body io.Reader, events chan<- provider.Co
 				FinishReason string `json:"finishReason"`
 				Content      struct {
 					Parts []struct {
-						Text         string `json:"text"`
-						Thought      bool   `json:"thought"`
-						FunctionCall *struct {
+						Text             string `json:"text"`
+						Thought          bool   `json:"thought"`
+						ThoughtSignature string `json:"thoughtSignature"`
+						FunctionCall     *struct {
 							Name string          `json:"name"`
 							Args json.RawMessage `json:"args"`
 						} `json:"functionCall"`
@@ -155,9 +156,10 @@ func streamGemini(ctx context.Context, body io.Reader, events chan<- provider.Co
 					events <- provider.CompletionEvent{
 						Type: provider.EventToolCall,
 						ToolCall: &provider.ToolCall{
-							ID:    fmt.Sprintf("gemini-%s-%d", part.FunctionCall.Name, seq),
-							Name:  part.FunctionCall.Name,
-							Input: args,
+							ID:               fmt.Sprintf("gemini-%s-%d", part.FunctionCall.Name, seq),
+							Name:             part.FunctionCall.Name,
+							Input:            args,
+							ThoughtSignature: part.ThoughtSignature,
 						},
 					}
 				}
@@ -294,12 +296,16 @@ func geminiRequest(req provider.CompletionRequest) map[string]any {
 				if err := json.Unmarshal(tc.Input, &args); err != nil {
 					args = map[string]any{}
 				}
-				parts = append(parts, map[string]any{
+				fcPart := map[string]any{
 					"functionCall": map[string]any{
 						"name": tc.Name,
 						"args": args,
 					},
-				})
+				}
+				if tc.ThoughtSignature != "" {
+					fcPart["thoughtSignature"] = tc.ThoughtSignature
+				}
+				parts = append(parts, fcPart)
 			}
 			contents = append(contents, map[string]any{"role": "model", "parts": parts})
 			i++

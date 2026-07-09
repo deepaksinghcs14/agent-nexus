@@ -54,6 +54,11 @@ type ToolCall struct {
 	ID    string          `json:"id"`
 	Name  string          `json:"name"`
 	Input json.RawMessage `json:"arguments"`
+	// ThoughtSignature is Gemini's opaque reasoning token attached to a
+	// function call; it must be echoed back verbatim on the next turn or the
+	// API rejects the request. Other providers leave it empty. The json tag
+	// keeps it intact across wait-state snapshots.
+	ThoughtSignature string `json:"thought_signature,omitempty"`
 }
 
 // CompletionEvent is one event from the streaming response.
