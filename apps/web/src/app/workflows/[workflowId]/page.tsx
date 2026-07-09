@@ -2443,24 +2443,24 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 
       {/* Run panel */}
       {runPanelOpen && (
-        <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[50vh] min-h-60 flex-col border-t border-zinc-800 bg-zinc-950">
-          <div className="flex flex-shrink-0 items-center gap-3 border-b border-zinc-800 px-4 py-2.5">
-            <span className="grid h-6 w-6 place-items-center rounded-md bg-accent/20 text-accent-bright">
+        <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[50vh] min-h-60 flex-col border-t border-border bg-surface shadow-[0_-8px_24px_-12px_rgba(21,26,31,.18)]">
+          <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-4 py-2.5">
+            <span className="grid h-6 w-6 place-items-center rounded-md bg-accent-light text-accent dark:bg-accent/20 dark:text-accent-bright">
               <Play size={12} />
             </span>
-            <span className="text-xs font-semibold text-zinc-100">Run workflow</span>
+            <span className="text-xs font-semibold text-foreground">Run workflow</span>
             {runStatus === 'running' && (
-              <span className="flex items-center gap-1.5 font-mono text-[10px] text-accent-bright">
+              <span className="flex items-center gap-1.5 font-mono text-[10px] text-accent dark:text-accent-bright">
                 <Loader2 size={10} className="animate-spin" /> running
               </span>
             )}
             {runStatus === 'done' && !runError && (
-              <span className="font-mono text-[10px] text-emerald-400">completed</span>
+              <span className="font-mono text-[10px] text-good">completed</span>
             )}
             <div className="flex-1" />
             <button
               onClick={() => { setRunPanelOpen(false); setRunStatus('idle'); setRunError(null) }}
-              className="text-zinc-500 transition-colors hover:text-zinc-200"
+              className="text-faint transition-colors hover:text-foreground"
               aria-label="Close run panel"
             >
               <X size={14} />
@@ -2469,16 +2469,16 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 
           <div className="flex flex-1 flex-wrap overflow-hidden">
             {/* Input area */}
-            <div className="flex min-h-0 w-2/5 min-w-52 flex-shrink-0 flex-col gap-2 border-r border-zinc-800 p-3">
+            <div className="flex min-h-0 w-2/5 min-w-52 flex-shrink-0 flex-col gap-2 border-r border-border p-3">
               <textarea
                 value={runInput}
                 onChange={(e) => setRunInput(e.target.value)}
                 onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleRun() }}
                 placeholder="Describe the task for this run… (⌘⏎ to run)"
-                className="flex-1 resize-none rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-accent/60"
+                className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground outline-none placeholder:text-faint focus:border-accent focus:ring-2 focus:ring-accent/20"
               />
               {runError && (
-                <div className="rounded-lg border border-red-900 bg-red-950/60 px-3 py-2 text-[11px] leading-snug text-red-300">
+                <div className="rounded-lg border border-crit/30 bg-crit/10 px-3 py-2 text-[11px] leading-snug text-crit">
                   {runError}
                 </div>
               )}
@@ -2497,7 +2497,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             {/* Output area */}
             <div ref={outputScrollRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
               {Object.keys(runOutput).length === 0 && (
-                <div className="mt-8 text-center font-mono text-[11px] text-zinc-600">
+                <div className="mt-8 text-center font-mono text-[11px] text-faint">
                   {runStatus === 'running' ? 'Waiting for the first node…' : 'Node outputs appear here as the run progresses.'}
                 </div>
               )}
@@ -2505,12 +2505,12 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                 const node = nodes.find((n) => n.id === nodeId)
                 const label = nodeId === '__main__' ? 'Output' : node?.data?.label || nodeId
                 return (
-                  <div key={nodeId} className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2.5">
+                  <div key={nodeId} className="rounded-lg border border-border bg-muted/40 px-3 py-2.5">
                     <div className="mb-1.5 flex items-center gap-1.5">
-                      <ChevronRight size={11} className="text-accent-bright" />
-                      <span className="text-[11px] font-semibold text-indigo-300">{label}</span>
+                      <ChevronRight size={11} className="text-accent dark:text-accent-bright" />
+                      <span className="text-[11px] font-semibold text-accent dark:text-accent-bright">{label}</span>
                     </div>
-                    <pre className="m-0 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-zinc-300">{text}</pre>
+                    <pre className="m-0 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-foreground/90">{text}</pre>
                   </div>
                 )
               })}
