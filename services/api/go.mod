@@ -2,7 +2,7 @@ module github.com/deepaksingh/agent-nexus/services/api
 
 go 1.26
 
-toolchain go1.26.4
+toolchain go1.26.5
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.56.0
