@@ -1883,9 +1883,18 @@ func (h *InvokeHandler) executeGroupRun(
 				// Read back the sub-run output using a background context — the
 				// request ctx may be cancelled if the SSE client disconnected, but
 				// we still need the output for downstream nodes.
-				var subOutput string
+				var subOutput, subStatus, subErrMsg string
 				_ = h.pool.QueryRow(context.Background(),
-					`SELECT COALESCE(output,'') FROM runs WHERE id=$1::uuid`, subRunID).Scan(&subOutput)
+					`SELECT COALESCE(output,''), status, COALESCE(error_message,'') FROM runs WHERE id=$1::uuid`, subRunID).Scan(&subOutput, &subStatus, &subErrMsg)
+				if subStatus == "failed" {
+					// A failed node must fail the workflow — not report
+					// node_completed and march on with empty output.
+					msg := fmt.Sprintf("%s failed: %s", nodeName, subErrMsg)
+					sseEmit(sse.ErrorForNode(node.ID, msg))
+					runMarked = true
+					h.runs.failRun(context.Background(), parentRunID, msg) //nolint:errcheck
+					return
+				}
 
 				outputMu.Lock()
 				nodeOutputs[node.ID] = subOutput
@@ -2252,9 +2261,18 @@ func (h *InvokeHandler) executeGroupRun(
 					disableUserInput: true,
 				})
 
-				var subOutput string
+				var subOutput, subStatus, subErrMsg string
 				_ = h.pool.QueryRow(context.Background(),
-					`SELECT COALESCE(output,'') FROM runs WHERE id=$1::uuid`, subRunID).Scan(&subOutput)
+					`SELECT COALESCE(output,''), status, COALESCE(error_message,'') FROM runs WHERE id=$1::uuid`, subRunID).Scan(&subOutput, &subStatus, &subErrMsg)
+				if subStatus == "failed" {
+					// A failed node must fail the workflow — not report
+					// node_completed and march on with empty output.
+					msg := fmt.Sprintf("%s failed: %s", nodeName, subErrMsg)
+					sseEmit(sse.ErrorForNode(node.ID, msg))
+					runMarked = true
+					h.runs.failRun(context.Background(), parentRunID, msg) //nolint:errcheck
+					return
+				}
 
 				outputMu.Lock()
 				nodeOutputs[node.ID] = subOutput

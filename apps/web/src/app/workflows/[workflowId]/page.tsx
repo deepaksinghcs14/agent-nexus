@@ -1343,10 +1343,21 @@ const TIER_PATTERNS: Record<string, Record<ModelTier, RegExp[]>> = {
   gemini: { heavy: [/pro/], balanced: [/flash/], light: [/flash-lite/, /flash/] },
 }
 
+function modelVersion(id: string): number {
+  const m = id.match(/(\d+)(?:\.(\d+))?/)
+  return m ? parseInt(m[1], 10) + (m[2] ? parseInt(m[2], 10) / 100 : 0) : 0
+}
+
 function pickModelForTier(providerName: string, models: { id: string }[], tier: ModelTier): string | undefined {
   for (const re of TIER_PATTERNS[providerName]?.[tier] ?? []) {
-    const hit = models.find((m) => re.test(m.id.toLowerCase()))
-    if (hit) return hit.id
+    // Among all matches prefer the newest version, then the shortest id —
+    // providers keep deprecated pinned snapshots (e.g. gemini-2.0-flash-lite-001)
+    // in their listings that 404 at inference time.
+    const hits = models.filter((m) => re.test(m.id.toLowerCase()))
+    if (hits.length > 0) {
+      hits.sort((a, b) => modelVersion(b.id) - modelVersion(a.id) || a.id.length - b.id.length)
+      return hits[0].id
+    }
   }
   return models[0]?.id
 }
@@ -1984,6 +1995,9 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             } else if (evt.type === 'run_completed') {
               setRunStatus('done')
             } else if (evt.type === 'error') {
+              if (evt.node_id) {
+                setNodes((nds) => nds.map((n) => n.id === evt.node_id ? { ...n, data: { ...n.data, status: 'error' as const } } : n))
+              }
               setRunError(evt.error ?? evt.message ?? 'Workflow execution error')
               setRunStatus('done')
             }
