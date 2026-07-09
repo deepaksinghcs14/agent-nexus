@@ -1288,7 +1288,7 @@ function TemplateGalleryModal({
         </div>
 
         {/* Body: card list + detail panel */}
-        <div className="flex min-h-0 flex-1 flex-wrap overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-nowrap overflow-hidden">
           {/* Left: template cards */}
           <div className="flex w-56 min-w-44 flex-shrink-0 flex-col gap-2 overflow-y-auto border-r border-border p-3">
             {TEMPLATES.map((tpl) => {
@@ -2471,7 +2471,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 
           <div className="flex flex-1 flex-wrap overflow-hidden">
             {/* Input area */}
-            <div className="flex min-h-0 w-2/5 min-w-52 flex-shrink-0 flex-col gap-2 border-r border-border p-3">
+            <div className="flex min-h-0 w-2/5 min-w-52 flex-shrink-0 flex-col gap-2 overflow-hidden border-r border-border p-3">
               <textarea
                 value={runInput}
                 onChange={(e) => setRunInput(e.target.value)}
