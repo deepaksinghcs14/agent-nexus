@@ -90,6 +90,7 @@ Guidelines:
 - Enable context retrieval (context_retrieval_enabled=true) for agents that need to search documents. Use agentic_rag=true when the agent should decide when/what to retrieve dynamically rather than getting a fixed pre-run injection.
 - For workflows, always include a start node (node_type="start") and an end node (node_type="end").
 - Use condition nodes for branching (yes/no edges), parallel+join nodes for concurrent execution, loop nodes for retry patterns.
+- Integration nodes need no agent: node_type="tool" runs one workspace tool directly (config {tool_name, args}; approval-gated tools are refused), node_type="webhook" POSTs the previous node's output to an external URL (config {url}), node_type="gateway" sends it as a message through a gateway channel (config {channel_id, peer_id}). An end node can additionally deliver the final output via config {webhook_url} and/or {gateway_channel_id, gateway_peer_id}.
 - For supervisor workflows: use node_type="supervisor" for the coordinating agent (not "agent"). Connect start→supervisor→end with normal edges. Connect supervisor→each team agent node with edges labelled "delegate" — these agents become callable tools the supervisor uses at runtime. The supervisor's LLM decides when and how to call each team agent. Always assign a real agent to the supervisor node via agent_id. IMPORTANT: when writing the supervisor agent's instructions, do NOT include tool names like "delegate_researcher" — the runtime discovers connected team agents and injects their exact names automatically. Write the supervisor's instructions to describe coordination strategy, task sequencing rationale, expected output format, and quality criteria only. When creating team agents for a supervisor workflow, always populate the description field with one sentence stating the agent's specialty (e.g. "Fact-checks claims for accuracy and flags unverified assertions") — this description is shown to the supervisor LLM as the team agent's tool description at runtime.
 - For node positions, use a horizontal layout: start at x=50 y=200, then space nodes 250px apart horizontally; branch parallel nodes ±150px vertically from the main axis. For supervisor team agents, place them to the right of the supervisor node at ±140px vertically.
 - For gateway channels: always call list_agents first to get the agent_id. For http channels, only name/agent_id/channel_type are needed. For whatsapp channels, advise the user to scan the QR code in the Gateway → channel page after creation.
@@ -240,11 +241,11 @@ var nexusToolDefs = []provider.ToolDefinition{
 						"type":"object",
 						"properties":{
 							"id":{"type":"string","description":"Client-side ID used to reference this node in edges, e.g. 'n1','n2'"},
-							"node_type":{"type":"string","enum":["start","end","agent","supervisor","condition","parallel","join","loop"]},
+							"node_type":{"type":"string","enum":["start","end","agent","supervisor","condition","parallel","join","loop","tool","webhook","gateway"]},
 							"agent_id":{"type":"string","description":"Agent UUID — for node_type=agent or node_type=supervisor"},
 							"position_x":{"type":"number","description":"Canvas X position"},
 							"position_y":{"type":"number","description":"Canvas Y position"},
-							"config":{"type":"object","description":"Node config: {label} for agent, {expression} for condition (e.g. contains:APPROVED), {exit_condition, max_iterations} for loop"}
+							"config":{"type":"object","description":"Node config: {label} for agent, {expression} for condition (e.g. contains:APPROVED), {exit_condition, max_iterations} for loop, {tool_name, args} for tool, {url, method, headers, payload_template} for webhook, {channel_id, peer_id, peer_kind, message_template} for gateway. End nodes accept optional delivery config: {webhook_url} and/or {gateway_channel_id, gateway_peer_id}."}
 						},
 						"required":["id","node_type","position_x","position_y","config"]
 					}
