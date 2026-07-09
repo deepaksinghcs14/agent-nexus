@@ -1909,7 +1909,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   useEffect(() => {
     const el = outputScrollRef.current
     if (!el) return
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 140
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < el.clientHeight
     if (nearBottom) el.scrollTop = el.scrollHeight
   }, [runOutput])
 
@@ -2630,7 +2630,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
       {/* Run panel — portaled to <body> so ancestor overflow/transform styles
           in the app shell can never clip or re-anchor the fixed drawer. */}
       {runPanelOpen && createPortal(
-        <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[50vh] min-h-60 flex-col border-t border-border bg-surface shadow-[0_-8px_24px_-12px_rgba(21,26,31,.18)]">
+        <div className="fixed inset-x-0 bottom-0 z-50 flex h-[50vh] min-h-60 flex-col overflow-hidden border-t border-border bg-surface shadow-[0_-8px_24px_-12px_rgba(21,26,31,.18)]">
           <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-4 py-2.5">
             <span className="grid h-6 w-6 place-items-center rounded-md bg-accent-light text-accent dark:bg-accent/20 dark:text-accent-bright">
               <Play size={12} />
@@ -2654,7 +2654,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             </button>
           </div>
 
-          <div className="flex flex-1 flex-wrap overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-nowrap overflow-hidden">
             {/* Input area */}
             <div className="flex min-h-0 w-2/5 min-w-52 flex-shrink-0 flex-col gap-2 overflow-hidden border-r border-border p-3">
               <textarea
