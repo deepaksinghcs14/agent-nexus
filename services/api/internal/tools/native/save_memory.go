@@ -13,6 +13,7 @@ import (
 )
 
 type SaveMemoryTool struct {
+	tools.RequiresRunContext
 	pool *pgxpool.Pool
 }
 
@@ -52,10 +53,6 @@ func (t *SaveMemoryTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-
-func (t *SaveMemoryTool) Execute(input map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_save_memory requires run context")
 }
 
 const compressThreshold = 200

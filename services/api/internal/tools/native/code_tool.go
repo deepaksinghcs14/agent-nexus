@@ -17,6 +17,7 @@ import (
 // ── native_create_code_tool ───────────────────────────────────────────────────
 
 type CreateCodeToolTool struct {
+	tools.RequiresRunContext
 	pool *pgxpool.Pool
 }
 
@@ -62,10 +63,6 @@ func (t *CreateCodeToolTool) Definition() domain.Tool {
 		TimeoutMs:        10000,
 		Enabled:          true,
 	}
-}
-
-func (t *CreateCodeToolTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_create_code_tool requires run context")
 }
 
 func (t *CreateCodeToolTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {

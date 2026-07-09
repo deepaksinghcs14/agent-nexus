@@ -21,6 +21,7 @@ import (
 // via the runner service and blocks the run (durably — see WaitForSession)
 // until the session's completion callback arrives.
 type LaunchRepoSessionTool struct {
+	tools.RequiresRunContext
 	pool           *pgxpool.Pool
 	cfg            *config.Config
 	runnerURL      string
@@ -156,10 +157,6 @@ func (t *LaunchRepoSessionTool) Definition() domain.Tool {
 		RiskLevel: "high",
 		TimeoutMs: 120000,
 	}
-}
-
-func (t *LaunchRepoSessionTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_launch_repo_session requires run context")
 }
 
 func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {

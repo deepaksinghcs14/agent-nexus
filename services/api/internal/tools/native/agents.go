@@ -14,9 +14,12 @@ import (
 
 // ── native_list_agents ────────────────────────────────────────────────────────
 
-type ListAgentsTool struct{ pool *pgxpool.Pool }
+type ListAgentsTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewListAgentsTool(pool *pgxpool.Pool) *ListAgentsTool { return &ListAgentsTool{pool} }
+func NewListAgentsTool(pool *pgxpool.Pool) *ListAgentsTool { return &ListAgentsTool{pool: pool} }
 
 func (t *ListAgentsTool) Definition() domain.Tool {
 	return domain.Tool{
@@ -30,9 +33,6 @@ func (t *ListAgentsTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *ListAgentsTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_list_agents requires run context")
 }
 func (t *ListAgentsTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, _ map[string]any) (any, error) {
 	rows, err := t.pool.Query(ctx,
@@ -65,9 +65,12 @@ func (t *ListAgentsTool) ExecuteWithContext(ctx context.Context, execCtx tools.E
 
 // ── native_call_agent ─────────────────────────────────────────────────────────
 
-type CallAgentTool struct{ pool *pgxpool.Pool }
+type CallAgentTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewCallAgentTool(pool *pgxpool.Pool) *CallAgentTool { return &CallAgentTool{pool} }
+func NewCallAgentTool(pool *pgxpool.Pool) *CallAgentTool { return &CallAgentTool{pool: pool} }
 
 func (t *CallAgentTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -89,9 +92,6 @@ func (t *CallAgentTool) Definition() domain.Tool {
 		TimeoutMs:        300000,
 		Enabled:          true,
 	}
-}
-func (t *CallAgentTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_call_agent requires run context")
 }
 func (t *CallAgentTool) Parallelizable() bool { return true }
 func (t *CallAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
@@ -118,9 +118,12 @@ func (t *CallAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.Ex
 
 // ── native_create_agent ───────────────────────────────────────────────────────
 
-type CreateAgentTool struct{ pool *pgxpool.Pool }
+type CreateAgentTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewCreateAgentTool(pool *pgxpool.Pool) *CreateAgentTool { return &CreateAgentTool{pool} }
+func NewCreateAgentTool(pool *pgxpool.Pool) *CreateAgentTool { return &CreateAgentTool{pool: pool} }
 
 func (t *CreateAgentTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -146,9 +149,6 @@ func (t *CreateAgentTool) Definition() domain.Tool {
 		TimeoutMs:        10000,
 		Enabled:          true,
 	}
-}
-func (t *CreateAgentTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_create_agent requires run context")
 }
 func (t *CreateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	name, _ := input["name"].(string)
@@ -214,18 +214,21 @@ func (t *CreateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 	}
 
 	return map[string]any{
-		"agent_id": agentID,
-		"name":     name,
+		"agent_id":  agentID,
+		"name":      name,
 		"ephemeral": ephemeral,
-		"next":     "call native_create_workflow(name, mode, agent_ids=[agent_id]) to add this agent to a workflow, or native_call_agent(agent_id, task) to run it now",
+		"next":      "call native_create_workflow(name, mode, agent_ids=[agent_id]) to add this agent to a workflow, or native_call_agent(agent_id, task) to run it now",
 	}, nil
 }
 
 // ── native_delete_agent ───────────────────────────────────────────────────────
 
-type DeleteAgentTool struct{ pool *pgxpool.Pool }
+type DeleteAgentTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewDeleteAgentTool(pool *pgxpool.Pool) *DeleteAgentTool { return &DeleteAgentTool{pool} }
+func NewDeleteAgentTool(pool *pgxpool.Pool) *DeleteAgentTool { return &DeleteAgentTool{pool: pool} }
 
 func (t *DeleteAgentTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
@@ -244,9 +247,6 @@ func (t *DeleteAgentTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *DeleteAgentTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_delete_agent requires run context")
 }
 func (t *DeleteAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	agentID, _ := input["agent_id"].(string)
@@ -271,28 +271,31 @@ func (t *DeleteAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.
 
 // ── native_update_agent ───────────────────────────────────────────────────────
 
-type UpdateAgentTool struct{ pool *pgxpool.Pool }
+type UpdateAgentTool struct {
+	tools.RequiresRunContext
+	pool *pgxpool.Pool
+}
 
-func NewUpdateAgentTool(pool *pgxpool.Pool) *UpdateAgentTool { return &UpdateAgentTool{pool} }
+func NewUpdateAgentTool(pool *pgxpool.Pool) *UpdateAgentTool { return &UpdateAgentTool{pool: pool} }
 
 func (t *UpdateAgentTool) Definition() domain.Tool {
 	schema, _ := json.Marshal(map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"agent_id":       map[string]any{"type": "string", "description": "UUID of the agent to update."},
-			"name":           map[string]any{"type": "string", "description": "New name for the agent."},
-			"description":    map[string]any{"type": "string", "description": "New description."},
-			"instructions":   map[string]any{"type": "string", "description": "New system instructions."},
-			"provider":       map[string]any{"type": "string", "description": "LLM provider (anthropic, openai, gemini, ollama)."},
-			"model":          map[string]any{"type": "string", "description": "Model ID."},
-			"temperature":    map[string]any{"type": "number", "description": "Sampling temperature."},
-			"max_tokens":     map[string]any{"type": "integer", "description": "Maximum tokens per response."},
-			"max_steps":      map[string]any{"type": "integer", "description": "Maximum tool-call steps per run."},
-			"memory_enabled":           map[string]any{"type": "boolean", "description": "Enable or disable memory for this agent."},
-			"memory_scope":             map[string]any{"type": "string", "enum": []string{"conversation", "agent", "workspace"}, "description": "Memory scope: conversation, agent, or workspace."},
+			"agent_id":                  map[string]any{"type": "string", "description": "UUID of the agent to update."},
+			"name":                      map[string]any{"type": "string", "description": "New name for the agent."},
+			"description":               map[string]any{"type": "string", "description": "New description."},
+			"instructions":              map[string]any{"type": "string", "description": "New system instructions."},
+			"provider":                  map[string]any{"type": "string", "description": "LLM provider (anthropic, openai, gemini, ollama)."},
+			"model":                     map[string]any{"type": "string", "description": "Model ID."},
+			"temperature":               map[string]any{"type": "number", "description": "Sampling temperature."},
+			"max_tokens":                map[string]any{"type": "integer", "description": "Maximum tokens per response."},
+			"max_steps":                 map[string]any{"type": "integer", "description": "Maximum tool-call steps per run."},
+			"memory_enabled":            map[string]any{"type": "boolean", "description": "Enable or disable memory for this agent."},
+			"memory_scope":              map[string]any{"type": "string", "enum": []string{"conversation", "agent", "workspace"}, "description": "Memory scope: conversation, agent, or workspace."},
 			"context_retrieval_enabled": map[string]any{"type": "boolean", "description": "Enable retrieval-augmented context from connected data sources."},
-			"agentic_rag":              map[string]any{"type": "boolean", "description": "Let the agent decide when/what to retrieve via native_retrieve_context tool instead of pre-run injection. Requires context_retrieval_enabled=true."},
-			"status":                   map[string]any{"type": "string", "enum": []string{"active", "paused"}, "description": "Agent status: active or paused."},
+			"agentic_rag":               map[string]any{"type": "boolean", "description": "Let the agent decide when/what to retrieve via native_retrieve_context tool instead of pre-run injection. Requires context_retrieval_enabled=true."},
+			"status":                    map[string]any{"type": "string", "enum": []string{"active", "paused"}, "description": "Agent status: active or paused."},
 		},
 		"required": []string{"agent_id"},
 	})
@@ -307,9 +310,6 @@ func (t *UpdateAgentTool) Definition() domain.Tool {
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
-}
-func (t *UpdateAgentTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_update_agent requires run context")
 }
 func (t *UpdateAgentTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
 	agentID, _ := input["agent_id"].(string)

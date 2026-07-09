@@ -18,6 +18,7 @@ import (
 // session summary. Review runs on the workspace's Claude subscription token
 // (the same credential coding sessions use) — no platform API key involved.
 type LaunchReviewSessionTool struct {
+	tools.RequiresRunContext
 	pool           *pgxpool.Pool
 	cfg            *config.Config
 	runnerURL      string
@@ -64,10 +65,6 @@ func (t *LaunchReviewSessionTool) Definition() domain.Tool {
 		RiskLevel: "low",
 		TimeoutMs: 120000,
 	}
-}
-
-func (t *LaunchReviewSessionTool) Execute(_ map[string]any) (any, error) {
-	return nil, fmt.Errorf("native_launch_review_session requires run context")
 }
 
 func (t *LaunchReviewSessionTool) ExecuteWithContext(ctx context.Context, execCtx tools.ExecutionContext, input map[string]any) (any, error) {
