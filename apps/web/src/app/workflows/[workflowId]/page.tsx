@@ -7,6 +7,7 @@
 // - SSE node events carry node_id, node_name, node_type, result fields
 
 import React, { use, useCallback, useEffect, useMemo, useRef, useState, DragEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -2441,8 +2442,9 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         />
       )}
 
-      {/* Run panel */}
-      {runPanelOpen && (
+      {/* Run panel — portaled to <body> so ancestor overflow/transform styles
+          in the app shell can never clip or re-anchor the fixed drawer. */}
+      {runPanelOpen && createPortal(
         <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[50vh] min-h-60 flex-col border-t border-border bg-surface shadow-[0_-8px_24px_-12px_rgba(21,26,31,.18)]">
           <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-4 py-2.5">
             <span className="grid h-6 w-6 place-items-center rounded-md bg-accent-light text-accent dark:bg-accent/20 dark:text-accent-bright">
@@ -2516,7 +2518,8 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
               })}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
