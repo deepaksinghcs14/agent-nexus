@@ -1287,7 +1287,7 @@ function TemplateGalleryModal({
         </div>
 
         {/* Body: card list + detail panel */}
-        <div className="flex flex-1 flex-wrap overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-wrap overflow-hidden">
           {/* Left: template cards */}
           <div className="flex w-56 min-w-44 flex-shrink-0 flex-col gap-2 overflow-y-auto border-r border-border p-3">
             {TEMPLATES.map((tpl) => {
@@ -1719,6 +1719,16 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
       }, 80)
     }
   }, [])
+
+  // Output console follows the stream while the user is near the bottom;
+  // scrolling up to read pauses the follow until they return to the bottom.
+  const outputScrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = outputScrollRef.current
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 140
+    if (nearBottom) el.scrollTop = el.scrollHeight
+  }, [runOutput])
 
   const handleRun = async () => {
     if (!runInput.trim()) return
@@ -2459,7 +2469,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
 
           <div className="flex flex-1 flex-wrap overflow-hidden">
             {/* Input area */}
-            <div className="flex w-2/5 min-w-52 flex-shrink-0 flex-col gap-2 border-r border-zinc-800 p-3">
+            <div className="flex min-h-0 w-2/5 min-w-52 flex-shrink-0 flex-col gap-2 border-r border-zinc-800 p-3">
               <textarea
                 value={runInput}
                 onChange={(e) => setRunInput(e.target.value)}
@@ -2485,7 +2495,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
             </div>
 
             {/* Output area */}
-            <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-3">
+            <div ref={outputScrollRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
               {Object.keys(runOutput).length === 0 && (
                 <div className="mt-8 text-center font-mono text-[11px] text-zinc-600">
                   {runStatus === 'running' ? 'Waiting for the first node…' : 'Node outputs appear here as the run progresses.'}
