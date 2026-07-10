@@ -166,8 +166,16 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 	baseBranch, _ := input["base_branch"].(string)
 	budgetUSD, _ := input["budget_usd"].(float64)
 
-	if repo == "" || ticketKey == "" || task == "" {
-		return nil, fmt.Errorf("repo, ticket_key, and task_description are required")
+	var bad []string
+	bad = checkRepoArg(bad, repo)
+	if ticketKey == "" {
+		bad = append(bad, "ticket_key is missing")
+	}
+	if task == "" {
+		bad = append(bad, "task_description is missing")
+	}
+	if len(bad) > 0 {
+		return nil, badArgsError(bad)
 	}
 	if t.runnerURL == "" {
 		return nil, fmt.Errorf("repo sessions are not configured (RUNNER_URL is unset)")

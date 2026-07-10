@@ -120,6 +120,22 @@ func validRepo(repo string) bool {
 	return strings.Count(repo, "/") == 1 && !strings.Contains(repo, "..") && !strings.ContainsAny(repo, " \t\n")
 }
 
+// badArgsError joins per-field validation problems into one error that echoes
+// what was received, so the calling agent can fix the arguments and retry
+// instead of guessing which field a joint "X and Y are required" refers to.
+func badArgsError(problems []string) error {
+	return fmt.Errorf("invalid arguments — fix and retry: %s", strings.Join(problems, "; "))
+}
+
+// checkRepoArg validates the owner/name form, appending an echo of the
+// received value on failure.
+func checkRepoArg(problems []string, repo string) []string {
+	if !validRepo(repo) {
+		return append(problems, fmt.Sprintf(`repo must be "owner/name" (got %q)`, repo))
+	}
+	return problems
+}
+
 // ── native_create_pull_request ────────────────────────────────────────────────
 
 type CreatePullRequestTool struct {
@@ -163,8 +179,16 @@ func (t *CreatePullRequestTool) run(ctx context.Context, token string, input map
 	base, _ := input["base"].(string)
 	title, _ := input["title"].(string)
 	body, _ := input["body"].(string)
-	if !validRepo(repo) || head == "" || title == "" {
-		return nil, fmt.Errorf("repo (owner/name), head, and title are required")
+	var bad []string
+	bad = checkRepoArg(bad, repo)
+	if head == "" {
+		bad = append(bad, "head (the branch with the changes) is missing")
+	}
+	if title == "" {
+		bad = append(bad, "title is missing")
+	}
+	if len(bad) > 0 {
+		return nil, badArgsError(bad)
 	}
 	if token == "" {
 		return nil, fmt.Errorf("no GitHub token: set one in Settings → Claude Code, or GITHUB_TOKEN on the API")
@@ -248,8 +272,13 @@ func (t *GetBranchDiffTool) run(ctx context.Context, token string, input map[str
 	repo, _ := input["repo"].(string)
 	head, _ := input["head"].(string)
 	base, _ := input["base"].(string)
-	if !validRepo(repo) || head == "" {
-		return nil, fmt.Errorf("repo (owner/name) and head are required")
+	var bad []string
+	bad = checkRepoArg(bad, repo)
+	if head == "" {
+		bad = append(bad, "head (the branch to diff) is missing")
+	}
+	if len(bad) > 0 {
+		return nil, badArgsError(bad)
 	}
 	if token == "" {
 		return nil, fmt.Errorf("no GitHub token: set one in Settings → Claude Code, or GITHUB_TOKEN on the API")

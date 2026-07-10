@@ -75,8 +75,16 @@ func (t *LaunchReviewSessionTool) ExecuteWithContext(ctx context.Context, execCt
 	task, _ := input["task_description"].(string)
 	budgetUSD, _ := input["budget_usd"].(float64)
 
-	if repo == "" || ticketKey == "" || head == "" {
-		return nil, fmt.Errorf("repo, ticket_key, and head are required")
+	var bad []string
+	bad = checkRepoArg(bad, repo)
+	if ticketKey == "" {
+		bad = append(bad, "ticket_key is missing")
+	}
+	if head == "" {
+		bad = append(bad, "head (the branch to review) is missing")
+	}
+	if len(bad) > 0 {
+		return nil, badArgsError(bad)
 	}
 	if t.runnerURL == "" {
 		return nil, fmt.Errorf("repo sessions are not configured (RUNNER_URL is unset)")
