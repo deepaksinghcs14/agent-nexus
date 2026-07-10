@@ -83,11 +83,12 @@ func (h *RunsHandler) Start(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
-	f, ok := w.(http.Flusher)
+	em, ok := newSafeEmitter(w)
 	if !ok {
 		return
 	}
-	emit := func(s string) { fmt.Fprintf(w, "data: %s\n\n", s); f.Flush() }
+	defer em.close()
+	emit := em.emit
 	sseErr := func(msg string) { emit(sse.Error(msg)) }
 
 	if e := h.conversations.AddMessage(r.Context(), &domain.Message{ID: uuid.NewString(), ConversationID: c.ID, Role: "user", Content: q.Input}); e != nil {

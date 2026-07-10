@@ -92,12 +92,12 @@ func (h *InvokeHandler) Agent(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("X-Accel-Buffering", "no")
-		f, ok := w.(http.Flusher)
+		em, ok := newSafeEmitter(w)
 		if !ok {
 			return
 		}
-		emit := func(s string) { fmt.Fprintf(w, "data: %s\n\n", s); f.Flush() }
-		h.executeRun(r.Context(), a, ws, uid, runID, convID, req.Input, nil, emit, invokeOpts{})
+		defer em.close()
+		h.executeRun(r.Context(), a, ws, uid, runID, convID, req.Input, nil, em.emit, invokeOpts{})
 		return
 	}
 
@@ -163,12 +163,12 @@ func (h *InvokeHandler) Group(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("X-Accel-Buffering", "no")
-		f, ok := w.(http.Flusher)
+		em, ok := newSafeEmitter(w)
 		if !ok {
 			return
 		}
-		emit := func(s string) { fmt.Fprintf(w, "data: %s\n\n", s); f.Flush() }
-		h.executeGroupRun(r.Context(), groupID, ws, uid, runID, convID, req.Input, nil, emit)
+		defer em.close()
+		h.executeGroupRun(r.Context(), groupID, ws, uid, runID, convID, req.Input, nil, em.emit)
 		return
 	}
 

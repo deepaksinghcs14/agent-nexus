@@ -537,11 +537,12 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
-	f, ok := w.(http.Flusher)
+	em, ok := newSafeEmitter(w)
 	if !ok {
 		return
 	}
-	emit := func(s string) { fmt.Fprintf(w, "data: %s\n\n", s); f.Flush() }
+	defer em.close()
+	emit := em.emit
 	sseErr := func(msg string) { emit(sse.Error(msg)) }
 
 	// Keepalive: prevents proxy/browser timeouts during long LLM responses.
