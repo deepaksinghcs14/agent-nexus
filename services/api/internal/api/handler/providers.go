@@ -170,10 +170,11 @@ func (h *ProvidersHandler) ListModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Providers keep retired models in their listings long after inference
-	// starts 404ing them; the synced catalog knows which are dead.
+	// starts 404ing them; the synced catalog knows which are dead. Non-chat
+	// families (e.g. deep-research → Interactions API only) are hidden too.
 	live := models[:0]
 	for _, m := range models {
-		if !provider.IsDeprecatedModel(m.ID) {
+		if !provider.IsDeprecatedModel(m.ID) && !provider.IsNonChatModel(m.ID) {
 			live = append(live, m)
 		}
 	}

@@ -81,7 +81,7 @@ func (c *Client) Complete(ctx context.Context, req provider.CompletionRequest) (
 		var usage provider.Usage
 		for resp, err := range sdk.Models.GenerateContentStream(ctx, req.Model, contents, config) {
 			if err != nil {
-				events <- provider.CompletionEvent{Type: provider.EventError, Error: fmt.Errorf("gemini: %w", err)}
+				events <- provider.CompletionEvent{Type: provider.EventError, Error: classifyErr(req.Model, err)}
 				return
 			}
 			if resp.UsageMetadata != nil && resp.UsageMetadata.PromptTokenCount > 0 {
@@ -134,6 +134,16 @@ func (c *Client) Complete(ctx context.Context, req provider.CompletionRequest) (
 		events <- provider.CompletionEvent{Type: provider.EventDone, Usage: &usage}
 	}()
 	return events, nil
+}
+
+// classifyErr upgrades "wrong API" rejections — model families that only
+// accept a dedicated Google API (e.g. deep-research → Interactions API) —
+// into an actionable message, since the raw 400 gives the user no fix.
+func classifyErr(model string, err error) error {
+	if msg := err.Error(); strings.Contains(msg, "only supports") && strings.Contains(msg, "API") {
+		return fmt.Errorf("gemini: model %q cannot be used for chat completions (it requires a dedicated Google API this platform does not call) — select a different model in the agent's settings: %w", model, err)
+	}
+	return fmt.Errorf("gemini: %w", err)
 }
 
 // buildRequest converts a normalised CompletionRequest into SDK contents +

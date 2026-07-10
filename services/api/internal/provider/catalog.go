@@ -44,6 +44,25 @@ func SetCatalogOverlay(specs []ModelSpec) {
 	overlayMu.Unlock()
 }
 
+// nonChatModelPatterns lists model-id fragments for families that appear in
+// provider listings (and may even advertise generateContent-style support)
+// but reject standard chat completions in favor of a dedicated API — e.g.
+// Google's deep-research models require the Interactions API. Provider
+// metadata can't be trusted for these, so they are filtered by id.
+var nonChatModelPatterns = []string{"deep-research"}
+
+// IsNonChatModel reports whether the model belongs to a family that cannot
+// serve standard chat completions and must be hidden from model pickers.
+func IsNonChatModel(model string) bool {
+	lower := strings.ToLower(strings.TrimSpace(model))
+	for _, p := range nonChatModelPatterns {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsDeprecatedModel reports whether the synced catalog marks the model
 // deprecated. Unknown models are not deprecated.
 func IsDeprecatedModel(model string) bool {
