@@ -550,7 +550,7 @@ export interface Workflow {
 export type AgentGroup = Workflow
 
 // Workflow graph types
-export type WorkflowNodeType = 'start' | 'end' | 'agent' | 'supervisor' | 'condition' | 'parallel' | 'join' | 'loop' | 'tool' | 'webhook' | 'gateway'
+export type WorkflowNodeType = 'start' | 'end' | 'agent' | 'supervisor' | 'condition' | 'parallel' | 'join' | 'loop' | 'webhook' | 'gateway'
 
 export interface WorkflowNode {
   id: string

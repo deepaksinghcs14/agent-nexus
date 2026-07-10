@@ -263,12 +263,6 @@ func validateWorkflowGraph(nodes []saveGraphNode, edges []saveGraphEdge) []strin
 			if _, ok := cfg["max_iterations"]; !ok {
 				warnings = append(warnings, fmt.Sprintf("loop node %q has no max_iterations set", n.ID))
 			}
-		case "tool":
-			var cfg map[string]any
-			_ = json.Unmarshal(n.Config, &cfg)
-			if name, _ := cfg["tool_name"].(string); name == "" {
-				warnings = append(warnings, fmt.Sprintf("tool node %q has no tool selected", n.ID))
-			}
 		case "webhook":
 			var cfg map[string]any
 			_ = json.Unmarshal(n.Config, &cfg)

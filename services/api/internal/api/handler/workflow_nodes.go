@@ -11,16 +11,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	gatewayservice "github.com/deepaksingh/agent-nexus/services/api/internal/gateway"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
-	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
 )
 
-// Executors for the non-agent workflow nodes (tool / webhook / gateway) and
-// the end node's delivery config. These run inline in the workflow walk —
-// they are side-effectful integration steps, not LLM calls, so they have no
-// sub-run of their own; their result is recorded as a step on the parent run.
+// Executors for the non-agent workflow nodes (webhook / gateway) and the end
+// node's delivery config. These run inline in the workflow walk — they are
+// side-effectful integration steps, not LLM calls, so they have no sub-run of
+// their own.
 
 // tplPathRe matches dotted-path placeholders like {{input.branch}} or
 // {{original_input.ticket.key}} — resolved against the value parsed as JSON.
@@ -78,98 +76,6 @@ func jsonPathValue(doc string, path []string) string {
 func jsonEscapeForTemplate(s string) string {
 	b, _ := json.Marshal(s)
 	return strings.Trim(string(b), `"`)
-}
-
-// executeWorkflowToolNode runs a single workspace tool (http / mcp / code /
-// native) as a workflow step. Config:
-//
-//	tool_name (required) — name of an enabled tool visible in the workspace
-//	args (optional)      — JSON object passed as the tool input; string values
-//	                       may contain {{input}} / {{original_input}}
-//
-// Without args the tool receives {"input": "<previous output>"}.
-// Approval-gated tools are refused: a workflow run has no approval loop, so
-// executing one here would silently bypass the gate an agent run enforces.
-func (h *InvokeHandler) executeWorkflowToolNode(ctx context.Context, ws, uid, parentRunID string, node *wfNode, input, originalInput string, emit func(string)) (string, error) {
-	toolName, _ := node.Config["tool_name"].(string)
-	if toolName == "" {
-		return "", fmt.Errorf("tool node has no tool_name configured")
-	}
-
-	var t domain.Tool
-	var inputSchema, cfg []byte
-	err := h.pool.QueryRow(ctx,
-		`SELECT name, description, type, input_schema, config, risk_level, requires_approval, timeout_ms
-		 FROM tools WHERE name=$1 AND (workspace_id IS NULL OR workspace_id=$2::uuid) AND enabled=true
-		 ORDER BY workspace_id NULLS LAST LIMIT 1`,
-		toolName, ws).Scan(&t.Name, &t.Description, &t.Type, &inputSchema, &cfg, &t.RiskLevel, &t.RequiresApproval, &t.TimeoutMs)
-	if err != nil {
-		return "", fmt.Errorf("tool %q not found in workspace", toolName)
-	}
-	t.InputSchema = json.RawMessage(inputSchema)
-	if len(cfg) > 0 {
-		t.Config = json.RawMessage(cfg)
-	}
-	if t.RequiresApproval {
-		return "", fmt.Errorf("tool %q requires approval and cannot run unattended in a workflow tool node — clear its approval flag or call it from an agent node instead", toolName)
-	}
-
-	// Build the tool input: configured args (with template substitution in
-	// string values) or the default {"input": ...} envelope.
-	toolInput := json.RawMessage(fmt.Sprintf(`{"input":%q}`, input))
-	if rawArgs, ok := node.Config["args"].(map[string]any); ok && len(rawArgs) > 0 {
-		rendered := make(map[string]any, len(rawArgs))
-		for k, v := range rawArgs {
-			if s, isStr := v.(string); isStr {
-				rendered[k] = renderWorkflowTemplate(s, input, originalInput)
-			} else {
-				rendered[k] = v
-			}
-		}
-		if b, mErr := json.Marshal(rendered); mErr == nil {
-			toolInput = b
-		}
-	}
-
-	start := time.Now()
-	execCtx := tools.ExecutionContext{
-		WorkspaceID: ws,
-		UserID:      uid,
-		RunID:       parentRunID,
-		RootRunID:   parentRunID,
-		// Session tools (native_launch_repo_session / _review_session) need a
-		// wait implementation or they refuse to run. A tool node blocks
-		// in-process until the runner callback, like child agent runs do —
-		// the workflow walk's control flow lives on this stack, so parking is
-		// not an option. Note the wait registry is keyed by the parent run,
-		// so at most one session tool node may be in flight per workflow run
-		// (parallel branches must not both launch sessions).
-		WaitForSession: h.blockingSessionWait(parentRunID, emit),
-	}
-	result, execErr := invokeToolByType(ctx, h.pool, h.cfg, h.executor, execCtx, t, true, toolName, toolInput)
-	if execErr != nil {
-		return "", execErr
-	}
-
-	latency := int(time.Since(start).Milliseconds())
-	if result != nil && result.LatencyMs > 0 {
-		latency = result.LatencyMs
-	}
-	if result != nil && result.Error != "" {
-		h.runs.createStep(ctx, parentRunID, domain.StepToolCall, //nolint:errcheck
-			map[string]any{"tool": toolName, "input": toolInput, "workflow_node_id": node.ID},
-			map[string]any{"error": result.Error}, start, latency, toolName, result.Error)
-		return "", fmt.Errorf("%s", result.Error)
-	}
-	var outStr string
-	if result != nil {
-		b, _ := json.Marshal(result.Output)
-		outStr = string(b)
-	}
-	h.runs.createStep(ctx, parentRunID, domain.StepToolCall, //nolint:errcheck
-		map[string]any{"tool": toolName, "input": toolInput, "workflow_node_id": node.ID},
-		map[string]any{"output": outStr}, start, latency, toolName, "")
-	return outStr, nil
 }
 
 // executeWorkflowWebhook delivers a payload to an external HTTP endpoint.

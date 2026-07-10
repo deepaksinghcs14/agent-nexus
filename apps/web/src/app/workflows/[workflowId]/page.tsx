@@ -45,7 +45,6 @@ import {
   Zap,
   Crown,
   Bot,
-  Wrench,
   Webhook as WebhookIcon,
   MessagesSquare,
   Split,
@@ -54,8 +53,8 @@ import {
   Send,
 } from 'lucide-react'
 import { TriggersPanel } from './TriggersPanel'
-import { workflowsAPI, agentsAPI, invokeAPI, toolsAPI, gatewayAPI, providersAPI } from '@/lib/api'
-import type { Workflow, Agent, Tool, GatewayChannel, WorkflowGraph, WorkflowNode, WorkflowEdge, WorkflowNodeType, SSEEvent } from '@/types'
+import { workflowsAPI, agentsAPI, invokeAPI, gatewayAPI, providersAPI } from '@/lib/api'
+import type { Workflow, Agent, GatewayChannel, WorkflowGraph, WorkflowNode, WorkflowEdge, WorkflowNodeType, SSEEvent } from '@/types'
 
 // ---------------------------------------------------------------------------
 // Node theme — one accent per node type, used for handles, icons, minimap.
@@ -70,7 +69,6 @@ const NODE_THEME: Record<string, { accent: string; icon: React.ElementType; titl
   parallel:   { accent: '#64748b', icon: GitBranch,      title: 'Parallel',   blurb: 'Fan out into concurrent branches' },
   join:       { accent: '#64748b', icon: GitMerge,       title: 'Join',       blurb: 'Merge parallel branches' },
   loop:       { accent: '#8b5cf6', icon: RefreshCcw,     title: 'Loop',       blurb: 'Repeat until a condition is met' },
-  tool:       { accent: '#14b8a6', icon: Wrench,         title: 'Tool',       blurb: 'Call one workspace tool directly' },
   webhook:    { accent: '#0ea5e9', icon: WebhookIcon,    title: 'Webhook',    blurb: 'POST the output to an external URL' },
   gateway:    { accent: '#ec4899', icon: MessagesSquare, title: 'Gateway',    blurb: 'Send the output as a chat message' },
 }
@@ -357,17 +355,6 @@ function LoopNode({ data, selected }: NodeProps) {
   )
 }
 
-function ToolNode({ data, selected }: NodeProps) {
-  const d = data as NodeData
-  const toolName = (d.config?.tool_name as string) || ''
-  return (
-    <NodeCard type="tool" title={d.label && d.label !== 'tool' ? d.label : 'Tool'} status={d.status} selected={selected}
-      subtitle={toolName ? <span className="font-mono">{toolName}</span> : <span className="text-warn">no tool selected</span>}>
-      <Handle type="target" position={Position.Left} className={HANDLE_CLS} style={{ background: NODE_THEME.tool.accent }} />
-      <Handle type="source" position={Position.Right} className={HANDLE_CLS} style={{ background: NODE_THEME.tool.accent }} />
-    </NodeCard>
-  )
-}
 
 function hostOf(url?: string): string {
   if (!url) return ''
@@ -407,7 +394,6 @@ const nodeTypes = {
   parallel: ParallelNode,
   join: JoinNode,
   loop: LoopNode,
-  tool: ToolNode,
   webhook: WebhookNode,
   gateway: GatewayNode,
 }
@@ -417,7 +403,7 @@ const nodeTypes = {
 // ---------------------------------------------------------------------------
 const PALETTE_GROUPS: { name: string; items: WorkflowNodeType[] }[] = [
   { name: 'Flow',         items: ['start', 'end'] },
-  { name: 'Run',          items: ['agent', 'supervisor', 'tool'] },
+  { name: 'Run',          items: ['agent', 'supervisor'] },
   { name: 'Logic',        items: ['condition', 'parallel', 'join', 'loop'] },
   { name: 'Integrations', items: ['webhook', 'gateway'] },
 ]
@@ -486,7 +472,6 @@ const TEMPLATES: WorkflowTemplate[] = [
 End your response with one of:
 - STATUS: complete (research is solid)
 - STATUS: needs_more (needs follow-up)`,
-          tools: ['web_search'],
           model: 'claude-opus-4-8',
         },
         {
@@ -648,7 +633,6 @@ Keep the tone warm and concise.`,
 - GAPS: Note any areas needing more investigation
 
 Be specific and include verifiable claims where possible.`,
-          tools: ['web_search'],
           model: 'claude-opus-4-8',
         },
         {
@@ -932,7 +916,6 @@ Always output this exact structure. Be concise but precise.`,
 [What could not be confirmed or remains unclear]
 
 Be factual, specific, and cite source types (news article, research paper, industry report, etc.).`,
-          tools: ['web_search'],
           model: 'claude-sonnet-4-6',
         },
         {
@@ -1200,7 +1183,7 @@ Be specific and constructive. This report is used to brief the team on what to f
   {
     id: 'incident-notify',
     name: 'Incident Triage & Notify',
-    description: 'Classify incidents → run a tool → page on-call via gateway → post to a webhook',
+    description: 'Classify incidents → page on-call via gateway → log + post to webhooks',
     category: 'Ops',
     nodes: [
       { key: 'start',    type: 'start',     label: 'Start',               x: 50,   y: 240 },
@@ -1208,7 +1191,7 @@ Be specific and constructive. This report is used to brief the team on what to f
       { key: 'cond',     type: 'condition', label: 'Critical?',           x: 470,  y: 240, config: { expression: 'contains:CRITICAL' } },
       { key: 'brief',    type: 'agent',     label: 'Incident Commander',  x: 700,  y: 110, config: { label: 'Incident Commander' } },
       { key: 'page',     type: 'gateway',   label: 'Page On-call',        x: 950,  y: 110, config: { label: 'Page On-call' } },
-      { key: 'log',      type: 'tool',      label: 'Log Incident',        x: 700,  y: 380, config: { label: 'Log Incident' } },
+      { key: 'log',      type: 'webhook',   label: 'Log Incident',        x: 700,  y: 380, config: { label: 'Log Incident' } },
       { key: 'join',     type: 'join',      label: 'Join',                x: 1180, y: 240 },
       { key: 'hook',     type: 'webhook',   label: 'Status Page',         x: 1360, y: 240, config: { label: 'Status Page' } },
       { key: 'end',      type: 'end',       label: 'End',                 x: 1580, y: 240 },
@@ -1225,7 +1208,7 @@ Be specific and constructive. This report is used to brief the team on what to f
       { from: 'hook',     to: 'end' },
     ],
     guide: {
-      overview: 'Operational triage that exercises the integration nodes. A Classifier grades the incident; critical ones get a commander briefing sent to your on-call chat via a Gateway node, routine ones run a workspace Tool directly (no LLM). Both paths merge and post the outcome to an external Webhook (status page, incident tracker), and the End node can deliver the final output anywhere.',
+      overview: 'Operational triage that exercises the integration nodes. A Classifier grades the incident; critical ones get a commander briefing sent to your on-call chat via a Gateway node, routine ones are logged to your incident tracker via a Webhook node (no LLM). Both paths merge and post the outcome to an external Webhook (status page), and the End node can deliver the final output anywhere.',
       agents: [
         {
           name: 'Incident Classifier',
@@ -1243,8 +1226,8 @@ Be specific and constructive. This report is used to brief the team on what to f
       steps: [
         'Create the two agents and assign them to the Classifier and Commander nodes',
         'Open the Gateway node and pick your WhatsApp channel + on-call recipient',
-        'Open the Tool node and select any workspace tool to run for routine incidents (e.g. a code tool that formats a log entry)',
-        'Open the Webhook node and set your status-page or incident-tracker URL — the previous node output is POSTed there',
+        'Open the Log Incident webhook node and set your incident-tracker URL for routine incidents',
+        'Open the Status Page webhook node and set your status-page URL — the previous node output is POSTed there',
         'Optionally set a delivery webhook/gateway on the End node for the final summary',
         'Run with e.g. "Checkout API returning 500s for all EU users since 14:00"',
       ],
@@ -1261,11 +1244,11 @@ Be specific and constructive. This report is used to brief the team on what to f
       { key: 'orch',    type: 'supervisor', label: 'Delivery Orchestrator', x: 470, y: 300 },
       { key: 'repo',    type: 'agent',      label: 'Repo Selector',        x: 380,  y: 540, config: { label: 'Repo Selector' } },
       { key: 'author',  type: 'agent',      label: 'Task Author',          x: 590,  y: 540, config: { label: 'Task Author' } },
-      { key: 'code',    type: 'tool',       label: 'Coding Session',       x: 760,  y: 300, config: { label: 'Coding Session', tool_name: 'native_launch_repo_session', args: { repo: 'owner/repo', ticket_key: 'WF-1', task_description: '{{input}}' } } },
-      { key: 'review',  type: 'tool',       label: 'Review Session',       x: 1010, y: 300, config: { label: 'Review Session', tool_name: 'native_launch_review_session', args: { repo: 'owner/repo', ticket_key: 'WF-1', head: '{{input.branch}}', task_description: '{{original_input}}' } } },
+      { key: 'code',    type: 'agent',      label: 'Session Coder',        x: 760,  y: 300, config: { label: 'Session Coder' } },
+      { key: 'review',  type: 'agent',      label: 'Session Reviewer',     x: 1010, y: 300, config: { label: 'Session Reviewer' } },
       { key: 'gate',    type: 'condition',  label: 'Approved?',            x: 1260, y: 300, config: { expression: 'contains:approve' } },
       { key: 'loop',    type: 'loop',       label: 'Fix Loop',             x: 1260, y: 90,  config: { exit_condition: 'contains:approve', max_iterations: 2 } },
-      { key: 'pr',      type: 'tool',       label: 'Open PR',              x: 1500, y: 300, config: { label: 'Open PR', tool_name: 'native_create_pull_request', args: { repo: 'owner/repo', head: '{{input.branch}}', title: '[WF-1] automated change', body: '{{input}}' } } },
+      { key: 'pr',      type: 'agent',      label: 'PR Publisher',         x: 1500, y: 300, config: { label: 'PR Publisher' } },
       { key: 'notify',  type: 'webhook',    label: 'Notify Team',          x: 1720, y: 300, config: { label: 'Notify Team' } },
       { key: 'end',     type: 'end',        label: 'End',                  x: 1930, y: 300 },
     ],
@@ -1285,7 +1268,7 @@ Be specific and constructive. This report is used to brief the team on what to f
       { from: 'notify',  to: 'end' },
     ],
     guide: {
-      overview: 'The full autonomous delivery loop as a visual workflow — the same machinery behind the Jira→PR pipeline. A Ticket Analyst structures the request; the Delivery Orchestrator (supervisor) consults its team (Repo Selector, Task Author) to produce a self-contained task; Tool nodes then drive real Claude Code sessions in the runner — code, review, and (if the reviewer approves, with up to two fix iterations) an actual pull request — before a Webhook node notifies your team. Requires the runner service and a GitHub token to be configured, plus session-enabled repos.',
+      overview: 'The full autonomous delivery loop as a visual workflow — the same machinery behind the Jira→PR pipeline. A Ticket Analyst structures the request; the Delivery Orchestrator (supervisor) consults its team (Repo Selector, Task Author) and hands off a structured REPO/TICKET/TASK block. Three single-tool agents then drive the real work: Session Coder launches a Claude Code session in the runner, Session Reviewer reviews the pushed branch, and — if the reviewer approves, with up to two fix iterations — PR Publisher opens the pull request, before a Webhook node notifies your team. Each of the three carries context forward itself and self-corrects on argument errors, so nothing depends on hand-written arg plumbing. Requires the runner service and a GitHub token to be configured, plus session-enabled repos.',
       agents: [
         {
           name: 'Ticket Analyst',
@@ -1296,7 +1279,7 @@ Be specific and constructive. This report is used to brief the team on what to f
         {
           name: 'Delivery Orchestrator',
           role: 'Coordinate the delivery team and produce the final task description',
-          systemPrompt: `You coordinate an autonomous delivery team. Delegate to your team agents to pick the target repository and author the task, then produce ONE final, self-contained task description for a headless coding session. It must carry all context — the session cannot see this conversation. End with the task description only.\n\nHard boundary: you and your team NEVER write code and NEVER launch coding or review sessions — the workflow's tool nodes downstream run the real sessions. If a session-launching tool is ever attached to you, do not call it. Your only deliverable is the task description text.`,
+          systemPrompt: `You coordinate an autonomous delivery team. Delegate to your team agents to pick the target repository and author the task, then hand off to the delivery agents downstream. Your final answer must be EXACTLY this structure and nothing after it:\n\nREPO: owner/name\nTICKET: <short key, e.g. WF-1>\nTASK: <one complete, self-contained task description carrying ALL context — the coding session cannot see this conversation>\n\nHard boundary: you and your team NEVER write code and NEVER launch coding or review sessions — dedicated downstream agents run the real sessions. If a session-launching tool is ever attached to you, do not call it.`,
           model: 'claude-opus-4-8',
         },
         {
@@ -1311,11 +1294,33 @@ Be specific and constructive. This report is used to brief the team on what to f
           systemPrompt: `Given a ticket and target repo, write the complete task description for a headless coding session: files likely involved, the change, constraints, and how to verify. Self-contained — assume no other context. Describe the work; do NOT write the implementation code yourself — the coding session does that.`,
           model: 'claude-sonnet-4-6',
         },
+        {
+          name: 'Session Coder',
+          role: 'Launch the coding session and report its outcome',
+          systemPrompt: `You run coding sessions. Your input contains REPO, TICKET, and TASK lines (or, on a fix iteration, a review verdict with blocking_issues plus earlier context).\n\n1. Extract repo (owner/name), ticket key, and the task.\n2. Call native_launch_repo_session(repo, ticket_key, task_description) exactly once and wait for it.\n3. Fix iteration: if the input contains blocking_issues, the task is fixing exactly those issues on the existing branch — mention the branch in the task, and append "-fix" to the ticket key so a fresh session launches instead of joining the finished one.\n4. If the tool reports invalid arguments, correct them and retry.\n\nYour final answer must be exactly:\nREPO: <repo>\nTICKET: <ticket key>\nRESULT: <the tool's full JSON result verbatim — it contains the branch downstream agents need>`,
+          tools: ['native_launch_repo_session'],
+          model: 'claude-sonnet-4-6',
+        },
+        {
+          name: 'Session Reviewer',
+          role: 'Launch the review session against the pushed branch',
+          systemPrompt: `You run review sessions. Your input contains REPO and TICKET lines and a RESULT JSON with the branch a coding session pushed.\n\n1. Extract repo, ticket key, and the branch from the RESULT JSON.\n2. If the RESULT status is "crashed" or there is no branch, do not review — output the RESULT verbatim plus "verdict: block" and a note explaining why.\n3. Otherwise call native_launch_review_session(repo, ticket_key, head=branch, task_description=<the original task if present in your input>). If the tool reports invalid arguments, correct them and retry.\n\nYour final answer must be exactly:\nREPO: <repo>\nTICKET: <ticket key>\nBRANCH: <branch>\nREVIEW: <the tool's full JSON result verbatim — its summary contains the verdict JSON with "approve" or "block">`,
+          tools: ['native_launch_review_session'],
+          model: 'claude-sonnet-4-6',
+        },
+        {
+          name: 'PR Publisher',
+          role: 'Open the pull request for the approved branch',
+          systemPrompt: `You open pull requests. Your input contains REPO, TICKET, and BRANCH lines and a REVIEW verdict.\n\n1. Extract repo, ticket key, and branch.\n2. Call native_create_pull_request(repo, head=branch, title="[<TICKET>] <short imperative summary>", body=<the ticket context and the review verdict's pr_description_notes>). If the tool reports invalid arguments, correct them and retry.\n3. If a PR already exists for the branch the tool returns it — that is success.\n\nYour final answer: the PR URL and number, plus one sentence on what it delivers.`,
+          tools: ['native_create_pull_request'],
+          model: 'claude-sonnet-4-6',
+        },
       ],
       steps: [
-        'Create the four agents; assign Ticket Analyst + Delivery Orchestrator to their nodes, and Repo Selector + Task Author to the delegate nodes',
-        'Edit the three Tool nodes: set your real repo (owner/name) and ticket key in each args block — task_description templates from the flow via {{input}}, and the branch flows automatically: the coding session returns {branch: …}, which the Review and Open PR nodes pick up as head via {{input.branch}}',
-        'The Review Session verdict JSON contains "approve" or "block" — the condition and Fix Loop route on it (max 2 fix iterations, then the loop exits forward)',
+        'Create the seven agents (tools are attached automatically: Session Coder → launch_repo_session, Session Reviewer → launch_review_session, PR Publisher → create_pull_request)',
+        'Assign each agent to its node: Analyst, Orchestrator (supervisor), Repo Selector + Task Author (delegates), Session Coder, Session Reviewer, PR Publisher',
+        'The Orchestrator hands off a REPO/TICKET/TASK block; each delivery agent extracts what it needs from the previous output and self-corrects on argument errors — no arg templating to maintain',
+        'The review verdict contains "approve" or "block" — the condition and Fix Loop route on it (max 2 fix iterations, then the loop exits forward to the PR)',
         'Set the Notify webhook URL (Slack incoming webhook, etc.)',
         'Requires: runner service reachable (RUNNER_URL), GitHub token configured, and the target repo session-enabled on the Claude Code page',
         'Run with a real change request, e.g. "Add rate limiting to the webhook ingress endpoint"',
@@ -1423,8 +1428,11 @@ function TemplateGalleryModal({
           max_duration_secs: 300,
           status: 'active',
         }) as Agent
+        if (agentDef.tools?.length) {
+          await agentsAPI.setTools(created.id, { tool_names: agentDef.tools })
+        }
         createdAgents[agentDef.name] = created
-        setCreateProgress((prev) => [...prev.slice(0, -1), `✓ ${agentDef.name}`])
+        setCreateProgress((prev) => [...prev.slice(0, -1), `✓ ${agentDef.name}${agentDef.tools?.length ? ` (+${agentDef.tools.length} tool${agentDef.tools.length > 1 ? 's' : ''})` : ''}`])
       }
       onSelect(selected, createdAgents)
     } catch (err) {
@@ -1677,16 +1685,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   })
   const agents = agentsData?.data ?? []
 
-  // Workspace tools (tool-node picker) and gateway channels (gateway/end
-  // delivery pickers). Fetched lazily-ish: cheap lists, cached by react-query.
-  const { data: toolsData } = useQuery({
-    queryKey: ['tools'],
-    queryFn: () => toolsAPI.list() as Promise<{ data: Tool[] }>,
-  })
-  const workspaceTools = useMemo(
-    () => (toolsData?.data ?? []).filter((t) => t.enabled),
-    [toolsData],
-  )
+  // Gateway channels (gateway/end delivery pickers).
   const { data: channelsData } = useQuery({
     queryKey: ['gateway-channels'],
     queryFn: () => gatewayAPI.listChannels() as Promise<{ data: GatewayChannel[] }>,
@@ -2033,10 +2032,6 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
     if (!selectedNode) return
     updateNodeConfig(selectedNode.id, { config: { ...selectedNode.data.config, [key]: value } })
   }
-
-  const selectedToolMeta = selectedNode?.data.node_type === 'tool'
-    ? workspaceTools.find((t) => t.name === (selectedNode.data.config?.tool_name as string))
-    : undefined
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
@@ -2400,61 +2395,6 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                 <div className={infoBoxCls}>
                   Drag from <strong>↩ loop</strong> back to the node to repeat (edge auto-labelled <code>loop</code>), and from <strong>exit →</strong> to the forward path.
                 </div>
-              </>
-            )}
-
-            {/* Tool node */}
-            {selectedNode.data.node_type === 'tool' && (
-              <>
-                <ConfigField label="Tool">
-                  <select
-                    value={(selectedNode.data.config?.tool_name as string) || ''}
-                    onChange={(e) => {
-                      const t = workspaceTools.find((wt) => wt.name === e.target.value)
-                      updateNodeConfig(selectedNode.id, {
-                        label: (selectedNode.data.config?.label as string) || t?.name || selectedNode.data.label,
-                        config: { ...selectedNode.data.config, tool_name: e.target.value },
-                      })
-                    }}
-                    className={`${inputCls} font-mono`}
-                  >
-                    <option value="">Select tool…</option>
-                    {workspaceTools.map((t) => (
-                      <option key={t.id} value={t.name}>{t.name} ({t.type})</option>
-                    ))}
-                  </select>
-                  {selectedToolMeta?.description && <div className={hintCls}>{selectedToolMeta.description}</div>}
-                  {selectedToolMeta?.requires_approval && (
-                    <div className={`${hintCls} !text-warn`}>
-                      This tool requires approval — workflow tool nodes run unattended, so the run will refuse it. Clear the approval flag or call it from an agent node instead.
-                    </div>
-                  )}
-                </ConfigField>
-                <ConfigField label="Arguments (JSON, optional)">
-                  <textarea
-                    value={(selectedNode.data.config?.args_text as string) ?? (selectedNode.data.config?.args ? JSON.stringify(selectedNode.data.config.args, null, 2) : '')}
-                    onChange={(e) => {
-                      const text = e.target.value
-                      let next: Record<string, unknown> = { ...selectedNode.data.config, args_text: text }
-                      if (!text.trim()) {
-                        const { args: _drop, args_text: _drop2, ...rest } = next
-                        next = rest
-                      } else {
-                        try { next.args = JSON.parse(text) } catch { /* keep last valid args */ }
-                      }
-                      updateNodeConfig(selectedNode.id, { config: next })
-                    }}
-                    rows={5}
-                    className={`${inputCls} resize-y font-mono`}
-                    placeholder={'{\n  "query": "{{input}}"\n}'}
-                  />
-                  <div className={hintCls}>
-                    String values may use <code>{'{{input}}'}</code> (previous output), <code>{'{{original_input}}'}</code>, and dotted paths into JSON output like <code>{'{{input.branch}}'}</code>. Without arguments the tool receives <code>{'{"input": …}'}</code>.
-                  </div>
-                  {typeof selectedNode.data.config?.args_text === 'string' && (selectedNode.data.config.args_text as string).trim() !== '' && (() => {
-                    try { JSON.parse(selectedNode.data.config.args_text as string); return null } catch { return <div className={`${hintCls} !text-crit`}>Invalid JSON — the last valid value will be used.</div> }
-                  })()}
-                </ConfigField>
               </>
             )}
 

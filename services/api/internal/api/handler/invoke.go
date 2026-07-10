@@ -1744,8 +1744,8 @@ func (h *InvokeHandler) executeGroupRun(
 					}
 				}
 
-			case "tool", "webhook":
-				// Integration nodes: side-effectful, no sub-run. On resume,
+			case "webhook":
+				// Integration node: side-effectful, no sub-run. On resume,
 				// reuse the checkpointed output so the side effect doesn't
 				// fire twice.
 				if cached, ok := resumedOutputs[node.ID]; ok && !consumedResume[node.ID] {
@@ -1757,13 +1757,7 @@ func (h *InvokeHandler) executeGroupRun(
 					prevNodeName = nodeName
 					sseEmit(sse.NodeResumed(node.ID, nodeName))
 				} else {
-					var out string
-					var nodeErr error
-					if node.Type == "tool" {
-						out, nodeErr = h.executeWorkflowToolNode(ctx, ws, uid, parentRunID, node, lastOutput, originalInput, sseEmit)
-					} else {
-						out, nodeErr = h.executeWorkflowWebhook(ctx, node.Config, workflowID, parentRunID, node.ID, lastOutput, originalInput)
-					}
+					out, nodeErr := h.executeWorkflowWebhook(ctx, node.Config, workflowID, parentRunID, node.ID, lastOutput, originalInput)
 					if nodeErr != nil {
 						// Surface the failure but keep walking: downstream
 						// condition nodes can branch on the error envelope.
@@ -2286,6 +2280,22 @@ func (h *InvokeHandler) executeGroupRun(
 						if next, ok := nodeMap[e.Target]; ok {
 							queue = append(queue, next)
 						}
+					}
+				}
+
+			default:
+				// Unknown node type — e.g. legacy 'tool' nodes (the type was
+				// removed; tools now run only inside agents). Surface an
+				// explicit error and pass the input through so the rest of
+				// the workflow runs instead of the branch silently stopping.
+				sseEmit(sse.ErrorForNode(node.ID, fmt.Sprintf(
+					"node type %q is not supported — replace it (tool nodes were removed; attach the tool to an agent node instead)", node.Type)))
+				outputMu.Lock()
+				nodeOutputs[node.ID] = lastOutput
+				outputMu.Unlock()
+				for _, e := range adj[node.ID] {
+					if next, ok := nodeMap[e.Target]; ok {
+						queue = append(queue, next)
 					}
 				}
 
