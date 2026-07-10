@@ -14,7 +14,7 @@ import type { Agent, Conversation, Message } from '@/types'
 
 interface ConvData { conversation: Conversation; messages: Message[] }
 interface RunEvent {
-  type: 'run_started' | 'delta' | 'run_completed' | 'tool_call' | 'tool_started' | 'approval_required' | 'user_input_required' | 'error' | 'compacting'
+  type: 'run_started' | 'delta' | 'run_completed' | 'tool_call' | 'tool_started' | 'approval_required' | 'user_input_required' | 'error' | 'compacting' | 'ping' | 'session_wait' | 'session_parked' | 'approval_parked'
   content?: string
   error?: string
   run_id?: string
@@ -196,6 +196,11 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [approvingDecision, setApprovingDecision] = useState<string | null>(null)
   const [isCompacting, setIsCompacting] = useState(false)
+  // Set while the run is parked (or blocked) on an external wait: an autonomous
+  // coding session ('session') or a pending approval whose SSE stream has ended
+  // ('approval'). The stream closes without run_completed in these cases — the
+  // reply arrives later via headless resume, so we poll the run until terminal.
+  const [awaitingKind, setAwaitingKind] = useState<'session' | 'approval' | null>(null)
 
   // Per-turn tool traces: keyed by the user message ID that triggered them
   const [turnTraces, setTurnTraces] = useState<Record<string, TraceEvent[]>>({})
@@ -217,10 +222,33 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
   })
 
   const autoSentRef = useRef(false)
+  const pollAbortRef = useRef(false)
 
   useEffect(() => { if (data) setMessages(data.messages ?? []) }, [data])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, streamBuffer, thinking])
   useEffect(() => { activeRunIdRef.current = activeRunId }, [activeRunId])
+  useEffect(() => () => { pollAbortRef.current = true }, [])
+
+  // A parked run's SSE stream has ended; the run resumes headlessly when the
+  // session callback / approval decision arrives. Poll until it leaves every
+  // active state, then refetch the conversation to pick up the reply.
+  const pollParkedRun = useCallback(async (runId: string) => {
+    const ACTIVE = ['pending', 'running', 'session_wait', 'approval_wait']
+    let finalStatus = ''
+    for (;;) {
+      await new Promise(r => setTimeout(r, 5000))
+      if (pollAbortRef.current) return
+      const res = await runsAPI.get(runId).catch(() => null) as { run?: { status?: string } } | null
+      const status = res?.run?.status ?? ''
+      if (status && !ACTIVE.includes(status)) { finalStatus = status; break }
+    }
+    setAwaitingKind(null)
+    setApprovalState(null)
+    if (finalStatus === 'failed') setErrorMessage('The run failed while waiting — open the run for details.')
+    await queryClient.invalidateQueries({ queryKey: ['conversation', convId] })
+    await queryClient.invalidateQueries({ queryKey: ['conversations'] })
+    await queryClient.invalidateQueries({ queryKey: ['runs'] })
+  }, [convId, queryClient])
 
   // Auto-send first message passed via ?msg= from the launch page
   useEffect(() => {
@@ -260,7 +288,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
           if (!res.ok || !res.body) throw new Error(await responseError(res))
           const reader = res.body.getReader()
           const decoder = new TextDecoder()
-          let buf = '', full = '', completed = false
+          let buf = '', full = '', completed = false, parked = false
           const appendAssistant = (tokens = 0) => {
             if (completed || !full) return
             completed = true
@@ -284,6 +312,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             }
             if (event.type === 'tool_call') {
               setThinking(false)
+              setAwaitingKind(null)
               const uid = userMsgId
               const errored = hasError(event.output)
               const updated = { callId: event.call_id ?? '', tool: event.tool ?? '', input: event.input, output: event.output, latencyMs: event.latency_ms ?? 0, error: errored, pending: false }
@@ -296,7 +325,14 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             }
             if (event.type === 'approval_required') setApprovalState({ approvalId: event.approval_id ?? '', runId: event.run_id ?? '', tool: event.tool ?? '', input: event.input })
             if (event.type === 'user_input_required') setUserInputState({ runId: event.run_id ?? '', question: event.question ?? '' })
-            if (event.type === 'run_completed') { appendAssistant(event.usage?.output ?? 0); setApprovalState(null); setUserInputState(null) }
+            if (event.type === 'run_completed') { appendAssistant(event.usage?.output ?? 0); setApprovalState(null); setUserInputState(null); setAwaitingKind(null) }
+            if (event.type === 'session_wait') { setThinking(false); setAwaitingKind('session') }
+            if (event.type === 'session_parked' || event.type === 'approval_parked') {
+              parked = true
+              completed = true
+              setAwaitingKind(event.type === 'approval_parked' ? 'approval' : 'session')
+              setStreamBuffer('')
+            }
             if (event.type === 'compacting') { if (event.status === 'start') setIsCompacting(true); if (event.status === 'done') setIsCompacting(false) }
             if (event.type === 'error') throw new Error(event.error ?? 'Run failed')
           }
@@ -310,6 +346,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
           buf += decoder.decode()
           for (const line of buf.split('\n')) processLine(line)
           appendAssistant()
+          if (parked && activeRunIdRef.current) void pollParkedRun(activeRunIdRef.current)
           await queryClient.invalidateQueries({ queryKey: ['conversation', convId] })
           await queryClient.invalidateQueries({ queryKey: ['conversations'] })
           await queryClient.invalidateQueries({ queryKey: ['runs'] })
@@ -373,7 +410,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
-      let buf = '', full = '', completed = false
+      let buf = '', full = '', completed = false, parked = false
 
       const appendAssistant = (tokens = 0) => {
         if (completed || !full) return
@@ -421,6 +458,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
         }
         if (event.type === 'tool_call') {
           setThinking(false)
+          setAwaitingKind(null)
           const uid = currentUserMsgIdRef.current
           if (uid) {
             const errored = hasError(event.output)
@@ -460,6 +498,17 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
           appendAssistant(event.usage?.output ?? 0)
           setApprovalState(null)
           setUserInputState(null)
+          setAwaitingKind(null)
+        }
+        if (event.type === 'session_wait') { setThinking(false); setAwaitingKind('session') }
+        if (event.type === 'session_parked' || event.type === 'approval_parked') {
+          // The run persisted its wait state; the stream ends without
+          // run_completed. Suppress the partial-buffer append and hand off
+          // to polling — the full reply lands in the DB on headless resume.
+          parked = true
+          completed = true
+          setAwaitingKind(event.type === 'approval_parked' ? 'approval' : 'session')
+          setStreamBuffer('')
         }
         if (event.type === 'compacting') {
           if (event.status === 'start') setIsCompacting(true)
@@ -479,6 +528,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
       buf += decoder.decode()
       for (const line of buf.split('\n')) processLine(line)
       appendAssistant()
+      if (parked && activeRunIdRef.current) void pollParkedRun(activeRunIdRef.current)
       await queryClient.invalidateQueries({ queryKey: ['conversation', convId] })
       await queryClient.invalidateQueries({ queryKey: ['conversations'] })
       await queryClient.invalidateQueries({ queryKey: ['runs'] })
@@ -725,6 +775,26 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
           </div>
         )}
 
+        {/* External-wait indicator: run parked on a coding session or approval */}
+        {awaitingKind && (
+          <div className="flex gap-2.5 justify-start">
+            <div className="w-7 h-7 rounded-full bg-info/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Bot size={13} className="text-info" />
+            </div>
+            <div className="max-w-[90%] sm:max-w-[80%] rounded-2xl border border-info/30 bg-info/10 px-4 py-3">
+              <p className="text-xs font-semibold text-info mb-1 flex items-center gap-1.5">
+                <Loader2 size={12} className="animate-spin" />
+                {awaitingKind === 'session' ? 'Coding session in progress' : 'Waiting for approval'}
+              </p>
+              <p className="text-[12px] text-info">
+                {awaitingKind === 'session'
+                  ? 'The agent launched an autonomous repo session and is waiting for it to finish — this can take minutes to hours. The reply will appear here automatically.'
+                  : 'The run is paused until the pending tool call above is approved or rejected. It resumes automatically after your decision.'}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Compacting indicator */}
         {isCompacting && (
           <div className="flex items-center gap-1.5 px-3 py-1 text-[11px] text-faint">
@@ -749,15 +819,15 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             value={input}
             onChange={handleInput}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
-            placeholder={streaming ? 'Agent is running…' : 'Message the agent… (Enter to send, Shift+Enter for newline)'}
+            placeholder={streaming ? 'Agent is running…' : awaitingKind ? 'Waiting for the current run to resume…' : 'Message the agent… (Enter to send, Shift+Enter for newline)'}
             rows={1}
-            disabled={streaming}
+            disabled={streaming || !!awaitingKind}
             className="flex-1 text-sm bg-transparent resize-none focus:outline-none disabled:opacity-50 placeholder-faint"
             style={{ minHeight: 24, maxHeight: 160 }}
           />
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || streaming}
+            disabled={!input.trim() || streaming || !!awaitingKind}
             className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-accent text-white hover:bg-accent-hover disabled:opacity-40 transition-colors mb-0.5"
           >
             {streaming ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
@@ -769,7 +839,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
         </p>
       </div>
       </div>
-      <LiveTracePanel traces={panelTraces} running={streaming} />
+      <LiveTracePanel traces={panelTraces} running={streaming || !!awaitingKind} />
       </div>
     </div>
   )
