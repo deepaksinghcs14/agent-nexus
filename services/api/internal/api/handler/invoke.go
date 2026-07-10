@@ -1760,7 +1760,7 @@ func (h *InvokeHandler) executeGroupRun(
 					var out string
 					var nodeErr error
 					if node.Type == "tool" {
-						out, nodeErr = h.executeWorkflowToolNode(ctx, ws, uid, parentRunID, node, lastOutput, originalInput)
+						out, nodeErr = h.executeWorkflowToolNode(ctx, ws, uid, parentRunID, node, lastOutput, originalInput, sseEmit)
 					} else {
 						out, nodeErr = h.executeWorkflowWebhook(ctx, node.Config, workflowID, parentRunID, node.ID, lastOutput, originalInput)
 					}

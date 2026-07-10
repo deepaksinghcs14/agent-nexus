@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -21,12 +22,55 @@ import (
 // they are side-effectful integration steps, not LLM calls, so they have no
 // sub-run of their own; their result is recorded as a step on the parent run.
 
-// renderWorkflowTemplate substitutes the two placeholders workflow node
-// templates support: {{input}} (the previous node's output) and
-// {{original_input}} (the input the workflow run started with).
+// tplPathRe matches dotted-path placeholders like {{input.branch}} or
+// {{original_input.ticket.key}} — resolved against the value parsed as JSON.
+var tplPathRe = regexp.MustCompile(`\{\{(input|original_input)((?:\.[A-Za-z0-9_-]+)+)\}\}`)
+
+// renderWorkflowTemplate substitutes the placeholders workflow node templates
+// support: {{input}} (the previous node's output), {{original_input}} (the
+// input the workflow run started with), and dotted-path forms like
+// {{input.branch}} that extract a field from the value parsed as JSON —
+// needed when a tool node consumes a specific field of a JSON output (e.g.
+// the branch a coding session returned). Non-JSON input or a missing path
+// renders as the empty string, which downstream arg validation surfaces.
 func renderWorkflowTemplate(tpl, input, originalInput string) string {
-	out := strings.ReplaceAll(tpl, "{{input}}", input)
+	out := tplPathRe.ReplaceAllStringFunc(tpl, func(m string) string {
+		g := tplPathRe.FindStringSubmatch(m)
+		src := input
+		if g[1] == "original_input" {
+			src = originalInput
+		}
+		return jsonPathValue(src, strings.Split(strings.TrimPrefix(g[2], "."), "."))
+	})
+	out = strings.ReplaceAll(out, "{{input}}", input)
 	return strings.ReplaceAll(out, "{{original_input}}", originalInput)
+}
+
+// jsonPathValue resolves a dotted key path in a JSON document. String leaves
+// are returned bare; other values re-marshal as JSON. Missing paths → "".
+func jsonPathValue(doc string, path []string) string {
+	var cur any
+	if json.Unmarshal([]byte(doc), &cur) != nil {
+		return ""
+	}
+	for _, key := range path {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return ""
+		}
+		if cur, ok = m[key]; !ok {
+			return ""
+		}
+	}
+	switch v := cur.(type) {
+	case string:
+		return v
+	case nil:
+		return ""
+	default:
+		b, _ := json.Marshal(v)
+		return string(b)
+	}
 }
 
 // jsonEscapeForTemplate renders a value safe to substitute inside a JSON
@@ -46,7 +90,7 @@ func jsonEscapeForTemplate(s string) string {
 // Without args the tool receives {"input": "<previous output>"}.
 // Approval-gated tools are refused: a workflow run has no approval loop, so
 // executing one here would silently bypass the gate an agent run enforces.
-func (h *InvokeHandler) executeWorkflowToolNode(ctx context.Context, ws, uid, parentRunID string, node *wfNode, input, originalInput string) (string, error) {
+func (h *InvokeHandler) executeWorkflowToolNode(ctx context.Context, ws, uid, parentRunID string, node *wfNode, input, originalInput string, emit func(string)) (string, error) {
 	toolName, _ := node.Config["tool_name"].(string)
 	if toolName == "" {
 		return "", fmt.Errorf("tool node has no tool_name configured")
@@ -93,6 +137,14 @@ func (h *InvokeHandler) executeWorkflowToolNode(ctx context.Context, ws, uid, pa
 		UserID:      uid,
 		RunID:       parentRunID,
 		RootRunID:   parentRunID,
+		// Session tools (native_launch_repo_session / _review_session) need a
+		// wait implementation or they refuse to run. A tool node blocks
+		// in-process until the runner callback, like child agent runs do —
+		// the workflow walk's control flow lives on this stack, so parking is
+		// not an option. Note the wait registry is keyed by the parent run,
+		// so at most one session tool node may be in flight per workflow run
+		// (parallel branches must not both launch sessions).
+		WaitForSession: h.blockingSessionWait(parentRunID, emit),
 	}
 	result, execErr := invokeToolByType(ctx, h.pool, h.cfg, h.executor, execCtx, t, true, toolName, toolInput)
 	if execErr != nil {

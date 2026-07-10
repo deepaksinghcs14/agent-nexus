@@ -1262,10 +1262,10 @@ Be specific and constructive. This report is used to brief the team on what to f
       { key: 'repo',    type: 'agent',      label: 'Repo Selector',        x: 380,  y: 540, config: { label: 'Repo Selector' } },
       { key: 'author',  type: 'agent',      label: 'Task Author',          x: 590,  y: 540, config: { label: 'Task Author' } },
       { key: 'code',    type: 'tool',       label: 'Coding Session',       x: 760,  y: 300, config: { label: 'Coding Session', tool_name: 'native_launch_repo_session', args: { repo: 'owner/repo', ticket_key: 'WF-1', task_description: '{{input}}' } } },
-      { key: 'review',  type: 'tool',       label: 'Review Session',       x: 1010, y: 300, config: { label: 'Review Session', tool_name: 'native_launch_review_session', args: { repo: 'owner/repo', ticket_key: 'WF-1', task_description: '{{original_input}}' } } },
+      { key: 'review',  type: 'tool',       label: 'Review Session',       x: 1010, y: 300, config: { label: 'Review Session', tool_name: 'native_launch_review_session', args: { repo: 'owner/repo', ticket_key: 'WF-1', head: '{{input.branch}}', task_description: '{{original_input}}' } } },
       { key: 'gate',    type: 'condition',  label: 'Approved?',            x: 1260, y: 300, config: { expression: 'contains:approve' } },
       { key: 'loop',    type: 'loop',       label: 'Fix Loop',             x: 1260, y: 90,  config: { exit_condition: 'contains:approve', max_iterations: 2 } },
-      { key: 'pr',      type: 'tool',       label: 'Open PR',              x: 1500, y: 300, config: { label: 'Open PR', tool_name: 'native_create_pull_request', args: { repo: 'owner/repo', title: '[WF-1] automated change', body: '{{input}}' } } },
+      { key: 'pr',      type: 'tool',       label: 'Open PR',              x: 1500, y: 300, config: { label: 'Open PR', tool_name: 'native_create_pull_request', args: { repo: 'owner/repo', head: '{{input.branch}}', title: '[WF-1] automated change', body: '{{input}}' } } },
       { key: 'notify',  type: 'webhook',    label: 'Notify Team',          x: 1720, y: 300, config: { label: 'Notify Team' } },
       { key: 'end',     type: 'end',        label: 'End',                  x: 1930, y: 300 },
     ],
@@ -1290,13 +1290,13 @@ Be specific and constructive. This report is used to brief the team on what to f
         {
           name: 'Ticket Analyst',
           role: 'Turn a raw request into a precise engineering ticket',
-          systemPrompt: `You turn raw requests into precise engineering tickets. Output:\n\n## Ticket\nTITLE: imperative one-liner\nCONTEXT: what exists today\nCHANGE: exactly what to build/fix\nACCEPTANCE: verifiable criteria\n\nBe specific; downstream automation executes this verbatim.`,
+          systemPrompt: `You turn raw requests into precise engineering tickets. Output:\n\n## Ticket\nTITLE: imperative one-liner\nCONTEXT: what exists today\nCHANGE: exactly what to build/fix\nACCEPTANCE: verifiable criteria\n\nBe specific; downstream automation executes this verbatim. You do NOT write code — describe the change, never the implementation.`,
           model: 'claude-sonnet-4-6',
         },
         {
           name: 'Delivery Orchestrator',
           role: 'Coordinate the delivery team and produce the final task description',
-          systemPrompt: `You coordinate an autonomous delivery team. Delegate to your team agents to pick the target repository and author the task, then produce ONE final, self-contained task description for a headless coding session. It must carry all context — the session cannot see this conversation. End with the task description only.`,
+          systemPrompt: `You coordinate an autonomous delivery team. Delegate to your team agents to pick the target repository and author the task, then produce ONE final, self-contained task description for a headless coding session. It must carry all context — the session cannot see this conversation. End with the task description only.\n\nHard boundary: you and your team NEVER write code and NEVER launch coding or review sessions — the workflow's tool nodes downstream run the real sessions. If a session-launching tool is ever attached to you, do not call it. Your only deliverable is the task description text.`,
           model: 'claude-opus-4-8',
         },
         {
@@ -1308,13 +1308,13 @@ Be specific and constructive. This report is used to brief the team on what to f
         {
           name: 'Task Author',
           role: 'Write the self-contained coding task',
-          systemPrompt: `Given a ticket and target repo, write the complete task description for a headless coding session: files likely involved, the change, constraints, and how to verify. Self-contained — assume no other context.`,
+          systemPrompt: `Given a ticket and target repo, write the complete task description for a headless coding session: files likely involved, the change, constraints, and how to verify. Self-contained — assume no other context. Describe the work; do NOT write the implementation code yourself — the coding session does that.`,
           model: 'claude-sonnet-4-6',
         },
       ],
       steps: [
         'Create the four agents; assign Ticket Analyst + Delivery Orchestrator to their nodes, and Repo Selector + Task Author to the delegate nodes',
-        'Edit the three Tool nodes: set your real repo (owner/name) and ticket key in each args block — task_description templates from the flow via {{input}}',
+        'Edit the three Tool nodes: set your real repo (owner/name) and ticket key in each args block — task_description templates from the flow via {{input}}, and the branch flows automatically: the coding session returns {branch: …}, which the Review and Open PR nodes pick up as head via {{input.branch}}',
         'The Review Session verdict JSON contains "approve" or "block" — the condition and Fix Loop route on it (max 2 fix iterations, then the loop exits forward)',
         'Set the Notify webhook URL (Slack incoming webhook, etc.)',
         'Requires: runner service reachable (RUNNER_URL), GitHub token configured, and the target repo session-enabled on the Claude Code page',
@@ -2449,7 +2449,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
                     placeholder={'{\n  "query": "{{input}}"\n}'}
                   />
                   <div className={hintCls}>
-                    String values may use <code>{'{{input}}'}</code> (previous output) and <code>{'{{original_input}}'}</code>. Without arguments the tool receives <code>{'{"input": …}'}</code>.
+                    String values may use <code>{'{{input}}'}</code> (previous output), <code>{'{{original_input}}'}</code>, and dotted paths into JSON output like <code>{'{{input.branch}}'}</code>. Without arguments the tool receives <code>{'{"input": …}'}</code>.
                   </div>
                   {typeof selectedNode.data.config?.args_text === 'string' && (selectedNode.data.config.args_text as string).trim() !== '' && (() => {
                     try { JSON.parse(selectedNode.data.config.args_text as string); return null } catch { return <div className={`${hintCls} !text-crit`}>Invalid JSON — the last valid value will be used.</div> }
