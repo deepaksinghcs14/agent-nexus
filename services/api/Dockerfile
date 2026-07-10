@@ -8,7 +8,7 @@ RUN go mod download || echo "go mod download failed — expecting vendor/ in the
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /agent-nexus-api ./cmd/server
 
-FROM alpine:3.20
+FROM alpine:3.24
 # nodejs + npm are needed for stdio MCP servers that use npx (e.g. @modelcontextprotocol/* packages).
 # Fall back to HTTP mirrors when TLS to the CDN is intercepted (corporate
 # proxies) — apk verifies package signatures, so transport TLS is not
