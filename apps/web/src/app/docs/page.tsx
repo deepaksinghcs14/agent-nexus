@@ -25,7 +25,7 @@ export default function DocsOverview() {
         {
           title: 'Workflow Node Types',
           href: '/docs/workflows',
-          desc: 'Start, Agent, Supervisor, Condition, Parallel, Join, and Loop nodes, plus save-time validation and crash-resumable runs.',
+          desc: 'Start, Agent, Supervisor, Condition, Parallel, Join, Loop, Webhook, and Gateway nodes, plus end-node delivery, save-time validation, and crash-resumable runs.',
           badge: 'Reference',
         },
         {

@@ -117,8 +117,9 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **OAuth 2.1 MCP** — connect Atlassian's hosted MCP server (or any OAuth-protected remote MCP server) with one click: discovery, dynamic client registration, PKCE, and automatic token refresh
 
 ### Core Agent Platform
-- **Model-agnostic** — Anthropic Claude, OpenAI GPT, Google Gemini, and local Ollama models. Bring your own API keys per workspace. Switch providers without changing your agent config.
+- **Model-agnostic** — Anthropic Claude, OpenAI GPT, Google Gemini, and local Ollama models via the providers' official SDKs. Bring your own API keys per workspace. Switch providers without changing your agent config. Model metadata (context windows, pricing, deprecations) syncs at runtime from models.dev; non-chat model families are filtered out of pickers automatically
 - **Agent builder** — configure instructions (system prompt), model, temperature, max tokens, memory scope, tool list, and guardrails (max steps, max tool calls, timeout) from a clean tabbed UI; tools are grouped by source (native, MCP, HTTP, code) with live search and collapsible sections; skills support drag-to-reorder
+- **Nexus draft panel** — describe the agent you want (or the fix you need) in natural language right inside the create *and* edit screens; Nexus AI sees the complete saved config plus your unsaved edits, proposes a revision, and drops it into the form for you to review and save
 - **Agent export / import** — download any agent as a portable JSON file (tools referenced by name, not ID); import on any workspace or instance to recreate the agent in one click
 - **Playground** — send messages and watch the agent think in real time via a live SSE trace panel showing every memory retrieval, tool call, model call, latency, and token count
 - **Conversations history** — every playground session is saved; browse and replay past conversations from the Conversations page
@@ -126,6 +127,8 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 
 ### Multi-Agent Workflows
 - **Visual canvas editor** — drag-and-drop workflow builder powered by React Flow; add agent nodes, condition branches, parallel fans, join gates, and loop nodes; saving preserves node identity and canvas selection instead of resetting the editor
+- **Integration nodes** — **Webhook** nodes POST the current output to an external URL mid-workflow and feed the response to the next node (so conditions can branch on it); **Gateway** nodes send the output as a chat message through a gateway channel (e.g. page an on-call engineer on WhatsApp); the **End** node can deliver the final output to a webhook and/or a gateway recipient; all templates support `{{input}}`, `{{original_input}}`, and dotted JSON paths like `{{input.branch}}`
+- **Template gallery** — ready-made workflows (Content Pipeline, Customer Support Triage, Research Report, Code Review Pipeline, Incident Triage & Notify, Claude Code Delivery Pipeline, Enterprise Intelligence Pipeline); template agents are created with models resolved against your connected provider's live model list, so they run out of the box
 - **Pipeline mode** — agents execute in sequence, each receiving the previous agent's output
 - **Supervisor mode** — a supervisor LLM routes tasks dynamically to specialist sub-agents; full BFS executor with conditional routing and parallel execution
 - **Workflow SSE** — live node status updates streamed to the canvas as a workflow run executes
@@ -134,8 +137,10 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Invoke API** — trigger any agent or workflow statelessly via `POST /api/v1/invoke/agents/:id` or `/invoke/workflows/:id`; returns an SSE stream; no conversation needed; runs appear in the Runs view with full trace detail
 
 ### Tools & MCP
-- **Native tools** — `read_file`, `write_file`, `web_search`, `http_request` with configurable risk levels
+- **Native tools** — `read_file`, `write_file`, `http_request`, GitHub tools (create PR, branch diff), and repo-session launchers, all with configurable risk levels; tool errors name the exact bad argument and echo what was received so LLM callers can self-correct
 - **MCP server support** — connect any MCP-compatible server (HTTP+SSE or stdio transport); auto-discover and sync tools; proxy all calls through the approval pipeline
+- **MCP preset catalog** — one-click presets for Atlassian (Jira + Confluence), GitHub, Slack, Notion, and Brave Search; picking a preset pins the stdio command and renders exactly the credential fields that server needs; env vars are AES-256-GCM encrypted at rest, redacted in every API response, and injected only into the spawned server process
+- **Server-level tool toggle** — enable or disable all of an MCP server's tools on an agent in one click from the Agent Builder; Nexus AI supports the same via `mcp_server_ids`
 - **HTTP tools** — define arbitrary HTTP tools with JSON schemas; treat any external API as an agent tool
 - **Risk-based approval gates** — mark any tool `requires_approval`; the run pauses and waits for human approval before executing; approval can be granted from the UI or API
 
@@ -143,7 +148,7 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **Layered memory** — conversation, agent, and workspace scopes; each run stores a memory summary with pgvector embeddings for similarity retrieval in future runs
 - **Memory review policy** — set per-agent to `agent_review`; new memories are stored as `pending_review` and are not retrieved until approved via the Memory browser or agent tools (`native_approve_memory` / `native_reject_memory`)
 - **Importance scoring** — each memory carries an importance score used to prioritise retrieval and deduplication; configurable min-importance and dedupe thresholds per agent
-- **Connector RAG** — index external documents and retrieve them at query time to ground agent responses; supported connectors: **Filesystem** (server-side files), **GitHub** (one repo or all repos accessible to a token, with multi-repo auto-discovery), **Confluence** (one or all spaces); the Documents tab provides a filesystem-style browser — navigate repos → folders → files (GitHub) or spaces → pages (Confluence) with live search and breadcrumb navigation; syncs are checkpoint-based so a pod restart resumes from where it left off
+- **Connector RAG** — index external documents and retrieve them at query time to ground agent responses; supported connectors: **Filesystem** (server-side files), **GitHub** (one repo or all repos accessible to a token, with multi-repo auto-discovery), **Confluence** (one or all spaces); the Documents tab provides a filesystem-style browser — navigate repos → folders → files (GitHub) or spaces → pages (Confluence) with live search and breadcrumb navigation; syncs are checkpoint-based so a pod restart resumes from where it left off, and an in-flight sync can be cancelled from the UI
 - **Standard RAG** — automatic pre-run retrieval: the user's message is embedded, the top-N chunks above a configurable similarity threshold are injected into the system prompt before the first LLM turn; `max_chunks` and `min_score` are configured per agent
 - **Agentic RAG** — toggle `agentic_rag=true` on any agent to give it a `native_retrieve_context(query, max_chunks, min_score)` tool instead of pre-run injection; the agent decides *when* to retrieve, *what* to search for, and *how many* chunks to fetch — enabling multi-step research, mid-task retrieval, and targeted queries that outperform a single upfront embedding match
 - **Vector search** — pgvector cosine similarity with configurable score thresholds and chunk counts per agent
@@ -195,7 +200,7 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 ### Nexus Gateway
 - **Multi-channel messaging** — connect agents to inbound message channels; route any inbound message to the right agent and send replies back automatically; full session persistence so each user always resumes their own conversation
 - **HTTP channels** — create a webhook endpoint (`POST /gateway/http/{channelId}`) that any external system can POST to; built-in test panel in the UI; session-aware so the same caller always gets the same conversation thread
-- **WhatsApp integration** — pair a WhatsApp account via QR code; inbound messages are routed to the linked agent and replies are sent back automatically; full session lifecycle management (connect, logout, reconnect)
+- **WhatsApp integration** — pair a WhatsApp account via QR code; inbound messages are routed to the linked agent and replies are sent back automatically; full session lifecycle management (connect, logout, reconnect); hardened against real-world messiness — self-chat echo loops are suppressed, dead sockets are detected and force-reconnected instead of hanging sends, and recent delivery failures surface on the channel page instead of vanishing into logs
 - **Per-contact agent assignment** — each contact can have its own agent override; the channel-level agent is the fallback; change the agent inline from the contacts tab without deleting and recreating the contact
 - **Contact management** — define contacts per channel with roles (`owner`, `trusted`, `blocked`); trusted contacts get auto-replies, owners get escalation notifications
 - **Escalation & approval** — agents can call `whatsapp_request_owner_approval` to pause risky actions and wait for an owner to respond in-chat with an approval code; fully audited via the escalations log
@@ -230,7 +235,7 @@ Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach t
 - **One-click activation** — enable the built-in **Agent Self-Management** skill to auto-attach all 10 tools and inject the full capabilities guide into the system prompt
 
 ### Nexus AI
-- **Meta-agent** — a built-in AI assistant backed by the same agent runtime as user-created agents. Chat to it in natural language to manage the entire platform: list and create agents, build multi-agent workflow graphs, set up webhook triggers, create gateway channels, manage skills, and more. 13 tools total. Automatically detects available models for your configured providers and selects the best one — no manual model IDs required. Navigation links in responses always point to your actual deployment URL (set via `PUBLIC_APP_URL`)
+- **Meta-agent** — a built-in AI assistant backed by the same agent runtime as user-created agents. Chat to it in natural language to manage the entire platform: list and create agents, build multi-agent workflow graphs, set up webhook triggers, create gateway channels, manage skills, and more. 24 tools total. Automatically detects available models for your configured providers and selects the best one — no manual model IDs required. Navigation links in responses always point to your actual deployment URL (set via `PUBLIC_APP_URL`)
 
 ### Built-in Documentation
 - **In-app docs** — platform documentation lives inside the app at `/docs`; covers agents, tools, connectors, workflows, the invoke API, SSE stream events, run states, and MCP servers — no external site needed
@@ -467,11 +472,19 @@ What's working today vs. what's coming next:
 | Session crash resilience (runner journal recovery + API session watchdog) | ✅ Done |
 | Protected seeded pipeline agents (orchestrator, review, docs-map per workspace) | ✅ Done |
 | Railway deploy from any branch (workflow_dispatch, per-service selection) | ✅ Done |
+| Workflow integration nodes (webhook + gateway) with end-node delivery and template placeholders | ✅ Done |
+| Workflow template gallery (7 templates, provider-aware model resolution) | ✅ Done |
+| MCP preset catalog (Atlassian, GitHub, Slack, Notion, Brave Search) with encrypted stdio env | ✅ Done |
+| MCP server-level tool toggle in the Agent Builder and Nexus AI | ✅ Done |
+| Nexus draft panel on the agent create + edit screens | ✅ Done |
+| Official provider SDK adapters + runtime model catalog sync (models.dev) | ✅ Done |
+| Connector sync cancel (stop an in-flight sync from the UI) | ✅ Done |
+| Backend test coverage (workflow engine, agent loop integration suite, wired into CI) | ✅ Done |
 | Additional connectors (Slack, Jira, Google Drive) | 🔜 Planned |
 | Agent versioning and snapshot rollback | 🔜 Planned |
 | API rate limiting per workspace | 🔜 Planned |
 | Run failure notifications (email, webhook) | 🔜 Planned |
-| Test coverage (Go unit + integration, frontend component tests) | 🔜 Planned |
+| Frontend component tests | 🔜 Planned |
 
 ---
 

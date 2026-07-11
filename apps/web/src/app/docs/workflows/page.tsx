@@ -49,11 +49,16 @@ export default function WhatIsAnAgentGroupDoc() {
         of the node that fed into <code>end</code> and stores it as the group run&apos;s result.
         Every workflow must reach an End node.
       </p>
+      <p>
+        The End node can also <strong>deliver</strong> the final output as it completes — POST it to
+        an external URL, send it as a chat message through a gateway channel, or both:
+      </p>
       <div className="table-scroll">
       <table>
         <thead><tr><th>Config</th><th>Description</th></tr></thead>
         <tbody>
-          <tr><td>None</td><td>No configuration required</td></tr>
+          <tr><td><strong>Delivery webhook URL</strong></td><td>Optional. The final output is POSTed here as a JSON envelope (<code>workflow_id</code>, <code>run_id</code>, <code>node_id</code>, <code>input</code>).</td></tr>
+          <tr><td><strong>Gateway channel + recipient</strong></td><td>Optional. Sends the final output as a message through a gateway channel (WhatsApp), with an optional message template.</td></tr>
         </tbody>
       </table>
       </div>
@@ -235,6 +240,60 @@ export default function WhatIsAnAgentGroupDoc() {
         self-improving research loop without manual retries.
       </Callout>
 
+      {/* WEBHOOK */}
+      <h3>🔗 Webhook</h3>
+      <p>
+        Integration node — delivers the current output to an external HTTP endpoint <em>mid-workflow</em>{' '}
+        and passes the endpoint&apos;s response body to the next node, so downstream Condition nodes can
+        branch on what the external system said. Non-2xx responses fail the node.
+      </p>
+      <div className="table-scroll">
+      <table>
+        <thead><tr><th>Config</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><strong>URL</strong></td><td>Destination endpoint (required)</td></tr>
+          <tr><td><strong>Method</strong></td><td>HTTP method, default <code>POST</code></td></tr>
+          <tr><td><strong>Headers</strong></td><td>Optional extra request headers (e.g. an auth token)</td></tr>
+          <tr><td><strong>Payload template</strong></td><td>Optional raw request body with placeholders (see below). Default: a JSON envelope with <code>workflow_id</code>, <code>run_id</code>, <code>node_id</code>, and <code>input</code>.</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      {/* GATEWAY */}
+      <h3>💬 Gateway</h3>
+      <p>
+        Integration node — sends the current output as a chat message through a{' '}
+        <Link href="/docs/gateway">gateway channel</Link> (WhatsApp today), then forwards the output
+        unchanged to the next node. Use it to notify a person mid-workflow — page an on-call engineer,
+        send a status update — without ending the run.
+      </p>
+      <div className="table-scroll">
+      <table>
+        <thead><tr><th>Config</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Channel</strong></td><td>A gateway channel in this workspace (required)</td></tr>
+          <tr><td><strong>Recipient</strong></td><td>Who receives the message — phone number or JID for WhatsApp (required)</td></tr>
+          <tr><td><strong>Message template</strong></td><td>Optional message body with placeholders. Default: the node input as-is.</td></tr>
+        </tbody>
+      </table>
+      </div>
+
+      <h3>Template placeholders</h3>
+      <p>
+        Webhook payload templates, gateway message templates, and End-node delivery templates all
+        support the same placeholder syntax:
+      </p>
+      <div className="table-scroll">
+      <table>
+        <thead><tr><th>Placeholder</th><th>Resolves to</th></tr></thead>
+        <tbody>
+          <tr><td><code>{'{{input}}'}</code></td><td>The previous node&apos;s output</td></tr>
+          <tr><td><code>{'{{original_input}}'}</code></td><td>The input the workflow run started with</td></tr>
+          <tr><td><code>{'{{input.branch}}'}</code>, <code>{'{{original_input.a.b}}'}</code></td><td>A dotted JSON path into the value, when it parses as JSON. A missing path or non-JSON value renders as an empty string.</td></tr>
+        </tbody>
+      </table>
+      </div>
+
       <h2>Edge Types</h2>
       <div className="table-scroll">
       <table>
@@ -307,6 +366,7 @@ export default function WhatIsAnAgentGroupDoc() {
           <tr><td>Retry loop</td><td>Start → Agent → Loop → (exit) End / (loop) → Agent</td><td>Retry until quality threshold</td></tr>
           <tr><td>Parallel analysis</td><td>… → Parallel → [A, B, C] → Join → Agent → End</td><td>Multi-source ingestion</td></tr>
           <tr><td>Supervisor team</td><td>… → Supervisor → (delegate) [A, B, C] + (normal) End</td><td>Coordinator with specialists</td></tr>
+          <tr><td>Notify + branch on reply</td><td>… → Condition → (yes) Gateway → End / (no) Webhook → End</td><td>Incident triage: page on-call or log to a tracker</td></tr>
           <tr><td>Full intelligence pipeline</td><td>All node types</td><td>Enterprise research with quality loop</td></tr>
         </tbody>
       </table>
@@ -319,7 +379,7 @@ export default function WhatIsAnAgentGroupDoc() {
         <li><strong>Design for known keywords</strong> — condition and loop nodes match against text output. Build your agent prompts to end with a predictable keyword so routing is deterministic.</li>
         <li><strong>Parallel + Join for independent tasks</strong> — tasks that don&apos;t depend on each other (web search + domain knowledge) should run in parallel to reduce total latency.</li>
         <li><strong>Cap your loops</strong> — always set a Max Iterations limit. An LLM that never outputs your exit keyword would loop forever without it.</li>
-        <li><strong>Use the template gallery</strong> — the Enterprise Intelligence Pipeline template demonstrates every node type working together. Load it, study the structure, then customise.</li>
+        <li><strong>Use the template gallery</strong> — ready-made workflows (Content Pipeline, Customer Support Triage, Incident Triage &amp; Notify, Claude Code Delivery Pipeline, Enterprise Intelligence Pipeline, and more) demonstrate every node type working together. Template agents are created with models resolved against your connected provider, so they run out of the box. Load one, study the structure, then customise.</li>
       </ul>
 
       <h2>Next Steps</h2>

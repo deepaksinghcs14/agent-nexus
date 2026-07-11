@@ -36,11 +36,6 @@ export default function WhatIsAToolDoc() {
             <td>Write or overwrite a file. Requires approval by default.</td>
           </tr>
           <tr>
-            <td><code>web_search</code></td>
-            <td><Badge label="medium" color="amber" /></td>
-            <td>Query a search engine and return a list of results with snippets</td>
-          </tr>
-          <tr>
             <td><code>http_request</code></td>
             <td><Badge label="high" color="red" /></td>
             <td>Make an outbound HTTP request to any URL. Requires approval by default.</td>
@@ -48,6 +43,20 @@ export default function WhatIsAToolDoc() {
         </tbody>
       </table>
       </div>
+      <p>
+        Beyond these, whole families of native tools power specific features: GitHub tools
+        (create a pull request, diff a branch), repo coding sessions
+        (<code>native_launch_repo_session</code>, <code>native_launch_review_session</code> — see the{' '}
+        <a href="/docs/claude-code-pipeline">Claude Code Pipeline</a>), memory management, and the{' '}
+        <a href="/docs/skills">Agent Self-Management</a> tool set that lets an agent create
+        sub-agents, skills, and HTTP tools at runtime.
+      </p>
+      <Callout type="info">
+        Web search and Jira are <strong>not</strong> native tools — they come from the MCP preset
+        catalog instead (Brave Search and Atlassian presets on the{' '}
+        <a href="/mcp-servers">MCP Servers</a> page). Earlier native versions of both were removed
+        in favour of the presets.
+      </Callout>
 
       <h2>Risk Levels and Approval Gates</h2>
       <p>
@@ -67,7 +76,7 @@ export default function WhatIsAToolDoc() {
           <tr>
             <td><Badge label="medium" color="amber" /></td>
             <td>Auto-approved by default; configurable per agent</td>
-            <td>web_search, query</td>
+            <td>MCP tools (default), query</td>
           </tr>
           <tr>
             <td><Badge label="high" color="red" /></td>
@@ -115,9 +124,11 @@ export default function WhatIsAToolDoc() {
 
       <h2>Enabling Tools on an Agent</h2>
       <p>
-        On the <strong>Tools</strong> tab of the Agent Builder, you see all tools in the registry.
-        Toggle each one on or off for that specific agent. The risk level and approval badge are shown
-        next to each toggle so you know exactly what you&apos;re enabling.
+        On the <strong>Tools</strong> tab of the Agent Builder, you see all tools in the registry,
+        grouped by source (native, MCP, HTTP). Toggle each one on or off for that specific agent —
+        the risk level and approval badge are shown next to each toggle so you know exactly what
+        you&apos;re enabling. An <strong>MCP Servers</strong> card at the top lets you enable or
+        disable every tool from a server in one click.
       </p>
 
       <h2>Next Steps</h2>

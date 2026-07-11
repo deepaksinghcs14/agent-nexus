@@ -39,6 +39,32 @@ export default function MCPServersDoc() {
       </table>
       </div>
 
+      <h2>Preset Catalog</h2>
+      <p>
+        The <strong>Add server</strong> dialog offers one-click presets for popular MCP servers:{' '}
+        <strong>Atlassian</strong> (Jira + Confluence via <code>uvx mcp-atlassian</code>),{' '}
+        <strong>GitHub</strong>, <strong>Slack</strong>, <strong>Notion</strong>, and{' '}
+        <strong>Brave Search</strong>. Picking a preset pins the stdio command and shows exactly the
+        credential fields that server needs — paste your API token and sync.
+      </p>
+      <Callout type="tip">
+        Presets are the supported way to give agents web search and Jira access — the earlier native
+        versions of those tools were removed in their favour.
+      </Callout>
+      <p>
+        Environment variables entered for a stdio server (API tokens, etc.) are encrypted at rest
+        with AES-256-GCM, redacted in every API response, and injected only into the spawned server
+        process.
+      </p>
+
+      <h2>OAuth 2.1 Remote Servers</h2>
+      <p>
+        OAuth-protected remote MCP servers — such as Atlassian&apos;s hosted server — connect with one
+        click via <code>POST /api/v1/mcp-servers/:id/oauth/start</code>: Agent Nexus handles metadata
+        discovery, dynamic client registration, the PKCE authorization flow, and automatic token
+        refresh. No client ID or secret to manage.
+      </p>
+
       <h2>HTTP Transport</h2>
       <p>
         Agent Nexus sends JSON-RPC 2.0 messages via <code>POST</code> to the server URL.
@@ -91,6 +117,11 @@ export default function MCPServersDoc() {
       <p>
         Re-sync any time the server adds, removes, or changes tools.
       </p>
+      <Callout type="tip">
+        In the Agent Builder&apos;s Tools tab, an <strong>MCP Servers</strong> card lets you enable or
+        disable all of a server&apos;s tools for that agent in one click — no need to toggle tools
+        individually. Nexus AI can do the same when creating or updating agents.
+      </Callout>
 
       <h2>Tool Risk Levels</h2>
       <p>
