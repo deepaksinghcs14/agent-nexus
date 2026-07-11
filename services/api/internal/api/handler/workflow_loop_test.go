@@ -207,7 +207,10 @@ func TestWorkflowLoopNode(t *testing.T) {
 	}
 }
 
-func TestWorkflowToolNode(t *testing.T) {
+// The workflow tool node type was removed; legacy graphs that still contain
+// one hit the walk's default case, which reports an explicit error event and
+// passes the input through unchanged so the rest of the workflow still runs.
+func TestWorkflowLegacyToolNodePassesThrough(t *testing.T) {
 	fx := newWorkflowFixture(t, nil,
 		[]wfNodeSpec{
 			{key: "s", typ: "start"},
@@ -219,12 +222,11 @@ func TestWorkflowToolNode(t *testing.T) {
 		},
 		[]wfEdgeSpec{{from: "s", to: "tool"}, {from: "tool", to: "e"}},
 	)
-	fx.attachCodeTool(t, "wf_upper", "function run(input){ return { upper: input.text.toUpperCase() } }", false)
 	fx.runWorkflow()
 
 	status, output := fx.runRow(t)
-	if status != "success" || !strings.Contains(output, "TEST INPUT") {
-		t.Fatalf("workflow run = %q/%q, want success with TEST INPUT", status, output)
+	if status != "success" || output != "test input" {
+		t.Fatalf("workflow run = %q/%q, want success with the input passed through", status, output)
 	}
 	// No LLM involved.
 	if n := len(fx.fake.recorded()); n != 0 {
