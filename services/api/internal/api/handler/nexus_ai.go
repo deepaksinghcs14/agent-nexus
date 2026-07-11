@@ -468,9 +468,10 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		} `json:"messages"`
-		Provider string `json:"provider"` // optional — client-chosen provider
-		Model    string `json:"model"`    // optional — client-chosen model
-		Mode     string `json:"mode"`     // optional — "agent_builder" drafts an agent for form review
+		Provider     string          `json:"provider"`      // optional — client-chosen provider
+		Model        string          `json:"model"`         // optional — client-chosen model
+		Mode         string          `json:"mode"`          // optional — "agent_builder" drafts an agent for form review
+		CurrentAgent json.RawMessage `json:"current_agent"` // optional — agent_builder on the EDIT screen: the config being revised
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Messages) == 0 {
 		errs.Write(w, errs.BadRequest("messages array is required"))
@@ -567,6 +568,11 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	systemContent := nexusSystemPrompt(h.cfg.PublicAppURL)
 	if req.Mode == "agent_builder" {
 		systemContent += "\n\n" + agentBuilderModePrompt
+		if len(req.CurrentAgent) > 0 {
+			systemContent += "\n\nEDITING AN EXISTING AGENT. The user is on the edit screen fixing or improving this agent. Its current configuration:\n" +
+				string(req.CurrentAgent) +
+				"\nPropose a REVISED complete draft via propose_agent: change only what the user asks for (plus anything clearly broken, e.g. a model that no longer exists — verify with list_available_models). Carry every other field over unchanged, and do not rename the agent unless asked."
+		}
 	}
 	messages := []provider.Message{
 		{Role: "system", Content: systemContent},

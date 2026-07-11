@@ -405,8 +405,21 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
         </div>
       </div>
 
-      {/* Nexus AI fast-track — describe the agent and let Nexus draft it (create only) */}
-      {!isEdit && <NexusDraftPanel onDraft={applyDraft} />}
+      {/* Nexus AI fast-track — describe a new agent, or (edit mode) describe
+          what to fix: Nexus gets the current config and proposes a revision. */}
+      <NexusDraftPanel
+        onDraft={applyDraft}
+        current={isEdit ? {
+          name, description, instructions, provider, model, temperature, status,
+          max_tokens: maxTokens, max_steps: maxSteps, max_tool_calls: maxToolCalls,
+          max_duration_secs: maxDurationSecs, memory_enabled: memoryEnabled,
+          memory_scope: memoryScope, context_retrieval_enabled: contextEnabled,
+          agentic_rag: agenticRAG, lazy_tool_loading: lazyToolLoading,
+          tools: Object.keys(enabledTools).filter((k) => enabledTools[k]),
+          skills: Object.keys(enabledSkills).filter((k) => enabledSkills[k]),
+          connectors: Object.keys(enabledConnectors).filter((k) => enabledConnectors[k]),
+        } : undefined}
+      />
 
       {/* Tab bar */}
       <div className="flex border-b border-border mb-5 bg-muted rounded-t-lg overflow-x-auto"

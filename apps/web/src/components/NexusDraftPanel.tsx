@@ -41,8 +41,12 @@ type ChatMsg = { role: 'user' | 'assistant'; content: string }
  */
 export function NexusDraftPanel({
   onDraft,
+  current,
 }: {
   onDraft: (draft: AgentDraft) => void
+  // When set, the panel is on the EDIT screen: Nexus receives the agent's
+  // current configuration and proposes a revision instead of a fresh draft.
+  current?: Record<string, unknown>
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
@@ -88,7 +92,7 @@ export function NexusDraftPanel({
     streamingRef.current = ''
 
     try {
-      const res = await nexusAIAPI.chat(history, { mode: 'agent_builder', provider: provider || undefined, model: model || undefined })
+      const res = await nexusAIAPI.chat(history, { mode: 'agent_builder', provider: provider || undefined, model: model || undefined, current_agent: current })
       if (!res.ok || !res.body) throw new Error(`Nexus request failed (${res.status})`)
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -148,8 +152,8 @@ export function NexusDraftPanel({
     <div className="mb-6 rounded-xl border border-purple-200 dark:border-purple-500/30 bg-purple-50/40 dark:bg-purple-500/5 overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-purple-100 dark:border-purple-500/20">
         <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-        <span className="text-[13px] font-medium text-purple-900 dark:text-purple-200">Describe your agent</span>
-        <span className="text-[11px] text-purple-500 dark:text-purple-400/70 mr-auto">Nexus drafts it — you review below</span>
+        <span className="text-[13px] font-medium text-purple-900 dark:text-purple-200">{current ? 'Fix or improve this agent' : 'Describe your agent'}</span>
+        <span className="text-[11px] text-purple-500 dark:text-purple-400/70 mr-auto">{current ? 'Nexus revises it — review the changes below' : 'Nexus drafts it — you review below'}</span>
         {activeProviders.length === 0 ? (
           <span className="text-[11px] text-amber-600 dark:text-amber-400">Add a provider in Settings → Providers</span>
         ) : (
@@ -187,7 +191,7 @@ export function NexusDraftPanel({
 
       {drafted && (
         <div className="mx-4 mb-2 text-[12px] text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 rounded-lg px-3 py-2">
-          ✓ Draft applied to the form below — review, tweak anything, then click Create.
+          ✓ Draft applied to the form below — review, tweak anything, then click {current ? 'Save' : 'Create'}.
         </div>
       )}
       {error && (
@@ -201,7 +205,9 @@ export function NexusDraftPanel({
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
           disabled={busy}
           rows={2}
-          placeholder="e.g. An agent that triages my support inbox, tags urgency, and drafts replies in a friendly tone."
+          placeholder={current
+            ? 'e.g. It keeps losing track of the task — tighten the instructions, and switch it to the best available model.'
+            : 'e.g. An agent that triages my support inbox, tags urgency, and drafts replies in a friendly tone.'}
           className="flex-1 text-[13px] px-3 py-2 border border-purple-200 dark:border-purple-500/30 rounded-lg bg-white dark:bg-gray-900 resize-none outline-none focus:ring-1 focus:ring-purple-400 disabled:opacity-60"
         />
         <button
