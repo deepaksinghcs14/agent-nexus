@@ -195,6 +195,18 @@ async function deleteAuthStateFromDB(accountId) {
   } catch (_) {}
 }
 
+// withTimeout bounds a promise. Baileys calls can hang forever on a zombie
+// WebSocket (dead after sleep/network change while status still reads
+// 'connected'), which previously stalled /send until the Go client's 30s
+// timeout with no reconnect ever triggered.
+function withTimeout(promise, ms, label) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 
 async function startAccount(accountId, opts = {}) {
@@ -660,11 +672,22 @@ async function route(req, res) {
       return json(res, 409, { error: 'account is not connected', status: active.status })
     }
     const toJid = peerToJid(body.peer)
-    try { await active.socket.sendPresenceUpdate('composing', toJid) } catch (_) {}
+    try { await withTimeout(active.socket.sendPresenceUpdate('composing', toJid), 3000, 'presence') } catch (_) {}
     const typingMs = Math.min(4000, Math.max(800, (body.text || '').length * 40))
     await new Promise(r => setTimeout(r, typingMs))
-    try { await active.socket.sendPresenceUpdate('paused', toJid) } catch (_) {}
-    const sent = await active.socket.sendMessage(toJid, { text: body.text || '' })
+    try { await withTimeout(active.socket.sendPresenceUpdate('paused', toJid), 3000, 'presence') } catch (_) {}
+    let sent
+    try {
+      sent = await withTimeout(active.socket.sendMessage(toJid, { text: body.text || '' }), 18000, 'sendMessage')
+    } catch (err) {
+      // Zombie socket: force-close it so the connection.update close handler
+      // runs the normal reconnect path, and fail fast with a retryable error
+      // instead of letting the caller's HTTP client time out.
+      logger.error({ err, accountId, toJid }, 'send timed out — forcing reconnect')
+      try { active.socket.end(undefined) } catch (_) {}
+      active.status = 'disconnected'
+      return json(res, 504, { error: 'send timed out — connection is being reset, retry shortly' })
+    }
     const messageId = sent?.key?.id || ''
     if (messageId) {
       active.sentMessageIds.add(messageId)

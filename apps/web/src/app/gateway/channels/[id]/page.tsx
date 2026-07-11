@@ -3,7 +3,7 @@
 import { use, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Check, ChevronRight, Copy, LogOut, Pencil, QrCode, RefreshCw, X } from 'lucide-react'
+import { AlertCircle, Check, ChevronRight, Copy, LogOut, Pencil, QrCode, RefreshCw, X } from 'lucide-react'
 import { agentsAPI, gatewayAPI } from '@/lib/api'
 import type { ChannelSession, GatewayChannel, GatewayContact, GatewayEscalation, GatewayEvent, GatewayOutboundMessage, GatewayPairingRequest, GatewayReminder, ScheduledMessage } from '@/types'
 
@@ -598,6 +598,27 @@ export default function GatewayChannelDetailPage({ params }: { params: Promise<{
             </button>
             <button onClick={() => setEditMode(false)} className="px-4 py-1.5 border border-border-strong text-muted-foreground text-[12px] font-medium rounded-lg hover:bg-muted">Cancel</button>
           </div>
+        </div>
+      )}
+      {/* Recent delivery failures — surfaced on every tab so send errors are
+          impossible to miss instead of buried in the Outbox tab. */}
+      {outbox.some((o) => o.status === 'failed') && (
+        <div className="mb-4 rounded-lg border border-crit/30 bg-crit/10 p-3">
+          <p className="flex items-center gap-1.5 text-[12px] font-semibold text-crit mb-2">
+            <AlertCircle size={13} /> Recent delivery failures
+          </p>
+          <div className="space-y-1.5">
+            {outbox.filter((o) => o.status === 'failed').slice(0, 3).map((o) => (
+              <div key={o.id} className="text-[11px] text-crit flex flex-wrap gap-x-2">
+                <span className="font-mono">{o.peer_id}</span>
+                <span className="text-crit/70">{new Date(o.created_at).toLocaleString()}</span>
+                <span className="basis-full break-all">{o.last_error}</span>
+              </div>
+            ))}
+          </div>
+          <button onClick={() => setTab('Outbox' as Tab)} className="mt-2 text-[11px] font-medium text-crit hover:underline">
+            View all in Outbox →
+          </button>
         </div>
       )}
       <div className="flex border-b border-border mb-5 bg-muted rounded-t-lg overflow-x-auto">

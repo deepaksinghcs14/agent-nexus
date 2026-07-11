@@ -580,18 +580,22 @@ func (h *GatewayHandler) syncChannelLIDs(channelID string, cfg domain.GatewayCha
 	if err != nil || len(phones) == 0 {
 		return
 	}
-	_, _ = adapterPost(context.Background(), cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/login/start", map[string]any{
+	if _, err := adapterPost(context.Background(), cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/login/start", map[string]any{
 		"contact_phones": phones,
-	})
+	}); err != nil {
+		slog.Warn("gateway contact-phone sync to adapter failed", "channel_id", channelID, "account", cfg.AccountID, "error", err)
+	}
 }
 
 func (h *GatewayHandler) syncAdapterConfig(ctx context.Context, c domain.GatewayChannel) {
 	cfg := h.parseGatewayConfig(c.Config, c.ChannelType)
-	_, _ = adapterPost(ctx, cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/config", map[string]any{
+	if _, err := adapterPost(ctx, cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/config", map[string]any{
 		"channel_id":        c.ID,
 		"callback_url":      strings.TrimRight(h.cfg.PublicAPIURL, "/") + "/gateway/whatsapp/" + c.ID,
 		"self_chat_enabled": cfg.SelfChatEnabled,
-	})
+	}); err != nil {
+		slog.Warn("gateway adapter config sync failed", "channel_id", c.ID, "account", cfg.AccountID, "error", err)
+	}
 }
 
 // SyncAllAdapters calls login/start on the WhatsApp adapter for every active WhatsApp
@@ -1213,9 +1217,16 @@ func completionReply(output string, sentToOtherPeer bool) string {
 }
 
 func (h *GatewayHandler) sendAdapterMessage(ctx context.Context, c domain.GatewayChannel, cfg domain.GatewayChannelConfig, accountID, peerKind, peerID, text, sessionID, runID string) {
-	_, _ = gatewayservice.NewService(h.pool).SendWhatsApp(ctx, gatewayservice.SendRequest{
+	if _, err := gatewayservice.NewService(h.pool).SendWhatsApp(ctx, gatewayservice.SendRequest{
 		Channel: c, Config: cfg, AccountID: accountID, PeerKind: peerKind, PeerID: peerID, Body: text, SessionID: sessionID, RunID: runID,
-	})
+	}); err != nil {
+		// SendWhatsApp already persisted the failed outbound row and the
+		// delivery_failed event; this is the operator-facing signal in the
+		// server log — previously the error was discarded entirely and an
+		// agent reply could vanish without any trace outside the Outbox tab.
+		slog.Error("gateway reply delivery failed",
+			"channel", c.Name, "channel_id", c.ID, "peer_id", peerID, "run_id", runID, "error", err)
+	}
 }
 
 func (h *GatewayHandler) resolveContact(ctx context.Context, c domain.GatewayChannel, cfg domain.GatewayChannelConfig, msg inboundMessage) (*domain.GatewayContact, string) {
@@ -1400,7 +1411,9 @@ func (h *GatewayHandler) checkAndReconnectStaleConnections(ctx context.Context) 
 		connectedFor := now - st.ConnectedAt
 		if st.ConnectedAt > 0 && st.LastMessageAt == 0 && connectedFor > 90_000 {
 			slog.Warn("whatsapp connection stale, reconnecting", "channel", c.ID, "account", cfg.AccountID, "connected_for_ms", connectedFor)
-			_, _ = adapterPost(ctx, cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/reconnect", nil)
+			if _, err := adapterPost(ctx, cfg.AdapterURL, "/accounts/"+url.PathEscape(cfg.AccountID)+"/reconnect", nil); err != nil {
+				slog.Error("whatsapp stale reconnect failed", "channel", c.ID, "account", cfg.AccountID, "error", err)
+			}
 		}
 	}
 }
