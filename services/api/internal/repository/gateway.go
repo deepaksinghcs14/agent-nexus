@@ -285,6 +285,19 @@ func (r *GatewayRepository) CreateOutbound(ctx context.Context, m *domain.Gatewa
 	).Scan(&m.ID, &m.CreatedAt)
 }
 
+// HasRecentOutboundBody reports whether this channel sent exactly this text
+// to this peer within the window — used to drop self-chat echoes of the
+// gateway's own replies that come back as from_me inbound events.
+func (r *GatewayRepository) HasRecentOutboundBody(ctx context.Context, channelID, peerID, body string, window time.Duration) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM gateway_outbound_messages
+			WHERE channel_id=$1::uuid AND peer_id=$2 AND body=$3 AND created_at > NOW() - $4::interval)`,
+		channelID, peerID, body, window.String()).Scan(&exists)
+	return exists, err
+}
+
 func (r *GatewayRepository) ListOutbox(ctx context.Context, workspaceID, channelID string, limit int) ([]domain.GatewayOutboundMessage, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 100

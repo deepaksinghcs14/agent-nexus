@@ -101,6 +101,7 @@ function accountState(accountId) {
       selfChatEnabled: false,
       browserName: '',
       sentMessageIds: new Set(),
+      recentSentTexts: [],      // [{text, at}] — echo guard when the id filter races the send ack
       messageStore: new Map(),  // id → proto message, for retry requests
       lidToPhone: new Map(),
       contactMap: new Map(),    // phoneBare → { name, lid }
@@ -395,6 +396,16 @@ async function startAccount(accountId, opts = {}) {
           logger.info({ accountId, key: msg.key }, 'ignored from_me whatsapp message because self-chat is disabled')
           continue
         }
+        // Second echo-guard layer: the id filter above can miss when the
+        // upsert echo races sendMessage's resolution (id not yet recorded).
+        // Adapter-sent texts from the last 2 minutes are never re-forwarded.
+        const echoText = messageText(msg.message)
+        const cutoff = Date.now() - 120000
+        state.recentSentTexts = state.recentSentTexts.filter((e) => e.at > cutoff)
+        if (echoText && state.recentSentTexts.some((e) => e.text === echoText)) {
+          logger.info({ accountId, key: msg.key }, 'ignored echo of adapter-sent text')
+          continue
+        }
         // Even with selfChatEnabled=true, only forward messages sent to the account's own
         // JID (genuine self-chat). Messages the owner sends to other people arrive as
         // from_me=true but the peer is a different JID — forwarding those would make the
@@ -672,6 +683,11 @@ async function route(req, res) {
       return json(res, 409, { error: 'account is not connected', status: active.status })
     }
     const toJid = peerToJid(body.peer)
+    // Record the text BEFORE sending so the from_me echo can never race it.
+    if (body.text) {
+      active.recentSentTexts.push({ text: body.text, at: Date.now() })
+      if (active.recentSentTexts.length > 100) active.recentSentTexts.shift()
+    }
     try { await withTimeout(active.socket.sendPresenceUpdate('composing', toJid), 3000, 'presence') } catch (_) {}
     const typingMs = Math.min(4000, Math.max(800, (body.text || '').length * 40))
     await new Promise(r => setTimeout(r, typingMs))

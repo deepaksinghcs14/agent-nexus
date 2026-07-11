@@ -803,6 +803,20 @@ func (h *GatewayHandler) handleInbound(ctx context.Context, c domain.GatewayChan
 		"sender_id": msg.SenderID, "sender_phone": msg.SenderPhone, "peer_id": msg.PeerID,
 		"body": msg.Body, "contact_alias": contactAlias(contact), "contact_role": contactRole(contact), "access_decision": decision,
 	})
+	// Self-chat echo guard: replies this channel just sent come back as
+	// from_me inbound events. The adapter filters them by message id, but
+	// that filter races the send ack and is lost on adapter restart — an
+	// echo that slips through gets treated as an owner message and
+	// dispatched to the agent, which then replies to the gateway's own
+	// reply (the "Which Rajat?" loop).
+	if msg.FromMe {
+		if recent, err := h.repo.HasRecentOutboundBody(ctx, c.ID, msg.PeerID, msg.Body, 2*time.Minute); err != nil {
+			slog.Warn("gateway echo check failed", "channel_id", c.ID, "peer_id", msg.PeerID, "error", err)
+		} else if recent {
+			_ = h.logEvent(ctx, c, "", "", "self_echo_dropped", msg.ProviderMessageID, map[string]any{"peer_id": msg.PeerID})
+			return false, ""
+		}
+	}
 	if response, handled := h.handleOwnerCommand(ctx, c, cfg, msg, contact); handled {
 		return false, response
 	}
@@ -996,7 +1010,7 @@ func (h *GatewayHandler) handleOwnerContactToggle(ctx context.Context, c domain.
 	}
 	if err == nil && len(matches) > 1 {
 		var b strings.Builder
-		b.WriteString("I found multiple contacts. Use a more specific name:\n")
+		b.WriteString("I found multiple contacts:\n")
 		for _, contact := range matches {
 			b.WriteString("* " + contact.DisplayName)
 			if contact.PhoneNumber != "" {
@@ -1004,6 +1018,11 @@ func (h *GatewayHandler) handleOwnerContactToggle(ctx context.Context, c domain.
 			}
 			b.WriteString("\n")
 		}
+		example := matches[0].DisplayName
+		if matches[0].PhoneNumber != "" {
+			example = matches[0].PhoneNumber
+		}
+		b.WriteString("Reply with the phone number to pick one, e.g.: " + startStopWord(enable) + " " + example)
 		return b.String(), true
 	}
 	if !enable {
@@ -1078,7 +1097,17 @@ func (h *GatewayHandler) dispatchGatewayRun(ctx context.Context, c domain.Gatewa
 	if msg.Contact != nil && msg.Contact.AgentID != "" {
 		agentID = msg.Contact.AgentID
 	}
-	sessionKey := fmt.Sprintf("agent:%s:%s:%s:%s:%s", agentID, c.ChannelType, msg.AccountID, msg.PeerKind, msg.PeerID)
+	// Canonicalise the peer for the session key: WhatsApp delivers the same
+	// direct chat under both phone JIDs and @lid JIDs (the adapter's LID
+	// resolution can miss when its map is cold), and a flapping peer id
+	// forks the session — the agent silently starts a fresh conversation
+	// mid-dialogue and loses all context. The matched contact's stored JID
+	// is stable across both forms (contacts match by phone AND lid).
+	sessionPeer := msg.PeerID
+	if msg.PeerKind == "direct" && msg.Contact != nil && msg.Contact.WhatsAppJID != "" {
+		sessionPeer = msg.Contact.WhatsAppJID
+	}
+	sessionKey := fmt.Sprintf("agent:%s:%s:%s:%s:%s", agentID, c.ChannelType, msg.AccountID, msg.PeerKind, sessionPeer)
 
 	// If a run is waiting for user input on this session, deliver the reply to it
 	// instead of creating a new run.
@@ -1641,7 +1670,11 @@ func parseOwnerNaturalCommand(raw string) (intent, target string, ok bool) {
 	case containsAny(body, "stop assistant", "pause assistant", "turn off assistant", "stop replies", "pause replies"):
 		return "stop_assistant", "", true
 	}
-	if containsAny(body, "stop replying to ", "pause replying to ", "disable replies for ", "turn off replies for ", "stop the agent for ", "pause the agent for ") {
+	// Disable variants must be checked BEFORE the enable patterns: "disable
+	// auto reply to X" contains "auto reply to " and previously matched the
+	// enable branch, silently inverting the owner's intent.
+	if containsAny(body, "stop replying to ", "pause replying to ", "disable replies for ", "turn off replies for ", "stop the agent for ", "pause the agent for ",
+		"disable auto reply to ", "disable auto-reply to ", "turn off auto reply to ", "turn off auto-reply to ", "stop auto reply to ", "stop auto-reply to ", "disable auto reply for ", "disable auto-reply for ") {
 		return "stop_contact", cleanOwnerCommandTarget(raw, false), true
 	}
 	if containsAny(body, "start replying to ", "auto reply to ", "auto-reply to ", "allow ", "enable replies for ", "turn on replies for ", "let ") &&
@@ -1667,6 +1700,8 @@ func cleanOwnerCommandTarget(raw string, enable bool) string {
 		replacements = []string{
 			"stop replying to ", "", "pause replying to ", "", "disable replies for ", "", "turn off replies for ", "",
 			"stop the agent for ", "", "pause the agent for ", "",
+			"disable auto reply to ", "", "disable auto-reply to ", "", "turn off auto reply to ", "", "turn off auto-reply to ", "",
+			"stop auto reply to ", "", "stop auto-reply to ", "", "disable auto reply for ", "", "disable auto-reply for ", "",
 		}
 	}
 	lower := strings.ToLower(s)
@@ -1676,6 +1711,25 @@ func cleanOwnerCommandTarget(raw string, enable bool) string {
 			idx := strings.Index(lower, from)
 			s = s[:idx] + to + s[idx+len(from):]
 			lower = strings.ToLower(s)
+		}
+	}
+	s = strings.Trim(strings.TrimSpace(s), ".,;:")
+	// Strip leading command verbs the phrase patterns didn't consume —
+	// "Enable auto reply to Rajat" must yield target "Rajat", not
+	// "Enable Rajat" (which matches no contact and produces a baffling
+	// "I couldn't find Enable Rajat" reply).
+	for {
+		stripped := false
+		lower = strings.ToLower(s)
+		for _, verb := range []string{"please ", "enable ", "disable ", "turn on ", "turn off ", "start ", "stop ", "auto reply to ", "auto-reply to ", "auto reply for ", "auto-reply for ", "replies for ", "replies to ", "reply to ", "reply for "} {
+			if strings.HasPrefix(lower, verb) {
+				s = strings.TrimSpace(s[len(verb):])
+				stripped = true
+				break
+			}
+		}
+		if !stripped {
+			break
 		}
 	}
 	return strings.Trim(strings.TrimSpace(s), ".,;:")
