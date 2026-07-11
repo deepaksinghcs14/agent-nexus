@@ -96,6 +96,7 @@ function accountState(accountId) {
       qrDataURL: '',
       selfId: '',
       selfLid: '',
+      selfLidResolving: null,   // single-flight promise for lazy selfLid resolution
       lastError: '',
       callbackUrl: '',
       selfChatEnabled: false,
@@ -133,6 +134,45 @@ async function resolvePhonesLIDs(state) {
   } catch (err) {
     logger.warn({ err, accountId: state.accountId }, 'LID resolution via onWhatsApp failed')
   }
+}
+
+// resolveSelfLid fills state.selfLid via onWhatsApp when Baileys didn't expose
+// socket.user.lid. Single-flight so concurrent inbound messages share one
+// lookup. Tries both +<phone> and bare <phone> query forms — some Baileys
+// versions only match one. Callers re-check state.selfLid afterwards.
+async function resolveSelfLid(state) {
+  if (state.selfLid || !state.selfId || !state.socket) return
+  if (state.selfLidResolving) return state.selfLidResolving
+  const ownPhone = state.selfId.split('@')[0].split(':')[0]
+  if (!ownPhone) return
+  state.selfLidResolving = (async () => {
+    for (const query of [`+${ownPhone}`, ownPhone]) {
+      try {
+        const results = await withTimeout(state.socket.onWhatsApp(query), 5000, 'onWhatsApp(self)')
+        if (results?.[0]?.lid) {
+          state.selfLid = results[0].lid
+          logger.info({ accountId: state.accountId, selfLid: state.selfLid }, 'selfLid resolved via onWhatsApp')
+          return
+        }
+      } catch (err) {
+        logger.warn({ err, accountId: state.accountId, query }, 'selfLid onWhatsApp resolution failed')
+      }
+    }
+  })().finally(() => { state.selfLidResolving = null })
+  return state.selfLidResolving
+}
+
+// isSelfPeer reports whether a remoteJid is the account's own chat (genuine
+// self-chat), matching the phone JID, the LID JID, or an @lid entry that the
+// contact lid→phone map resolves to the account's own phone.
+function isSelfPeer(state, remoteJid) {
+  const remoteBare = (remoteJid || '').split('@')[0].split(':')[0]
+  if (!remoteBare) return false
+  const ownBare = (state.selfId || '').split('@')[0].split(':')[0]
+  const ownLidBare = (state.selfLid || '').split('@')[0].split(':')[0]
+  if (ownBare && remoteBare === ownBare) return true
+  if (ownLidBare && remoteBare === ownLidBare) return true
+  return remoteJid.endsWith('@lid') && !!ownBare && state.lidToPhone.get(remoteBare) === ownBare
 }
 
 // ── Credential persistence (survives Railway deploys) ─────────────────────────
@@ -311,19 +351,7 @@ async function startAccount(accountId, opts = {}) {
       backupAuthState(accountId).catch(() => {})
       // Newer WhatsApp clients use opaque LID JIDs; Baileys may not expose socket.user.lid.
       // Resolve selfLid via onWhatsApp so the from_me self-chat filter can match correctly.
-      if (!state.selfLid && state.selfId) {
-        const ownPhone = state.selfId.split('@')[0].split(':')[0]
-        if (ownPhone) {
-          socket.onWhatsApp(`+${ownPhone}`).then((results) => {
-            if (results?.[0]?.lid) {
-              state.selfLid = results[0].lid
-              logger.info({ accountId, selfLid: state.selfLid }, 'selfLid resolved via onWhatsApp')
-            }
-          }).catch((err) => {
-            logger.warn({ err, accountId }, 'selfLid onWhatsApp resolution failed')
-          })
-        }
-      }
+      resolveSelfLid(state).catch(() => {})
       if (state.pendingPhones.length > 0) {
         resolvePhonesLIDs(state).catch(() => {})
       }
@@ -411,14 +439,24 @@ async function startAccount(accountId, opts = {}) {
         // from_me=true but the peer is a different JID — forwarding those would make the
         // agent reply into every chat on the owner's behalf.
         // WhatsApp uses @lid JIDs in newer clients; compare both phone JID and LID.
+        // selfLid starts empty on every (re)connect and the connect-time lookup can
+        // fail, which silently ate self-chat messages — so before declaring a peer
+        // non-self, retry the resolution and re-check.
         const remoteJid = msg.key.remoteJid || ''
-        const ownBare = (state.selfId || '').split('@')[0].split(':')[0]
-        const ownLidBare = (state.selfLid || '').split('@')[0].split(':')[0]
-        const remoteBare = remoteJid.split('@')[0].split(':')[0]
-        const isSelf = (ownBare && remoteBare === ownBare) || (ownLidBare && remoteBare === ownLidBare)
-        if (!isSelf) {
-          logger.info({ accountId, remoteJid }, 'ignored from_me message to non-self peer')
-          continue
+        if (!isSelfPeer(state, remoteJid)) {
+          if (!state.selfLid) {
+            try { await resolveSelfLid(state) } catch (_) {}
+          }
+          if (!isSelfPeer(state, remoteJid)) {
+            logger.info({ accountId, remoteJid }, 'ignored from_me message to non-self peer')
+            continue
+          }
+        }
+        // Self-chat matched through the lid→phone map before selfLid resolved —
+        // remember the lid so future checks and JID normalisation are direct.
+        if (!state.selfLid && remoteJid.endsWith('@lid')) {
+          state.selfLid = remoteJid
+          logger.info({ accountId, selfLid: remoteJid }, 'selfLid learned from self-chat message')
         }
       }
       await forwardMessage(accountId, state, msg)
