@@ -121,6 +121,72 @@ Rules for this mode:
   rationale object explaining why you chose the model, tools, memory, and context.
 - After proposing, tell the user the draft is ready in the form to review and create.`
 
+// loadCurrentAgentContext builds a complete JSON description of an agent —
+// row fields (including the full instructions) plus attached tool, skill, and
+// connector NAMES — for the edit-mode agent-builder prompt. The client's form
+// snapshot alone proved too thin (skills/connectors as bare ids, and Nexus
+// asked the user to paste the system prompt it should already have).
+func (h *NexusAIHandler) loadCurrentAgentContext(ctx context.Context, ws, agentID string) (string, error) {
+	var (
+		name, description, instructions, providerName, model, memoryScope, status string
+		memorySaveMode, memoryReviewPolicy                                         string
+		temperature, minRelevanceScore, memoryMinImportance, memoryDedupe          float64
+		maxTokens, maxSteps, maxToolCalls, maxDurationSecs, maxHistory             int
+		maxMemories, compactionThreshold, compactionTokenThreshold                 int
+		memoryEnabled, contextEnabled, agenticRAG, lazyToolLoading                 bool
+	)
+	if err := h.pool.QueryRow(ctx, `
+		SELECT name, description, instructions, provider, model, temperature, max_tokens,
+		       memory_enabled, memory_scope, memory_save_mode, memory_review_policy,
+		       max_memories, min_relevance_score, memory_min_importance, memory_dedupe_threshold,
+		       context_retrieval_enabled, agentic_rag,
+		       max_steps, max_tool_calls, max_duration_secs, max_history_messages,
+		       compaction_threshold, compaction_token_threshold,
+		       lazy_tool_loading, status
+		FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid`, agentID, ws).Scan(
+		&name, &description, &instructions, &providerName, &model, &temperature, &maxTokens,
+		&memoryEnabled, &memoryScope, &memorySaveMode, &memoryReviewPolicy,
+		&maxMemories, &minRelevanceScore, &memoryMinImportance, &memoryDedupe,
+		&contextEnabled, &agenticRAG,
+		&maxSteps, &maxToolCalls, &maxDurationSecs, &maxHistory,
+		&compactionThreshold, &compactionTokenThreshold,
+		&lazyToolLoading, &status); err != nil {
+		return "", err
+	}
+	names := func(query string) []string {
+		out := []string{}
+		rows, err := h.pool.Query(ctx, query, agentID)
+		if err != nil {
+			return out
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var n string
+			if rows.Scan(&n) == nil {
+				out = append(out, n)
+			}
+		}
+		return out
+	}
+	b, err := json.Marshal(map[string]any{
+		"agent_id": agentID, "name": name, "description": description, "instructions": instructions,
+		"provider": providerName, "model": model, "temperature": temperature, "max_tokens": maxTokens,
+		"memory_enabled": memoryEnabled, "memory_scope": memoryScope,
+		"memory_save_mode": memorySaveMode, "memory_review_policy": memoryReviewPolicy,
+		"max_memories": maxMemories, "min_relevance_score": minRelevanceScore,
+		"memory_min_importance": memoryMinImportance, "memory_dedupe_threshold": memoryDedupe,
+		"context_retrieval_enabled": contextEnabled, "agentic_rag": agenticRAG,
+		"max_steps": maxSteps, "max_tool_calls": maxToolCalls, "max_duration_secs": maxDurationSecs,
+		"max_history_messages": maxHistory, "lazy_tool_loading": lazyToolLoading, "status": status,
+		"compaction_threshold": compactionThreshold, "compaction_token_threshold": compactionTokenThreshold,
+		"tools":  names(`SELECT t.name FROM agent_tools at JOIN tools t ON t.id=at.tool_id WHERE at.agent_id=$1::uuid AND at.enabled ORDER BY t.name`),
+		"skills": names(`SELECT s.name FROM agent_skills ask JOIN skills s ON s.id=ask.skill_id WHERE ask.agent_id=$1::uuid AND ask.enabled ORDER BY s.name`),
+		"connectors": names(`SELECT c.name || ' (max_chunks=' || ac.max_chunks || ', min_score=' || ac.min_score || ')'
+			FROM agent_connectors ac JOIN connectors c ON c.id=ac.connector_id WHERE ac.agent_id=$1::uuid AND ac.enabled ORDER BY c.name`),
+	})
+	return string(b), err
+}
+
 // nexusToolDefs are the tool definitions sent to the LLM so it can call them.
 var nexusToolDefs = []provider.ToolDefinition{
 	{
@@ -470,8 +536,9 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		} `json:"messages"`
 		Provider     string          `json:"provider"`      // optional — client-chosen provider
 		Model        string          `json:"model"`         // optional — client-chosen model
-		Mode         string          `json:"mode"`          // optional — "agent_builder" drafts an agent for form review
-		CurrentAgent json.RawMessage `json:"current_agent"` // optional — agent_builder on the EDIT screen: the config being revised
+		Mode           string          `json:"mode"`             // optional — "agent_builder" drafts an agent for form review
+		CurrentAgent   json.RawMessage `json:"current_agent"`    // optional — agent_builder on the EDIT screen: unsaved form state
+		CurrentAgentID string          `json:"current_agent_id"` // optional — edit screen: load the FULL saved config server-side
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Messages) == 0 {
 		errs.Write(w, errs.BadRequest("messages array is required"))
@@ -568,10 +635,28 @@ func (h *NexusAIHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	systemContent := nexusSystemPrompt(h.cfg.PublicAppURL)
 	if req.Mode == "agent_builder" {
 		systemContent += "\n\n" + agentBuilderModePrompt
-		if len(req.CurrentAgent) > 0 {
-			systemContent += "\n\nEDITING AN EXISTING AGENT. The user is on the edit screen fixing or improving this agent. Its current configuration:\n" +
-				string(req.CurrentAgent) +
-				"\nPropose a REVISED complete draft via propose_agent: change only what the user asks for (plus anything clearly broken, e.g. a model that no longer exists — verify with list_available_models). Carry every other field over unchanged, and do not rename the agent unless asked."
+		// Edit screen: give Nexus the COMPLETE saved configuration (loaded
+		// server-side by id — instructions, attachments by name, every knob)
+		// plus any unsaved form state, so it can revise without asking the
+		// user to paste things it should already know.
+		currentJSON := ""
+		if req.CurrentAgentID != "" {
+			if full, err := h.loadCurrentAgentContext(r.Context(), ws, req.CurrentAgentID); err != nil {
+				slog.Warn("nexus edit context load failed", "agent_id", req.CurrentAgentID, "error", err)
+			} else {
+				currentJSON = full
+			}
+		}
+		if currentJSON == "" && len(req.CurrentAgent) > 0 {
+			currentJSON = string(req.CurrentAgent)
+		}
+		if currentJSON != "" {
+			systemContent += "\n\nEDITING AN EXISTING AGENT. The user is on the edit screen fixing or improving this agent. Its complete current configuration (including its full system prompt in `instructions`):\n" +
+				currentJSON
+			if req.CurrentAgentID != "" && len(req.CurrentAgent) > 0 {
+				systemContent += "\nUnsaved form edits (override the saved values above):\n" + string(req.CurrentAgent)
+			}
+			systemContent += "\nRules: propose a REVISED complete draft via propose_agent — change only what the user asks for (plus anything clearly broken, e.g. a model that no longer exists; verify with list_available_models), and carry every other field over unchanged. When asked to update/improve the instructions or system prompt, WRITE the improved version yourself starting from the current `instructions` — never ask the user to provide the text. Do not rename the agent unless asked."
 		}
 	}
 	messages := []provider.Message{

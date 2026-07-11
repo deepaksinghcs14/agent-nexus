@@ -42,11 +42,15 @@ type ChatMsg = { role: 'user' | 'assistant'; content: string }
 export function NexusDraftPanel({
   onDraft,
   current,
+  currentAgentId,
 }: {
   onDraft: (draft: AgentDraft) => void
   // When set, the panel is on the EDIT screen: Nexus receives the agent's
   // current configuration and proposes a revision instead of a fresh draft.
+  // currentAgentId makes the backend load the COMPLETE saved config (full
+  // instructions, attachments by name); `current` carries unsaved form edits.
   current?: Record<string, unknown>
+  currentAgentId?: string
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
@@ -92,7 +96,7 @@ export function NexusDraftPanel({
     streamingRef.current = ''
 
     try {
-      const res = await nexusAIAPI.chat(history, { mode: 'agent_builder', provider: provider || undefined, model: model || undefined, current_agent: current })
+      const res = await nexusAIAPI.chat(history, { mode: 'agent_builder', provider: provider || undefined, model: model || undefined, current_agent: current, current_agent_id: currentAgentId })
       if (!res.ok || !res.body) throw new Error(`Nexus request failed (${res.status})`)
       const reader = res.body.getReader()
       const decoder = new TextDecoder()

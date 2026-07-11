@@ -409,12 +409,19 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
           what to fix: Nexus gets the current config and proposes a revision. */}
       <NexusDraftPanel
         onDraft={applyDraft}
+        currentAgentId={agentId}
         current={isEdit ? {
           name, description, instructions, provider, model, temperature, status,
           max_tokens: maxTokens, max_steps: maxSteps, max_tool_calls: maxToolCalls,
-          max_duration_secs: maxDurationSecs, memory_enabled: memoryEnabled,
-          memory_scope: memoryScope, context_retrieval_enabled: contextEnabled,
-          agentic_rag: agenticRAG, lazy_tool_loading: lazyToolLoading,
+          max_duration_secs: maxDurationSecs, max_history_messages: maxHistoryMessages,
+          memory_enabled: memoryEnabled, memory_scope: memoryScope,
+          memory_save_mode: memorySaveMode, memory_review_policy: memoryReviewPolicy,
+          max_memories: maxMemories, min_relevance_score: minRelevanceScore,
+          memory_min_importance: memoryMinImportance, memory_dedupe_threshold: memoryDedupeThreshold,
+          context_retrieval_enabled: contextEnabled, agentic_rag: agenticRAG,
+          max_chunks: maxChunks, min_score: minScore,
+          compaction_threshold: compactionThreshold, compaction_token_threshold: compactionTokenThreshold,
+          lazy_tool_loading: lazyToolLoading,
           tools: Object.keys(enabledTools).filter((k) => enabledTools[k]),
           skills: Object.keys(enabledSkills).filter((k) => enabledSkills[k]),
           connectors: Object.keys(enabledConnectors).filter((k) => enabledConnectors[k]),
