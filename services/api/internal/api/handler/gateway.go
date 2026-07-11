@@ -1670,21 +1670,37 @@ func parseOwnerNaturalCommand(raw string) (intent, target string, ok bool) {
 	case containsAny(body, "stop assistant", "pause assistant", "turn off assistant", "stop replies", "pause replies"):
 		return "stop_assistant", "", true
 	}
+	// Contact-level enable/disable is matched against a normalised copy so
+	// the spelling variants owners actually type — "auto-reply", "auto
+	// replies", "autoreply" — and both to/for phrasings all hit the same
+	// canonical patterns ("Enable Auto replies for Rajat" previously matched
+	// nothing and fell through to the agent).
+	nb := normalizeReplyPhrase(body)
 	// Disable variants must be checked BEFORE the enable patterns: "disable
 	// auto reply to X" contains "auto reply to " and previously matched the
 	// enable branch, silently inverting the owner's intent.
-	if containsAny(body, "stop replying to ", "pause replying to ", "disable replies for ", "turn off replies for ", "stop the agent for ", "pause the agent for ",
-		"disable auto reply to ", "disable auto-reply to ", "turn off auto reply to ", "turn off auto-reply to ", "stop auto reply to ", "stop auto-reply to ", "disable auto reply for ", "disable auto-reply for ") {
+	if containsAny(nb, "stop replying to ", "pause replying to ", "disable reply for ", "disable reply to ", "turn off reply for ", "turn off reply to ", "stop the agent for ", "pause the agent for ",
+		"disable auto reply to ", "disable auto reply for ", "turn off auto reply to ", "turn off auto reply for ", "stop auto reply to ", "stop auto reply for ") {
 		return "stop_contact", cleanOwnerCommandTarget(raw, false), true
 	}
-	if containsAny(body, "start replying to ", "auto reply to ", "auto-reply to ", "allow ", "enable replies for ", "turn on replies for ", "let ") &&
-		containsAny(body, "agent", "assistant", "reply", "talk", "message", "whatsapp") {
+	if containsAny(nb, "start replying to ", "auto reply to ", "auto reply for ", "allow ", "enable reply for ", "enable reply to ", "turn on reply for ", "turn on reply to ", "let ") &&
+		containsAny(nb, "agent", "assistant", "reply", "talk", "message", "whatsapp") {
 		return "start_contact", cleanOwnerCommandTarget(raw, true), true
 	}
 	if _, phone := extractNamePhone(raw); phone != "" && containsAny(body, "start ", "add ", "allow ", "enable ") {
 		return "start_contact", cleanOwnerCommandTarget(raw, true), true
 	}
 	return "", "", false
+}
+
+// normalizeReplyPhrase canonicalises the reply-phrase variants owners type —
+// hyphenated "auto-reply", joined "autoreply", and plural "replies" — so the
+// command patterns only need the "auto reply"/"reply" forms. Two passes: the
+// hyphen/joined rewrite first, so "auto-replies" becomes "auto replies" before
+// the plural collapses to "reply".
+func normalizeReplyPhrase(body string) string {
+	s := strings.NewReplacer("auto-repl", "auto repl", "autorepl", "auto repl").Replace(body)
+	return strings.ReplaceAll(s, "replies", "reply")
 }
 
 func cleanOwnerCommandTarget(raw string, enable bool) string {
@@ -1721,7 +1737,10 @@ func cleanOwnerCommandTarget(raw string, enable bool) string {
 	for {
 		stripped := false
 		lower = strings.ToLower(s)
-		for _, verb := range []string{"please ", "enable ", "disable ", "turn on ", "turn off ", "start ", "stop ", "auto reply to ", "auto-reply to ", "auto reply for ", "auto-reply for ", "replies for ", "replies to ", "reply to ", "reply for "} {
+		for _, verb := range []string{"please ", "enable ", "disable ", "turn on ", "turn off ", "start ", "stop ",
+			"auto replies for ", "auto replies to ", "auto-replies for ", "auto-replies to ", "autoreplies for ", "autoreplies to ",
+			"auto reply to ", "auto-reply to ", "auto reply for ", "auto-reply for ", "autoreply for ", "autoreply to ",
+			"replies for ", "replies to ", "reply to ", "reply for "} {
 			if strings.HasPrefix(lower, verb) {
 				s = strings.TrimSpace(s[len(verb):])
 				stripped = true

@@ -8,9 +8,15 @@ func TestParseOwnerNaturalCommand(t *testing.T) {
 		wantOK                       bool
 	}{
 		{"Enable auto reply to Rajat", "start_contact", "Rajat", true},
+		{"Enable Auto replies for Rajat", "start_contact", "Rajat", true},
+		{"enable auto reply for Rajat", "start_contact", "Rajat", true},
 		{"auto reply to Rajat Chahar", "start_contact", "Rajat Chahar", true},
+		{"turn on auto-replies for Rajat", "start_contact", "Rajat", true},
+		{"autoreply to Rajat", "start_contact", "Rajat", true},
 		{"Disable auto reply to Rajat", "stop_contact", "Rajat", true},
+		{"Disable auto replies for Rajat", "stop_contact", "Rajat", true},
 		{"turn off auto reply to Rajat", "stop_contact", "Rajat", true},
+		{"turn off auto-replies for Rajat", "stop_contact", "Rajat", true},
 		{"stop auto-reply to Rajat", "stop_contact", "Rajat", true},
 		{"stop replying to Mom", "stop_contact", "Mom", true},
 		{"start replying to Mom on whatsapp", "start_contact", "Mom", true},
