@@ -99,6 +99,39 @@ export default function ClaudeCodePipelineDoc() {
       </table>
       </div>
 
+      <h2>Code quality &amp; repo lessons</h2>
+      <p>
+        Two mechanisms keep session output from degrading over time:
+      </p>
+      <ul>
+        <li>
+          <strong>Quality system prompt</strong> — every coding session runs with an enforced
+          set of rules appended to its system prompt: write the shortest working diff, reuse
+          the repo&apos;s existing helpers before writing new ones, no speculative abstractions,
+          fix root causes rather than symptoms, match the surrounding code&apos;s idiom, and leave
+          a minimal check for non-trivial logic.
+        </li>
+        <li>
+          <strong>Repo lessons</strong> — when a review session completes, its findings
+          (blocking issues and notes from the verdict JSON) are automatically distilled into a
+          dated <em>lessons</em> log on the repo&apos;s catalog entry. Every future coding session
+          targeting that repo gets these lessons injected into its task, so a mistake the
+          reviewer caught once is warned against on every subsequent ticket.
+        </li>
+      </ul>
+      <p>
+        Lessons are plain text — open a repo&apos;s <strong>lessons</strong> pill on the
+        Claude Code → Repositories tab to review, prune, or add house rules by hand (e.g.
+        &quot;migrations must exist in both <code>infra/migrations</code> and the embedded SQL
+        dir&quot;). The log is capped; the oldest entries fall off as new reviews land.
+      </p>
+      <Callout type="info">
+        Lesson capture depends on the <strong>Code Review Agent</strong>&apos;s instructions keeping
+        the JSON verdict contract. If you edit that agent, keep the{' '}
+        <code>{`{"verdict", "blocking_issues", "non_blocking_notes"}`}</code> response shape —
+        free-text verdicts still drive the pipeline, but nothing can be distilled into lessons.
+      </Callout>
+
       <h2>Durable waits</h2>
       <p>
         A run waiting on a coding session (<Badge label="session_wait" color="blue" />) or a tool

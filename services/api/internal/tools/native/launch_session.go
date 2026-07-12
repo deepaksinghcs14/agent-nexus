@@ -188,6 +188,15 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 		return nil, err
 	}
 
+	// Inject accumulated review lessons for this repo so the session doesn't
+	// repeat mistakes past reviews already flagged.
+	var lessons string
+	if err := t.pool.QueryRow(ctx,
+		`SELECT lessons FROM repo_catalog WHERE workspace_id=$1::uuid AND repo=$2`,
+		execCtx.WorkspaceID, repo).Scan(&lessons); err == nil && strings.TrimSpace(lessons) != "" {
+		task += "\n\nLessons from past sessions and reviews in this repo — avoid repeating these:\n" + lessons
+	}
+
 	launch := map[string]any{
 		"run_id":           execCtx.RunID,
 		"repo":             repo,

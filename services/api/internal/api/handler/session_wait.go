@@ -76,6 +76,7 @@ type sessionCallbackPayload struct {
 	RunID     string  `json:"run_id"`
 	SessionID string  `json:"session_id"`
 	Status    string  `json:"status"` // success | budget-exceeded | crashed
+	Mode      string  `json:"mode"`   // "" (code) | review
 	Repo      string  `json:"repo"`
 	TicketKey string  `json:"ticket_key"`
 	Branch    string  `json:"branch"`
@@ -107,6 +108,14 @@ func (h *InvokeHandler) SessionCallback(w http.ResponseWriter, r *http.Request) 
 	default:
 		errs.Write(w, errs.BadRequest("status must be success, budget-exceeded, or crashed"))
 		return
+	}
+
+	// A successful review verdict is repo memory: persist its findings so
+	// future coding sessions in this repo are warned about them. (A runner
+	// redelivery after an ambiguous failure may write the same block twice —
+	// harmless, the cap trims it.)
+	if p.Mode == "review" && p.Status == "success" && p.Repo != "" {
+		recordRepoLessons(r.Context(), h.pool, p.RunID, p.Repo, p.TicketKey, p.Summary)
 	}
 
 	content, _ := json.Marshal(map[string]any{

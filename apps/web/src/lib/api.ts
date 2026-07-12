@@ -248,6 +248,7 @@ export const repoCatalogAPI = {
     api.patch('/repo-catalog', { repo, sessions_enabled: enabled }),
   setAllSessions: (enabled: boolean) =>
     api.patch('/repo-catalog', { all: true, sessions_enabled: enabled }),
+  setLessons: (repo: string, lessons: string) => api.patch('/repo-catalog', { repo, lessons }),
   remove: (repo: string) => api.delete(`/repo-catalog?repo=${encodeURIComponent(repo)}`),
 }
 
