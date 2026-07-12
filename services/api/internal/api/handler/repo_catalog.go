@@ -21,6 +21,7 @@ type repoCatalogEntry struct {
 	Repo            string    `json:"repo"`
 	DefaultBranch   string    `json:"default_branch"`
 	SessionsEnabled bool      `json:"sessions_enabled"`
+	Lessons         string    `json:"lessons"`
 	Documents       int       `json:"documents"`
 	Chunks          int       `json:"chunks"`
 	UpdatedAt       time.Time `json:"updated_at"`
@@ -35,7 +36,7 @@ func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Reques
 	// card lives in the repo-catalog connector — both make the repo
 	// searchable, so both belong in the "how indexed is this repo" number.
 	rows, err := h.pool.Query(r.Context(), `
-		SELECT rc.repo, rc.default_branch, rc.sessions_enabled, rc.updated_at,
+		SELECT rc.repo, rc.default_branch, rc.sessions_enabled, rc.lessons, rc.updated_at,
 		       COUNT(DISTINCT cd.id) AS documents,
 		       COUNT(cc.id) AS chunks
 		FROM repo_catalog rc
@@ -43,7 +44,7 @@ func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Reques
 		       ON cd.workspace_id = rc.workspace_id AND cd.source_document_id LIKE rc.repo || '/%'
 		LEFT JOIN connector_chunks cc ON cc.document_id = cd.id
 		WHERE rc.workspace_id=$1::uuid
-		GROUP BY rc.repo, rc.default_branch, rc.sessions_enabled, rc.updated_at
+		GROUP BY rc.repo, rc.default_branch, rc.sessions_enabled, rc.lessons, rc.updated_at
 		ORDER BY rc.sessions_enabled DESC, rc.repo`, ws)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to list repo catalog"))
@@ -53,7 +54,7 @@ func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Reques
 	list := []repoCatalogEntry{}
 	for rows.Next() {
 		var e repoCatalogEntry
-		if rows.Scan(&e.Repo, &e.DefaultBranch, &e.SessionsEnabled, &e.UpdatedAt, &e.Documents, &e.Chunks) == nil {
+		if rows.Scan(&e.Repo, &e.DefaultBranch, &e.SessionsEnabled, &e.Lessons, &e.UpdatedAt, &e.Documents, &e.Chunks) == nil {
 			list = append(list, e)
 		}
 	}
@@ -67,12 +68,32 @@ func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Reques
 func (h *WorkspaceHandler) SetRepoSessions(w http.ResponseWriter, r *http.Request) {
 	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	var req struct {
-		Repo            string `json:"repo"`
-		All             bool   `json:"all"`
-		SessionsEnabled bool   `json:"sessions_enabled"`
+		Repo            string  `json:"repo"`
+		All             bool    `json:"all"`
+		SessionsEnabled bool    `json:"sessions_enabled"`
+		Lessons         *string `json:"lessons"` // set → edit lessons only, leave the toggle alone
 	}
 	if json.NewDecoder(r.Body).Decode(&req) != nil {
 		errs.Write(w, errs.BadRequest("invalid request body"))
+		return
+	}
+
+	// Lessons edit: its own branch so the UI can save the textarea without
+	// also carrying (and possibly clobbering) the sessions toggle.
+	if req.Lessons != nil {
+		if strings.TrimSpace(req.Repo) == "" {
+			errs.Write(w, errs.BadRequest("repo is required"))
+			return
+		}
+		tag, err := h.pool.Exec(r.Context(),
+			`UPDATE repo_catalog SET lessons=$3, updated_at=NOW() WHERE workspace_id=$1::uuid AND repo=$2`,
+			ws, strings.TrimSpace(req.Repo), *req.Lessons)
+		if err != nil || tag.RowsAffected() == 0 {
+			errs.Write(w, errs.NotFound("repo not found in catalog"))
+			return
+		}
+		writeAudit(r, h.pool, "repo_catalog.lessons_updated", "workspace", ws)
+		errs.WriteJSON(w, http.StatusOK, map[string]any{"repo": req.Repo, "lessons": *req.Lessons})
 		return
 	}
 

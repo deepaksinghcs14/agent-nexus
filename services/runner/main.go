@@ -322,6 +322,19 @@ func (s *server) runSession(sess *session) {
 	os.Remove(s.journalPath(sess.key)) //nolint:errcheck
 }
 
+// codeQualityPrompt is appended to the coding session's system prompt to keep
+// autonomous sessions from over-engineering — the recurring quality problem
+// with unsupervised runs is too much code, not too little.
+const codeQualityPrompt = `Code quality rules for this session:
+- Write the shortest working diff. Before writing anything new, look for an existing helper, util, or pattern in this repo and reuse it — re-implementing what already exists a few files over is the most common failure.
+- Prefer the standard library over new dependencies; never add a dependency for what a few lines can do.
+- No speculative abstractions: no interface with one implementation, no config for a value that never changes, no scaffolding "for later".
+- Fix root causes, not symptoms: before editing a function, check its callers — one guard in the shared path beats a patch in each caller.
+- Match the surrounding code's idiom, naming, and comment density exactly.
+- Comments only for constraints the code cannot show — never to narrate what a line does.
+- For non-trivial new logic, leave one minimal runnable check (a small test or assert) in the repo's existing test style. No new test frameworks.
+- If the task is ambiguous, implement the smallest reasonable interpretation and note the ambiguity in your final summary instead of building every variant.`
+
 // runClaudeSession clones the repo, runs headless Claude Code on a fresh
 // branch, pushes it, and classifies the outcome.
 func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result {
@@ -369,6 +382,7 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 
 	claudeOut, claudeErr := runCmd(ctx, dir, claudeEnv(req.ClaudeToken),
 		"claude", "-p", prompt,
+		"--append-system-prompt", codeQualityPrompt,
 		"--output-format", "json",
 		"--max-turns", strconv.Itoa(s.maxTurns),
 		"--dangerously-skip-permissions")
@@ -544,6 +558,7 @@ func (s *server) deliverCallback(sub subscriber, key string, req launchRequest, 
 		"run_id":     sub.RunID,
 		"session_id": key,
 		"status":     res.Status,
+		"mode":       req.Mode,
 		"repo":       req.Repo,
 		"ticket_key": req.TicketKey,
 		"branch":     res.Branch,

@@ -21,6 +21,7 @@ type CatalogRepo = {
   repo: string
   default_branch: string
   sessions_enabled: boolean
+  lessons: string
   documents: number
   chunks: number
   updated_at: string
@@ -117,6 +118,17 @@ export default function ClaudeCodePage() {
   const bulkSetSessions = useMutation({
     mutationFn: (enabled: boolean) => repoCatalogAPI.setAllSessions(enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repo-catalog'] }),
+  })
+  // Lessons: review-session findings accumulated per repo, injected into
+  // future coding sessions. Editable so admins can prune or add house rules.
+  const [lessonsRepo, setLessonsRepo] = useState<string | null>(null)
+  const [lessonsDraft, setLessonsDraft] = useState('')
+  const saveLessons = useMutation({
+    mutationFn: (r: { repo: string; lessons: string }) => repoCatalogAPI.setLessons(r.repo, r.lessons),
+    onSuccess: () => {
+      setLessonsRepo(null)
+      queryClient.invalidateQueries({ queryKey: ['repo-catalog'] })
+    },
   })
 
   // Filtered + sorted repo list: session-enabled first, then matching search.
@@ -273,34 +285,77 @@ export default function ClaudeCodePage() {
             {visibleRepos.length > 0 ? (
               <div className="rounded-xl border border-border bg-surface shadow-card divide-y divide-border max-h-[520px] overflow-y-auto">
                 {visibleRepos.map((r) => (
-                  <div
-                    key={r.repo}
-                    className={cn('flex flex-wrap items-center gap-2 text-[12px] px-3 py-2.5', r.sessions_enabled && 'bg-good/[0.04]')}
-                  >
-                    <GitBranch size={13} className={r.sessions_enabled ? 'text-good' : 'text-faint'} />
-                    <span className="font-mono text-foreground break-all">{r.repo}</span>
-                    <span className="text-faint">{r.documents} docs · indexed {relativeTime(r.updated_at)}</span>
-                    <div className="ml-auto flex items-center gap-2">
-                      <button
-                        onClick={() => toggleSessions.mutate({ repo: r.repo, enabled: !r.sessions_enabled })}
-                        disabled={toggleSessions.isPending}
-                        title={r.sessions_enabled ? 'Sessions may modify this repo — click to revoke' : 'Indexed for context only — click to allow coding sessions'}
-                        className={cn(
-                          'px-2 py-0.5 rounded-full text-[10px] font-mono font-medium border transition-colors disabled:opacity-50 whitespace-nowrap',
-                          r.sessions_enabled
-                            ? 'bg-good/15 text-good border-good/40 hover:bg-good/25'
-                            : 'bg-muted text-muted-foreground border-border-strong hover:bg-muted'
-                        )}
-                      >
-                        {r.sessions_enabled ? 'sessions on' : 'enable sessions'}
-                      </button>
-                      <button
-                        onClick={() => { if (confirm(`Remove ${r.repo} from the catalog entirely?`)) removeRepo.mutate(r.repo) }}
-                        className="p-1 text-faint hover:text-crit"
-                      >
-                        <Trash2 size={12} />
-                      </button>
+                  <div key={r.repo} className={cn(r.sessions_enabled && 'bg-good/[0.04]')}>
+                    <div className="flex flex-wrap items-center gap-2 text-[12px] px-3 py-2.5">
+                      <GitBranch size={13} className={r.sessions_enabled ? 'text-good' : 'text-faint'} />
+                      <span className="font-mono text-foreground break-all">{r.repo}</span>
+                      <span className="text-faint">{r.documents} docs · indexed {relativeTime(r.updated_at)}</span>
+                      <div className="ml-auto flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            if (lessonsRepo === r.repo) { setLessonsRepo(null); return }
+                            setLessonsRepo(r.repo)
+                            setLessonsDraft(r.lessons)
+                          }}
+                          title="Lessons from past review sessions, injected into future coding sessions on this repo"
+                          className={cn(
+                            'px-2 py-0.5 rounded-full text-[10px] font-mono font-medium border transition-colors whitespace-nowrap',
+                            r.lessons
+                              ? 'bg-info/15 text-info border-info/40 hover:bg-info/25'
+                              : 'bg-muted text-muted-foreground border-border-strong hover:bg-muted'
+                          )}
+                        >
+                          lessons{r.lessons ? ' ●' : ''}
+                        </button>
+                        <button
+                          onClick={() => toggleSessions.mutate({ repo: r.repo, enabled: !r.sessions_enabled })}
+                          disabled={toggleSessions.isPending}
+                          title={r.sessions_enabled ? 'Sessions may modify this repo — click to revoke' : 'Indexed for context only — click to allow coding sessions'}
+                          className={cn(
+                            'px-2 py-0.5 rounded-full text-[10px] font-mono font-medium border transition-colors disabled:opacity-50 whitespace-nowrap',
+                            r.sessions_enabled
+                              ? 'bg-good/15 text-good border-good/40 hover:bg-good/25'
+                              : 'bg-muted text-muted-foreground border-border-strong hover:bg-muted'
+                          )}
+                        >
+                          {r.sessions_enabled ? 'sessions on' : 'enable sessions'}
+                        </button>
+                        <button
+                          onClick={() => { if (confirm(`Remove ${r.repo} from the catalog entirely?`)) removeRepo.mutate(r.repo) }}
+                          className="p-1 text-faint hover:text-crit"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     </div>
+                    {lessonsRepo === r.repo && (
+                      <div className="px-3 pb-3 space-y-2">
+                        <textarea
+                          value={lessonsDraft}
+                          onChange={(e) => setLessonsDraft(e.target.value)}
+                          rows={6}
+                          placeholder="No lessons yet — successful review sessions append their findings here automatically. You can also add house rules by hand."
+                          className="w-full font-mono text-[11px] rounded-[10px] border border-border bg-background p-2.5 text-foreground placeholder:text-faint focus:outline-none focus:border-border-strong resize-y"
+                        />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => saveLessons.mutate({ repo: r.repo, lessons: lessonsDraft })}
+                            disabled={saveLessons.isPending}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-[11px] font-medium bg-foreground text-background hover:opacity-90 disabled:opacity-40"
+                          >
+                            {saveLessons.isPending && <Loader2 size={11} className="animate-spin" />}
+                            Save lessons
+                          </button>
+                          <button
+                            onClick={() => setLessonsRepo(null)}
+                            className="px-3 py-1.5 rounded-[10px] text-[11px] font-medium border border-border text-muted-foreground hover:border-border-strong"
+                          >
+                            Cancel
+                          </button>
+                          <span className="text-[10px] text-faint">Injected into every coding session targeting this repo.</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
