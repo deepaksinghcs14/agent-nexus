@@ -116,6 +116,8 @@ class APIClient {
 
 export const api = new APIClient(API_URL)
 
+export const webhookURL = (id: string) => `${API_URL}/webhook/${id}`
+
 // Convenience wrappers used by React Query hooks
 export const agentsAPI = {
   list: () => api.get('/agents'),
@@ -286,8 +288,6 @@ export const workflowsAPI = {
   saveGraph: (id: string, body: WorkflowGraph) => api.put<SaveGraphResponse>(`/workflows/${id}/graph`, body),
 }
 
-// Backward-compat alias — prefer workflowsAPI in new code
-export const groupsAPI = workflowsAPI
 
 export const webhookTriggersAPI = {
   list:   ()                         => api.get('/webhook-triggers'),

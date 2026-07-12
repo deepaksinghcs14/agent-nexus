@@ -546,8 +546,6 @@ export interface Workflow {
   updated_at: string
 }
 
-// Backward-compat alias — prefer Workflow in new code
-export type AgentGroup = Workflow
 
 // Workflow graph types
 export type WorkflowNodeType = 'start' | 'end' | 'agent' | 'supervisor' | 'condition' | 'parallel' | 'join' | 'loop' | 'webhook' | 'gateway'
@@ -629,14 +627,6 @@ export interface SSEEvent {
   result?: string
 }
 
-// Pagination
-export interface PaginatedResponse<T> {
-  data: T[]
-  total: number
-  page: number
-  per_page: number
-  has_more: boolean
-}
 
 // API Tokens
 export interface APIToken {

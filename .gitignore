@@ -19,3 +19,5 @@ services/api/vendor/
 infra/.env
 infra/certs/*.pem
 infra/certs/*.crt
+*.tsbuildinfo
+node_modules/

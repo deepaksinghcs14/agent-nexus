@@ -1,35 +1,13 @@
 'use client'
 
-import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { Check, Copy, Plus, Trash2, X, Zap } from 'lucide-react'
-import { webhookTriggersAPI } from '@/lib/api'
+import { Plus, Trash2, X, Zap } from 'lucide-react'
+import { webhookTriggersAPI, webhookURL } from '@/lib/api'
 import type { WebhookTrigger } from '@/types'
 import { cn } from '@/lib/utils'
 import { Switch } from '@/components/ui/switch'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
-function webhookURL(id: string) { return `${API_URL}/webhook/${id}` }
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  const handle = () => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
-  }
-  return (
-    <button
-      onClick={handle}
-      title="Copy URL"
-      className={cn('bg-transparent border-none cursor-pointer p-0.5', copied ? 'text-good' : 'text-faint')}
-    >
-      {copied ? <Check size={12} /> : <Copy size={12} />}
-    </button>
-  )
-}
+import { CopyButton } from '@/components/ui/CopyButton'
 
 interface Props {
   workflowId: string

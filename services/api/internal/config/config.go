@@ -13,7 +13,6 @@ type Config struct {
 	JWTSecret               string
 	EncryptionKey           string
 	CORSOrigins             []string
-	LogLevel                string
 	StoragePath             string
 	GoogleOAuthClientID     string
 	GoogleOAuthClientSecret string
@@ -38,7 +37,6 @@ func Load() (*Config, error) {
 		DatabaseURL:             getEnv("DATABASE_URL", ""),
 		JWTSecret:               getEnv("JWT_SECRET", ""),
 		EncryptionKey:           getEnv("ENCRYPTION_KEY", ""),
-		LogLevel:                getEnv("LOG_LEVEL", "info"),
 		StoragePath:             getEnv("STORAGE_PATH", "./data/files"),
 		GoogleOAuthClientID:     getEnv("GOOGLE_OAUTH_CLIENT_ID", ""),
 		GoogleOAuthClientSecret: getEnv("GOOGLE_OAUTH_CLIENT_SECRET", ""),

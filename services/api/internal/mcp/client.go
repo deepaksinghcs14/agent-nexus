@@ -182,16 +182,6 @@ func (c *Client) CallTool(ctx context.Context, toolName string, input json.RawMe
 	return c.callToolHTTP(ctx, toolName, input)
 }
 
-// Ping verifies the server is reachable by running a minimal tools/list call.
-func (c *Client) Ping(ctx context.Context) error {
-	if c.transport == "stdio" {
-		_, err := c.listToolsStdio(ctx)
-		return err
-	}
-	_, err := c.listToolsHTTP(ctx)
-	return err
-}
-
 // ─── HTTP transport ───────────────────────────────────────────────────────────
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}

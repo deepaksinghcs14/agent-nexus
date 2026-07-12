@@ -115,14 +115,6 @@ type Tool struct {
 	UpdatedAt        time.Time       `json:"updated_at"`
 }
 
-type AgentTool struct {
-	AgentID   string          `json:"agent_id"`
-	ToolID    string          `json:"tool_id"`
-	Enabled   bool            `json:"enabled"`
-	Overrides json.RawMessage `json:"overrides"`
-	Tool      *Tool           `json:"tool,omitempty"`
-}
-
 // ============================================================
 // MCP
 // ============================================================

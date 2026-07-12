@@ -95,14 +95,6 @@ func scanMemories(rows interface {
 	}
 	return a, rows.Err()
 }
-func (r *MemoryRepository) Delete(c context.Context, id string) error {
-	_, e := r.pool.Exec(c, `DELETE FROM memories WHERE id=$1::uuid`, id)
-	return e
-}
-func (r *MemoryRepository) BulkDelete(c context.Context, w, a string) error {
-	_, e := r.pool.Exec(c, `DELETE FROM memories WHERE workspace_id=$1::uuid AND ($2='' OR agent_id=NULLIF($2,'')::uuid)`, w, a)
-	return e
-}
 
 func formatVec(v []float32) string {
 	parts := make([]string, len(v))

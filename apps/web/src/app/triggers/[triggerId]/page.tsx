@@ -1,38 +1,14 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { use, useEffect, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
-import { ChevronLeft, Check, Copy } from 'lucide-react'
-import { webhookTriggersAPI } from '@/lib/api'
+import { ChevronLeft } from 'lucide-react'
+import { webhookTriggersAPI, webhookURL } from '@/lib/api'
 import type { WebhookTrigger } from '@/types'
 import { TriggerForm } from '../TriggerForm'
 import { TriggerRunsTab } from './TriggerRunsTab'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
-
-function webhookURL(id: string) {
-  return `${API_URL}/webhook/${id}`
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  const handle = () => {
-    navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-  return (
-    <button
-      onClick={handle}
-      className="p-1.5 rounded hover:bg-muted text-faint hover:text-muted-foreground dark:hover:text-faint transition-colors"
-      title="Copy"
-    >
-      {copied ? <Check className="w-4 h-4 text-good" /> : <Copy className="w-4 h-4" />}
-    </button>
-  )
-}
+import { CopyButton } from '@/components/ui/CopyButton'
 
 type Tab = 'config' | 'runs'
 

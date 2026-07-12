@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useMutation } from '@tanstack/react-query'
 import { workflowsAPI } from '@/lib/api'
 import type { Workflow } from '@/types'
+import { Field } from '@/components/ui/Field'
 
 export default function NewWorkflowPage() {
   const router = useRouter()
@@ -74,11 +75,3 @@ export default function NewWorkflowPage() {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-foreground mb-1">{label}</label>
-      {children}
-    </div>
-  )
-}

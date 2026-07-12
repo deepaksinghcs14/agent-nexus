@@ -96,8 +96,3 @@ func awaitApprovalDecision(runID string, ch chan ApprovalDecision, timeout time.
 		return ApprovalDecision{}, false
 	}
 }
-
-// UnregisterApprovalWait removes a run from the registry (called on timeout or cancellation).
-func UnregisterApprovalWait(runID string) {
-	approvalRegistry.Delete(runID)
-}

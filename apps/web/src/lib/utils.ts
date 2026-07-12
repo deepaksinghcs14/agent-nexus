@@ -42,6 +42,11 @@ export function statusColor(status: string): string {
   }
 }
 
+export function formatDate(s: string | null | undefined): string {
+  if (!s) return '—'
+  return new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
 export function relativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const secs = Math.floor(diff / 1000)

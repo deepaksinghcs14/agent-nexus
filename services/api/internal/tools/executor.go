@@ -28,10 +28,6 @@ func NewExecutor(registry *Registry) *Executor {
 	return &Executor{registry: registry}
 }
 
-func (e *Executor) Execute(ctx context.Context, toolName string, rawInput json.RawMessage) (*ExecutionResult, error) {
-	return e.ExecuteWithContext(ctx, ExecutionContext{}, toolName, rawInput)
-}
-
 func (e *Executor) ExecuteWithContext(ctx context.Context, execCtx ExecutionContext, toolName string, rawInput json.RawMessage) (*ExecutionResult, error) {
 	tool, err := e.registry.Get(toolName)
 	if err != nil {

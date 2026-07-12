@@ -2,29 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Check, Copy, Edit2, Plus, Radio, Trash2 } from 'lucide-react'
+import { Edit2, Plus, Radio, Trash2 } from 'lucide-react'
 import { gatewayAPI } from '@/lib/api'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DataTable, Row, Cell } from '@/components/ui/DataTable'
 import type { GatewayChannel } from '@/types'
+import { CopyButton } from '@/components/ui/CopyButton'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
 
 function ingressURL(c: GatewayChannel) {
   return `${API_URL}/gateway/${c.channel_type}/${c.id}`
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <button
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600) }}
-      className="p-1 rounded hover:bg-muted text-faint hover:text-foreground"
-      title="Copy ingress URL"
-    >
-      {copied ? <Check className="w-3.5 h-3.5 text-good" /> : <Copy className="w-3.5 h-3.5" />}
-    </button>
-  )
 }
 
 export default function GatewayChannelsPage() {

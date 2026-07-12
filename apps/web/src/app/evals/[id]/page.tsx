@@ -5,16 +5,7 @@ import Link from 'next/link'
 import { evalsAPI, providersAPI } from '@/lib/api'
 import type { EvalCase, EvalRun, EvalSuite, ModelInfo, ProviderCredential } from '@/types'
 import { Plus, Trash2, Play, ChevronRight, Pencil, X, Check, Sparkles, Download, Upload, ToggleLeft, ToggleRight } from 'lucide-react'
-
-function RunStatusBadge({ status }: { status: EvalRun['status'] }) {
-  const cls = {
-    pending: 'bg-muted text-muted-foreground',
-    running: 'bg-info/10 text-info',
-    completed: 'bg-good/10 text-good',
-    failed: 'bg-crit/10 text-crit',
-  }[status] ?? 'bg-muted text-muted-foreground'
-  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{status}</span>
-}
+import { RunStatusBadge } from '@/app/evals/RunStatusBadge'
 
 function ScorePct({ score, status }: { score: number; status: string }) {
   if (status === 'pending' || status === 'running') return <span className="text-xs text-faint">—</span>

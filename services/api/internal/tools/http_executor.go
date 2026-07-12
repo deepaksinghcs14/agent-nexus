@@ -44,21 +44,6 @@ func substituteVars(s string, vars map[string]any) string {
 	})
 }
 
-// ExtractTemplateVars returns deduplicated {{var}} names found in any of the given strings.
-func ExtractTemplateVars(sources ...string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, s := range sources {
-		for _, m := range templateVarRe.FindAllStringSubmatch(s, -1) {
-			if !seen[m[1]] {
-				seen[m[1]] = true
-				out = append(out, m[1])
-			}
-		}
-	}
-	return out
-}
-
 // ExecuteHTTP runs an HTTP tool call using the stored config and the LLM-provided input.
 func ExecuteHTTP(ctx context.Context, cfg HTTPToolConfig, rawInput json.RawMessage, timeoutMs int) *ExecutionResult {
 	start := time.Now()

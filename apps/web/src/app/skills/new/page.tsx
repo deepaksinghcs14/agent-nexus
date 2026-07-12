@@ -6,6 +6,7 @@ import { ChevronRight, Save, X } from 'lucide-react'
 import { skillsAPI } from '@/lib/api'
 import { ToolPicker } from '@/components/ToolPicker'
 import { CATEGORIES } from '@/lib/tool-category'
+import { Field } from '@/components/ui/Field'
 
 export default function NewSkillPage() {
   const router = useRouter()
@@ -67,6 +68,3 @@ export default function NewSkillPage() {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block"><span className="block text-[12px] font-medium text-foreground mb-1.5">{label}</span>{children}</label>
-}

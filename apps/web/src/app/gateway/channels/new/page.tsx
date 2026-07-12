@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ChevronRight, Save, X } from 'lucide-react'
 import { agentsAPI, gatewayAPI, skillsAPI } from '@/lib/api'
 import type { Agent, Skill } from '@/types'
+import { Field } from '@/components/ui/Field'
 
 export default function NewGatewayChannelPage() {
   const router = useRouter()
@@ -135,12 +136,3 @@ export default function NewGatewayChannelPage() {
   )
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="block text-[12px] font-medium text-foreground mb-1.5">{label}</span>
-      {children}
-      {hint && <span className="block text-[11px] text-faint mt-1">{hint}</span>}
-    </label>
-  )
-}

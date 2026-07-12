@@ -69,37 +69,3 @@ func (r *ToolRepository) Delete(c context.Context, id, workspaceID string) (bool
 	tag, e := r.pool.Exec(c, `DELETE FROM tools WHERE id=$1::uuid AND workspace_id=$2::uuid`, id, workspaceID)
 	return tag.RowsAffected() > 0, e
 }
-
-func (r *ToolRepository) ListForAgent(c context.Context, id string) ([]domain.AgentTool, error) {
-	rows, e := r.pool.Query(c, `SELECT agent_id::text,tool_id::text,enabled,overrides FROM agent_tools WHERE agent_id=$1::uuid`, id)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	a := []domain.AgentTool{}
-	for rows.Next() {
-		var x domain.AgentTool
-		if e := rows.Scan(&x.AgentID, &x.ToolID, &x.Enabled, &x.Overrides); e != nil {
-			return nil, e
-		}
-		a = append(a, x)
-	}
-	return a, rows.Err()
-}
-
-func (r *ToolRepository) SetAgentTools(c context.Context, id string, tools []string) error {
-	tx, e := r.pool.Begin(c)
-	if e != nil {
-		return e
-	}
-	defer func() { _ = tx.Rollback(c) }()
-	if _, e = tx.Exec(c, `DELETE FROM agent_tools WHERE agent_id=$1::uuid`, id); e != nil {
-		return e
-	}
-	for _, t := range tools {
-		if _, e = tx.Exec(c, `INSERT INTO agent_tools(agent_id,tool_id)VALUES($1::uuid,$2::uuid)`, id, t); e != nil {
-			return e
-		}
-	}
-	return tx.Commit(c)
-}

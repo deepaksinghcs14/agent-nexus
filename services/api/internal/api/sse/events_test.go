@@ -9,7 +9,6 @@ import (
 // the property the old hand-built fmt.Sprintf literals could silently break.
 func TestEventsAreValidJSON(t *testing.T) {
 	cases := map[string]string{
-		"ping":                Ping(),
 		"delta":               Delta("hello \"quoted\" text\nwith newline"),
 		"error":               Error(`msg with "quotes" and \ backslash`),
 		"run_completed":       RunCompleted("r1", 10, 20, 0.005),

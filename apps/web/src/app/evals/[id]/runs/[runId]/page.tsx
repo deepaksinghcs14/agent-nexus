@@ -8,6 +8,7 @@ import {
   CheckCircle2, XCircle, AlertCircle, ExternalLink,
   Sparkles, Wrench, GraduationCap, FileText, Copy, Check, Loader2, ThumbsUp, ThumbsDown,
 } from 'lucide-react'
+import { RunStatusBadge } from '@/app/evals/RunStatusBadge'
 
 // Effective pass/fail — override takes precedence over auto-grade
 function effectivePassed(res: EvalResult): boolean | undefined {
@@ -22,16 +23,6 @@ function StatusIcon({ res }: { res: EvalResult }) {
   if (ep === true) return <CheckCircle2 className={`w-4 h-4 flex-shrink-0 ${isOverridden ? 'text-good' : 'text-good'}`} />
   if (ep === false) return <XCircle className={`w-4 h-4 flex-shrink-0 ${isOverridden ? 'text-crit' : 'text-crit'}`} />
   return <span className="w-4 h-4 flex-shrink-0" />
-}
-
-function RunStatusBadge({ status }: { status: EvalRun['status'] }) {
-  const cls = {
-    pending: 'bg-muted text-muted-foreground',
-    running: 'bg-info/10 text-info',
-    completed: 'bg-good/10 text-good',
-    failed: 'bg-crit/10 text-crit',
-  }[status] ?? 'bg-muted text-muted-foreground'
-  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cls}`}>{status}</span>
 }
 
 function FixIcon({ type }: { type: EvalAnalysisFix['type'] }) {

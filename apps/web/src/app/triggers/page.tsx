@@ -2,36 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Check, Copy, Edit2, Plus, Trash2, Zap } from 'lucide-react'
-import { webhookTriggersAPI } from '@/lib/api'
+import { Edit2, Plus, Trash2, Zap } from 'lucide-react'
+import { webhookTriggersAPI, webhookURL } from '@/lib/api'
+import { formatDate } from '@/lib/utils'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DataTable, Row, Cell } from '@/components/ui/DataTable'
 import type { WebhookTrigger } from '@/types'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
-
-function webhookURL(id: string) {
-  return `${API_URL}/webhook/${id}`
-}
-
-function formatDate(s: string | null | undefined) {
-  if (!s) return '—'
-  return new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  const handle = () => {
-    navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-  return (
-    <button onClick={handle} className="p-1 rounded hover:bg-muted text-faint hover:text-foreground transition-colors" title="Copy URL">
-      {copied ? <Check className="w-3.5 h-3.5 text-good" /> : <Copy className="w-3.5 h-3.5" />}
-    </button>
-  )
-}
+import { CopyButton } from '@/components/ui/CopyButton'
 
 export default function TriggersPage() {
   const [triggers, setTriggers] = useState<WebhookTrigger[]>([])

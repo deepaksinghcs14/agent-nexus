@@ -36,14 +36,8 @@ func rawOrString(b []byte) any {
 	return string(b)
 }
 
-func Ping() string { return `{"type":"ping"}` }
-
 func Delta(content string) string {
 	return evt("delta", map[string]any{"content": content})
-}
-
-func DeltaForNode(nodeID, nodeName, content string) string {
-	return evt("delta", map[string]any{"content": content, "node_id": nodeID, "node_name": nodeName})
 }
 
 func Error(msg string) string {

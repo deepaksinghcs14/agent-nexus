@@ -211,13 +211,6 @@ func (t *CreateWorkflowTool) ExecuteWithContext(ctx context.Context, execCtx too
 	}, nil
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // ── native_save_workflow_graph ────────────────────────────────────────────────
 
 type SaveWorkflowGraphTool struct {

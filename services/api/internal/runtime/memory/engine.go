@@ -63,10 +63,6 @@ func (e *Engine) Store(ctx context.Context, m *domain.Memory, embedding []float3
 	return e.memories.Store(ctx, m, embedding)
 }
 
-func (e *Engine) Summarise(ctx context.Context, runID string) error {
-	return nil
-}
-
 func (e *Engine) SaveCandidate(ctx context.Context, req SaveRequest) (SaveResult, error) {
 	if req.Agent == nil {
 		return SaveResult{}, fmt.Errorf("memory: agent is required")

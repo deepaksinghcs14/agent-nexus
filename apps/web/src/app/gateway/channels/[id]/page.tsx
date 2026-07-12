@@ -3,23 +3,15 @@
 import { use, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { AlertCircle, Check, ChevronRight, Copy, LogOut, Pencil, QrCode, RefreshCw, X } from 'lucide-react'
+import { AlertCircle, ChevronRight, LogOut, Pencil, QrCode, RefreshCw, X } from 'lucide-react'
 import { agentsAPI, gatewayAPI } from '@/lib/api'
 import type { ChannelSession, GatewayChannel, GatewayContact, GatewayEscalation, GatewayEvent, GatewayOutboundMessage, GatewayPairingRequest, GatewayReminder, ScheduledMessage } from '@/types'
+import { CopyButton } from '@/components/ui/CopyButton'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
 const WA_TABS = ['Overview', 'QR Login', 'Contacts', 'Sessions', 'Pairing', 'Reminders', 'Scheduled', 'Escalations', 'Events', 'Outbox'] as const
 const HTTP_TABS = ['Overview', 'Sessions', 'Events', 'Outbox', 'Reminders', 'Scheduled'] as const
 type Tab = typeof WA_TABS[number]
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <button onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1600) }} className="p-1 rounded hover:bg-muted text-faint hover:text-muted-foreground dark:hover:text-faint" title="Copy">
-      {copied ? <Check className="w-3.5 h-3.5 text-good dark:text-good" /> : <Copy className="w-3.5 h-3.5" />}
-    </button>
-  )
-}
 
 // Format an ISO timestamp as a local `datetime-local` input value (YYYY-MM-DDTHH:mm).
 function toLocalInput(iso?: string): string {

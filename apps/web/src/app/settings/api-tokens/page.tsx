@@ -3,13 +3,10 @@
 import { useState, useEffect } from 'react'
 import { Key, Plus, Trash2, Copy, Check, AlertCircle } from 'lucide-react'
 import { apiTokensAPI } from '@/lib/api'
+import { formatDate } from '@/lib/utils'
 import { useDemoMode } from '@/context/demo-mode'
 import type { APIToken, CreatedAPIToken } from '@/types'
 
-function formatDate(s: string | null) {
-  if (!s) return '—'
-  return new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-}
 
 export default function APITokensPage() {
   const demoMode = useDemoMode()
