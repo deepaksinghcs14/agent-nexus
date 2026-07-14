@@ -3,12 +3,13 @@
 ![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+[![Featured on OpenInvoke](https://img.shields.io/badge/Featured%20on-OpenInvoke-6E56CF)](https://openinvoke.com/directory/?q=Agent-Nexus)
 
 > Self-hosted, model-agnostic AI agent orchestration platform.
 
 **[Try the live demo →](https://web-production-ae380.up.railway.app)** — Sign up and explore instantly. MCP servers, connectors, and API tokens are restricted in demo mode; self-host for full access.
-Or use creds
-Email: demo@demo.com
+Or use creds below:<br/>
+Email: demo@demo.com <br/>
 Password: Demo@123
 
 Create AI agents backed by any LLM (Anthropic, OpenAI, Gemini, Ollama), attach tools, connect memory, and observe every run with full trace logging — all from your own infrastructure. No vendor lock-in, no data leaving your servers.
