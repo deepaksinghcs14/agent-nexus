@@ -3,7 +3,12 @@
 ![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
-[![Featured on OpenInvoke](https://img.shields.io/badge/Featured%20on-OpenInvoke-6E56CF)](https://openinvoke.com/directory/?q=Agent-Nexus)
+<a href="https://openinvoke.com/directory/?q=agent-nexus&utm_source=agent-nexus&utm_medium=badge&utm_campaign=owner-badge">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://openinvoke.com/badge/openinvoke-dark.svg">
+    <img alt="Listed on OpenInvoke" src="https://openinvoke.com/badge/openinvoke.svg" width="218" height="28">
+  </picture>
+</a>
 
 > Self-hosted, model-agnostic AI agent orchestration platform.
 
