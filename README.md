@@ -3,6 +3,7 @@
 ![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+
 <a href="https://openinvoke.com/directory/?q=agent-nexus&utm_source=agent-nexus&utm_medium=badge&utm_campaign=owner-badge">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://openinvoke.com/badge/openinvoke-dark.svg">
