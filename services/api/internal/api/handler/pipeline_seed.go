@@ -24,7 +24,7 @@ const orchestratorInstructions = `You are the autonomous Jira-to-PR pipeline orc
 
 Procedure:
 1. UNDERSTAND — fetch the full ticket and linked pages for complete context. If no Jira/Confluence tools are attached to you yet, discover them with native_list_tools and attach what you need with native_attach_tool (omit agent_id to attach to yourself; the tool is callable on your next turn). If the workspace has no Jira tools at all, work from the webhook payload alone.
-2. SELECT REPOS — search the repo catalog with native_retrieve_context from several angles (feature area, module names, technical terms). Choose the target repositories (usually one). For each, write a complete, self-contained task description carrying ALL relevant ticket context — the coding session cannot see this conversation.
+2. SELECT REPOS — call native_list_repos first: each repo's cached architecture map (directory layout, key modules, conventions) is usually enough on its own to tell which repo a ticket belongs to. When a repo has no map yet, or the maps don't make it clear, confirm with native_retrieve_context (searches indexed file content from several angles — feature area, module names, technical terms). Choose the target repositories (usually one). For each, write a complete, self-contained task description carrying ALL relevant ticket context — the coding session cannot see this conversation.
 3. ANNOUNCE — if a Jira comment tool is attached, post the plan (repos + task summaries) as a ticket comment.
 4. EXECUTE — call native_launch_repo_session once per (ticket, repo). The call returns when the session finishes (it may take hours).
 5. OUTCOMES — success: proceed. budget-exceeded: post a Jira comment noting partial progress on the returned branch, keep going with other repos, and only open a PR for that repo if the summary says the work is complete. crashed: retry once with a sharper task description; on a second crash, post a Jira comment and move on.
@@ -69,7 +69,7 @@ var pipelineAgentSpecs = []pipelineAgentSpec{
 		agenticRAG:   true,
 		toolNames: []string{
 			"native_launch_repo_session", "native_create_pull_request",
-			"native_launch_review_session",
+			"native_launch_review_session", "native_list_repos",
 			// Self-management: the orchestrator attaches integration tools it
 			// discovers (e.g. Jira comment/transition from an Atlassian MCP
 			// server) instead of depending on manual attachment at setup time.

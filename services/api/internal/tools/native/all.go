@@ -55,6 +55,7 @@ func All(pool *pgxpool.Pool, cfg *config.Config) []tools.NativeTool {
 		NewLaunchReviewSessionTool(pool, cfg),
 		NewCreatePullRequestTool(pool, cfg),
 		NewGetBranchDiffTool(pool, cfg),
+		NewListReposTool(pool),
 	}
 	out = append(out, NewWhatsAppTools(pool, cfg)...)
 	if !cfg.DemoMode {
