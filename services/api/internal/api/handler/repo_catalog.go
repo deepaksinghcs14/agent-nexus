@@ -45,7 +45,7 @@ func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Reques
 		       COUNT(cc.id) AS chunks,
 		       EXISTS (
 		         SELECT 1 FROM runs r2 JOIN conversations c2 ON c2.id = r2.conversation_id
-		         WHERE c2.workspace_id = rc.workspace_id AND c2.title = 'Repo map: ' || rc.repo
+		         WHERE c2.workspace_id = $1::uuid AND c2.title = 'Repo map: ' || rc.repo
 		           AND r2.status IN ('running', 'session_wait')
 		       ) AS map_generating
 		FROM repo_catalog rc
@@ -56,6 +56,7 @@ func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Reques
 		GROUP BY rc.repo, rc.default_branch, rc.sessions_enabled, rc.lessons, rc.repo_map, rc.repo_map_updated_at, rc.updated_at
 		ORDER BY rc.sessions_enabled DESC, rc.repo`, ws)
 	if err != nil {
+		slog.Error("failed to list repo catalog", "workspace_id", ws, "error", err)
 		errs.Write(w, errs.Internal("failed to list repo catalog"))
 		return
 	}
