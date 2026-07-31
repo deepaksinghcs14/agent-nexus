@@ -249,6 +249,9 @@ export const repoCatalogAPI = {
   setAllSessions: (enabled: boolean) =>
     api.patch('/repo-catalog', { all: true, sessions_enabled: enabled }),
   setLessons: (repo: string, lessons: string) => api.patch('/repo-catalog', { repo, lessons }),
+  setRepoMap: (repo: string, repo_map: string) => api.patch('/repo-catalog', { repo, repo_map }),
+  generateMap: (repo: string) => api.post('/repo-catalog/generate-map', { repo }),
+  generateAllMaps: () => api.post('/repo-catalog/generate-map', { all: true }),
   remove: (repo: string) => api.delete(`/repo-catalog?repo=${encodeURIComponent(repo)}`),
 }
 

@@ -191,6 +191,7 @@ func main() {
 		Evals:           evals,
 	}
 	h.Agents.SetEvalHandler(evals)
+	h.Workspace.SetInvokeHandler(invoke)
 
 	// HTTP server
 	srv := &http.Server{

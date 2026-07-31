@@ -118,6 +118,13 @@ func (h *InvokeHandler) SessionCallback(w http.ResponseWriter, r *http.Request) 
 		recordRepoLessons(r.Context(), h.pool, p.RunID, p.Repo, p.TicketKey, p.Summary)
 	}
 
+	// A coding session asked (in the launch prompt) to emit a repo map when
+	// the cache was missing or stale is repo memory too: cache it so the next
+	// session in this repo skips re-exploring the same structure.
+	if p.Mode == "" && p.Status == "success" && p.Repo != "" {
+		recordRepoMap(r.Context(), h.pool, p.RunID, p.Repo, p.Summary)
+	}
+
 	content, _ := json.Marshal(map[string]any{
 		"status":     p.Status,
 		"repo":       p.Repo,
