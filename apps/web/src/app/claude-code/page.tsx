@@ -24,6 +24,7 @@ type CatalogRepo = {
   lessons: string
   repo_map: string
   repo_map_updated_at: string | null
+  map_generating: boolean
   documents: number
   chunks: number
   updated_at: string
@@ -67,6 +68,10 @@ export default function ClaudeCodePage() {
   const { data: catalogData } = useQuery({
     queryKey: ['repo-catalog'],
     queryFn: () => repoCatalogAPI.list() as Promise<{ data: CatalogRepo[] }>,
+    // Poll while a map-generation survey is in flight so the button/pill
+    // state (server-derived, not local) picks up completion without a
+    // manual refresh.
+    refetchInterval: (query) => (query.state.data?.data ?? []).some((r) => r.map_generating) ? 3000 : false,
   })
   const { data: pipeStatus } = useQuery({
     queryKey: ['pipeline-status'],
@@ -143,16 +148,17 @@ export default function ClaudeCodePage() {
       queryClient.invalidateQueries({ queryKey: ['repo-catalog'] })
     },
   })
-  // Generate now: queues a real Claude Code survey session in the background
-  // (see the Sessions tab for progress) instead of waiting for the next ticket.
-  const [queuedMapRepos, setQueuedMapRepos] = useState<Set<string>>(new Set())
+  // Generate now: queues a real Claude Code survey session in the background.
+  // "In progress" is server-derived (map_generating, refetched via polling)
+  // rather than local state, so it survives a page refresh and clears itself
+  // when the session actually finishes.
   const generateMap = useMutation({
     mutationFn: (repo: string) => repoCatalogAPI.generateMap(repo),
-    onSuccess: (_data, repo) => setQueuedMapRepos((s) => new Set(s).add(repo)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repo-catalog'] }),
   })
   const generateAllMaps = useMutation({
-    mutationFn: () => repoCatalogAPI.generateAllMaps() as Promise<{ queued?: string[] }>,
-    onSuccess: (data) => setQueuedMapRepos((s) => new Set([...s, ...(data?.queued ?? [])])),
+    mutationFn: () => repoCatalogAPI.generateAllMaps(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['repo-catalog'] }),
   })
 
   // Filtered + sorted repo list: session-enabled first, then matching search.
@@ -357,13 +363,21 @@ export default function ClaudeCodePage() {
                           map{r.repo_map ? ' ●' : ''}
                         </button>
                         <button
-                          onClick={() => { if (r.sessions_enabled) generateMap.mutate(r.repo) }}
-                          disabled={generateMap.isPending || !r.sessions_enabled || queuedMapRepos.has(r.repo)}
-                          title={r.sessions_enabled ? 'Queue a Claude Code survey session to (re)generate this repo\'s map now — see the Sessions tab for progress' : 'Enable sessions on this repo first'}
+                          onClick={() => { if (r.sessions_enabled && !r.map_generating) generateMap.mutate(r.repo) }}
+                          disabled={generateMap.isPending || !r.sessions_enabled || r.map_generating}
+                          title={
+                            r.map_generating
+                              ? 'A survey session is running — see the Sessions tab for progress'
+                              : r.sessions_enabled
+                                ? "Queue a Claude Code survey session to (re)generate this repo's map now"
+                                : 'Enable sessions on this repo first'
+                          }
                           className="p-1 text-faint hover:text-info disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          {queuedMapRepos.has(r.repo) ? (
-                            <span className="text-[10px] font-mono text-info">queued</span>
+                          {r.map_generating ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-info">
+                              <Loader2 size={11} className="animate-spin" /> surveying
+                            </span>
                           ) : generateMap.isPending && generateMap.variables === r.repo ? (
                             <Loader2 size={12} className="animate-spin" />
                           ) : (

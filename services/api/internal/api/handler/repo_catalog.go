@@ -25,6 +25,7 @@ type repoCatalogEntry struct {
 	Lessons          string     `json:"lessons"`
 	RepoMap          string     `json:"repo_map"`
 	RepoMapUpdatedAt *time.Time `json:"repo_map_updated_at"`
+	MapGenerating    bool       `json:"map_generating"`
 	Documents        int        `json:"documents"`
 	Chunks           int        `json:"chunks"`
 	UpdatedAt        time.Time  `json:"updated_at"`
@@ -41,7 +42,12 @@ func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Reques
 	rows, err := h.pool.Query(r.Context(), `
 		SELECT rc.repo, rc.default_branch, rc.sessions_enabled, rc.lessons, rc.repo_map, rc.repo_map_updated_at, rc.updated_at,
 		       COUNT(DISTINCT cd.id) AS documents,
-		       COUNT(cc.id) AS chunks
+		       COUNT(cc.id) AS chunks,
+		       EXISTS (
+		         SELECT 1 FROM runs r2 JOIN conversations c2 ON c2.id = r2.conversation_id
+		         WHERE c2.workspace_id = rc.workspace_id AND c2.title = 'Repo map: ' || rc.repo
+		           AND r2.status IN ('running', 'session_wait')
+		       ) AS map_generating
 		FROM repo_catalog rc
 		LEFT JOIN connector_documents cd
 		       ON cd.workspace_id = rc.workspace_id AND cd.source_document_id LIKE rc.repo || '/%'
@@ -57,7 +63,7 @@ func (h *WorkspaceHandler) ListRepoCatalog(w http.ResponseWriter, r *http.Reques
 	list := []repoCatalogEntry{}
 	for rows.Next() {
 		var e repoCatalogEntry
-		if rows.Scan(&e.Repo, &e.DefaultBranch, &e.SessionsEnabled, &e.Lessons, &e.RepoMap, &e.RepoMapUpdatedAt, &e.UpdatedAt, &e.Documents, &e.Chunks) == nil {
+		if rows.Scan(&e.Repo, &e.DefaultBranch, &e.SessionsEnabled, &e.Lessons, &e.RepoMap, &e.RepoMapUpdatedAt, &e.UpdatedAt, &e.Documents, &e.Chunks, &e.MapGenerating) == nil {
 			list = append(list, e)
 		}
 	}
@@ -198,11 +204,14 @@ func (h *WorkspaceHandler) GenerateRepoMap(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Anchored to the orchestrator (not e.g. Docs Map Maintainer) specifically
+	// so these runs land in the Claude Code page's Sessions tab, which filters
+	// by that agent's ID.
 	var agentID string
 	if err := h.pool.QueryRow(r.Context(),
-		`SELECT id FROM agents WHERE workspace_id=$1::uuid AND name='Docs Map Maintainer' LIMIT 1`, ws).
+		`SELECT id FROM agents WHERE workspace_id=$1::uuid AND name='Jira Pipeline Orchestrator' LIMIT 1`, ws).
 		Scan(&agentID); err != nil {
-		errs.Write(w, errs.BadRequest("Docs Map Maintainer agent not found — run infra/scripts/setup_pipeline.sh"))
+		errs.Write(w, errs.BadRequest("Jira Pipeline Orchestrator agent not found — run infra/scripts/setup_pipeline.sh"))
 		return
 	}
 	uid := middleware.UserIDFromCtx(r.Context())
