@@ -20,9 +20,14 @@ import (
 )
 
 type WorkspaceHandler struct {
-	pool *pgxpool.Pool
-	cfg  *config.Config
+	pool    *pgxpool.Pool
+	cfg     *config.Config
+	invokeH *InvokeHandler // set post-construction via SetInvokeHandler; needed for GenerateRepoMap
 }
+
+// SetInvokeHandler wires the InvokeHandler so GenerateRepoMap can launch
+// repo sessions directly (avoids circular init).
+func (h *WorkspaceHandler) SetInvokeHandler(ih *InvokeHandler) { h.invokeH = ih }
 
 type workspaceMember struct {
 	ID        string `json:"id"`
@@ -35,7 +40,7 @@ type workspaceMember struct {
 }
 
 func NewWorkspaceHandler(p *pgxpool.Pool, c *config.Config) *WorkspaceHandler {
-	return &WorkspaceHandler{p, c}
+	return &WorkspaceHandler{pool: p, cfg: c}
 }
 
 func (h *WorkspaceHandler) Get(w http.ResponseWriter, r *http.Request) {

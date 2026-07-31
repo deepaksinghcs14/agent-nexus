@@ -85,6 +85,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Post("/repo-catalog", h.Workspace.OnboardRepo)
 			r.Patch("/repo-catalog", h.Workspace.SetRepoSessions)
 			r.Delete("/repo-catalog", h.Workspace.RemoveRepo)
+			r.Post("/repo-catalog/generate-map", h.Workspace.GenerateRepoMap)
 			r.Get("/workspace/members", h.Workspace.ListMembers)
 			r.Post("/workspace/members", h.Workspace.AddMember)
 			r.Patch("/workspace/members/{id}", h.Workspace.UpdateMember)

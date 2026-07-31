@@ -17,6 +17,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// repoMapStaleAfter caps how long a cached repo map is trusted before a
+// session is asked to regenerate it.
+const repoMapStaleAfter = 30 * 24 * time.Hour
+
 // LaunchRepoSessionTool starts a headless Claude Code session against a repo
 // via the runner service and blocks the run (durably — see WaitForSession)
 // until the session's completion callback arrives.
@@ -190,11 +194,23 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 
 	// Inject accumulated review lessons for this repo so the session doesn't
 	// repeat mistakes past reviews already flagged.
-	var lessons string
+	var lessons, repoMap string
+	var repoMapUpdatedAt *time.Time
 	if err := t.pool.QueryRow(ctx,
-		`SELECT lessons FROM repo_catalog WHERE workspace_id=$1::uuid AND repo=$2`,
-		execCtx.WorkspaceID, repo).Scan(&lessons); err == nil && strings.TrimSpace(lessons) != "" {
-		task += "\n\nLessons from past sessions and reviews in this repo — avoid repeating these:\n" + lessons
+		`SELECT lessons, repo_map, repo_map_updated_at FROM repo_catalog WHERE workspace_id=$1::uuid AND repo=$2`,
+		execCtx.WorkspaceID, repo).Scan(&lessons, &repoMap, &repoMapUpdatedAt); err == nil {
+		if strings.TrimSpace(lessons) != "" {
+			task += "\n\nLessons from past sessions and reviews in this repo — avoid repeating these:\n" + lessons
+		}
+		// A fresh cached map replaces cold exploration of the repo structure;
+		// a missing or stale one asks the session to rebuild it once, so the
+		// next ticket in this repo doesn't pay the same exploration cost.
+		fresh := strings.TrimSpace(repoMap) != "" && repoMapUpdatedAt != nil && time.Since(*repoMapUpdatedAt) < repoMapStaleAfter
+		if fresh {
+			task += "\n\nCached repo map (from a prior session) — use this instead of re-exploring the directory structure; if it looks wrong or incomplete, note that in your summary but proceed with the task:\n" + repoMap
+		} else {
+			task += "\n\nThis repo has no cached architecture map yet (or it's stale). Before you finish, append a `### Repo Map` section to your final summary: a terse (at most 30 lines) bullet overview of the directory layout, key modules/entrypoints, and repo-specific conventions a new contributor should know."
+		}
 	}
 
 	launch := map[string]any{

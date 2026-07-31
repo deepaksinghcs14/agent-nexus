@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, GitBranch, Loader2, Plus, Search, Trash2 } from 'lucide-react'
+import { Activity, GitBranch, Loader2, Plus, RefreshCw, Search, Trash2 } from 'lucide-react'
 import { agentsAPI, pipelineAPI, repoCatalogAPI, runnerCredsAPI, runsAPI, webhookTriggersAPI } from '@/lib/api'
 import { relativeTime, statusColor, cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth'
@@ -22,6 +22,8 @@ type CatalogRepo = {
   default_branch: string
   sessions_enabled: boolean
   lessons: string
+  repo_map: string
+  repo_map_updated_at: string | null
   documents: number
   chunks: number
   updated_at: string
@@ -129,6 +131,28 @@ export default function ClaudeCodePage() {
       setLessonsRepo(null)
       queryClient.invalidateQueries({ queryKey: ['repo-catalog'] })
     },
+  })
+  // Repo map: cached architecture summary that replaces cold exploration on
+  // every session; coding sessions (re)generate it when missing or stale.
+  const [mapRepo, setMapRepo] = useState<string | null>(null)
+  const [mapDraft, setMapDraft] = useState('')
+  const saveRepoMap = useMutation({
+    mutationFn: (r: { repo: string; repo_map: string }) => repoCatalogAPI.setRepoMap(r.repo, r.repo_map),
+    onSuccess: () => {
+      setMapRepo(null)
+      queryClient.invalidateQueries({ queryKey: ['repo-catalog'] })
+    },
+  })
+  // Generate now: queues a real Claude Code survey session in the background
+  // (see the Sessions tab for progress) instead of waiting for the next ticket.
+  const [queuedMapRepos, setQueuedMapRepos] = useState<Set<string>>(new Set())
+  const generateMap = useMutation({
+    mutationFn: (repo: string) => repoCatalogAPI.generateMap(repo),
+    onSuccess: (_data, repo) => setQueuedMapRepos((s) => new Set(s).add(repo)),
+  })
+  const generateAllMaps = useMutation({
+    mutationFn: () => repoCatalogAPI.generateAllMaps() as Promise<{ queued?: string[] }>,
+    onSuccess: (data) => setQueuedMapRepos((s) => new Set([...s, ...(data?.queued ?? [])])),
   })
 
   // Filtered + sorted repo list: session-enabled first, then matching search.
@@ -275,6 +299,15 @@ export default function ClaudeCodePage() {
                   {bulkSetSessions.isPending && bulkSetSessions.variables === false ? <Loader2 size={12} className="animate-spin" /> : <span className="w-1.5 h-1.5 rounded-full bg-faint" />}
                   Disable all
                 </button>
+                <button
+                  onClick={() => { if (confirm(`Queue a Claude Code survey session for all ${enabledRepos.length} session-enabled repositories to (re)generate their cached architecture maps? Progress shows in the Sessions tab.`)) generateAllMaps.mutate() }}
+                  disabled={generateAllMaps.isPending || enabledRepos.length === 0}
+                  title="Queue an architecture-map survey session for every session-enabled repo"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[12px] font-medium border border-info/40 text-info bg-info/10 hover:bg-info/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {generateAllMaps.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                  Generate all maps
+                </button>
                 <span className="ml-auto font-mono text-[11px] text-faint tabular-nums">
                   {visibleRepos.length} of {repos.length} · {enabledRepos.length} enabled
                 </span>
@@ -306,6 +339,36 @@ export default function ClaudeCodePage() {
                           )}
                         >
                           lessons{r.lessons ? ' ●' : ''}
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (mapRepo === r.repo) { setMapRepo(null); return }
+                            setMapRepo(r.repo)
+                            setMapDraft(r.repo_map)
+                          }}
+                          title="Cached architecture map, injected into coding sessions instead of re-exploring the repo from scratch"
+                          className={cn(
+                            'px-2 py-0.5 rounded-full text-[10px] font-mono font-medium border transition-colors whitespace-nowrap',
+                            r.repo_map
+                              ? 'bg-info/15 text-info border-info/40 hover:bg-info/25'
+                              : 'bg-muted text-muted-foreground border-border-strong hover:bg-muted'
+                          )}
+                        >
+                          map{r.repo_map ? ' ●' : ''}
+                        </button>
+                        <button
+                          onClick={() => { if (r.sessions_enabled) generateMap.mutate(r.repo) }}
+                          disabled={generateMap.isPending || !r.sessions_enabled || queuedMapRepos.has(r.repo)}
+                          title={r.sessions_enabled ? 'Queue a Claude Code survey session to (re)generate this repo\'s map now — see the Sessions tab for progress' : 'Enable sessions on this repo first'}
+                          className="p-1 text-faint hover:text-info disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {queuedMapRepos.has(r.repo) ? (
+                            <span className="text-[10px] font-mono text-info">queued</span>
+                          ) : generateMap.isPending && generateMap.variables === r.repo ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <RefreshCw size={12} />
+                          )}
                         </button>
                         <button
                           onClick={() => toggleSessions.mutate({ repo: r.repo, enabled: !r.sessions_enabled })}
@@ -353,6 +416,36 @@ export default function ClaudeCodePage() {
                             Cancel
                           </button>
                           <span className="text-[10px] text-faint">Injected into every coding session targeting this repo.</span>
+                        </div>
+                      </div>
+                    )}
+                    {mapRepo === r.repo && (
+                      <div className="px-3 pb-3 space-y-2">
+                        <textarea
+                          value={mapDraft}
+                          onChange={(e) => setMapDraft(e.target.value)}
+                          rows={6}
+                          placeholder="No cached map yet — the next coding session on this repo will generate one automatically. You can also write it by hand."
+                          className="w-full font-mono text-[11px] rounded-[10px] border border-border bg-background p-2.5 text-foreground placeholder:text-faint focus:outline-none focus:border-border-strong resize-y"
+                        />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => saveRepoMap.mutate({ repo: r.repo, repo_map: mapDraft })}
+                            disabled={saveRepoMap.isPending}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-[11px] font-medium bg-foreground text-background hover:opacity-90 disabled:opacity-40"
+                          >
+                            {saveRepoMap.isPending && <Loader2 size={11} className="animate-spin" />}
+                            Save map
+                          </button>
+                          <button
+                            onClick={() => setMapRepo(null)}
+                            className="px-3 py-1.5 rounded-[10px] text-[11px] font-medium border border-border text-muted-foreground hover:border-border-strong"
+                          >
+                            Cancel
+                          </button>
+                          <span className="text-[10px] text-faint">
+                            {r.repo_map_updated_at ? `Cached ${relativeTime(r.repo_map_updated_at)} — regenerated automatically after 30 days.` : 'Regenerated by the next session that finds it missing or stale.'}
+                          </span>
                         </div>
                       </div>
                     )}
