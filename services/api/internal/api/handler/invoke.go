@@ -905,10 +905,15 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 			ActiveSkills:     keysOf(activeSkills),
 			ActiveMemoryIDs:  keysOf(activeMemoryIDs),
 		}
+		// Register the channel before persisting the wait state: a runner
+		// callback landing between these two steps would otherwise find no
+		// registered channel, fall through to ResumeSessionRun, and spawn a
+		// duplicate execution while this goroutine still blocks below.
+		ch := RegisterSessionWait(runID)
 		if err := saveWaitState(dbCtx, h.pool, runID, st); err != nil {
+			sessionRegistry.Delete(runID)
 			return "", fmt.Errorf("failed to persist session wait state: %w", err)
 		}
-		ch := RegisterSessionWait(runID)
 		h.pool.Exec(waitCtx, `UPDATE runs SET status='session_wait' WHERE id=$1::uuid`, runID) //nolint:errcheck
 		sseEmitOrNil(sse.SessionWait(runID, sessionKey))
 
@@ -1641,6 +1646,22 @@ func (h *InvokeHandler) executeGroupRun(
 		}
 	}
 
+	// consumeResumed atomically checks and marks a node's checkpointed output
+	// as reused. Both maps above are read/written from concurrent parallel
+	// branch goroutines (see the "parallel" case below), so this must go
+	// through outputMu like every other nodeOutputs access — a bare map
+	// read+write here is a concurrent-map-write crash waiting to happen.
+	consumeResumed := func(nodeID string) (cached string, use bool) {
+		outputMu.Lock()
+		defer outputMu.Unlock()
+		cached, ok := resumedOutputs[nodeID]
+		if !ok || consumedResume[nodeID] {
+			return "", false
+		}
+		consumedResume[nodeID] = true
+		return cached, true
+	}
+
 	// saveCheckpoint upserts the current progress so a crash mid-run can be
 	// resumed by RecoverInterruptedWorkflowRuns instead of losing all work.
 	saveCheckpoint := func() {
@@ -1717,7 +1738,9 @@ func (h *InvokeHandler) executeGroupRun(
 			switch node.Type {
 
 			case "start":
+				outputMu.Lock()
 				nodeOutputs[node.ID] = branchInput
+				outputMu.Unlock()
 				lastOutput = branchInput
 				for _, e := range adj[node.ID] {
 					if next, ok := nodeMap[e.Target]; ok {
@@ -1728,7 +1751,9 @@ func (h *InvokeHandler) executeGroupRun(
 			case "end":
 				// Terminal node — capture last output, run any configured
 				// deliveries (webhook / gateway), and stop this branch.
+				outputMu.Lock()
 				nodeOutputs[node.ID] = lastOutput
+				outputMu.Unlock()
 				if url, _ := node.Config["webhook_url"].(string); url != "" {
 					if _, err := h.executeWorkflowWebhook(ctx, map[string]any{"url": url}, workflowID, parentRunID, node.ID, lastOutput, originalInput); err != nil {
 						sseEmit(sse.NodeDelivery(node.ID, "webhook", err))
@@ -1748,8 +1773,7 @@ func (h *InvokeHandler) executeGroupRun(
 				// Integration node: side-effectful, no sub-run. On resume,
 				// reuse the checkpointed output so the side effect doesn't
 				// fire twice.
-				if cached, ok := resumedOutputs[node.ID]; ok && !consumedResume[node.ID] {
-					consumedResume[node.ID] = true
+				if cached, ok := consumeResumed(node.ID); ok {
 					outputMu.Lock()
 					nodeOutputs[node.ID] = cached
 					outputMu.Unlock()
@@ -1779,8 +1803,7 @@ func (h *InvokeHandler) executeGroupRun(
 			case "gateway":
 				// Sends the current output through a gateway channel, then
 				// passes it through unchanged. On resume, skip the re-send.
-				if _, ok := resumedOutputs[node.ID]; ok && !consumedResume[node.ID] {
-					consumedResume[node.ID] = true
+				if _, ok := consumeResumed(node.ID); ok {
 					sseEmit(sse.NodeResumed(node.ID, nodeName))
 				} else if err := h.deliverWorkflowGateway(ctx, ws, node.Config, "", parentRunID, lastOutput, originalInput); err != nil {
 					sseEmit(sse.ErrorForNode(node.ID, err.Error()))
@@ -1803,8 +1826,7 @@ func (h *InvokeHandler) executeGroupRun(
 					continue
 				}
 
-				if cached, ok := resumedOutputs[node.ID]; ok && !consumedResume[node.ID] {
-					consumedResume[node.ID] = true
+				if cached, ok := consumeResumed(node.ID); ok {
 					outputMu.Lock()
 					nodeOutputs[node.ID] = cached
 					outputMu.Unlock()
@@ -2088,8 +2110,7 @@ func (h *InvokeHandler) executeGroupRun(
 					continue
 				}
 
-				if cached, ok := resumedOutputs[node.ID]; ok && !consumedResume[node.ID] {
-					consumedResume[node.ID] = true
+				if cached, ok := consumeResumed(node.ID); ok {
 					outputMu.Lock()
 					nodeOutputs[node.ID] = cached
 					outputMu.Unlock()
