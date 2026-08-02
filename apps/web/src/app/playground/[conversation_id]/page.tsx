@@ -223,11 +223,26 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
 
   const autoSentRef = useRef(false)
   const pollAbortRef = useRef(false)
+  // The current in-flight stream reader, and the auto-send effect's launch
+  // timer. This component is NOT keyed by convId — a client-side nav
+  // between conversations reuses this instance, so without this a stream
+  // still running for the previous conversation would keep writing into
+  // this one's state.
+  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null)
+  const autoSendTimer = useRef<number | null>(null)
 
   useEffect(() => { if (data) setMessages(data.messages ?? []) }, [data])
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, streamBuffer, thinking])
   useEffect(() => { activeRunIdRef.current = activeRunId }, [activeRunId])
-  useEffect(() => () => { pollAbortRef.current = true }, [])
+  useEffect(() => {
+    pollAbortRef.current = false
+    return () => {
+      pollAbortRef.current = true
+      readerRef.current?.cancel().catch(() => {})
+      readerRef.current = null
+      if (autoSendTimer.current != null) window.clearTimeout(autoSendTimer.current)
+    }
+  }, [convId])
 
   // A parked run's SSE stream has ended; the run resumes headlessly when the
   // session callback / approval decision arrives. Poll until it leaves every
@@ -257,7 +272,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
       autoSentRef.current = true
       setInput(msg)
       // Small delay to let the component settle before firing
-      setTimeout(() => {
+      autoSendTimer.current = window.setTimeout(() => {
         setInput('')
         setThinking(true)
         const userMsgId = crypto.randomUUID()
@@ -276,6 +291,9 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
         setStreamBuffer('')
         const token = localStorage.getItem('access_token')
         const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
+        // Hoisted so the .catch() below (a separate closure from .then()) can
+        // still identify which reader this chain owns.
+        let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
         fetch(`${apiUrl}/api/v1/conversations/${convId}/runs`, {
           method: 'POST',
           headers: {
@@ -286,7 +304,9 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
           credentials: 'include',
         }).then(async res => {
           if (!res.ok || !res.body) throw new Error(await responseError(res))
-          const reader = res.body.getReader()
+          reader = res.body.getReader()
+          readerRef.current?.cancel().catch(() => {})
+          readerRef.current = reader
           const decoder = new TextDecoder()
           let buf = '', full = '', completed = false, parked = false
           const appendAssistant = (tokens = 0) => {
@@ -345,12 +365,15 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
           }
           buf += decoder.decode()
           for (const line of buf.split('\n')) processLine(line)
+          if (readerRef.current !== reader) return   // cancelled by unmount/conversation change
+          readerRef.current = null
           appendAssistant()
           if (parked && activeRunIdRef.current) void pollParkedRun(activeRunIdRef.current)
           await queryClient.invalidateQueries({ queryKey: ['conversation', convId] })
           await queryClient.invalidateQueries({ queryKey: ['conversations'] })
           await queryClient.invalidateQueries({ queryKey: ['runs'] })
         }).catch(err => {
+          if (readerRef.current !== reader) return   // cancelled — not a real failure
           setErrorMessage(err instanceof Error ? err.message : 'Failed to send message')
         }).finally(() => { setStreaming(false); setThinking(false) })
       }, 100)
@@ -393,6 +416,10 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
     setUserInputState(null)
     setActiveRunId(null)
 
+    // Hoisted above the try block so the catch clause can still identify
+    // which reader this call owns (a const declared inside try isn't
+    // visible in catch).
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
     try {
       const token = localStorage.getItem('access_token')
       const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'
@@ -408,7 +435,9 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
 
       if (!res.ok || !res.body) throw new Error(await responseError(res))
 
-      const reader = res.body.getReader()
+      reader = res.body.getReader()
+      readerRef.current?.cancel().catch(() => {})
+      readerRef.current = reader
       const decoder = new TextDecoder()
       let buf = '', full = '', completed = false, parked = false
 
@@ -527,12 +556,15 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
       }
       buf += decoder.decode()
       for (const line of buf.split('\n')) processLine(line)
+      if (readerRef.current !== reader) return   // cancelled by unmount/conversation change
+      readerRef.current = null
       appendAssistant()
       if (parked && activeRunIdRef.current) void pollParkedRun(activeRunIdRef.current)
       await queryClient.invalidateQueries({ queryKey: ['conversation', convId] })
       await queryClient.invalidateQueries({ queryKey: ['conversations'] })
       await queryClient.invalidateQueries({ queryKey: ['runs'] })
     } catch (err) {
+      if (readerRef.current !== reader) return   // cancelled — not a real failure
       setErrorMessage(err instanceof Error ? err.message : 'Failed to send message')
     } finally {
       setStreaming(false)

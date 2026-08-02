@@ -1886,6 +1886,15 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
   // output grew.
   const pendingOutput = useRef<Record<string, string>>({})
   const flushTimer = useRef<number | null>(null)
+  // The current in-flight run's stream reader. This component isn't
+  // remounted on groupId change, so without this a stream still running for
+  // the previous workflow would keep writing into this one's state.
+  const runReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null)
+  useEffect(() => () => {
+    runReaderRef.current?.cancel().catch(() => {})
+    runReaderRef.current = null
+    if (flushTimer.current != null) window.clearTimeout(flushTimer.current)
+  }, [groupId])
   const queueOutput = useCallback((key: string, chunk: string) => {
     pendingOutput.current[key] = (pendingOutput.current[key] ?? '') + chunk
     if (flushTimer.current == null) {
@@ -1922,6 +1931,10 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
     // Reset node statuses
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: 'idle' as const } })))
 
+    // Hoisted above the try block so the catch clause can still identify
+    // which reader this call owns (a const declared inside try isn't
+    // visible in catch).
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
       const url = new URL(`${process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080'}/api/v1/invoke/workflows/${groupId}`)
@@ -1946,7 +1959,9 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         return
       }
 
-      const reader = res.body.getReader()
+      reader = res.body.getReader()
+      runReaderRef.current?.cancel().catch(() => {})
+      runReaderRef.current = reader
       const decoder = new TextDecoder()
       let buf = ''
 
@@ -1957,7 +1972,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
       let lastEvent = Date.now()
       const liveness = window.setInterval(() => {
         if (Date.now() - lastEvent > 60_000) {
-          reader.cancel().catch(() => {})
+          reader?.cancel().catch(() => {})
         }
       }, 5_000)
 
@@ -2008,6 +2023,8 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
       } finally {
         window.clearInterval(liveness)
       }
+      if (runReaderRef.current !== reader) return   // cancelled by unmount/workflow change — not a stalled run
+      runReaderRef.current = null
       setRunStatus((prev) => {
         if (prev === 'running') {
           setRunError((e) => e ?? 'Stream ended without completing — the run may still be executing server-side. Check the Runs page.')
@@ -2015,6 +2032,7 @@ function WorkflowBuilderInner({ groupId }: { groupId: string }) {
         return 'done'
       })
     } catch (err) {
+      if (runReaderRef.current !== reader) return   // cancelled — not a real failure
       setRunError(err instanceof Error ? err.message : 'Network error — could not reach the server')
       setRunStatus('done')
     }
