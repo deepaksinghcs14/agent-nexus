@@ -7,6 +7,7 @@ import { Activity, GitBranch, Loader2, Plus, RefreshCw, Search, Trash2 } from 'l
 import { agentsAPI, pipelineAPI, repoCatalogAPI, runnerCredsAPI, runsAPI, webhookTriggersAPI } from '@/lib/api'
 import { relativeTime, statusColor, cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth'
+import { toast } from '@/store/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Agent, Run } from '@/types'
@@ -140,6 +141,7 @@ export default function ClaudeCodePage() {
     onSuccess: () => {
       setLessonsRepo(null)
       queryClient.invalidateQueries({ queryKey: ['repo-catalog'] })
+      toast('Lessons saved', 'success')
     },
   })
   // Repo map: cached architecture summary that replaces cold exploration on
@@ -151,6 +153,7 @@ export default function ClaudeCodePage() {
     onSuccess: () => {
       setMapRepo(null)
       queryClient.invalidateQueries({ queryKey: ['repo-catalog'] })
+      toast('Repo map saved', 'success')
     },
   })
   // Generate now: queues a real Claude Code survey session in the background.

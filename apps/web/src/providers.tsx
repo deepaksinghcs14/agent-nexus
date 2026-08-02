@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query'
 import { ThemeProvider } from 'next-themes'
 import { useAuthStore } from '@/store/auth'
 import { authAPI } from '@/lib/api'
+import { toast } from '@/store/toast'
+import { Toaster } from '@/components/ui/Toast'
 import type { User, Workspace, WorkspaceWithRole } from '@/types'
 
 function AuthInitializer() {
@@ -56,6 +58,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
+        // Every mutation gets an error toast unless it handles its own
+        // (react-query runs this AND the mutation's own onError — both
+        // fire, this doesn't replace per-mutation handling). Without this,
+        // a mutation with no onError silently no-ops on failure.
+        mutationCache: new MutationCache({
+          onError: (err) => toast(err instanceof Error ? err.message : 'Something went wrong'),
+        }),
         defaultOptions: {
           queries: { staleTime: 0, retry: 1 },
         },
@@ -67,6 +76,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <AuthInitializer />
         {children}
+        <Toaster />
       </QueryClientProvider>
     </ThemeProvider>
   )

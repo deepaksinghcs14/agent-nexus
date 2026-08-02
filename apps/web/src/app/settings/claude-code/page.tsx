@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, GitBranch, Terminal, Unplug } from 'lucide-react'
 import { runnerCredsAPI } from '@/lib/api'
 import { relativeTime } from '@/lib/utils'
+import { toast } from '@/store/toast'
 
 type RunnerCreds = {
   claude_connected: boolean
@@ -30,10 +31,9 @@ function CredentialCard(props: {
   disconnectedNote: React.ReactNode
   placeholder: string
   footnote: string
-  onSave: (token: string) => void
+  onSave: (token: string) => Promise<unknown>
   onDisconnect: () => void
   saving: boolean
-  error: string
 }) {
   const [token, setToken] = useState('')
   return (
@@ -71,7 +71,7 @@ function CredentialCard(props: {
             className="flex-1 min-w-[220px] px-2.5 py-1.5 border border-border-strong rounded-lg text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent"
           />
           <button
-            onClick={() => { props.onSave(token.trim()); setToken('') }}
+            onClick={() => { props.onSave(token.trim()).then(() => setToken('')).catch(() => {}) }}
             disabled={!token.trim() || props.saving}
             className="px-3 py-1.5 bg-accent text-white text-xs rounded-lg font-medium disabled:opacity-50"
           >
@@ -79,7 +79,6 @@ function CredentialCard(props: {
           </button>
         </div>
       )}
-      {props.error && <p className="text-xs text-crit mt-2">{props.error}</p>}
       <p className="text-[11px] text-faint mt-2">{props.footnote}</p>
     </div>
   )
@@ -87,7 +86,6 @@ function CredentialCard(props: {
 
 export default function ClaudeCodePage() {
   const queryClient = useQueryClient()
-  const [error, setError] = useState('')
 
   const { data: creds } = useQuery({
     queryKey: ['runner-credentials'],
@@ -96,8 +94,10 @@ export default function ClaudeCodePage() {
 
   const save = useMutation({
     mutationFn: (body: Parameters<typeof runnerCredsAPI.put>[0]) => runnerCredsAPI.put(body),
-    onSuccess: () => { setError(''); queryClient.invalidateQueries({ queryKey: ['runner-credentials'] }) },
-    onError: (err: Error) => setError(err.message),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['runner-credentials'] })
+      toast('Credentials saved', 'success')
+    },
   })
   const disconnect = useMutation({
     mutationFn: (field: 'claude' | 'github') => runnerCredsAPI.delete(field),
@@ -127,10 +127,9 @@ export default function ClaudeCodePage() {
           }
           placeholder="sk-ant-oat…"
           footnote="Authenticates the coding sessions. Without it, the runner falls back to its own ANTHROPIC_API_KEY."
-          onSave={(t) => save.mutate({ claude_token: t })}
+          onSave={(t) => save.mutateAsync({ claude_token: t })}
           onDisconnect={() => disconnect.mutate('claude')}
           saving={save.isPending}
-          error={error}
         />
         <CredentialCard
           icon={<GitBranch size={16} className="text-foreground" />}
@@ -142,10 +141,9 @@ export default function ClaudeCodePage() {
           }
           placeholder="ghp_… or github_pat_…"
           footnote="Scoped to this workspace — other workspaces never see it. Takes precedence over any instance-level GITHUB_TOKEN."
-          onSave={(t) => save.mutate({ github_token: t })}
+          onSave={(t) => save.mutateAsync({ github_token: t })}
           onDisconnect={() => disconnect.mutate('github')}
           saving={save.isPending}
-          error={error}
         />
       </div>
 
