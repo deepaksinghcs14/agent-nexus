@@ -463,6 +463,19 @@ func (h *InvokeHandler) cleanupEphemeralResources(ctx context.Context, runID str
 		WHERE source_run_id IN (SELECT id FROM run_tree) AND ephemeral=true`, runID)
 }
 
+// conversationLocks serialises executeRun per conversation: one run at a time
+// per conversationID → *sync.Mutex, same shape as mcpOAuthLocks. Without it,
+// two quick gateway messages (or a gateway message racing a resumed
+// approval/session-parked run) launch two concurrent executeRun on the same
+// conversation — torn message ordering, and the second run's compaction
+// write silently discards the first's. Locking inside executeRun itself
+// (rather than at gateway dispatch) also covers ResumeApprovedRun /
+// ResumeSessionRun, which re-enter executeRun on the same conversation with
+// no other guard. Entries are never evicted (deleting one races a holder of
+// the stale pointer) and the guarantee is per-replica — same assumption the
+// rate limiter and runner session idempotency already make.
+var conversationLocks sync.Map // conversationID → *sync.Mutex
+
 // executeRun runs the full agent loop with tool calling. When emit is nil (background mode),
 // progress is only written to the database. When emit is non-nil, SSE events are also sent.
 // delegateHandlers, if non-nil, maps tool names to functions that execute a delegate agent and
@@ -482,6 +495,21 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	// land after a cancel.
 	ctx, releaseRunCancel := registerRunCancel(ctx, runID)
 	defer releaseRunCancel()
+
+	// One run at a time per conversation. Registered as cancellable above so
+	// a run queued here can still be stopped: it won't unblock mid-wait (a
+	// mutex can't select on ctx.Done), but the status<>'cancelled' claim
+	// below means a cancel that lands while queued is honored the instant
+	// this run's turn comes, instead of proceeding anyway.
+	muAny, _ := conversationLocks.LoadOrStore(convID, &sync.Mutex{})
+	convMu := muAny.(*sync.Mutex)
+	convMu.Lock()
+	defer convMu.Unlock()
+	if t, err := h.pool.Exec(dbCtx, `UPDATE runs SET status='running' WHERE id=$1::uuid AND status<>'cancelled'`, runID); err != nil {
+		slog.Error("failed to claim run before execution", "run_id", runID, "error", err)
+	} else if t.RowsAffected() == 0 {
+		return // cancelled while queued behind another run on this conversation
+	}
 
 	resuming := opts.resume != nil
 

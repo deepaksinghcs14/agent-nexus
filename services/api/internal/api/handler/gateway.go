@@ -1146,8 +1146,12 @@ func (h *GatewayHandler) dispatchGatewayRun(ctx context.Context, c domain.Gatewa
 		return "", "", "", err
 	}
 	runID = uuid.NewString()
+	// Inserted 'pending', not 'running': executeRun serialises per conversation
+	// (conversationLocks) and claims the row to 'running' itself once its turn
+	// comes — a second quick message on the same conversation now queues
+	// behind the first instead of launching a concurrent, torn-history run.
 	if _, err := h.pool.Exec(ctx,
-		`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,channel_session_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'running',$7::uuid)`,
+		`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status,channel_session_id) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6,'pending',$7::uuid)`,
 		runID, c.WorkspaceID, agentID, convID, c.CreatedBy, msg.Body, sessionID); err != nil {
 		return "", "", "", err
 	}
@@ -1200,41 +1204,56 @@ func (h *GatewayHandler) ensureGatewayConversation(ctx context.Context, c domain
 }
 
 func (h *GatewayHandler) deliverWhenComplete(ctx context.Context, c domain.GatewayChannel, cfg domain.GatewayChannelConfig, msg inboundMessage, runID, sessionID string) {
+	if runID == "" {
+		// dispatchGatewayRun routed this message into a run already waiting on
+		// user input (native_ask_user); that run's own poller owns the reply.
+		// Without this, the query below runs WHERE id=''::uuid — a permanent
+		// error — every 200ms until it apologizes for a "timeout" 5 minutes
+		// after a message that was already answered.
+		return
+	}
 	t := time.NewTicker(200 * time.Millisecond)
 	defer t.Stop()
-	deadline := time.After(5 * time.Minute)
-	for {
-		select {
-		case <-deadline:
+	// A run can now queue behind another one on the same conversation
+	// (executeRun's per-conversation lock) before it even starts — re-arm the
+	// deadline while it's still 'pending' so a long queue wait doesn't
+	// apologize for a timeout and then still deliver the real answer once its
+	// turn comes.
+	deadline := time.Now().Add(5 * time.Minute)
+	for range t.C {
+		if time.Now().After(deadline) {
 			_ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"reason": "timeout"})
 			h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, "Sorry, the request timed out. Please try again.", sessionID, runID)
 			return
-		case <-t.C:
-			var output, status, errMsg string
-			if err := h.pool.QueryRow(ctx, `SELECT output, status, error_message FROM runs WHERE id=$1::uuid`, runID).Scan(&output, &status, &errMsg); err != nil {
-				continue
+		}
+		var output, status, errMsg string
+		if err := h.pool.QueryRow(ctx, `SELECT output, status, error_message FROM runs WHERE id=$1::uuid`, runID).Scan(&output, &status, &errMsg); err != nil {
+			continue
+		}
+		if status == "pending" {
+			deadline = time.Now().Add(5 * time.Minute)
+			continue
+		}
+		if status == "running" || status == "approval_wait" || status == "user_input_wait" {
+			continue
+		}
+		if status != "success" {
+			_ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"run_status": status, "error": errMsg})
+			// Send a user-facing error reply. If the agent produced partial output before
+			// failing, use that; otherwise fall back to a generic message.
+			reply := strings.TrimSpace(output)
+			if reply == "" {
+				reply = "Sorry, I ran into an error and couldn't complete your request. Please try again."
 			}
-			if status == "running" || status == "pending" || status == "approval_wait" || status == "user_input_wait" {
-				continue
-			}
-			if status != "success" {
-				_ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"run_status": status, "error": errMsg})
-				// Send a user-facing error reply. If the agent produced partial output before
-				// failing, use that; otherwise fall back to a generic message.
-				reply := strings.TrimSpace(output)
-				if reply == "" {
-					reply = "Sorry, I ran into an error and couldn't complete your request. Please try again."
-				}
-				h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, reply, sessionID, runID)
-				return
-			}
-			crossContactSend, err := h.repo.HasSentAgentDirectToOtherPeer(ctx, c.WorkspaceID, c.ID, runID, msg.PeerID)
-			if err != nil {
-				slog.Warn("failed to check direct WhatsApp sends", "run_id", runID, "error", err)
-			}
-			h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, completionReply(output, crossContactSend), sessionID, runID)
+			h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, reply, sessionID, runID)
 			return
 		}
+		crossContactSend, err := h.repo.HasSentAgentDirectToOtherPeer(ctx, c.WorkspaceID, c.ID, runID, msg.PeerID)
+		if err != nil {
+			slog.Warn("failed to check direct WhatsApp sends", "run_id", runID, "error", err)
+		}
+		h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, completionReply(output, crossContactSend), sessionID, runID)
+		return
 	}
 }
 
