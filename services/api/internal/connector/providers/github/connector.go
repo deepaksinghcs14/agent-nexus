@@ -94,11 +94,16 @@ type multiCheckpoint struct {
 	CompletedRepos []string `json:"completed_repos"`
 	CurrentRepo    string   `json:"current_repo"`
 	ProcessedCount int      `json:"processed_count"`
+	TreeSHA        string   `json:"tree_sha"`
 }
 
-// singleCheckpoint is the resume state for single-repo mode.
+// singleCheckpoint is the resume state for single-repo mode. ProcessedCount
+// is a positional offset into the tree listing at TreeSHA — see the
+// tree-SHA comparison in syncRepo for why the offset alone isn't safe to
+// trust across a resume.
 type singleCheckpoint struct {
-	ProcessedCount int `json:"processed_count"`
+	ProcessedCount int    `json:"processed_count"`
+	TreeSHA        string `json:"tree_sha"`
 }
 
 // FetchStream implements connector.StreamProvider.
@@ -224,7 +229,7 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 		// Within a resumed repo, pass the per-repo processed_count.
 		repoOpts := connector.FetchOpts{}
 		if fullName == cp.CurrentRepo && cp.ProcessedCount > 0 {
-			b, _ := json.Marshal(singleCheckpoint{ProcessedCount: cp.ProcessedCount})
+			b, _ := json.Marshal(singleCheckpoint{ProcessedCount: cp.ProcessedCount, TreeSHA: cp.TreeSHA})
 			repoOpts.Checkpoint = b
 			log.Info("resuming repo from checkpoint", "repo", fullName, "offset", cp.ProcessedCount)
 		}
@@ -234,15 +239,15 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 			if opts.SaveCheckpoint == nil {
 				return
 			}
-			sc, ok := v.(map[string]any)
+			sc, ok := v.(singleCheckpoint)
 			if !ok {
 				return
 			}
-			pc, _ := sc["processed_count"].(int)
 			opts.SaveCheckpoint(multiCheckpoint{
 				CompletedRepos: savedCP.CompletedRepos,
 				CurrentRepo:    savedFull,
-				ProcessedCount: pc,
+				ProcessedCount: sc.ProcessedCount,
+				TreeSHA:        sc.TreeSHA,
 			})
 		}
 
@@ -319,6 +324,7 @@ func (c *Connector) syncRepo(
 		return fmt.Errorf("github: tree returned HTTP %d", res.StatusCode)
 	}
 	var tree struct {
+		SHA  string `json:"sha"`
 		Tree []struct {
 			Path string `json:"path"`
 			Type string `json:"type"`
@@ -355,6 +361,17 @@ func (c *Connector) syncRepo(
 	var cp singleCheckpoint
 	if len(opts.Checkpoint) > 2 {
 		_ = json.Unmarshal(opts.Checkpoint, &cp)
+	}
+	if cp.ProcessedCount > 0 && cp.TreeSHA != tree.SHA {
+		// The offset indexes the previous tree's blob list; new commits
+		// between crash and resume shift it, silently skipping or
+		// reprocessing files. Re-walking is cheap — pipeline.go dedups by
+		// content_hash before embedding, so this only costs GitHub API calls,
+		// not duplicate rows or re-embedding spend. A checkpoint saved before
+		// this field existed has TreeSHA=="", which also mismatches — one
+		// full re-walk per repo after deploy, expected.
+		log.Warn("tree changed since checkpoint, restarting repo", "checkpoint_sha", cp.TreeSHA, "current_sha", tree.SHA)
+		cp.ProcessedCount = 0
 	}
 	if cp.ProcessedCount > 0 {
 		log.Info("resuming from checkpoint", "skip_files", cp.ProcessedCount)
@@ -415,7 +432,7 @@ func (c *Connector) syncRepo(
 
 		processed++
 		if opts.SaveCheckpoint != nil && processed%10 == 0 {
-			opts.SaveCheckpoint(map[string]any{"processed_count": i + 1})
+			opts.SaveCheckpoint(singleCheckpoint{ProcessedCount: i + 1, TreeSHA: tree.SHA})
 		}
 	}
 
