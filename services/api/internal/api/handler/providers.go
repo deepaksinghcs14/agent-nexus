@@ -93,9 +93,10 @@ func (h *ProvidersHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProvidersHandler) Update(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.WorkspaceIDFromCtx(r.Context())
 	id := chi.URLParam(r, "id")
 
-	existing, _, err := h.providers.Get(r.Context(), id)
+	existing, _, err := h.providers.Get(r.Context(), id, wsID)
 	if err != nil {
 		errs.Write(w, errs.NotFound("provider not found"))
 		return
@@ -139,8 +140,9 @@ func (h *ProvidersHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProvidersHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.WorkspaceIDFromCtx(r.Context())
 	providerID := chi.URLParam(r, "id")
-	if err := h.providers.Delete(r.Context(), providerID); err != nil {
+	if err := h.providers.Delete(r.Context(), providerID, wsID); err != nil {
 		errs.Write(w, errs.Internal("failed to delete provider"))
 		return
 	}
@@ -149,8 +151,9 @@ func (h *ProvidersHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProvidersHandler) ListModels(w http.ResponseWriter, r *http.Request) {
+	wsID := middleware.WorkspaceIDFromCtx(r.Context())
 	id := chi.URLParam(r, "id")
-	cred, encKey, err := h.providers.Get(r.Context(), id)
+	cred, encKey, err := h.providers.Get(r.Context(), id, wsID)
 	if err != nil {
 		errs.Write(w, errs.NotFound("provider not found"))
 		return

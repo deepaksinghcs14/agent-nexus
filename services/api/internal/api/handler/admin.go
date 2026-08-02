@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
@@ -223,7 +224,7 @@ func (h *AdminHandler) IngestServiceLog(w http.ResponseWriter, r *http.Request) 
 	if token == "" {
 		token = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	}
-	if token != h.cfg.LogStreamIngestToken {
+	if subtle.ConstantTimeCompare([]byte(token), []byte(h.cfg.LogStreamIngestToken)) != 1 {
 		errs.Write(w, errs.Forbidden("invalid log ingest token"))
 		return
 	}

@@ -2,6 +2,7 @@ package router
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -18,6 +19,18 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 
 	// Global middleware
 	r.Use(middleware.RequestID)
+	// Resolve the client IP once, here, so everything keying off the caller
+	// (rate limiting, audit logs) agrees and none of them parse the raw,
+	// attacker-controlled X-Forwarded-For. TRUSTED_PROXY_COUNT must match the
+	// real topology: trusting one hop too many lets a caller forge the header
+	// to dodge rate limits, so 0 (ignore XFF) is correct for a directly
+	// exposed API. Deliberately not middleware.RealIP — chi deprecated it as
+	// IP-spoofing-vulnerable.
+	if cfg.TrustedProxyCount > 0 {
+		r.Use(middleware.ClientIPFromXFFTrustedProxies(cfg.TrustedProxyCount))
+	} else {
+		r.Use(middleware.ClientIPFromRemoteAddr)
+	}
 	r.Use(mw.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
@@ -40,7 +53,8 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 	// Internal process log ingestion, protected by LOG_STREAM_INGEST_TOKEN.
 	r.Post("/internal/service-logs/ingest", h.Admin.IngestServiceLog)
 
-	// Internal WhatsApp credential persistence — adapter-only, no JWT.
+	// Internal WhatsApp credential persistence — adapter-only, verified by
+	// WHATSAPP_INTERNAL_TOKEN (no JWT: the caller is a process, not a user).
 	r.Get("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Get)
 	r.Put("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Put)
 	r.Delete("/internal/whatsapp/{accountId}/credentials", h.WhatsAppCreds.Delete)
@@ -49,23 +63,32 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 	// Runner session completion callbacks — verified by RUNNER_CALLBACK_SECRET.
 	r.Post("/internal/sessions/callback", h.Invoke.SessionCallback)
 
-	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC secret)
-	r.Post("/webhook/{webhookId}", h.WebhookIngress.Receive)
-	r.Post("/gateway/whatsapp/{channelId}", h.Gateway.WhatsAppReceive)
-	r.Post("/gateway/http/{channelId}", h.Gateway.HTTPReceive)
+	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC
+	// secret). Rate limited: an unauthenticated caller can otherwise dispatch
+	// unbounded agent runs by replaying to these paths.
+	r.Group(func(r chi.Router) {
+		r.Use(mw.RateLimit(cfg.RateLimitIngressPerMin, time.Minute))
+		r.Post("/webhook/{webhookId}", h.WebhookIngress.Receive)
+		r.Post("/gateway/whatsapp/{channelId}", h.Gateway.WhatsAppReceive)
+		r.Post("/gateway/http/{channelId}", h.Gateway.HTTPReceive)
+	})
 
 	r.Route("/api/v1", func(r chi.Router) {
-		// Public auth routes
-		r.Post("/auth/register", h.Auth.Register)
-		r.Post("/auth/login", h.Auth.Login)
-		r.Post("/auth/refresh", h.Auth.Refresh)
+		// Public auth routes — rate limited against credential brute-forcing
+		// and signup abuse (there is no lockout or attempt counter otherwise).
+		r.Group(func(r chi.Router) {
+			r.Use(mw.RateLimit(cfg.RateLimitAuthPerMin, time.Minute))
+			r.Post("/auth/register", h.Auth.Register)
+			r.Post("/auth/login", h.Auth.Login)
+			r.Post("/auth/refresh", h.Auth.Refresh)
 
-		// Google OAuth callback is public — Google redirects here with no JWT
-		r.Get("/providers/oauth/google/callback", h.Providers.OAuthGoogleCallback)
+			// Google OAuth callback is public — Google redirects here with no JWT
+			r.Get("/providers/oauth/google/callback", h.Providers.OAuthGoogleCallback)
 
-		// MCP OAuth browser redirect — unauthenticated; verified by the state
-		// nonce persisted when the flow started.
-		r.Get("/mcp-servers/oauth/callback", h.MCP.OAuthCallback)
+			// MCP OAuth browser redirect — unauthenticated; verified by the state
+			// nonce persisted when the flow started.
+			r.Get("/mcp-servers/oauth/callback", h.MCP.OAuthCallback)
+		})
 
 		// Authenticated routes (accept JWT or API token)
 		r.Group(func(r chi.Router) {

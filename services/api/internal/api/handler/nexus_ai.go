@@ -1853,7 +1853,7 @@ func (h *NexusAIHandler) toolAttachSkills(ctx context.Context, ws string, input 
 		})
 	}
 	repo := repository.NewSkillRepository(h.pool)
-	if err := repo.SetForAgent(ctx, args.AgentID, assignments); err != nil {
+	if err := repo.SetForAgent(ctx, args.AgentID, ws, assignments); err != nil {
 		return nil, fmt.Errorf("failed to attach skills: %w", err)
 	}
 	return &toolResult{

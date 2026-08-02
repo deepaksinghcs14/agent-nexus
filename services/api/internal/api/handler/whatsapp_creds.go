@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 
@@ -14,7 +15,14 @@ import (
 
 // WhatsAppCredsHandler stores and retrieves Baileys auth files so the adapter
 // survives container restarts without requiring a new QR scan.
-// These endpoints are internal-only (/internal/whatsapp/...) — no JWT auth.
+//
+// These endpoints carry no JWT (the adapter is a Node process, not a user), but
+// they are NOT unauthenticated: every one requires WHATSAPP_INTERNAL_TOKEN via
+// X-WhatsApp-Token. Get decrypts and returns live session credentials, so an
+// open endpoint here is a full WhatsApp account takeover for anyone who can
+// reach the API — network-topology "internal only" was never enforced.
+// The token is auto-generated per container in start-api.sh, which runs the API
+// and the adapter side by side, so both processes share it with no config.
 type WhatsAppCredsHandler struct {
 	pool *pgxpool.Pool
 	cfg  *config.Config
@@ -24,7 +32,25 @@ func NewWhatsAppCredsHandler(pool *pgxpool.Pool, cfg *config.Config) *WhatsAppCr
 	return &WhatsAppCredsHandler{pool: pool, cfg: cfg}
 }
 
+// authorized reports whether the request carries the adapter shared secret.
+// Fails closed when the secret is unconfigured, and reports 404 rather than 401
+// so the endpoint's existence isn't confirmed — same contract as SessionCallback.
+func (h *WhatsAppCredsHandler) authorized(w http.ResponseWriter, r *http.Request) bool {
+	if h.cfg.WhatsAppInternalToken == "" {
+		errs.Write(w, errs.NotFound("whatsapp credential storage is not configured"))
+		return false
+	}
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-WhatsApp-Token")), []byte(h.cfg.WhatsAppInternalToken)) != 1 {
+		errs.Write(w, errs.Unauthorized("invalid whatsapp internal token"))
+		return false
+	}
+	return true
+}
+
 func (h *WhatsAppCredsHandler) Get(w http.ResponseWriter, r *http.Request) {
+	if !h.authorized(w, r) {
+		return
+	}
 	accountID := chi.URLParam(r, "accountId")
 	var encrypted string
 	if err := h.pool.QueryRow(r.Context(),
@@ -46,6 +72,9 @@ func (h *WhatsAppCredsHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WhatsAppCredsHandler) Put(w http.ResponseWriter, r *http.Request) {
+	if !h.authorized(w, r) {
+		return
+	}
 	accountID := chi.URLParam(r, "accountId")
 	var body struct {
 		Files map[string]any `json:"files"`
@@ -76,6 +105,9 @@ func (h *WhatsAppCredsHandler) Put(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WhatsAppCredsHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	if !h.authorized(w, r) {
+		return
+	}
 	accountID := chi.URLParam(r, "accountId")
 	h.pool.Exec(r.Context(), `DELETE FROM whatsapp_credentials WHERE account_id=$1`, accountID) //nolint:errcheck
 	errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -84,6 +116,9 @@ func (h *WhatsAppCredsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // PutLIDMap receives a batch of {jid, lid} pairs from the WhatsApp adapter and
 // updates gateway_contacts.whatsapp_lid so the pairing policy can match @lid senders.
 func (h *WhatsAppCredsHandler) PutLIDMap(w http.ResponseWriter, r *http.Request) {
+	if !h.authorized(w, r) {
+		return
+	}
 	accountID := chi.URLParam(r, "accountId")
 	var body struct {
 		Contacts []struct {

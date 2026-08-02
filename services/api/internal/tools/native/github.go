@@ -161,7 +161,12 @@ func (t *CreatePullRequestTool) Definition() domain.Tool {
 			"body":{"type":"string","description":"Pull request description (markdown)"}
 		},"required":["repo","head","title"]}`),
 		RiskLevel: "high",
-		TimeoutMs: 30000,
+		// Default false so the unattended Jira→PR pipeline still opens PRs;
+		// REQUIRE_SESSION_APPROVAL=true adds a human gate. See the matching
+		// comment in launch_session.go.
+		RequiresApproval: t.cfg.RequireSessionApproval,
+		TimeoutMs:        30000,
+		Enabled:          true,
 	}
 }
 

@@ -271,10 +271,7 @@ func (h *AuthHandler) issueTokens(w http.ResponseWriter, r *http.Request, user *
 	})
 
 	// Write audit log for login event (best-effort)
-	ip := r.Header.Get("X-Forwarded-For")
-	if ip == "" {
-		ip = r.RemoteAddr
-	}
+	ip := clientIP(r)
 	_, _ = h.pool.Exec(r.Context(),
 		`INSERT INTO admin_audit_logs(id,workspace_id,actor_id,actor_email,action,resource_type,resource_id,ip_address)
 		 VALUES($1::uuid,$2::uuid,$3::uuid,$4,'user.login','user',$3::uuid,$5)`,

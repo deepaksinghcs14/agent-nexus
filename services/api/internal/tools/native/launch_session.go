@@ -159,7 +159,15 @@ func (t *LaunchRepoSessionTool) Definition() domain.Tool {
 			"budget_usd":{"type":"number","description":"Optional cost cap for the session in USD"}
 		},"required":["repo","ticket_key","task_description"]}`),
 		RiskLevel: "high",
-		TimeoutMs: 120000,
+		// Default false: the real human gate for sessions is the per-repo
+		// sessions_enabled toggle an admin flips in Settings → Claude Code
+		// (see checkSessionsEnabled), and the Jira→PR pipeline is designed to
+		// run unattended. Set REQUIRE_SESSION_APPROVAL=true to also require a
+		// per-call approval. Note SeedDB rewrites this column on every boot, so
+		// this definition — not the DB row — is the source of truth.
+		RequiresApproval: t.cfg.RequireSessionApproval,
+		TimeoutMs:        120000,
+		Enabled:          true,
 	}
 }
 

@@ -15,6 +15,10 @@ const PORT = Number(process.env.PORT || 18901)
 const AUTH_ROOT = process.env.AUTH_ROOT || '/data/whatsapp-auth'
 const API_INTERNAL_URL = process.env.API_INTERNAL_URL || 'http://127.0.0.1:8080'
 const LOG_STREAM_INGEST_TOKEN = process.env.LOG_STREAM_INGEST_TOKEN || ''
+// Shared secret for /internal/whatsapp/* — generated per container in
+// start-api.sh, which starts this process alongside the API.
+const WHATSAPP_INTERNAL_TOKEN = process.env.WHATSAPP_INTERNAL_TOKEN || ''
+const internalHeaders = (extra = {}) => ({ ...extra, 'X-WhatsApp-Token': WHATSAPP_INTERNAL_TOKEN })
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' }, createLogStream())
 const accounts = new Map()
 
@@ -192,7 +196,7 @@ async function backupAuthState(accountId) {
     if (Object.keys(files).length === 0) return
     const res = await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ files })
     })
     if (!res.ok) throw new Error(`backup PUT returned ${res.status}`)
@@ -212,7 +216,9 @@ function scheduleBackup(accountId) {
 
 async function restoreAuthState(accountId) {
   try {
-    const res = await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`)
+    const res = await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`, {
+      headers: internalHeaders()
+    })
     if (!res.ok) return false
     const { files } = await res.json()
     if (!files || Object.keys(files).length === 0) return false
@@ -232,7 +238,10 @@ async function restoreAuthState(accountId) {
 
 async function deleteAuthStateFromDB(accountId) {
   try {
-    await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`, { method: 'DELETE' })
+    await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`, {
+      method: 'DELETE',
+      headers: internalHeaders()
+    })
   } catch (_) {}
 }
 
@@ -326,7 +335,7 @@ async function startAccount(accountId, opts = {}) {
     if (pairs.length > 0) {
       fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/lid-map`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ contacts: pairs })
       }).catch(err => logger.warn({ err, accountId }, 'lid-map DB sync failed'))
     }
@@ -707,7 +716,7 @@ async function route(req, res) {
     if (pairs.length > 0) {
       await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/lid-map`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ contacts: pairs })
       })
     }

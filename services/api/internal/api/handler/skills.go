@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/api/middleware"
@@ -11,6 +12,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -155,8 +157,9 @@ func (h *SkillsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SkillsHandler) ListForAgent(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	agentID := chi.URLParam(r, "id")
-	list, err := h.repo.ListForAgent(r.Context(), agentID)
+	list, err := h.repo.ListForAgent(r.Context(), agentID, ws)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to list agent skills"))
 		return
@@ -165,6 +168,7 @@ func (h *SkillsHandler) ListForAgent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *SkillsHandler) SetForAgent(w http.ResponseWriter, r *http.Request) {
+	ws := middleware.WorkspaceIDFromCtx(r.Context())
 	agentID := chi.URLParam(r, "id")
 	var body struct {
 		Skills []domain.AgentSkillAssignment `json:"skills"`
@@ -173,7 +177,13 @@ func (h *SkillsHandler) SetForAgent(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.BadRequest("invalid request body"))
 		return
 	}
-	if err := h.repo.SetForAgent(r.Context(), agentID, body.Skills); err != nil {
+	if err := h.repo.SetForAgent(r.Context(), agentID, ws, body.Skills); err != nil {
+		// A foreign (or missing) agent id fails the ownership guard — report it
+		// as not-found rather than an internal error, matching the file's style.
+		if errors.Is(err, pgx.ErrNoRows) {
+			errs.Write(w, errs.NotFound("agent not found"))
+			return
+		}
 		errs.Write(w, errs.Internal("failed to update agent skills"))
 		return
 	}

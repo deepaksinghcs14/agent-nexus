@@ -76,15 +76,19 @@ func (r *SkillRepository) Delete(ctx context.Context, id, workspaceID string) er
 	return err
 }
 
-func (r *SkillRepository) ListForAgent(ctx context.Context, agentID string) ([]domain.AgentSkill, error) {
+// ListForAgent returns an agent's skills only when the agent belongs to
+// workspaceID — skill content is prompt IP, so an unscoped lookup by agent id
+// leaks it cross-tenant.
+func (r *SkillRepository) ListForAgent(ctx context.Context, agentID, workspaceID string) ([]domain.AgentSkill, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT ask.id::text, ask.agent_id::text, ask.skill_id::text, ask.enabled, ask.activation_mode, ask.order_index, ask.created_at,
 		       s.id::text, COALESCE(s.workspace_id::text,''), s.name, s.description, s.content, s.source,
 		       s.enabled, COALESCE(s.required_tool_names, '{}'), COALESCE(s.created_by::text,''), s.created_at, s.updated_at
 		FROM agent_skills ask
 		JOIN skills s ON s.id=ask.skill_id
+		JOIN agents a ON a.id=ask.agent_id AND a.workspace_id=$2::uuid
 		WHERE ask.agent_id=$1::uuid
-		ORDER BY ask.order_index ASC, ask.created_at ASC`, agentID)
+		ORDER BY ask.order_index ASC, ask.created_at ASC`, agentID, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -103,12 +107,28 @@ func (r *SkillRepository) ListForAgent(ctx context.Context, agentID string) ([]d
 	return out, rows.Err()
 }
 
-func (r *SkillRepository) SetForAgent(ctx context.Context, agentID string, assignments []domain.AgentSkillAssignment) error {
+// SetForAgent replaces an agent's skill assignments. Every statement is scoped
+// to workspaceID: the agent must belong to the caller, and both the skills being
+// attached and the tools they pull in are filtered the same way — otherwise a
+// caller could bind another tenant's skill (reading its content into their own
+// agent's prompt) or a same-named tool from another workspace.
+func (r *SkillRepository) SetForAgent(ctx context.Context, agentID, workspaceID string, assignments []domain.AgentSkillAssignment) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var owned bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM agents WHERE id=$1::uuid AND workspace_id=$2::uuid)`,
+		agentID, workspaceID).Scan(&owned); err != nil {
+		return err
+	}
+	if !owned {
+		return pgx.ErrNoRows
+	}
+
 	if _, err := tx.Exec(ctx, `DELETE FROM agent_skills WHERE agent_id=$1::uuid`, agentID); err != nil {
 		return err
 	}
@@ -122,8 +142,12 @@ func (r *SkillRepository) SetForAgent(ctx context.Context, agentID string, assig
 		if mode == "" {
 			mode = "always"
 		}
-		batch.Queue(`INSERT INTO agent_skills(agent_id,skill_id,enabled,activation_mode,order_index) VALUES($1::uuid,$2::uuid,$3,$4,$5)`,
-			agentID, a.SkillID, a.Enabled, mode, a.OrderIndex)
+		// INSERT…SELECT so a skill id from another workspace inserts zero rows
+		// instead of binding foreign prompt content onto this agent.
+		batch.Queue(`INSERT INTO agent_skills(agent_id,skill_id,enabled,activation_mode,order_index)
+			 SELECT $1::uuid, id, $3, $4, $5 FROM skills
+			 WHERE id=$2::uuid AND (workspace_id IS NULL OR workspace_id=$6::uuid)`,
+			agentID, a.SkillID, a.Enabled, mode, a.OrderIndex, workspaceID)
 		if a.Enabled {
 			enabledSkillIDs = append(enabledSkillIDs, a.SkillID)
 		}
@@ -135,8 +159,10 @@ func (r *SkillRepository) SetForAgent(ctx context.Context, agentID string, assig
 	// Auto-attach required tools for all enabled skills (ON CONFLICT DO NOTHING preserves existing state).
 	if len(enabledSkillIDs) > 0 {
 		toolRows, err := tx.Query(ctx,
-			`SELECT unnest(required_tool_names) FROM skills WHERE id = ANY($1::uuid[]) AND required_tool_names <> '{}'`,
-			enabledSkillIDs)
+			`SELECT unnest(required_tool_names) FROM skills
+			 WHERE id = ANY($1::uuid[]) AND required_tool_names <> '{}'
+			   AND (workspace_id IS NULL OR workspace_id=$2::uuid)`,
+			enabledSkillIDs, workspaceID)
 		if err == nil {
 			defer toolRows.Close()
 			for toolRows.Next() {
@@ -144,9 +170,10 @@ func (r *SkillRepository) SetForAgent(ctx context.Context, agentID string, assig
 				if toolRows.Scan(&toolName) == nil && toolName != "" {
 					_, _ = tx.Exec(ctx,
 						`INSERT INTO agent_tools(agent_id, tool_id, enabled)
-						 SELECT $1::uuid, id, true FROM tools WHERE name=$2
+						 SELECT $1::uuid, id, true FROM tools
+						 WHERE name=$2 AND (workspace_id IS NULL OR workspace_id=$3::uuid)
 						 ON CONFLICT DO NOTHING`,
-						agentID, toolName)
+						agentID, toolName, workspaceID)
 				}
 			}
 		}
