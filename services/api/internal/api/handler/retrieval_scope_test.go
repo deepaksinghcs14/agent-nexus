@@ -134,3 +134,79 @@ func TestRetrieveFusesSemanticAndKeywordResults(t *testing.T) {
 		t.Fatalf("chunk matching both signals ranked at position %d, want 0 (fused first): %s", ids[bothID], fmt.Sprintf("%+v", got))
 	}
 }
+
+// keywordSearch's match clause used to be a single cross-table tsvector
+// expression (to_tsvector(cc.content || ' ' || cd.title)) — no functional
+// index can cover an expression spanning two tables, so every keyword query
+// seq-scanned connector_chunks (migration 078 adds indexes; tsvectorMatch's
+// UNION of two single-table predicates is what actually makes them
+// reachable — a same-query OR spanning the join, verified via EXPLAIN,
+// never touches either index regardless of table size). This proves the
+// UNION still matches on either side.
+func TestKeywordSearchMatchesContentOrTitle(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	tn := newTenant(t, pool)
+
+	connID := uuid.NewString()
+	mustExec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("fixture insert failed: %v\n%s", err, sql)
+		}
+	}
+	mustExec(`INSERT INTO connectors(id,workspace_id,name,provider,status,created_by)
+	          VALUES($1::uuid,$2::uuid,'Split Predicate Docs','filesystem','connected',$3::uuid)`, connID, tn.wsID, tn.userID)
+
+	contentOnlyID, titleOnlyID := uuid.NewString(), uuid.NewString()
+	mustExec(`INSERT INTO connector_documents(id,connector_id,workspace_id,source,source_document_id,title)
+	          VALUES($1::uuid,$2::uuid,$3::uuid,'filesystem',$1,'Unrelated Title')`, contentOnlyID, connID, tn.wsID)
+	mustExec(`INSERT INTO connector_chunks(document_id,chunk_index,content) VALUES($1::uuid,0,'the secret keyword is quokka')`, contentOnlyID)
+
+	mustExec(`INSERT INTO connector_documents(id,connector_id,workspace_id,source,source_document_id,title)
+	          VALUES($1::uuid,$2::uuid,$3::uuid,'filesystem',$1,'quokka field guide')`, titleOnlyID, connID, tn.wsID)
+	mustExec(`INSERT INTO connector_chunks(document_id,chunk_index,content) VALUES($1::uuid,0,'nothing relevant in here')`, titleOnlyID)
+
+	got, err := contextretrieval.NewRetriever(pool).Retrieve(ctx, tn.wsID, []string{connID}, nil, 8, 0, "quokka")
+	if err != nil {
+		t.Fatalf("retrieve: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d chunks, want 2 (content-only match + title-only match): %+v", len(got), got)
+	}
+}
+
+// A prior rewrite of this file (the RRF fusion commit) bound the match
+// clause's to_tsquery(...) to the RAW query string instead of the
+// OR-combined form orTSQuery produces — to_tsquery rejects free text with
+// more than one term ("multi word query" isn't valid tsquery syntax), so
+// every multi-word keyword search returned a Postgres error. Single-word
+// queries (used by every other test in this file) don't exercise the
+// to_tsquery parser's operator requirement, which is how this shipped
+// unnoticed.
+func TestKeywordSearchHandlesMultiWordQuery(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	tn := newTenant(t, pool)
+
+	connID, docID := uuid.NewString(), uuid.NewString()
+	mustExec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("fixture insert failed: %v\n%s", err, sql)
+		}
+	}
+	mustExec(`INSERT INTO connectors(id,workspace_id,name,provider,status,created_by)
+	          VALUES($1::uuid,$2::uuid,'Multi Word Docs','filesystem','connected',$3::uuid)`, connID, tn.wsID, tn.userID)
+	mustExec(`INSERT INTO connector_documents(id,connector_id,workspace_id,source,source_document_id,title)
+	          VALUES($1::uuid,$2::uuid,$3::uuid,'filesystem',$1,'Rate limiting guide')`, docID, connID, tn.wsID)
+	mustExec(`INSERT INTO connector_chunks(document_id,chunk_index,content) VALUES($1::uuid,0,'configure webhook rate limiting here')`, docID)
+
+	got, err := contextretrieval.NewRetriever(pool).Retrieve(ctx, tn.wsID, []string{connID}, nil, 8, 0, "webhook rate limiting")
+	if err != nil {
+		t.Fatalf("retrieve with a multi-word query errored: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d chunks, want 1", len(got))
+	}
+}

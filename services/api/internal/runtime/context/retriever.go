@@ -103,8 +103,7 @@ func (r *Retriever) semanticSearch(ctx context.Context, workspaceID string, conn
 // ILIKE-only hit has no real ts_rank_cd (NULL, coerced to score 0) and used
 // to still enter ranking and get returned as if it were a relevance match.
 func (r *Retriever) keywordSearch(ctx context.Context, workspaceID string, connectorIDs []string, limit int, query string) ([]Chunk, error) {
-	chunks, err := r.keywordQuery(ctx, workspaceID, connectorIDs, limit,
-		`to_tsvector('english', cc.content || ' ' || cd.title) @@ to_tsquery('english', $4)`, query)
+	chunks, err := r.tsvectorMatch(ctx, workspaceID, connectorIDs, limit, query)
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +111,56 @@ func (r *Retriever) keywordSearch(ctx context.Context, workspaceID string, conne
 		return chunks, nil
 	}
 	return r.keywordQuery(ctx, workspaceID, connectorIDs, limit, `cd.title ILIKE '%' || $4 || '%'`, query)
+}
+
+// tsvectorMatch is a UNION of two single-table-indexed queries (content,
+// title) rather than one query with an OR spanning both — Postgres cannot
+// push an OR that mixes columns from two joined tables down to either
+// side's index; it only does that when each disjunct is isolated in its
+// own single-table WHERE clause, which UNION provides. Verified via EXPLAIN
+// with enable_seqscan off: the OR form never touches
+// connector_chunks_content_fts_idx / connector_documents_title_fts_idx
+// (migration 078); this form uses both as Bitmap Index Scans. Both branches
+// select the same overall ranking expression so a chunk matching both sides
+// collapses to one row via plain UNION (not UNION ALL) instead of appearing
+// twice.
+func (r *Retriever) tsvectorMatch(ctx context.Context, workspaceID string, connectorIDs []string, limit int, query string) ([]Chunk, error) {
+	tsq := orTSQuery(query)
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, content, title, url, source, score FROM (
+			SELECT cc.id::text AS id, cc.content AS content, cd.title AS title, cd.url AS url, cd.source AS source,
+			       ts_rank_cd(to_tsvector('english', cc.content || ' ' || cd.title), to_tsquery('english', $4)) AS score
+			FROM connector_chunks cc
+			JOIN connector_documents cd ON cd.id = cc.document_id
+			JOIN connectors c ON c.id = cd.connector_id
+			WHERE cd.workspace_id = $1::uuid AND c.status IN ('connected', 'syncing') AND c.id = ANY($2::uuid[])
+			  AND to_tsvector('english', cc.content) @@ to_tsquery('english', $4)
+			UNION
+			SELECT cc.id::text AS id, cc.content AS content, cd.title AS title, cd.url AS url, cd.source AS source,
+			       ts_rank_cd(to_tsvector('english', cc.content || ' ' || cd.title), to_tsquery('english', $4)) AS score
+			FROM connector_chunks cc
+			JOIN connector_documents cd ON cd.id = cc.document_id
+			JOIN connectors c ON c.id = cd.connector_id
+			WHERE cd.workspace_id = $1::uuid AND c.status IN ('connected', 'syncing') AND c.id = ANY($2::uuid[])
+			  AND to_tsvector('english', cd.title) @@ to_tsquery('english', $4)
+		) matched
+		ORDER BY score DESC, title
+		LIMIT $3`,
+		workspaceID, uuidArray(connectorIDs), limit, tsq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var chunks []Chunk
+	for rows.Next() {
+		var c Chunk
+		if err := rows.Scan(&c.ID, &c.Content, &c.Title, &c.URL, &c.Source, &c.Score); err != nil {
+			return nil, err
+		}
+		chunks = append(chunks, c)
+	}
+	return chunks, rows.Err()
 }
 
 func (r *Retriever) keywordQuery(ctx context.Context, workspaceID string, connectorIDs []string, limit int, matchClause, query string) ([]Chunk, error) {
