@@ -58,20 +58,32 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 			return nil
 		}
 
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			log.Warn("skipping unreadable file", "path", path, "error", readErr)
-			return nil
+		// Skip unchanged files entirely — no point reading bytes just to hash
+		// them into the same content_hash the pipeline already has on file.
+		// ponytail: undercounts "found" for skipped files (emit never runs,
+		// so rep.Inc never fires) — the found count on an incremental sync
+		// reflects what was examined for change, not the whole corpus. Fine
+		// for progress display; revisit if a caller ever needs a true total.
+		unchanged := !opts.LastSyncedAt.IsZero()
+		if unchanged {
+			info, statErr := d.Info()
+			unchanged = statErr == nil && info.ModTime().Before(opts.LastSyncedAt)
 		}
-
-		if err := emit(connector.Document{
-			Source:           "filesystem",
-			SourceDocumentID: rel,
-			Title:            d.Name(),
-			URL:              path,
-			Content:          string(data),
-		}); err != nil {
-			return err
+		if !unchanged {
+			data, readErr := os.ReadFile(path)
+			if readErr != nil {
+				log.Warn("skipping unreadable file", "path", path, "error", readErr)
+				return nil
+			}
+			if err := emit(connector.Document{
+				Source:           "filesystem",
+				SourceDocumentID: rel,
+				Title:            d.Name(),
+				URL:              path,
+				Content:          string(data),
+			}); err != nil {
+				return err
+			}
 		}
 
 		processed++

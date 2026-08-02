@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 )
@@ -34,6 +35,14 @@ type FetchOpts struct {
 	// v must be JSON-serialisable. Call after each logical batch (e.g. a space page).
 	// May be nil for providers that don't support checkpointing.
 	SaveCheckpoint func(v any)
+
+	// LastSyncedAt is when this connector last completed successfully — zero
+	// value on the first sync or if unknown. Unlike Checkpoint (crash-resume
+	// state, cleared on every successful completion) this persists across
+	// successful syncs, so a provider can compare it against a source's own
+	// modified-time signal to skip unchanged content instead of re-fetching
+	// everything on every sync.
+	LastSyncedAt time.Time
 }
 
 // StreamProvider is implemented by providers that emit documents one at a time and support

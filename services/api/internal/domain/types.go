@@ -496,17 +496,18 @@ type Memory struct {
 // ============================================================
 
 type Connector struct {
-	ID          string          `json:"id"`
-	WorkspaceID string          `json:"workspace_id"`
-	Name        string          `json:"name"`
-	Provider    string          `json:"provider"`
-	Type        string          `json:"type"`
-	AuthType    string          `json:"auth_type"`
-	Status      string          `json:"status"`
-	Config      json.RawMessage `json:"config,omitempty"`
-	CreatedBy   string          `json:"created_by"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	ID           string          `json:"id"`
+	WorkspaceID  string          `json:"workspace_id"`
+	Name         string          `json:"name"`
+	Provider     string          `json:"provider"`
+	Type         string          `json:"type"`
+	AuthType     string          `json:"auth_type"`
+	Status       string          `json:"status"`
+	Config       json.RawMessage `json:"config,omitempty"`
+	CreatedBy    string          `json:"created_by"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+	LastSyncedAt *time.Time      `json:"last_synced_at,omitempty"`
 }
 
 type ConnectorSyncJob struct {

@@ -154,10 +154,24 @@ func (c *Connector) FetchStream(ctx context.Context, cfg map[string]any, opts co
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			u := fmt.Sprintf(
-				"%s/wiki/rest/api/content?type=page&spaceKey=%s&expand=body.storage,history.createdBy&limit=50&start=%d",
-				baseURL, url.QueryEscape(spaceKey), start,
-			)
+			var u string
+			if !opts.LastSyncedAt.IsZero() {
+				// CQL search instead of the plain listing endpoint: server-side
+				// filters to pages actually modified since the last successful
+				// sync, so an unchanged space costs one near-empty page instead
+				// of paginating through everything just to re-hash it.
+				cql := fmt.Sprintf(`type=page and space="%s" and lastModified>"%s"`,
+					spaceKey, opts.LastSyncedAt.UTC().Format("2006-01-02 15:04"))
+				u = fmt.Sprintf(
+					"%s/wiki/rest/api/content/search?cql=%s&expand=body.storage,history.createdBy&limit=50&start=%d",
+					baseURL, url.QueryEscape(cql), start,
+				)
+			} else {
+				u = fmt.Sprintf(
+					"%s/wiki/rest/api/content?type=page&spaceKey=%s&expand=body.storage,history.createdBy&limit=50&start=%d",
+					baseURL, url.QueryEscape(spaceKey), start,
+				)
+			}
 			res, err := do(u)
 			if err != nil {
 				log.Warn("fetch pages failed", "space", spaceKey, "offset", start, "error", err)

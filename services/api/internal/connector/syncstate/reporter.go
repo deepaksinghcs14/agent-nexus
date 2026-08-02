@@ -98,7 +98,7 @@ func (r *Reporter) Complete() {
 		`UPDATE connector_sync_jobs SET status='completed', completed_at=NOW(), documents_found=$2, documents_indexed=$3, checkpoint='{}' WHERE id=$1::uuid`,
 		r.jobID, found, indexed,
 	)
-	r.pool.Exec(ctx, `UPDATE connectors SET status='connected', updated_at=NOW() WHERE id=$1::uuid`, r.connectorID) //nolint:errcheck
+	r.pool.Exec(ctx, `UPDATE connectors SET status='connected', last_synced_at=NOW(), updated_at=NOW() WHERE id=$1::uuid`, r.connectorID) //nolint:errcheck
 }
 
 // Fail marks the job as failed. The checkpoint is preserved so the user can re-trigger
