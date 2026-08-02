@@ -1671,8 +1671,9 @@ func (h *NexusAIHandler) toolCreateGatewayChannel(ctx context.Context, ws, uid s
 	if args.Name == "" || args.AgentID == "" || args.ChannelType == "" {
 		return nil, fmt.Errorf("create_gateway_channel requires name, agent_id, channel_type")
 	}
-	if args.ChannelType != "http" && args.ChannelType != "whatsapp" {
-		return nil, fmt.Errorf("channel_type must be 'http' or 'whatsapp'")
+	provider, ok := getChannelProvider(args.ChannelType)
+	if !ok {
+		return nil, fmt.Errorf("channel_type must be one of: %s", strings.Join(registeredChannelTypes(), ", "))
 	}
 
 	// Verify agent exists in this workspace
@@ -1683,18 +1684,7 @@ func (h *NexusAIHandler) toolCreateGatewayChannel(ctx context.Context, ws, uid s
 		return nil, fmt.Errorf("agent not found: %s", args.AgentID)
 	}
 
-	cfg := domain.GatewayChannelConfig{
-		AccountID:    "default",
-		DMPolicy:     "pairing",
-		SessionScope: "per-channel-peer",
-		GroupPolicy:  "disabled",
-		HistoryLimit: 50,
-	}
-	if args.ChannelType == "whatsapp" {
-		cfg.AdapterURL = h.cfg.WhatsAppAdapterURL
-		cfg.AssistantEnabled = true
-		cfg.ChatApprovalsEnabled = true
-	}
+	cfg := provider.NormalizeConfig(nil)
 	cfgBytes, _ := json.Marshal(cfg)
 
 	c := &domain.GatewayChannel{
@@ -1711,6 +1701,9 @@ func (h *NexusAIHandler) toolCreateGatewayChannel(ctx context.Context, ws, uid s
 	repo := repository.NewGatewayRepository(h.pool)
 	if err := repo.CreateChannel(ctx, c); err != nil {
 		return nil, fmt.Errorf("failed to create gateway channel: %w", err)
+	}
+	if err := provider.AttachCapabilities(ctx, c.AgentID); err != nil {
+		slog.Warn("failed to attach channel capabilities", "channel_id", c.ID, "channel_type", c.ChannelType, "error", err)
 	}
 
 	note := ""

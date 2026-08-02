@@ -33,6 +33,8 @@ type GatewayHandler struct {
 }
 
 func NewGatewayHandler(pool *pgxpool.Pool, cfg *config.Config, invoke *InvokeHandler) *GatewayHandler {
+	registerChannelProvider(httpChannelProvider{})
+	registerChannelProvider(whatsappChannelProvider{pool: pool, defaultAdapterURL: cfg.WhatsAppAdapterURL})
 	return &GatewayHandler{pool: pool, cfg: cfg, repo: repository.NewGatewayRepository(pool), invoke: invoke}
 }
 
@@ -64,11 +66,12 @@ func (h *GatewayHandler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.BadRequest("name, agent_id, and channel_type are required"))
 		return
 	}
-	if body.ChannelType != "whatsapp" && body.ChannelType != "http" {
-		errs.Write(w, errs.BadRequest("channel_type must be whatsapp or http"))
+	provider, ok := getChannelProvider(body.ChannelType)
+	if !ok {
+		errs.Write(w, errs.BadRequest("channel_type must be one of: "+strings.Join(registeredChannelTypes(), ", ")))
 		return
 	}
-	cfg := h.normalizeGatewayConfig(body.Config, body.ChannelType)
+	cfg := provider.NormalizeConfig(body.Config)
 	cfgBytes, _ := json.Marshal(cfg)
 	active := true
 	if body.IsActive != nil {
@@ -92,8 +95,8 @@ func (h *GatewayHandler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 	_ = h.repo.UpsertAccount(r.Context(), &domain.GatewayChannelAccount{
 		WorkspaceID: ws, ChannelID: c.ID, AccountID: cfg.AccountID, Status: "disconnected",
 	})
-	if c.ChannelType == "whatsapp" {
-		_ = AttachWhatsAppCapabilities(r.Context(), h.pool, c.AgentID)
+	if err := provider.AttachCapabilities(r.Context(), c.AgentID); err != nil {
+		slog.Warn("failed to attach channel capabilities", "channel_id", c.ID, "channel_type", c.ChannelType, "error", err)
 	}
 	writeAudit(r, h.pool, "gateway_channel.created", "gateway_channel", c.ID)
 	c.Config = redactGatewayConfig(c.Config)
@@ -139,8 +142,9 @@ func (h *GatewayHandler) UpdateChannel(w http.ResponseWriter, r *http.Request) {
 	if body.AgentID != nil {
 		c.AgentID = *body.AgentID
 	}
-	if len(body.Config) > 0 {
-		cfg := h.normalizeGatewayConfig(body.Config, c.ChannelType)
+	provider, ok := getChannelProvider(c.ChannelType)
+	if len(body.Config) > 0 && ok {
+		cfg := provider.NormalizeConfig(body.Config)
 		c.Config, _ = json.Marshal(cfg)
 	}
 	if body.IsActive != nil {
@@ -152,7 +156,11 @@ func (h *GatewayHandler) UpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	if c.ChannelType == "whatsapp" {
 		h.syncAdapterConfig(r.Context(), c)
-		_ = AttachWhatsAppCapabilities(r.Context(), h.pool, c.AgentID)
+	}
+	if ok {
+		if err := provider.AttachCapabilities(r.Context(), c.AgentID); err != nil {
+			slog.Warn("failed to attach channel capabilities", "channel_id", c.ID, "channel_type", c.ChannelType, "error", err)
+		}
 	}
 	writeAudit(r, h.pool, "gateway_channel.updated", "gateway_channel", id)
 	c.Config = redactGatewayConfig(c.Config)
@@ -1415,34 +1423,14 @@ func (h *GatewayHandler) parseGatewayConfig(raw json.RawMessage, channelType str
 	return h.normalizeGatewayConfig(mustJSON(cfg), channelType)
 }
 
+// normalizeGatewayConfig delegates to the registered ChannelProvider. Kept as
+// a method (rather than inlining getChannelProvider at each call site) so
+// the ~10 existing call sites don't need to change.
 func (h *GatewayHandler) normalizeGatewayConfig(raw json.RawMessage, channelType string) domain.GatewayChannelConfig {
-	cfg := domain.GatewayChannelConfig{}
-	_ = json.Unmarshal(raw, &cfg)
-	if cfg.AccountID == "" {
-		cfg.AccountID = "default"
+	if provider, ok := getChannelProvider(channelType); ok {
+		return provider.NormalizeConfig(raw)
 	}
-	if cfg.AdapterURL == "" && channelType == "whatsapp" {
-		cfg.AdapterURL = h.cfg.WhatsAppAdapterURL
-	}
-	if cfg.DMPolicy == "" {
-		cfg.DMPolicy = "pairing"
-	}
-	if cfg.SessionScope == "" {
-		cfg.SessionScope = "per-channel-peer"
-	}
-	if cfg.GroupPolicy == "" {
-		cfg.GroupPolicy = "disabled"
-	}
-	if channelType == "whatsapp" && !hasJSONKey(raw, "assistant_enabled") {
-		cfg.AssistantEnabled = true
-	}
-	if channelType == "whatsapp" && !hasJSONKey(raw, "chat_approvals_enabled") {
-		cfg.ChatApprovalsEnabled = true
-	}
-	if cfg.HistoryLimit == 0 {
-		cfg.HistoryLimit = 50
-	}
-	return cfg
+	return normalizeCommonConfig(raw)
 }
 
 func redactGatewayConfig(raw json.RawMessage) json.RawMessage {
@@ -2098,6 +2086,14 @@ func (h *GatewayHandler) fireScheduledMessages(ctx context.Context) {
 			continue
 		}
 		if !ch.IsActive {
+			continue
+		}
+		if ch.ChannelType != "whatsapp" {
+			// Scheduled messages/reminders only make sense on channels with an
+			// out-of-band send path — an http channel only replies within the
+			// original request/response, so there's no adapter to push through.
+			slog.Warn("scheduled message targets a non-whatsapp channel, skipping", "msg_id", msg.ID, "channel_id", ch.ID, "channel_type", ch.ChannelType)
+			_ = h.repo.UpdateScheduledMessageStatus(ctx, msg.ID, msg.WorkspaceID, "failed", "channel type "+ch.ChannelType+" does not support scheduled delivery")
 			continue
 		}
 		cfg := gatewayservice.ParseConfig(ch.Config, h.cfg.WhatsAppAdapterURL)
