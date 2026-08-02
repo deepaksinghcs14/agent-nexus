@@ -335,6 +335,60 @@ const codeQualityPrompt = `Code quality rules for this session:
 - For non-trivial new logic, leave one minimal runnable check (a small test or assert) in the repo's existing test style. No new test frameworks.
 - If the task is ambiguous, implement the smallest reasonable interpretation and note the ambiguity in your final summary instead of building every variant.`
 
+// pushTimeout bounds the post-session salvage push. Deliberately not an env
+// knob: it only ever has to cover one push of a shallow branch, on its own
+// fresh context — the session ctx is already expired on exactly the path
+// that matters (a SESSION_TIMEOUT_MIN kill via exec.CommandContext), so
+// reusing it would kill git the instant it started.
+const pushTimeout = 5 * time.Minute
+
+// salvagePush commits whatever the session left uncommitted and pushes the
+// branch, reporting whether it actually reached the remote. Runs regardless
+// of how the session ended — a killed or crashed session's partial work is
+// the whole point of the fallback, and the caller's deferred os.RemoveAll is
+// about to delete the only copy.
+func salvagePush(dir, branch, baseSHA, githubToken string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), pushTimeout)
+	defer cancel()
+
+	// The prompt told the session to commit everything it changed, so a dirty
+	// tree here means it was killed mid-edit or disobeyed — either way the
+	// diff is the deliverable and the alternative is losing it outright.
+	// ponytail: sweeps untracked scratch files too; .gitignore is the only
+	// filter, and the review session is what catches the rest.
+	if st, err := runCmd(ctx, dir, nil, "git", "status", "--porcelain"); err != nil {
+		slog.Warn("salvage: git status failed, skipping uncommitted-work sweep", "branch", branch, "error", err)
+	} else if strings.TrimSpace(st) != "" {
+		if out, err := runCmd(ctx, dir, nil, "git", "add", "-A"); err != nil {
+			slog.Warn("salvage: git add failed", "branch", branch, "error", err, "detail", truncate(out, 300))
+		} else if out, err := runCmd(ctx, dir, nil, "git", "commit", "-m", "wip: session ended before it could commit"); err != nil {
+			slog.Warn("salvage: wip commit failed", "branch", branch, "error", err, "detail", truncate(out, 300))
+		}
+	}
+
+	head, err := runCmd(ctx, dir, nil, "git", "rev-parse", "HEAD")
+	if err != nil {
+		slog.Error("salvage: cannot read HEAD, nothing pushed", "branch", branch, "error", err, "detail", truncate(head, 300))
+		return false
+	}
+	if strings.TrimSpace(head) == baseSHA {
+		return false // nothing was committed
+	}
+	// --force: the branch is derived from the ticket key, so the
+	// orchestrator's "crashed → retry once" relaunches into this same ref —
+	// without --force the retry's own (successful) push is rejected
+	// non-fast-forward and reports as lost.
+	// ponytail: safe while nexus/<ticket> is runner-owned; switch to
+	// --force-with-lease (needs a fetch of the remote ref first) if humans
+	// ever push to these branches directly.
+	if out, err := runCmd(ctx, dir, nil, "git", "push", "--force", "-u", "origin", branch); err != nil {
+		slog.Error("salvage: push failed, session work stays only in the clone about to be deleted",
+			"branch", branch, "error", err, "detail", redactToken(out, githubToken))
+		return false
+	}
+	return true
+}
+
 // runClaudeSession clones the repo, runs headless Claude Code on a fresh
 // branch, pushes it, and classifies the outcome.
 func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result {
@@ -369,6 +423,13 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 	if out, err := runCmd(ctx, dir, nil, "git", "checkout", "-B", branch); err != nil {
 		return crash("branch", err, out)
 	}
+	// Baseline for "did this session commit anything": an empty branch pushed
+	// to the remote would falsely signal to the orchestrator that work landed.
+	baseSHA, err := runCmd(ctx, dir, nil, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return crash("branch", err, baseSHA)
+	}
+	baseSHA = strings.TrimSpace(baseSHA)
 	for _, kv := range [][2]string{{"user.name", "Agent Nexus"}, {"user.email", "nexus@bureau.id"}} {
 		runCmd(ctx, dir, nil, "git", "config", kv[0], kv[1]) //nolint:errcheck
 	}
@@ -396,17 +457,23 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 		TotalCostUSD float64 `json:"total_cost_usd"`
 	}
 	parseErr := json.Unmarshal([]byte(lastJSONObject(claudeOut)), &cli)
-	if claudeErr != nil && parseErr != nil {
-		return crash("claude", claudeErr, truncate(claudeOut, 800))
-	}
 
-	// Push whatever was committed, even on budget-exceeded — partial progress
-	// on the branch is the whole point of the fallback.
-	pushed := false
-	if out, err := runCmd(ctx, dir, nil, "git", "push", "-u", "origin", branch); err != nil {
-		slog.Warn("push failed", "ticket", req.TicketKey, "error", err, "detail", redactToken(out, githubToken))
-	} else {
-		pushed = true
+	// Push whatever was committed regardless of how the session ended — even
+	// a killed or crashed session's partial work is the whole point of the
+	// fallback, and the deferred RemoveAll above is about to delete the only
+	// copy. Must run before the crash return below, not after: a killed
+	// session (SESSION_TIMEOUT_MIN) emits no parseable JSON, and that early
+	// return used to skip the push entirely.
+	pushed := salvagePush(dir, branch, baseSHA, githubToken)
+
+	if claudeErr != nil && parseErr != nil {
+		res := crash("claude", claudeErr, truncate(claudeOut, 800))
+		if pushed {
+			res.Branch = branch
+			res.Summary = "[session did not finish — its partial, INCOMPLETE work was force-pushed to " + branch +
+				" for inspection; do not open a PR from it. A retry for this ticket restarts from the base branch and overwrites it] " + res.Summary
+		}
+		return res
 	}
 
 	res := result{Branch: branch, Summary: truncate(cli.Result, 4000), CostUSD: cli.TotalCostUSD}
@@ -420,7 +487,8 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 		res.Status = "success"
 	}
 	if !pushed {
-		res.Summary = "[branch push failed — changes not on remote] " + res.Summary
+		res.Branch = ""
+		res.Summary = "[no branch on the remote — the session committed nothing, or the push failed] " + res.Summary
 	}
 	return res
 }
