@@ -104,9 +104,17 @@ func (r *ProviderRepository) GetActiveByProvider(ctx context.Context, workspaceI
 
 // Update is scoped by p.WorkspaceID, which is only trustworthy because it comes
 // from the workspace-scoped Get above — defence in depth, not the primary gate.
+//
+// An empty encryptedKey means "leave the key alone", not "clear it": callers
+// pass "" whenever the request didn't resupply the secret, so writing it
+// straight through would let a rename or an is_active toggle destroy the
+// credential. Clearing is only ever done by UpsertOAuthCredential, which sets
+// the column explicitly.
 func (r *ProviderRepository) Update(ctx context.Context, p *domain.ProviderCredential, encryptedKey string) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE provider_credentials SET display_name=$2, encrypted_key=$3, base_url=$4, is_active=$5, updated_at=NOW()
+		`UPDATE provider_credentials
+		 SET display_name=$2, encrypted_key=COALESCE(NULLIF($3,''), encrypted_key),
+		     base_url=$4, is_active=$5, updated_at=NOW()
 		 WHERE id=$1::uuid AND workspace_id=$6::uuid`,
 		p.ID, p.DisplayName, encryptedKey, p.BaseURL, p.IsActive, p.WorkspaceID)
 	return err
