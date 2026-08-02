@@ -40,6 +40,21 @@ type Message struct {
 	ToolName   string     `json:"name,omitempty"`         // set when Role == "tool"
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`   // set when Role == "assistant" and model called tools
 	IsError    bool       `json:"is_error,omitempty"`     // set when Role == "tool" and the tool call failed
+	// Images and Audio carry inline media for this message only. Callers set
+	// these on the current turn's freshly-built user message (e.g. a WhatsApp
+	// inbound image/voice note) — conversation history reloaded from the DB
+	// on a later turn is text-only, so these never round-trip back in.
+	// Audio is consumed only by clients whose API accepts the format the
+	// source actually sends (see gemini/client.go); others fall back to
+	// Content's placeholder/caption text.
+	Images []MediaBlock `json:"images,omitempty"`
+	Audio  []MediaBlock `json:"audio,omitempty"`
+}
+
+// MediaBlock is inline binary media attached to a single message.
+type MediaBlock struct {
+	MIMEType string `json:"mime_type"`
+	Data     []byte `json:"data"`
 }
 
 // ToolDefinition describes a tool the model may call.

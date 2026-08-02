@@ -165,7 +165,21 @@ func buildRequest(req provider.CompletionRequest) ([]*genai.Content, *genai.Gene
 			i++
 
 		case "user":
-			contents = append(contents, genai.NewContentFromText(msg.Content, genai.RoleUser))
+			if len(msg.Images) == 0 && len(msg.Audio) == 0 {
+				contents = append(contents, genai.NewContentFromText(msg.Content, genai.RoleUser))
+			} else {
+				parts := []*genai.Part{}
+				if msg.Content != "" {
+					parts = append(parts, &genai.Part{Text: msg.Content})
+				}
+				for _, img := range msg.Images {
+					parts = append(parts, genai.NewPartFromBytes(img.Data, img.MIMEType))
+				}
+				for _, a := range msg.Audio {
+					parts = append(parts, genai.NewPartFromBytes(a.Data, a.MIMEType))
+				}
+				contents = append(contents, genai.NewContentFromParts(parts, genai.RoleUser))
+			}
 			i++
 
 		case "assistant":

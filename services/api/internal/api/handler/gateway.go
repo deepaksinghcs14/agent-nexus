@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/config"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/domain"
 	gatewayservice "github.com/deepaksingh/agent-nexus/services/api/internal/gateway"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/errs"
 	"github.com/go-chi/chi/v5"
@@ -721,11 +723,12 @@ func (h *GatewayHandler) WhatsAppReceive(w http.ResponseWriter, r *http.Request)
 			PhoneNumber string `json:"phone_number"`
 			DisplayName string `json:"display_name"`
 		} `json:"sender"`
-		Body       string `json:"body"`
-		FromMe     bool   `json:"from_me"`
-		ReceivedAt string `json:"received_at"`
+		Body       string             `json:"body"`
+		FromMe     bool               `json:"from_me"`
+		ReceivedAt string             `json:"received_at"`
+		Media      []inboundMediaItem `json:"media"`
 	}
-	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&ev) != nil || strings.TrimSpace(ev.Body) == "" {
+	if json.NewDecoder(io.LimitReader(r.Body, int64(h.cfg.MaxGatewayMediaBytes))).Decode(&ev) != nil || strings.TrimSpace(ev.Body) == "" {
 		errs.Write(w, errs.BadRequest("invalid whatsapp adapter event"))
 		return
 	}
@@ -748,6 +751,7 @@ func (h *GatewayHandler) WhatsAppReceive(w http.ResponseWriter, r *http.Request)
 		AccountID: ev.AccountID, ProviderMessageID: ev.MessageID, PeerKind: ev.Peer.Kind,
 		PeerID: ev.Peer.ID, SenderID: ev.Sender.ID, SenderPhone: ev.Sender.PhoneNumber,
 		SenderName: ev.Sender.DisplayName, FromMe: ev.FromMe, Body: ev.Body, Source: "whatsapp",
+		Media: ev.Media,
 	})
 	if response != "" {
 		go h.sendAdapterMessage(context.Background(), c, cfg, ev.AccountID, ev.Peer.Kind, ev.Peer.ID, response, "", "")
@@ -802,6 +806,38 @@ type inboundMessage struct {
 	Body              string
 	Source            string
 	Contact           *domain.GatewayContact
+	Media             []inboundMediaItem
+}
+
+// inboundMediaItem is one media attachment on the current turn's message,
+// as forwarded by the WhatsApp adapter. Type is "image" or "audio" (voice
+// notes only — see forwardMessage in whatsapp-adapter/server.js).
+type inboundMediaItem struct {
+	Type       string `json:"type"`
+	MimeType   string `json:"mimetype"`
+	DataBase64 string `json:"data_base64"`
+}
+
+// decodeInboundMedia splits raw adapter media items by type and decodes
+// their base64 payload into the provider-facing MediaBlock shape. Items
+// with an unrecognized type or undecodable payload are dropped rather than
+// failing the whole message — the placeholder/caption text in msg.Body
+// still carries the turn.
+func decodeInboundMedia(items []inboundMediaItem) (images, audio []provider.MediaBlock) {
+	for _, it := range items {
+		data, err := base64.StdEncoding.DecodeString(it.DataBase64)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		block := provider.MediaBlock{MIMEType: it.MimeType, Data: data}
+		switch it.Type {
+		case "image":
+			images = append(images, block)
+		case "audio":
+			audio = append(audio, block)
+		}
+	}
+	return images, audio
 }
 
 func (h *GatewayHandler) handleInbound(ctx context.Context, c domain.GatewayChannel, cfg domain.GatewayChannelConfig, msg inboundMessage) (bool, string) {
@@ -1199,7 +1235,8 @@ func (h *GatewayHandler) dispatchGatewayRun(ctx context.Context, c domain.Gatewa
 		}
 	}
 
-	go h.invoke.executeRun(context.Background(), a, c.WorkspaceID, c.CreatedBy, runID, convID, msg.Body, nil, nil, invokeOpts{SendMessage: sendMsg})
+	images, audio := decodeInboundMedia(msg.Media)
+	go h.invoke.executeRun(context.Background(), a, c.WorkspaceID, c.CreatedBy, runID, convID, msg.Body, nil, nil, invokeOpts{SendMessage: sendMsg, MediaImages: images, MediaAudio: audio})
 	return runID, sessionID, convID, nil
 }
 

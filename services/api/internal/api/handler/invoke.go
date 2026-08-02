@@ -254,6 +254,11 @@ type invokeOpts struct {
 	// disableUserInput removes the WaitForUserInput capability (runs that can
 	// never pause for a human, e.g. workflow supervisor nodes).
 	disableUserInput bool
+	// MediaImages/MediaAudio attach inline media to this turn's triggering
+	// user message only (e.g. a WhatsApp inbound image/voice note) — see the
+	// splice onto the last history message in executeRun.
+	MediaImages []provider.MediaBlock
+	MediaAudio  []provider.MediaBlock
 }
 
 // progressLabel returns a short human-readable status for a tool that is about to execute.
@@ -612,6 +617,14 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		// Reverse: query returned newest-first, LLM needs oldest-first.
 		for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
 			history[i], history[j] = history[j], history[i]
+		}
+		// Attach this turn's inline media to the triggering message only — the
+		// row just loaded back from `messages` is the caller's fresh INSERT of
+		// msg.Body (placeholder/caption text), never persisted with media, so a
+		// later turn reloading the same row from the DB gets text-only again.
+		if last := len(history) - 1; last >= 0 && history[last].Role == "user" && (len(opts.MediaImages) > 0 || len(opts.MediaAudio) > 0) {
+			history[last].Images = opts.MediaImages
+			history[last].Audio = opts.MediaAudio
 		}
 	}
 

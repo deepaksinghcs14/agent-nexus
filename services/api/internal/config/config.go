@@ -35,6 +35,7 @@ type Config struct {
 	RateLimitAuthPerMin     int      // per-client requests/min on login, register, refresh and OAuth callbacks (0 = disabled)
 	RateLimitIngressPerMin  int      // per-client requests/min on public webhook and gateway ingress (0 = disabled)
 	TrustedProxyCount       int      // reverse proxies in front of this API; 0 = none, ignore X-Forwarded-For entirely
+	MaxGatewayMediaBytes    int      // request body cap for WhatsAppReceive; base64 media inflates ~33% over the raw file, so this must exceed the adapter's own per-item download cap
 }
 
 func Load() (*Config, error) {
@@ -68,6 +69,9 @@ func Load() (*Config, error) {
 		// Set to 0 when the API is exposed directly — otherwise a caller can
 		// forge X-Forwarded-For to dodge rate limits and fake audit-log IPs.
 		TrustedProxyCount: getEnvInt("TRUSTED_PROXY_COUNT", 1),
+		// 12 MiB: comfortably covers an 8 MiB raw file (the adapter's own cap)
+		// after base64 inflation plus the JSON envelope around it.
+		MaxGatewayMediaBytes: getEnvInt("MAX_GATEWAY_MEDIA_BYTES", 12*1024*1024),
 	}
 
 	origins := getEnv("CORS_ORIGINS", "http://localhost:3000")
