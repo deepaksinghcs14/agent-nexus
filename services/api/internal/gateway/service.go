@@ -124,10 +124,11 @@ sendDone:
 
 func (s *Service) LogEvent(ctx context.Context, c domain.GatewayChannel, sessionID, runID, typ, providerMessageID string, payload any) error {
 	b, _ := json.Marshal(payload)
-	return s.repo.CreateEvent(ctx, &domain.GatewayEvent{
+	_, err := s.repo.CreateEvent(ctx, &domain.GatewayEvent{
 		WorkspaceID: c.WorkspaceID, ChannelID: c.ID, SessionID: sessionID, RunID: runID,
 		EventType: typ, ProviderMessageID: providerMessageID, Payload: b,
 	})
+	return err
 }
 
 func PhoneToJID(phone string) string {

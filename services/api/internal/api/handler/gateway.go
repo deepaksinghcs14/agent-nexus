@@ -841,16 +841,22 @@ func decodeInboundMedia(items []inboundMediaItem) (images, audio []provider.Medi
 }
 
 func (h *GatewayHandler) handleInbound(ctx context.Context, c domain.GatewayChannel, cfg domain.GatewayChannelConfig, msg inboundMessage) (bool, string) {
-	seen, _ := h.repo.HasEventForProviderMessage(ctx, c.ID, msg.ProviderMessageID)
-	if seen {
-		return false, ""
-	}
 	contact, decision := h.resolveContact(ctx, c, cfg, msg)
 	msg.Contact = contact
-	_ = h.logEvent(ctx, c, "", "", "message_received", msg.ProviderMessageID, map[string]any{
+	// Atomic dedup claim: the insert's ON CONFLICT DO NOTHING is the lock.
+	// A separate check-then-insert (the previous HasEventForProviderMessage
+	// pre-check) raced concurrent webhook redeliveries of the same message
+	// and could dispatch a run twice.
+	claimed, err := h.logEvent(ctx, c, "", "", "message_received", msg.ProviderMessageID, map[string]any{
 		"sender_id": msg.SenderID, "sender_phone": msg.SenderPhone, "peer_id": msg.PeerID,
 		"body": msg.Body, "contact_alias": contactAlias(contact), "contact_role": contactRole(contact), "access_decision": decision,
 	})
+	if err != nil || !claimed {
+		if err != nil {
+			slog.Warn("gateway inbound claim failed", "channel_id", c.ID, "provider_message_id", msg.ProviderMessageID, "error", err)
+		}
+		return false, ""
+	}
 	// Self-chat echo guard: replies this channel just sent come back as
 	// from_me inbound events. The adapter filters them by message id, but
 	// that filter races the send ack and is lost on adapter restart — an
@@ -861,7 +867,10 @@ func (h *GatewayHandler) handleInbound(ctx context.Context, c domain.GatewayChan
 		if recent, err := h.repo.HasRecentOutboundBody(ctx, c.ID, msg.PeerID, msg.Body, 2*time.Minute); err != nil {
 			slog.Warn("gateway echo check failed", "channel_id", c.ID, "peer_id", msg.PeerID, "error", err)
 		} else if recent {
-			_ = h.logEvent(ctx, c, "", "", "self_echo_dropped", msg.ProviderMessageID, map[string]any{"peer_id": msg.PeerID})
+			// "" not msg.ProviderMessageID: that id was already claimed by
+			// the message_received insert above, so reusing it here would
+			// always lose the conflict and never actually persist.
+			_, _ = h.logEvent(ctx, c, "", "", "self_echo_dropped", "", map[string]any{"peer_id": msg.PeerID})
 			return false, ""
 		}
 	}
@@ -875,7 +884,7 @@ func (h *GatewayHandler) handleInbound(ctx context.Context, c domain.GatewayChan
 		return false, ""
 	}
 	if !cfg.AssistantEnabled {
-		_ = h.logEvent(ctx, c, "", "", "assistant_disabled", "", map[string]any{"sender_id": msg.SenderID, "contact_alias": contactAlias(contact)})
+		_, _ = h.logEvent(ctx, c, "", "", "assistant_disabled", "", map[string]any{"sender_id": msg.SenderID, "contact_alias": contactAlias(contact)})
 		return false, ""
 	}
 	if decision == "unmatched" && cfg.BotModeEnabled {
@@ -884,17 +893,17 @@ func (h *GatewayHandler) handleInbound(ctx context.Context, c domain.GatewayChan
 		decision = "contact_allowed"
 	}
 	if decision == "blocked" {
-		_ = h.logEvent(ctx, c, "", "", "contact_blocked", "", map[string]any{"sender_id": msg.SenderID, "contact_alias": contactAlias(contact)})
+		_, _ = h.logEvent(ctx, c, "", "", "contact_blocked", "", map[string]any{"sender_id": msg.SenderID, "contact_alias": contactAlias(contact)})
 		return false, ""
 	}
 	if !h.senderAllowed(cfg, msg, decision) {
 		h.requestPairing(ctx, c, cfg, msg)
-		_ = h.logEvent(ctx, c, "", "", "sender_ignored", "", map[string]any{"sender_id": msg.SenderID, "sender_phone": msg.SenderPhone, "decision": decision})
+		_, _ = h.logEvent(ctx, c, "", "", "sender_ignored", "", map[string]any{"sender_id": msg.SenderID, "sender_phone": msg.SenderPhone, "decision": decision})
 		return false, ""
 	}
 	runID, sessionID, _, err := h.dispatchGatewayRun(ctx, c, cfg, msg)
 	if err != nil {
-		_ = h.logEvent(ctx, c, "", "", "run_failed", "", map[string]any{"error": err.Error()})
+		_, _ = h.logEvent(ctx, c, "", "", "run_failed", "", map[string]any{"error": err.Error()})
 		return false, ""
 	}
 	go h.deliverWhenComplete(context.Background(), c, cfg, msg, runID, sessionID)
@@ -950,7 +959,7 @@ func (h *GatewayHandler) handleOwnerCommand(ctx context.Context, c domain.Gatewa
 		if err != nil {
 			return "No pending escalation found for code " + strings.ToUpper(parts[1]) + ".", true
 		}
-		_ = h.logEvent(ctx, c, e.SessionID, e.RunID, "escalation_approved", "", map[string]any{"code": e.ApprovalCode, "by": msg.SenderID})
+		_, _ = h.logEvent(ctx, c, e.SessionID, e.RunID, "escalation_approved", "", map[string]any{"code": e.ApprovalCode, "by": msg.SenderID})
 		return "Approved escalation " + e.ApprovalCode + ".", true
 	case len(parts) >= 2 && (parts[0] == "reject" || parts[0] == "rejected" || parts[0] == "deny"):
 		if !cfg.ChatApprovalsEnabled {
@@ -960,19 +969,19 @@ func (h *GatewayHandler) handleOwnerCommand(ctx context.Context, c domain.Gatewa
 		if err != nil {
 			return "No pending escalation found for code " + strings.ToUpper(parts[1]) + ".", true
 		}
-		_ = h.logEvent(ctx, c, e.SessionID, e.RunID, "escalation_rejected", "", map[string]any{"code": e.ApprovalCode, "by": msg.SenderID})
+		_, _ = h.logEvent(ctx, c, e.SessionID, e.RunID, "escalation_rejected", "", map[string]any{"code": e.ApprovalCode, "by": msg.SenderID})
 		return "Rejected escalation " + e.ApprovalCode + ".", true
 	case body == "disable approvals" || body == "turn off approvals" || body == "disable chat approvals" || body == "turn off chat approvals":
 		cfg.ChatApprovalsEnabled = false
 		c.Config, _ = json.Marshal(cfg)
 		_ = h.repo.UpdateChannel(ctx, &c)
-		_ = h.logEvent(ctx, c, "", "", "chat_approvals_disabled", "", map[string]any{"by": msg.SenderID})
+		_, _ = h.logEvent(ctx, c, "", "", "chat_approvals_disabled", "", map[string]any{"by": msg.SenderID})
 		return "Chat approvals are now disabled for this WhatsApp channel.", true
 	case body == "enable approvals" || body == "turn on approvals" || body == "enable chat approvals" || body == "turn on chat approvals":
 		cfg.ChatApprovalsEnabled = true
 		c.Config, _ = json.Marshal(cfg)
 		_ = h.repo.UpdateChannel(ctx, &c)
-		_ = h.logEvent(ctx, c, "", "", "chat_approvals_enabled", "", map[string]any{"by": msg.SenderID})
+		_, _ = h.logEvent(ctx, c, "", "", "chat_approvals_enabled", "", map[string]any{"by": msg.SenderID})
 		return "Chat approvals are now enabled for this WhatsApp channel.", true
 	case body == "sync" || body == "sync contacts" || body == "!sync":
 		accountID := defaultString(msg.AccountID, cfg.AccountID)
@@ -1054,7 +1063,7 @@ func (h *GatewayHandler) handleOwnerContactToggle(ctx context.Context, c domain.
 		if err := h.repo.UpdateContact(ctx, &contact); err != nil {
 			return "I couldn't update " + contact.DisplayName + ".", true
 		}
-		_ = h.logEvent(ctx, c, "", "", "contact_auto_reply_"+enabledDisabled(enable), "", map[string]any{"contact_id": contact.ID, "by": msg.SenderID})
+		_, _ = h.logEvent(ctx, c, "", "", "contact_auto_reply_"+enabledDisabled(enable), "", map[string]any{"contact_id": contact.ID, "by": msg.SenderID})
 		return contact.DisplayName + " is now " + enabledDisabled(enable) + " for assistant replies.", true
 	}
 	if err == nil && len(matches) > 1 {
@@ -1092,7 +1101,7 @@ func (h *GatewayHandler) handleOwnerContactToggle(ctx context.Context, c domain.
 	if err := h.repo.CreateContact(ctx, contact); err != nil {
 		return "I couldn't add " + name + " as a contact.", true
 	}
-	_ = h.logEvent(ctx, c, "", "", "contact_created_by_owner", "", map[string]any{"contact_id": contact.ID, "by": msg.SenderID})
+	_, _ = h.logEvent(ctx, c, "", "", "contact_created_by_owner", "", map[string]any{"contact_id": contact.ID, "by": msg.SenderID})
 	return name + " has been added and assistant replies are enabled.", true
 }
 
@@ -1101,10 +1110,10 @@ func (h *GatewayHandler) setAssistantEnabled(ctx context.Context, c domain.Gatew
 	c.Config, _ = json.Marshal(cfg)
 	_ = h.repo.UpdateChannel(ctx, &c)
 	if enabled {
-		_ = h.logEvent(ctx, c, "", "", "assistant_enabled_by_owner", "", map[string]any{"by": msg.SenderID})
+		_, _ = h.logEvent(ctx, c, "", "", "assistant_enabled_by_owner", "", map[string]any{"by": msg.SenderID})
 		return "Assistant replies are now enabled for this WhatsApp channel.", true
 	}
-	_ = h.logEvent(ctx, c, "", "", "assistant_disabled_by_owner", "", map[string]any{"by": msg.SenderID})
+	_, _ = h.logEvent(ctx, c, "", "", "assistant_disabled_by_owner", "", map[string]any{"by": msg.SenderID})
 	return "Assistant replies are now stopped for this WhatsApp channel. Send start assistant to turn them back on.", true
 }
 
@@ -1113,10 +1122,10 @@ func (h *GatewayHandler) setBotMode(ctx context.Context, c domain.GatewayChannel
 	c.Config, _ = json.Marshal(cfg)
 	_ = h.repo.UpdateChannel(ctx, &c)
 	if enabled {
-		_ = h.logEvent(ctx, c, "", "", "bot_mode_enabled_by_owner", "", map[string]any{"by": msg.SenderID})
+		_, _ = h.logEvent(ctx, c, "", "", "bot_mode_enabled_by_owner", "", map[string]any{"by": msg.SenderID})
 		return "Bot mode is now enabled. Unknown WhatsApp senders will be silently approved for this channel.", true
 	}
-	_ = h.logEvent(ctx, c, "", "", "bot_mode_disabled_by_owner", "", map[string]any{"by": msg.SenderID})
+	_, _ = h.logEvent(ctx, c, "", "", "bot_mode_disabled_by_owner", "", map[string]any{"by": msg.SenderID})
 	return "Bot mode is now disabled. Only dashboard contacts or contacts you start from chat will receive assistant replies.", true
 }
 
@@ -1132,7 +1141,7 @@ func (h *GatewayHandler) autoApproveBotSender(ctx context.Context, c domain.Gate
 		existing, _ := h.repo.MatchContact(ctx, c.ID, contact.AccountID, msg.SenderID, msg.SenderPhone)
 		return existing
 	}
-	_ = h.logEvent(ctx, c, "", "", "sender_auto_approved_bot_mode", "", map[string]any{
+	_, _ = h.logEvent(ctx, c, "", "", "sender_auto_approved_bot_mode", "", map[string]any{
 		"sender_id": msg.SenderID, "sender_phone": msg.SenderPhone, "contact_id": contact.ID,
 	})
 	return contact
@@ -1204,7 +1213,7 @@ func (h *GatewayHandler) dispatchGatewayRun(ctx context.Context, c domain.Gatewa
 		runID, c.WorkspaceID, agentID, convID, c.CreatedBy, msg.Body, sessionID); err != nil {
 		return "", "", "", err
 	}
-	_ = h.logEvent(ctx, c, sessionID, runID, "run_started", "", map[string]any{"input": msg.Body})
+	_, _ = h.logEvent(ctx, c, sessionID, runID, "run_started", "", map[string]any{"input": msg.Body})
 	agentRepo := repository.NewAgentRepository(h.pool)
 	a, err := agentRepo.Get(ctx, agentID, c.WorkspaceID)
 	if err != nil {
@@ -1272,7 +1281,7 @@ func (h *GatewayHandler) deliverWhenComplete(ctx context.Context, c domain.Gatew
 	deadline := time.Now().Add(5 * time.Minute)
 	for range t.C {
 		if time.Now().After(deadline) {
-			_ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"reason": "timeout"})
+			_, _ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"reason": "timeout"})
 			h.sendAdapterMessage(ctx, c, cfg, msg.AccountID, msg.PeerKind, msg.PeerID, "Sorry, the request timed out. Please try again.", sessionID, runID)
 			return
 		}
@@ -1288,7 +1297,7 @@ func (h *GatewayHandler) deliverWhenComplete(ctx context.Context, c domain.Gatew
 			continue
 		}
 		if status != "success" {
-			_ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"run_status": status, "error": errMsg})
+			_, _ = h.logEvent(ctx, c, sessionID, runID, "delivery_failed", "", map[string]any{"run_status": status, "error": errMsg})
 			// Send a user-facing error reply. If the agent produced partial output before
 			// failing, use that; otherwise fall back to a generic message.
 			reply := strings.TrimSpace(output)
@@ -1401,7 +1410,7 @@ func (h *GatewayHandler) requestPairing(ctx context.Context, c domain.GatewayCha
 		slog.Warn("gateway pairing request failed", "channel_id", c.ID, "sender_id", msg.SenderID, "error", err)
 		return
 	}
-	_ = h.logEvent(ctx, c, "", "", "pairing_requested", "", map[string]any{"sender_id": msg.SenderID, "peer_id": msg.PeerID, "code": p.Code})
+	_, _ = h.logEvent(ctx, c, "", "", "pairing_requested", "", map[string]any{"sender_id": msg.SenderID, "peer_id": msg.PeerID, "code": p.Code})
 }
 
 // createContactFromPairing creates a contact for an approved or rejected
@@ -1435,13 +1444,17 @@ func (h *GatewayHandler) createContactFromPairing(ctx context.Context, p domain.
 	return h.repo.UpdateContact(ctx, existing)
 }
 
-func (h *GatewayHandler) logEvent(ctx context.Context, c domain.GatewayChannel, sessionID, runID, typ, providerMessageID string, payload any) error {
+// logEvent returns inserted=false when this event was already claimed by an
+// earlier call with the same (channel_id, provider_message_id) — see
+// CreateEvent. Only meaningful for callers that pass a non-empty
+// providerMessageID; every other event type is NULL-keyed and always
+// "wins" (never conflicts).
+func (h *GatewayHandler) logEvent(ctx context.Context, c domain.GatewayChannel, sessionID, runID, typ, providerMessageID string, payload any) (bool, error) {
 	b, _ := json.Marshal(payload)
-	err := h.repo.CreateEvent(ctx, &domain.GatewayEvent{
+	return h.repo.CreateEvent(ctx, &domain.GatewayEvent{
 		WorkspaceID: c.WorkspaceID, ChannelID: c.ID, SessionID: sessionID, RunID: runID,
 		EventType: typ, ProviderMessageID: providerMessageID, Payload: b,
 	})
-	return err
 }
 
 func (h *GatewayHandler) loadWhatsAppChannel(w http.ResponseWriter, r *http.Request) (domain.GatewayChannel, domain.GatewayChannelConfig, bool) {
