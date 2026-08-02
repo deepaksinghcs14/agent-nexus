@@ -43,7 +43,14 @@ func newSalvageOrigin(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	origin := filepath.Join(root, "origin.git")
-	mustRun(t, "", "git", "init", "--bare", origin)
+	// -b main: pin the initial branch explicitly. Without it, the bare
+	// repo's default branch (and thus HEAD) follows the ambient git
+	// installation's init.defaultBranch — "main" on some machines, "master"
+	// (or unset) on others. The seed commit below is pushed to "main"
+	// regardless, so on a machine defaulting elsewhere, origin's HEAD points
+	// at a branch that never receives any commit, and every subsequent
+	// `git clone` in this file gets an empty repo with no HEAD to rev-parse.
+	mustRun(t, "", "git", "init", "--bare", "-b", "main", origin)
 
 	seed := filepath.Join(root, "seed")
 	mustRun(t, "", "git", "clone", origin, seed)
