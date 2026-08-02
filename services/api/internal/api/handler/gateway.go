@@ -231,8 +231,12 @@ func (h *GatewayHandler) updatePairing(w http.ResponseWriter, r *http.Request, s
 		errs.Write(w, errs.NotFound("pairing request not found"))
 		return
 	}
+	role := "blocked"
 	if status == "approved" {
-		_ = h.createTrustedContactFromPairing(r.Context(), p)
+		role = "trusted"
+	}
+	if err := h.createContactFromPairing(r.Context(), p, role); err != nil {
+		slog.Error("gateway pairing contact write failed", "pairing_id", p.ID, "role", role, "error", err)
 	}
 	errs.WriteJSON(w, http.StatusOK, p)
 }
@@ -840,6 +844,7 @@ func (h *GatewayHandler) handleInbound(ctx context.Context, c domain.GatewayChan
 		return false, ""
 	}
 	if !h.senderAllowed(cfg, msg, decision) {
+		h.requestPairing(ctx, c, cfg, msg)
 		_ = h.logEvent(ctx, c, "", "", "sender_ignored", "", map[string]any{"sender_id": msg.SenderID, "sender_phone": msg.SenderPhone, "decision": decision})
 		return false, ""
 	}
@@ -1288,6 +1293,14 @@ func (h *GatewayHandler) resolveContact(ctx context.Context, c domain.GatewayCha
 	return contact, "contact_allowed"
 }
 
+// applicablePolicy returns the DM or group policy that governs msg.
+func applicablePolicy(cfg domain.GatewayChannelConfig, msg inboundMessage) string {
+	if msg.PeerKind == "group" {
+		return cfg.GroupPolicy
+	}
+	return cfg.DMPolicy
+}
+
 func (h *GatewayHandler) senderAllowed(cfg domain.GatewayChannelConfig, msg inboundMessage, decision string) bool {
 	if msg.Source == "http" {
 		return true
@@ -1298,14 +1311,7 @@ func (h *GatewayHandler) senderAllowed(cfg domain.GatewayChannelConfig, msg inbo
 	if decision == "contact_allowed" {
 		return true
 	}
-	if msg.PeerKind == "group" && cfg.GroupPolicy == "disabled" {
-		return false
-	}
-	policy := cfg.DMPolicy
-	if msg.PeerKind == "group" {
-		policy = cfg.GroupPolicy
-	}
-	switch policy {
+	switch applicablePolicy(cfg, msg) {
 	case "open":
 		return true
 	case "allowlist", "pairing":
@@ -1325,17 +1331,63 @@ func (h *GatewayHandler) senderAllowed(cfg domain.GatewayChannelConfig, msg inbo
 	}
 }
 
-func (h *GatewayHandler) createTrustedContactFromPairing(ctx context.Context, p domain.GatewayPairingRequest) error {
+// requestPairing queues an unknown sender for owner approval in the Pairing
+// tab, instead of them vanishing into a sender_ignored event forever. No-op
+// unless the applicable policy is "pairing". The unique index on
+// (channel_id, account_id, sender_id, status) collapses repeat messages from
+// the same unknown sender onto the one pending row.
+// ponytail: one pending row per sender_id. WhatsApp delivers the same human
+// under both a phone JID and an @lid JID, and a pairing-created contact
+// leaves whatsapp_lid empty, so a sender who flaps between the two forms
+// gets one row per form — the cap is 2 rows per human, not 1.
+func (h *GatewayHandler) requestPairing(ctx context.Context, c domain.GatewayChannel, cfg domain.GatewayChannelConfig, msg inboundMessage) {
+	if applicablePolicy(cfg, msg) != "pairing" {
+		return
+	}
+	p := &domain.GatewayPairingRequest{
+		WorkspaceID: c.WorkspaceID, ChannelID: c.ID, AccountID: defaultString(msg.AccountID, cfg.AccountID),
+		PeerKind: defaultString(msg.PeerKind, "direct"), PeerID: msg.PeerID, SenderID: msg.SenderID,
+		// The code is a display-only reference for the owner in the Pairing
+		// tab — nothing verifies it and the sender is never told it.
+		Code:      strings.ToUpper(uuid.NewString()[:6]),
+		ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+	}
+	if err := h.repo.CreatePairing(ctx, p); err != nil {
+		slog.Warn("gateway pairing request failed", "channel_id", c.ID, "sender_id", msg.SenderID, "error", err)
+		return
+	}
+	_ = h.logEvent(ctx, c, "", "", "pairing_requested", "", map[string]any{"sender_id": msg.SenderID, "peer_id": msg.PeerID, "code": p.Code})
+}
+
+// createContactFromPairing creates a contact for an approved or rejected
+// pairing request, with the given role ("trusted" on approve, "blocked" on
+// reject — a rejected sender needs a blocked contact too, or resolveContact
+// finds nothing and they re-queue themselves in the Pairing tab on every
+// subsequent message).
+func (h *GatewayHandler) createContactFromPairing(ctx context.Context, p domain.GatewayPairingRequest, role string) error {
 	phone := normalizeGatewayPhone(p.SenderID)
 	contact := &domain.GatewayContact{
 		WorkspaceID: p.WorkspaceID, ChannelID: p.ChannelID, AccountID: p.AccountID,
 		DisplayName: p.SenderID, Alias: aliasFromName(p.SenderID), PhoneNumber: phone,
-		WhatsAppJID: defaultString(p.SenderID, jidFromPhone(phone)), Role: "trusted", AutoReplyEnabled: true,
+		WhatsAppJID: defaultString(p.SenderID, jidFromPhone(phone)), Role: role, AutoReplyEnabled: role == "trusted",
 	}
 	if !strings.Contains(contact.WhatsAppJID, "@") {
 		contact.WhatsAppJID = jidFromPhone(phone)
 	}
-	return h.repo.CreateContact(ctx, contact)
+	if err := h.repo.CreateContact(ctx, contact); err == nil {
+		return nil
+	}
+	// The sender may already have a contact row — bot mode auto-approved them,
+	// or the owner added them by hand — while a stale pairing request was
+	// still pending; the phone/jid unique indexes reject the insert. Flip the
+	// existing row's role instead of leaving it stuck out of sync with the
+	// pairing decision.
+	existing, err := h.repo.MatchContact(ctx, p.ChannelID, p.AccountID, p.SenderID, phone)
+	if err != nil || existing == nil {
+		return fmt.Errorf("pairing contact %s neither created nor found: %w", p.SenderID, err)
+	}
+	existing.Role, existing.AutoReplyEnabled = role, role == "trusted"
+	return h.repo.UpdateContact(ctx, existing)
 }
 
 func (h *GatewayHandler) logEvent(ctx context.Context, c domain.GatewayChannel, sessionID, runID, typ, providerMessageID string, payload any) error {
