@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -1486,12 +1487,23 @@ func (h *InvokeHandler) executeGroupRun(
 	// terminal path (success, explicit fail, panic), so it is only ever left
 	// behind when the process itself dies mid-run, which is exactly the
 	// signal RecoverInterruptedWorkflowRuns needs to know a resume is possible.
-	runMarked := false
+	var runMarked atomic.Bool
+	// failWorkflow is the only terminal-failure path: it marks the run settled
+	// (walkBranch below is a closure — its returns unwind the branch, not the
+	// walk, so every failure site must go through here or fall into the
+	// success write after the top-level walkBranch call) and writes the
+	// status. Always context.Background(): ctx is dead exactly when the walk
+	// aborts on client disconnect. Atomic because sibling parallel branches
+	// both write it (the "agent"/"supervisor" cases below).
+	failWorkflow := func(msg string) {
+		runMarked.Store(true)
+		h.runs.failRun(context.Background(), parentRunID, msg) //nolint:errcheck
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			sseEmit(sse.Error(fmt.Sprintf("workflow panic: %v", r)))
 		}
-		if !runMarked {
+		if !runMarked.Load() {
 			h.runs.failRun(context.Background(), parentRunID, "workflow terminated unexpectedly") //nolint:errcheck
 		}
 		h.pool.Exec(context.Background(), `DELETE FROM workflow_checkpoints WHERE run_id=$1::uuid`, parentRunID) //nolint:errcheck
@@ -1527,7 +1539,7 @@ func (h *InvokeHandler) executeGroupRun(
 		workflowID)
 	if err != nil {
 		sseEmit(sse.Error("failed to load workflow nodes"))
-		h.runs.failRun(ctx, parentRunID, "failed to load workflow nodes") //nolint:errcheck
+		failWorkflow("failed to load workflow nodes")
 		return
 	}
 	defer nodeRows.Close()
@@ -1581,7 +1593,7 @@ func (h *InvokeHandler) executeGroupRun(
 		workflowID)
 	if err != nil {
 		sseEmit(sse.Error("failed to load workflow edges"))
-		h.runs.failRun(ctx, parentRunID, "failed to load workflow edges") //nolint:errcheck
+		failWorkflow("failed to load workflow edges")
 		return
 	}
 	defer edgeRows.Close()
@@ -1622,7 +1634,7 @@ func (h *InvokeHandler) executeGroupRun(
 	}
 	if startNode == nil {
 		sseEmit(`{"type":"error","error":"workflow has no start node"}`)
-		h.runs.failRun(ctx, parentRunID, "workflow has no start node") //nolint:errcheck
+		failWorkflow("workflow has no start node")
 		return
 	}
 
@@ -1705,9 +1717,20 @@ func (h *InvokeHandler) executeGroupRun(
 		prevNodeName := ""
 
 		for len(queue) > 0 {
+			// A failure in this or a sibling parallel branch aborts the whole
+			// walk. ponytail: node-boundary granularity — an in-flight sibling
+			// sub-run still finishes its current model call, and the parallel
+			// node it hung off still paints node_completed. Needs a per-walk
+			// cancel to do better.
+			if runMarked.Load() {
+				return
+			}
 			// Stop if the request was cancelled (client disconnect / timeout).
+			// Marked failed here rather than left to the defer: the walk did
+			// not finish, and "success with partial output" would be a lie.
 			select {
 			case <-ctx.Done():
+				failWorkflow("workflow cancelled")
 				return
 			default:
 			}
@@ -1718,7 +1741,7 @@ func (h *InvokeHandler) executeGroupRun(
 			stepsMu.Unlock()
 			if exceeded {
 				sseEmit(sse.Error(fmt.Sprintf("workflow exceeded maximum steps (%d) — possible infinite loop", maxTotalSteps)))
-				h.runs.failRun(ctx, parentRunID, fmt.Sprintf("workflow exceeded maximum steps (%d)", maxTotalSteps)) //nolint:errcheck
+				failWorkflow(fmt.Sprintf("workflow exceeded maximum steps (%d)", maxTotalSteps))
 				return
 			}
 
@@ -1911,8 +1934,7 @@ func (h *InvokeHandler) executeGroupRun(
 					// node_completed and march on with empty output.
 					msg := fmt.Sprintf("%s failed: %s", nodeName, subErrMsg)
 					sseEmit(sse.ErrorForNode(node.ID, msg))
-					runMarked = true
-					h.runs.failRun(context.Background(), parentRunID, msg) //nolint:errcheck
+					failWorkflow(msg)
 					return
 				}
 
@@ -2288,8 +2310,7 @@ func (h *InvokeHandler) executeGroupRun(
 					// node_completed and march on with empty output.
 					msg := fmt.Sprintf("%s failed: %s", nodeName, subErrMsg)
 					sseEmit(sse.ErrorForNode(node.ID, msg))
-					runMarked = true
-					h.runs.failRun(context.Background(), parentRunID, msg) //nolint:errcheck
+					failWorkflow(msg)
 					return
 				}
 
@@ -2333,6 +2354,13 @@ func (h *InvokeHandler) executeGroupRun(
 
 	walkBranch(startNode, input, nil)
 
+	// walkBranch's returns unwind only the closure — a failed node (or any
+	// other failWorkflow call) would otherwise fall straight into the success
+	// write below.
+	if runMarked.Load() {
+		return
+	}
+
 	// Mark the parent run as successful
 	finalOutput := input
 	for _, n := range nodeMap {
@@ -2351,7 +2379,7 @@ func (h *InvokeHandler) executeGroupRun(
 		 FROM runs WHERE trace_id=$1::uuid AND id!=$1::uuid`,
 		parentRunID).Scan(&totalInputTokens, &totalOutputTokens, &totalCostUSD)
 
-	runMarked = true
+	runMarked.Store(true)
 	h.pool.Exec(context.Background(), //nolint:errcheck
 		`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
 		parentRunID, finalOutput, totalInputTokens, totalOutputTokens, totalCostUSD)

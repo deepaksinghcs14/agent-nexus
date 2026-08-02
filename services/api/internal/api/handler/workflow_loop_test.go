@@ -312,3 +312,69 @@ func TestWorkflowGraphSaveRoundTrip(t *testing.T) {
 		t.Fatalf("bad edge err = %v, want ErrUnknownEdgeNode", err)
 	}
 }
+
+// walkBranch is a closure — its "return" only unwinds the current branch, not
+// the whole walk — so a failed node used to fall straight through to the
+// unguarded success write after the top-level walkBranch call. A parallel
+// graph is the only shape that exercises both halves of the fix: the
+// loop-top abort (stops the sibling branch and the node after the join) and
+// the post-walk guard (stops the success write itself).
+func TestWorkflowFailedNodeFailsRunAndStopsWalk(t *testing.T) {
+	fx := newWorkflowFixture(t,
+		// Two empty turns per agent node: completeWithEmptyRetry retries once
+		// on an empty reply, then fails the sub-run. A 5th provider call means
+		// the "after" node ran on an already-failed workflow.
+		[]fakeTurn{{}, {}, {}, {}},
+		[]wfNodeSpec{
+			{key: "s", typ: "start"},
+			{key: "par", typ: "parallel"},
+			{key: "a", typ: "agent", agent: true},
+			{key: "b", typ: "agent", agent: true},
+			{key: "join", typ: "join"},
+			{key: "after", typ: "agent", agent: true},
+			{key: "e", typ: "end"},
+		},
+		[]wfEdgeSpec{
+			{from: "s", to: "par"}, {from: "par", to: "a"}, {from: "par", to: "b"},
+			{from: "a", to: "join"}, {from: "b", to: "join"},
+			{from: "join", to: "after"}, {from: "after", to: "e"},
+		},
+	)
+	fx.runWorkflow()
+
+	status, _ := fx.runRow(t)
+	if status != "failed" {
+		t.Fatalf("workflow status = %q, want failed", status)
+	}
+	if n := len(fx.fake.recorded()); n != 4 {
+		t.Fatalf("provider calls = %d, want 4 (node after join must not run)", n)
+	}
+	// The failing node's reason must survive — not be clobbered by the defer's
+	// generic "workflow terminated unexpectedly".
+	var errMsg string
+	_ = fx.pool.QueryRow(context.Background(),
+		`SELECT COALESCE(error_message,'') FROM runs WHERE id=$1::uuid`, fx.runID).Scan(&errMsg)
+	if !strings.Contains(errMsg, "empty response") {
+		t.Fatalf("error_message = %q, want the failing node's reason", errMsg)
+	}
+}
+
+// The same fallthrough exists on the pre-walk paths (load nodes/edges, no
+// start node) — they call failRun and return from executeGroupRun directly,
+// but without the runMarked flag the terminal defer overwrote their specific
+// reason with "workflow terminated unexpectedly".
+func TestWorkflowNoStartNodePreservesErrorMessage(t *testing.T) {
+	fx := newWorkflowFixture(t, nil, []wfNodeSpec{}, []wfEdgeSpec{})
+	fx.runWorkflow()
+
+	status, _ := fx.runRow(t)
+	if status != "failed" {
+		t.Fatalf("workflow status = %q, want failed", status)
+	}
+	var errMsg string
+	_ = fx.pool.QueryRow(context.Background(),
+		`SELECT COALESCE(error_message,'') FROM runs WHERE id=$1::uuid`, fx.runID).Scan(&errMsg)
+	if errMsg != "workflow has no start node" {
+		t.Fatalf("error_message = %q, want %q", errMsg, "workflow has no start node")
+	}
+}
