@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -112,7 +113,7 @@ func checkSessionsEnabled(ctx context.Context, pool *pgxpool.Pool, workspaceID, 
 // launchAndWait POSTs a launch payload to the runner and blocks (durably
 // parking, for top-level runs) until the session's completion callback,
 // returning the callback content as the tool output.
-func launchAndWait(ctx context.Context, execCtx tools.ExecutionContext, runnerURL string, launch map[string]any, waitKey string) (any, error) {
+func launchAndWait(ctx context.Context, pool *pgxpool.Pool, execCtx tools.ExecutionContext, runnerURL string, launch map[string]any, waitKey string) (any, error) {
 	payload, _ := json.Marshal(launch)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, runnerURL+"/sessions", bytes.NewReader(payload))
 	if err != nil {
@@ -129,6 +130,17 @@ func launchAndWait(ctx context.Context, execCtx tools.ExecutionContext, runnerUR
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
 		return nil, fmt.Errorf("runner rejected session launch: %s: %s", res.Status, strings.TrimSpace(string(b)))
+	}
+
+	// Persist the runner's sessionKey on the run so Cancel can later tell the
+	// runner which in-flight process to stop — reconstructing it from
+	// run_wait_states would only work while parked and depends on knowing
+	// which tool launched it. Best-effort: a failed write here degrades
+	// Cancel to today's API-only behavior, it doesn't fail the session.
+	meta, _ := json.Marshal(map[string]string{"runner_session_key": waitKey})
+	if _, err := pool.Exec(ctx, `UPDATE runs SET metadata = metadata || $2::jsonb WHERE id=$1::uuid`, execCtx.RunID, meta); err != nil {
+		slog.Warn("failed to persist runner session key; Cancel will not reach the runner for this run",
+			"run_id", execCtx.RunID, "session_key", waitKey, "error", err)
 	}
 
 	content, err := execCtx.WaitForSession(ctx, waitKey)
@@ -241,5 +253,5 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 	if githubToken != "" {
 		launch["github_token"] = githubToken
 	}
-	return launchAndWait(ctx, execCtx, t.runnerURL, launch, ticketKey+"|"+repo)
+	return launchAndWait(ctx, t.pool, execCtx, t.runnerURL, launch, ticketKey+"|"+repo)
 }

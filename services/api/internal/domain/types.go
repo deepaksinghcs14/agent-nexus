@@ -210,6 +210,7 @@ type Run struct {
 	WorkflowNodeID    string     `json:"workflow_node_id,omitempty"`
 	TraceID           string     `json:"trace_id,omitempty"`
 	ChannelSessionID  string     `json:"channel_session_id,omitempty"`
+	Metadata          json.RawMessage `json:"metadata,omitempty"`
 }
 
 type StepType string

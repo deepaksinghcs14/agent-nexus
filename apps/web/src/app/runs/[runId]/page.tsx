@@ -206,6 +206,12 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
           {detail.status === 'session_wait' && (
             <div className="mb-5 rounded-xl border border-accent/30 bg-accent/10/60 p-4 text-[12px] text-accent dark:text-accent-bright">
               A repo coding session is running for this run. It resumes automatically when the session completes — this can take minutes to hours.
+              {detail.metadata?.session_progress && (
+                <div className="mt-2 flex items-center gap-1.5 font-medium">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {detail.metadata.session_progress}
+                </div>
+              )}
             </div>
           )}
 

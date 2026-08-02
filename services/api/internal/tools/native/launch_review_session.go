@@ -133,5 +133,5 @@ func (t *LaunchReviewSessionTool) ExecuteWithContext(ctx context.Context, execCt
 	}
 	// The wait key is a label (callbacks route by run_id) but mirrors the
 	// runner's mode-aware dedup key so SSE events and logs line up.
-	return launchAndWait(ctx, execCtx, t.runnerURL, launch, "review:"+ticketKey+"|"+repo)
+	return launchAndWait(ctx, t.pool, execCtx, t.runnerURL, launch, "review:"+ticketKey+"|"+repo)
 }

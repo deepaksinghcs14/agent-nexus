@@ -62,6 +62,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 
 	// Runner session completion callbacks — verified by RUNNER_CALLBACK_SECRET.
 	r.Post("/internal/sessions/callback", h.Invoke.SessionCallback)
+	r.Post("/internal/sessions/progress", h.Invoke.SessionProgress)
 
 	// Public webhook inbound endpoint (no auth — verified by per-trigger HMAC
 	// secret). Rate limited: an unauthenticated caller can otherwise dispatch

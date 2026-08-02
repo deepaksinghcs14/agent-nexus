@@ -160,6 +160,44 @@ func (h *InvokeHandler) SessionCallback(w http.ResponseWriter, r *http.Request) 
 	errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "delivered": "ignored", "run_status": status})
 }
 
+// sessionProgressPayload is what the runner POSTs periodically (debounced,
+// at most once every few seconds) while a session is in flight — a coarse
+// "still alive and roughly where it is" signal, not a transcript.
+type sessionProgressPayload struct {
+	RunID   string `json:"run_id"`
+	Summary string `json:"summary"`
+}
+
+// SessionProgress handles POST /internal/sessions/progress from the runner
+// service. Best-effort and independent of the run's wait/resume state — a
+// progress update that arrives for a run that already finished, parked, or
+// was cancelled is simply a no-op write, not an error, since the runner has
+// no way to know the run's current status without asking.
+func (h *InvokeHandler) SessionProgress(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.RunnerCallbackSecret == "" {
+		errs.Write(w, errs.NotFound("session callbacks are not configured"))
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Runner-Secret")), []byte(h.cfg.RunnerCallbackSecret)) != 1 {
+		errs.Write(w, errs.Unauthorized("invalid runner secret"))
+		return
+	}
+
+	var p sessionProgressPayload
+	if json.NewDecoder(r.Body).Decode(&p) != nil || p.RunID == "" || p.Summary == "" {
+		errs.Write(w, errs.BadRequest("run_id and summary are required"))
+		return
+	}
+
+	meta, _ := json.Marshal(map[string]any{"session_progress": p.Summary, "session_progress_at": time.Now().UTC()})
+	if _, err := h.pool.Exec(r.Context(),
+		`UPDATE runs SET metadata = metadata || $2::jsonb WHERE id=$1::uuid AND status<>'cancelled'`,
+		p.RunID, meta); err != nil {
+		slog.Warn("failed to persist session progress", "run_id", p.RunID, "error", err)
+	}
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // blockingSessionWait returns a WaitForSession implementation that blocks
 // in-process until the runner callback arrives (no durable park). Used for
 // child runs — workflow nodes, supervisor delegates, and sub-agents — whose

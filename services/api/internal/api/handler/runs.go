@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -42,11 +44,11 @@ func NewRunsHandler(p *pgxpool.Pool, c *config.Config, reg *tools.Registry, exec
 // SetInvokeHandler wires the InvokeHandler so that native_call_agent works in conversation runs.
 func (h *RunsHandler) SetInvokeHandler(ih *InvokeHandler) { h.invokeH = ih }
 
-const runSelect = `SELECT id::text,workspace_id::text,COALESCE(agent_id::text,''),conversation_id::text,user_id::text,input,output,status,started_at,completed_at,total_input_tokens,total_output_tokens,cost_estimate,error_message,COALESCE(trigger_id::text,''),COALESCE(parent_run_id::text,''),workflow_node_id,COALESCE(trace_id::text,'') FROM runs`
+const runSelect = `SELECT id::text,workspace_id::text,COALESCE(agent_id::text,''),conversation_id::text,user_id::text,input,output,status,started_at,completed_at,total_input_tokens,total_output_tokens,cost_estimate,error_message,COALESCE(trigger_id::text,''),COALESCE(parent_run_id::text,''),workflow_node_id,COALESCE(trace_id::text,''),metadata FROM runs`
 
 func scanRun(row interface{ Scan(...any) error }) (domain.Run, error) {
 	var x domain.Run
-	e := row.Scan(&x.ID, &x.WorkspaceID, &x.AgentID, &x.ConversationID, &x.UserID, &x.Input, &x.Output, &x.Status, &x.StartedAt, &x.CompletedAt, &x.TotalInputTokens, &x.TotalOutputTokens, &x.CostEstimate, &x.ErrorMessage, &x.TriggerID, &x.ParentRunID, &x.WorkflowNodeID, &x.TraceID)
+	e := row.Scan(&x.ID, &x.WorkspaceID, &x.AgentID, &x.ConversationID, &x.UserID, &x.Input, &x.Output, &x.Status, &x.StartedAt, &x.CompletedAt, &x.TotalInputTokens, &x.TotalOutputTokens, &x.CostEstimate, &x.ErrorMessage, &x.TriggerID, &x.ParentRunID, &x.WorkflowNodeID, &x.TraceID, &x.Metadata)
 	return x, e
 }
 
@@ -499,6 +501,48 @@ func (h *RunsHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	// workspace_id check above is the only tenant guard on this run — nothing
 	// here may run before RowsAffected confirms it passed.
 	cancelRun(runID)
+	h.cancelRunnerSession(r.Context(), runID)
 	deleteWaitState(r.Context(), h.pool, runID)
 	errs.WriteJSON(w, 200, map[string]any{"status": "cancelled"})
+}
+
+// cancelRunnerSession tells the runner service to stop the claude subprocess
+// backing this run, if it launched one. Best-effort: the run is already
+// committed to 'cancelled' by the time this is called, so a runner that's
+// unreachable or slow must not block or fail the API-side cancel — the
+// stale-session watchdog is the existing backstop for a runner that never
+// hears from this call at all.
+func (h *RunsHandler) cancelRunnerSession(ctx context.Context, runID string) {
+	if h.cfg.RunnerURL == "" {
+		return
+	}
+	var meta struct {
+		RunnerSessionKey string `json:"runner_session_key"`
+	}
+	var raw []byte
+	if err := h.pool.QueryRow(ctx, `SELECT metadata FROM runs WHERE id=$1::uuid`, runID).Scan(&raw); err != nil {
+		return
+	}
+	if json.Unmarshal(raw, &meta) != nil || meta.RunnerSessionKey == "" {
+		return
+	}
+	payload, _ := json.Marshal(map[string]string{"session_key": meta.RunnerSessionKey})
+	cancelCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(cancelCtx, http.MethodPost, strings.TrimRight(h.cfg.RunnerURL, "/")+"/sessions/cancel", bytes.NewReader(payload))
+	if err != nil {
+		slog.Warn("failed to build runner cancel request", "run_id", runID, "error", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Runner-Secret", h.cfg.RunnerCallbackSecret)
+	resp, err := (&http.Client{Timeout: 3 * time.Second}).Do(req)
+	if err != nil {
+		slog.Warn("runner cancel request failed; session may keep running until it times out", "run_id", runID, "session_key", meta.RunnerSessionKey, "error", err)
+		return
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("runner rejected cancel request", "run_id", runID, "session_key", meta.RunnerSessionKey, "status", resp.StatusCode)
+	}
 }
