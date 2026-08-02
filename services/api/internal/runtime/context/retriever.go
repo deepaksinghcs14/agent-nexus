@@ -47,7 +47,7 @@ func (r *Retriever) Retrieve(ctx context.Context, workspaceID string, connectorI
 			 JOIN connectors c ON c.id = cd.connector_id
 			 WHERE cd.workspace_id = $1::uuid
 			   AND c.status IN ('connected', 'syncing')
-			   AND ($2::uuid[] IS NULL OR c.id = ANY($2::uuid[]))
+			   AND c.id = ANY($2::uuid[])
 			   AND cc.embedding IS NOT NULL
 			   AND 1 - (cc.embedding <=> $4::vector) >= $5
 			 ORDER BY cc.embedding <=> $4::vector
@@ -90,7 +90,7 @@ func (r *Retriever) Retrieve(ctx context.Context, workspaceID string, connectorI
 		 JOIN connectors c ON c.id = cd.connector_id
 		 WHERE cd.workspace_id = $1::uuid
 		   AND c.status IN ('connected', 'syncing')
-		   AND ($2::uuid[] IS NULL OR c.id = ANY($2::uuid[]))
+		   AND c.id = ANY($2::uuid[])
 		   AND (
 		       to_tsvector('english', cc.content || ' ' || cd.title) @@ to_tsquery('english', $5)
 		       OR cd.title ILIKE '%' || $4 || '%'
@@ -144,10 +144,10 @@ func orTSQuery(query string) string {
 	return strings.Join(terms, " | ")
 }
 
-func uuidArray(values []string) any {
-	if len(values) == 0 {
-		return nil
-	}
+// uuidArray must never return nil: pgx binds a nil `any` as SQL NULL, and
+// `id = ANY(NULL)` evaluates to NULL (not false) — the "no connectors"
+// case would then match every row instead of none.
+func uuidArray(values []string) string {
 	return "{" + strings.Join(values, ",") + "}"
 }
 

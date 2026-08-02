@@ -513,7 +513,11 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 	var connSettings connectorSettings
 	if a.ContextRetrievalEnabled {
-		connSettings, _ = h.runs.agentConnectorSettings(ctx, a.ID)
+		var err error
+		if connSettings, err = h.runs.agentConnectorSettings(ctx, a.ID); err != nil {
+			slog.Error("connector settings lookup failed; run proceeds without retrieved context",
+				"run_id", runID, "agent_id", a.ID, "error", err)
+		}
 	}
 
 	if a.ContextRetrievalEnabled && !a.AgenticRAG && !resuming {
