@@ -12,6 +12,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"sync"
@@ -23,6 +25,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/migrate"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/tools"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -41,7 +44,13 @@ type fakeProvider struct {
 	requests []provider.CompletionRequest
 }
 
-func (f *fakeProvider) Complete(_ context.Context, req provider.CompletionRequest) (<-chan provider.CompletionEvent, error) {
+func (f *fakeProvider) Complete(ctx context.Context, req provider.CompletionRequest) (<-chan provider.CompletionEvent, error) {
+	// Real providers abort on a cancelled ctx (it flows into their HTTP
+	// request); the fake must too, or a cancelled run silently keeps looping
+	// in tests that assert the loop actually stopped.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	f.mu.Lock()
 	f.requests = append(f.requests, req)
 	var turn fakeTurn
@@ -426,5 +435,62 @@ func TestLoopApprovalGateApproved(t *testing.T) {
 	evt := fx.firstEvent("tool_call")
 	if evt == nil || !strings.Contains(fmt.Sprintf("%v", evt["output"]), "ok") {
 		t.Fatalf("approved tool did not execute: %v", evt)
+	}
+}
+
+// Cancel used to be a bare status write: it never stopped the goroutine
+// executing the run, and 'user_input_wait' was missing from its filter
+// entirely, so a run parked on native_ask_user could not be cancelled at
+// all. This exercises the full mechanism — HTTP Cancel handler, the
+// runCancels registry, and the ctx.Done arm on the user-input wait.
+func TestCancelStopsUserInputWait(t *testing.T) {
+	call := provider.ToolCall{ID: "c1", Name: "native_ask_user", Input: json.RawMessage(`{"question":"which repo?"}`)}
+	fx := newLoopFixture(t, []fakeTurn{
+		{toolCalls: []provider.ToolCall{call}},
+		{deltas: []string{"should never run"}},
+	}, "")
+	// native_ask_user isn't in this fixture's (deliberately empty) registry —
+	// register just the one tool this test needs.
+	fx.h.registry.Register(native.NewAskUserTool())
+
+	done := make(chan struct{})
+	go func() {
+		fx.run(invokeOpts{})
+		close(done)
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if status, _ := fx.runRow(t); status == "user_input_wait" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("run never reached user_input_wait")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	tn := tenant{userID: fx.uid, wsID: fx.ws}
+	req := tn.request(http.MethodPost, "/runs/"+fx.runID+"/cancel", "id", fx.runID, "")
+	w := httptest.NewRecorder()
+	fx.h.runs.Cancel(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("cancel status = %d, want 200: %s", w.Code, w.Body.String())
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("executeRun did not return after cancel — a wait ignored ctx.Done")
+	}
+
+	status, _ := fx.runRow(t)
+	if status != "cancelled" {
+		t.Fatalf("final status = %q, want cancelled", status)
+	}
+	// One request for the native_ask_user turn; the cancel must stop the loop
+	// before it asks the model again for the "should never run" turn.
+	if n := len(fx.fake.recorded()); n != 1 {
+		t.Fatalf("provider calls = %d, want 1 — the loop kept running after cancel", n)
 	}
 }

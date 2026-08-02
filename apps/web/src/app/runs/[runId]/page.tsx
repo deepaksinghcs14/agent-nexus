@@ -14,7 +14,7 @@ type RunDetail = Run & { steps?: RunStep[]; workflow_id?: string; approval_reque
 
 const ROW_GRID = 'grid items-center gap-x-3 px-4' as const
 const GRID_COLS = 'grid-cols-[20px_1fr_80px_48px_64px_56px]' as const
-const ACTIVE_RUN_STATUSES = new Set(['pending', 'running', 'approval_wait', 'session_wait'])
+const ACTIVE_RUN_STATUSES = new Set(['pending', 'running', 'approval_wait', 'session_wait', 'user_input_wait'])
 
 function SubRunRow({ subRun, agentName }: { subRun: Run; agentName?: string }) {
   const [open, setOpen] = useState(false)
@@ -153,7 +153,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
         <Link href="/runs" className="text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint inline-flex items-center gap-1">
           <ArrowLeft className="w-3 h-3" /> Runs
         </Link>
-        {detail && ['pending', 'running', 'approval_wait', 'session_wait'].includes(detail.status) && (
+        {isActive && (
           <button
             onClick={() => cancel.mutate()}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-crit/30 text-crit text-[12px] rounded-lg"

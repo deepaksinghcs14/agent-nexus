@@ -39,7 +39,11 @@ func (h *InvokeHandler) ResumeApprovedRun(runID string, decision ApprovalDecisio
 		return true, fmt.Errorf("resume run %s: agent %s not found", runID, st.AgentID)
 	}
 
-	h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, runID) //nolint:errcheck
+	t, err := h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid AND status<>'cancelled'`, runID)
+	if err != nil || t.RowsAffected() == 0 {
+		slog.Warn("skipping resume: run was cancelled or is gone", "run_id", runID, "error", err)
+		return true, nil
+	}
 	slog.Info("resuming approval-parked run", "run_id", runID, "decision", decision.Decision,
 		"tool", st.PendingCalls[st.CallIndex].Name)
 
@@ -79,7 +83,11 @@ func (h *InvokeHandler) ResumeSessionRun(runID, resultContent string) (bool, err
 		return true, fmt.Errorf("resume run %s: agent %s not found", runID, st.AgentID)
 	}
 
-	h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, runID) //nolint:errcheck
+	t, err := h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid AND status<>'cancelled'`, runID)
+	if err != nil || t.RowsAffected() == 0 {
+		slog.Warn("skipping resume: run was cancelled or is gone", "run_id", runID, "error", err)
+		return true, nil
+	}
 	slog.Info("resuming session-parked run", "run_id", runID,
 		"tool", st.PendingCalls[st.CallIndex].Name)
 

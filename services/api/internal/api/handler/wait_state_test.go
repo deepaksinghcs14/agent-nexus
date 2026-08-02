@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -76,7 +77,7 @@ func TestAwaitApprovalDecisionReceived(t *testing.T) {
 			t.Error("send should find the registered channel")
 		}
 	}()
-	d, got := awaitApprovalDecision(runID, ch, 5*time.Second)
+	d, got := awaitApprovalDecision(context.Background(), runID, ch, 5*time.Second)
 	if !got || d.Decision != "approved" {
 		t.Fatalf("expected approved decision, got=%v d=%+v", got, d)
 	}
@@ -95,7 +96,7 @@ func TestAwaitSessionResultReceived(t *testing.T) {
 			t.Error("send should find the registered channel")
 		}
 	}()
-	content, got := awaitSessionResult(runID, ch, 5*time.Second)
+	content, got := awaitSessionResult(context.Background(), runID, ch, 5*time.Second)
 	if !got || content != `{"status":"success"}` {
 		t.Fatalf("expected result, got=%v content=%q", got, content)
 	}
@@ -104,7 +105,7 @@ func TestAwaitSessionResultReceived(t *testing.T) {
 func TestAwaitSessionResultTimeoutParks(t *testing.T) {
 	runID := "test-session-timeout"
 	ch := RegisterSessionWait(runID)
-	_, got := awaitSessionResult(runID, ch, 20*time.Millisecond)
+	_, got := awaitSessionResult(context.Background(), runID, ch, 20*time.Millisecond)
 	if got {
 		t.Fatal("expected clean timeout")
 	}
@@ -118,7 +119,7 @@ func TestAwaitSessionResultTimeoutParks(t *testing.T) {
 func TestAwaitApprovalDecisionTimeout(t *testing.T) {
 	runID := "test-run-timeout"
 	ch := RegisterApprovalWait(runID)
-	_, got := awaitApprovalDecision(runID, ch, 20*time.Millisecond)
+	_, got := awaitApprovalDecision(context.Background(), runID, ch, 20*time.Millisecond)
 	if got {
 		t.Fatal("expected clean timeout")
 	}

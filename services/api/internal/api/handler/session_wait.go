@@ -42,14 +42,16 @@ func SendSessionResult(runID, content string) bool {
 	return true
 }
 
-// awaitSessionResult blocks until a result arrives on ch or timeout elapses.
-// Mirrors awaitApprovalDecision: returns (content, true) on delivery —
-// including one that raced the timeout — or ("", false) on a clean timeout
-// with the registry entry reclaimed, meaning the caller may safely park.
-func awaitSessionResult(runID string, ch chan string, timeout time.Duration) (string, bool) {
+// awaitSessionResult blocks until a result arrives on ch, ctx is cancelled,
+// or timeout elapses. Mirrors awaitApprovalDecision: returns (content, true)
+// on delivery — including one that raced the cancel/timeout — or ("", false)
+// otherwise, with the registry entry reclaimed, meaning the caller may
+// safely park.
+func awaitSessionResult(ctx context.Context, runID string, ch chan string, timeout time.Duration) (string, bool) {
 	select {
 	case c := <-ch:
 		return c, true
+	case <-ctx.Done():
 	case <-time.After(timeout):
 	}
 	if _, stillOurs := sessionRegistry.LoadAndDelete(runID); !stillOurs {
@@ -175,8 +177,9 @@ func (h *InvokeHandler) blockingSessionWait(runID string, emitFn func(string)) f
 		if emitFn != nil {
 			emitFn(sse.SessionWait(runID, sessionKey))
 		}
-		content, got := awaitSessionResult(runID, ch, timeout)
-		h.pool.Exec(waitCtx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, runID) //nolint:errcheck
+		content, got := awaitSessionResult(waitCtx, runID, ch, timeout)
+		// Cancel is terminal: don't flip a cancelled run back to running.
+		h.pool.Exec(context.Background(), `UPDATE runs SET status='running' WHERE id=$1::uuid AND status<>'cancelled'`, runID) //nolint:errcheck
 		if !got {
 			return "", fmt.Errorf("session %s did not complete within %s", sessionKey, timeout)
 		}

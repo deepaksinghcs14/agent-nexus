@@ -137,7 +137,8 @@ func (h *RunsHandler) createStep(ctx context.Context, runID string, stepType dom
 }
 
 func (h *RunsHandler) failRun(ctx context.Context, runID, message string) error {
-	_, err := h.pool.Exec(ctx, `UPDATE runs SET status='failed',completed_at=NOW(),error_message=$2 WHERE id=$1::uuid`, runID, message)
+	// Cancel is terminal: never resurrect a cancelled run with a later status write.
+	_, err := h.pool.Exec(ctx, `UPDATE runs SET status='failed',completed_at=NOW(),error_message=$2 WHERE id=$1::uuid AND status<>'cancelled'`, runID, message)
 	return err
 }
 
@@ -470,7 +471,7 @@ func (h *RunsHandler) SubmitUserInput(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.NotFound("run not found"))
 		return
 	}
-	if status != "user_input_wait" {
+	if domain.RunStatus(status) != domain.RunStatusUserInputWait {
 		errs.Write(w, errs.BadRequest("run is not waiting for user input"))
 		return
 	}
@@ -483,7 +484,7 @@ func (h *RunsHandler) SubmitUserInput(w http.ResponseWriter, r *http.Request) {
 
 func (h *RunsHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	runID := chi.URLParam(r, "id")
-	t, e := h.pool.Exec(r.Context(), `UPDATE runs SET status='cancelled',completed_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid AND status IN('pending','running','approval_wait','session_wait')`, runID, middleware.WorkspaceIDFromCtx(r.Context()))
+	t, e := h.pool.Exec(r.Context(), `UPDATE runs SET status='cancelled',completed_at=NOW() WHERE id=$1::uuid AND workspace_id=$2::uuid AND status IN('pending','running','approval_wait','session_wait','user_input_wait')`, runID, middleware.WorkspaceIDFromCtx(r.Context()))
 	if e != nil {
 		errs.Write(w, errs.Internal("failed to cancel run"))
 		return
@@ -492,7 +493,12 @@ func (h *RunsHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.BadRequest("run cannot be cancelled"))
 		return
 	}
-	// A cancelled approval_wait run must not be resumable later.
+	// Status first: any terminal write racing this now sees 'cancelled' and
+	// its status<>'cancelled' guard drops it. Then stop the in-process
+	// goroutine (if any) and make a durable park unresumable. The
+	// workspace_id check above is the only tenant guard on this run — nothing
+	// here may run before RowsAffected confirms it passed.
+	cancelRun(runID)
 	deleteWaitState(r.Context(), h.pool, runID)
 	errs.WriteJSON(w, 200, map[string]any{"status": "cancelled"})
 }

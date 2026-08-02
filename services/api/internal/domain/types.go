@@ -180,13 +180,14 @@ type Message struct {
 type RunStatus string
 
 const (
-	RunStatusPending      RunStatus = "pending"
-	RunStatusRunning      RunStatus = "running"
-	RunStatusSuccess      RunStatus = "success"
-	RunStatusFailed       RunStatus = "failed"
-	RunStatusCancelled    RunStatus = "cancelled"
-	RunStatusApprovalWait RunStatus = "approval_wait"
-	RunStatusSessionWait  RunStatus = "session_wait"
+	RunStatusPending       RunStatus = "pending"
+	RunStatusRunning       RunStatus = "running"
+	RunStatusSuccess       RunStatus = "success"
+	RunStatusFailed        RunStatus = "failed"
+	RunStatusCancelled     RunStatus = "cancelled"
+	RunStatusApprovalWait  RunStatus = "approval_wait"
+	RunStatusSessionWait   RunStatus = "session_wait"
+	RunStatusUserInputWait RunStatus = "user_input_wait"
 )
 
 type Run struct {

@@ -476,6 +476,13 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer dbCancel()
 
+	// A cancel from the API must actually stop this goroutine: model calls,
+	// tool execution and the approval/session/user-input waits all hang off
+	// ctx. dbCtx stays independent (above) so terminal status writes still
+	// land after a cancel.
+	ctx, releaseRunCancel := registerRunCancel(ctx, runID)
+	defer releaseRunCancel()
+
 	resuming := opts.resume != nil
 
 	runCompleted := false
@@ -841,6 +848,12 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		case answer := <-ch:
 			h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, capturedRunID) //nolint:errcheck
 			return answer, nil
+		case <-ctx.Done():
+			// Cancel already wrote status='cancelled'; don't flip it back to
+			// running. UnregisterUserInputWait so a late SubmitUserInput finds
+			// no channel instead of leaking one.
+			UnregisterUserInputWait(capturedRunID)
+			return "", ctx.Err()
 		case <-time.After(30 * time.Minute):
 			UnregisterUserInputWait(capturedRunID)
 			h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, capturedRunID) //nolint:errcheck
@@ -923,8 +936,11 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		sseEmitOrNil(sse.SessionWait(runID, sessionKey))
 
 		// Sessions run for minutes to hours; block only briefly for fast stubs
-		// and tests, then park. The runner's callback resumes the run.
-		content, got := awaitSessionResult(runID, ch, 60*time.Second)
+		// and tests, then park. The runner's callback resumes the run. A
+		// cancel also falls out here as an unparked clean return — Cancel
+		// already wrote status='cancelled' and deletes the wait state, so
+		// there's nothing to resume.
+		content, got := awaitSessionResult(waitCtx, runID, ch, 60*time.Second)
 		if !got {
 			return "", tools.ErrRunParked
 		}
@@ -1067,7 +1083,8 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				runCompleted = true
 				costUSD := cost.Estimate(a.Provider, a.Model, totalInput, totalOutput)
 				h.pool.Exec(dbCtx, //nolint:errcheck
-					`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
+					// Cancel is terminal: never resurrect a cancelled run with a later status write.
+					`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid AND status<>'cancelled'`,
 					runID, reply, totalInput, totalOutput, costUSD)
 				sseEmitOrNil(sse.RunCompleted(runID, totalInput, totalOutput, costUSD))
 				// Memory extraction runs after marking run complete so gateway delivery
@@ -1165,6 +1182,14 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 		curBatch = pendingCalls
 		for callIdx := startIdx; callIdx < len(pendingCalls); callIdx++ {
+			// A cancelled run must not keep executing the rest of the batch: a
+			// woken wait (native_ask_user, approval, session) returns an error
+			// that the code below would otherwise turn into a tool result and
+			// march on to the next call.
+			if ctx.Err() != nil {
+				runErrMsg = "run cancelled"
+				return
+			}
 			call := pendingCalls[callIdx]
 			curCallIdx = callIdx
 
@@ -1294,7 +1319,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					sseEmitOrNil(sse.ApprovalRequired(call.Name, call.Input, arID))
 
 					var got bool
-					decision, got = awaitApprovalDecision(runID, ch, 10*time.Minute)
+					decision, got = awaitApprovalDecision(ctx, runID, ch, 10*time.Minute)
 					if !got {
 						if opts.invokeDepth == 0 && !opts.noApprovalPark {
 							// Park: free this goroutine and leave the run in approval_wait
@@ -1481,6 +1506,13 @@ func (h *InvokeHandler) executeGroupRun(
 			emitMu.Unlock()
 		}
 	}
+
+	// A cancel from the API must stop the walk: ctx.Done() is checked at the
+	// top of walkBranch's loop below, and this ctx also flows into every
+	// sub-run this workflow launches (executeRun re-registers its own cancel
+	// keyed by its own sub-run id, so cancelling the parent cascades).
+	ctx, releaseRunCancel := registerRunCancel(ctx, parentRunID)
+	defer releaseRunCancel()
 
 	// Ensure the run is always marked terminal, even on unexpected exit / panic.
 	// The checkpoint row is deleted here too — reached on every in-process
@@ -2381,7 +2413,8 @@ func (h *InvokeHandler) executeGroupRun(
 
 	runMarked.Store(true)
 	h.pool.Exec(context.Background(), //nolint:errcheck
-		`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
+		// Cancel is terminal: never resurrect a cancelled run with a later status write.
+		`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid AND status<>'cancelled'`,
 		parentRunID, finalOutput, totalInputTokens, totalOutputTokens, totalCostUSD)
 
 	sseEmit(sse.RunCompleted(parentRunID, totalInputTokens, totalOutputTokens, totalCostUSD))
