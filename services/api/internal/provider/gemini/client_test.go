@@ -102,6 +102,39 @@ func TestBuildRequestToolSchemaPassthroughAndDedupe(t *testing.T) {
 	}
 }
 
+// A user message carrying an inline image and audio (Gemini accepts both
+// via arbitrary-MIME-type inline blobs) must produce a text part plus one
+// inline-data part per attachment, preserving the raw bytes and MIME type.
+func TestBuildRequestImageAndAudioParts(t *testing.T) {
+	req := provider.CompletionRequest{
+		Messages: []provider.Message{
+			{
+				Role:    "user",
+				Content: "what is this?",
+				Images:  []provider.MediaBlock{{MIMEType: "image/jpeg", Data: []byte("fake-jpeg")}},
+				Audio:   []provider.MediaBlock{{MIMEType: "audio/ogg; codecs=opus", Data: []byte("fake-ogg")}},
+			},
+		},
+	}
+	contents, _ := buildRequest(req)
+	if len(contents) != 1 {
+		t.Fatalf("contents = %d turns, want 1", len(contents))
+	}
+	parts := contents[0].Parts
+	if len(parts) != 3 {
+		t.Fatalf("parts = %d, want 3 (text + image + audio): %+v", len(parts), parts)
+	}
+	if parts[0].Text != "what is this?" {
+		t.Fatalf("first part not the text part: %+v", parts[0])
+	}
+	if parts[1].InlineData == nil || parts[1].InlineData.MIMEType != "image/jpeg" || string(parts[1].InlineData.Data) != "fake-jpeg" {
+		t.Fatalf("image part wrong: %+v", parts[1])
+	}
+	if parts[2].InlineData == nil || parts[2].InlineData.MIMEType != "audio/ogg; codecs=opus" || string(parts[2].InlineData.Data) != "fake-ogg" {
+		t.Fatalf("audio part wrong: %+v", parts[2])
+	}
+}
+
 // A tool message with unparseable content becomes a string output, and error
 // results carry the retry note.
 func TestFunctionResponsePart(t *testing.T) {

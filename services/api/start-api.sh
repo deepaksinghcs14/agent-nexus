@@ -22,6 +22,13 @@ fi
 : "${LOG_STREAM_INGEST_TOKEN:=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s)}"
 export LOG_STREAM_INGEST_TOKEN
 
+# Shared secret for /internal/whatsapp/* (Baileys session credentials). The API
+# and the adapter both run in this container, so generating it here gives both
+# processes the same value with no operator configuration. Set it explicitly
+# only if the adapter is ever run outside this container.
+: "${WHATSAPP_INTERNAL_TOKEN:=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s)}"
+export WHATSAPP_INTERNAL_TOKEN
+
 API_PORT="${PORT:-8080}"
 API_INTERNAL_URL="${API_INTERNAL_URL:-http://127.0.0.1:${API_PORT}}"
 export API_INTERNAL_URL

@@ -22,51 +22,24 @@ class APIClient {
     return h
   }
 
-  async get<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseURL}/api/v1${path}`, {
-      headers: this.headers(),
-      credentials: 'include',
-    })
-    return this.handle<T>(res)
+  get<T>(path: string): Promise<T> {
+    return this.request<T>(path)
   }
 
-  async post<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${this.baseURL}/api/v1${path}`, {
-      method: 'POST',
-      headers: this.headers(),
-      body: body ? JSON.stringify(body) : undefined,
-      credentials: 'include',
-    })
-    return this.handle<T>(res)
+  post<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined })
   }
 
-  async put<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${this.baseURL}/api/v1${path}`, {
-      method: 'PUT',
-      headers: this.headers(),
-      body: body ? JSON.stringify(body) : undefined,
-      credentials: 'include',
-    })
-    return this.handle<T>(res)
+  put<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined })
   }
 
-  async patch<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${this.baseURL}/api/v1${path}`, {
-      method: 'PATCH',
-      headers: this.headers(),
-      body: body ? JSON.stringify(body) : undefined,
-      credentials: 'include',
-    })
-    return this.handle<T>(res)
+  patch<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined })
   }
 
-  async delete<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseURL}/api/v1${path}`, {
-      method: 'DELETE',
-      headers: this.headers(),
-      credentials: 'include',
-    })
-    return this.handle<T>(res)
+  delete<T>(path: string): Promise<T> {
+    return this.request<T>(path, { method: 'DELETE' })
   }
 
   // Returns a native EventSource for SSE streams.
@@ -77,16 +50,26 @@ class APIClient {
     return new EventSource(url.toString())
   }
 
-  private async handle<T>(res: Response): Promise<T> {
-    if (res.status === 401) {
-      // Try token refresh
-      const refreshed = await this.refreshToken()
-      if (!refreshed) {
-        window.location.href = '/login'
-        throw new Error('Unauthorized')
-      }
-      // Retry once (caller should retry via React Query)
-      throw new Error('Token refreshed — retry request')
+  // All five verbs funnel through here so a 401 can be handled once, in one
+  // place, with the actual request still in hand to replay — the previous
+  // per-verb fetch+handle(response) split meant the 401 handler only ever
+  // saw an already-fired Response and could refresh the token but never
+  // retry, surfacing a raw "Token refreshed — retry request" error instead.
+  private async request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+    const res = await fetch(`${this.baseURL}/api/v1${path}`, {
+      ...init,
+      headers: this.headers(),
+      credentials: 'include',
+    })
+
+    // /auth/login|register|refresh 401s mean bad credentials, not an expired
+    // access token — refreshing and hard-redirecting there would wipe the
+    // login form's own error message and risks refreshToken() recursing via
+    // authAPI.refresh().
+    if (res.status === 401 && !/^\/auth\/(login|register|refresh)\b/.test(path)) {
+      if (!retried && (await this.refreshToken())) return this.request<T>(path, init, true)
+      window.location.href = '/login'
+      throw new Error('Unauthorized')
     }
 
     if (!res.ok) {
@@ -98,19 +81,29 @@ class APIClient {
     return res.json()
   }
 
-  private async refreshToken(): Promise<boolean> {
-    try {
-      const res = await fetch(`${this.baseURL}/api/v1/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include', // refresh token in httpOnly cookie
-      })
-      if (!res.ok) return false
-      const data = await res.json()
-      localStorage.setItem('access_token', data.access_token)
-      return true
-    } catch {
-      return false
-    }
+  private refreshInflight: Promise<boolean> | null = null
+
+  private refreshToken(): Promise<boolean> {
+    // ponytail: single in-flight refresh shared by concurrent 401s, so N
+    // requests failing at once don't fire N refresh POSTs against a
+    // rotating refresh token.
+    this.refreshInflight ??= (async () => {
+      try {
+        const res = await fetch(`${this.baseURL}/api/v1/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include', // refresh token in httpOnly cookie
+        })
+        if (!res.ok) return false
+        const data = await res.json()
+        localStorage.setItem('access_token', data.access_token)
+        return true
+      } catch {
+        return false
+      } finally {
+        this.refreshInflight = null
+      }
+    })()
+    return this.refreshInflight
   }
 }
 

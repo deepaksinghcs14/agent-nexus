@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 	"time"
@@ -13,6 +14,42 @@ type ApprovalDecision struct {
 }
 
 var approvalRegistry sync.Map // map[runID string] → chan ApprovalDecision
+
+// ── Run cancel registry ────────────────────────────────────────────────────
+//
+// Maps a run ID to the cancel func of the goroutine executing it, so Cancel
+// stops in-flight model calls, tool execution and waits instead of only
+// flipping the DB status. Same shape as ConnectorsHandler.syncCancels. The
+// stored value is a pointer wrapper, not the func itself: sync.Map's
+// CompareAndDelete panics on an uncomparable type (func values are
+// uncomparable), and without CompareAndDelete a resumed run's fresh entry
+// could be deleted by the previous goroutine still unwinding.
+type runCancel struct{ cancel context.CancelFunc }
+
+var runCancels sync.Map // map[runID string] → *runCancel
+
+// registerRunCancel derives a cancellable context from ctx and registers its
+// cancel func under runID. The returned release func must be deferred by the
+// caller — it unregisters (so a finished run's entry doesn't leak) and always
+// cancels the derived context to free its resources.
+func registerRunCancel(ctx context.Context, runID string) (context.Context, func()) {
+	ctx, cancel := context.WithCancel(ctx)
+	rc := &runCancel{cancel: cancel}
+	runCancels.Store(runID, rc)
+	return ctx, func() {
+		runCancels.CompareAndDelete(runID, rc)
+		cancel()
+	}
+}
+
+// cancelRun stops the goroutine executing runID, if one is currently
+// registered. No-op if the run isn't live in this process (already finished,
+// parked, or on another replica).
+func cancelRun(runID string) {
+	if v, ok := runCancels.LoadAndDelete(runID); ok {
+		v.(*runCancel).cancel()
+	}
+}
 
 // ── User input registry ────────────────────────────────────────────────────────
 
@@ -67,14 +104,16 @@ func SendApprovalDecision(runID string, d ApprovalDecision) bool {
 	return true
 }
 
-// awaitApprovalDecision blocks until a decision arrives on ch or timeout
-// elapses. Returns (decision, true) when a decision was received — including
-// one that raced the timeout — or (zero, false) on a clean timeout with the
-// registry entry reclaimed, meaning the caller may safely park or fail the run.
-func awaitApprovalDecision(runID string, ch chan ApprovalDecision, timeout time.Duration) (ApprovalDecision, bool) {
+// awaitApprovalDecision blocks until a decision arrives on ch, ctx is
+// cancelled, or timeout elapses. Returns (decision, true) when a decision was
+// received — including one that raced the cancel/timeout — or (zero, false)
+// otherwise, with the registry entry reclaimed, meaning the caller may safely
+// park or fail the run.
+func awaitApprovalDecision(ctx context.Context, runID string, ch chan ApprovalDecision, timeout time.Duration) (ApprovalDecision, bool) {
 	select {
 	case d := <-ch:
 		return d, true
+	case <-ctx.Done():
 	case <-time.After(timeout):
 	}
 	if _, stillOurs := approvalRegistry.LoadAndDelete(runID); !stillOurs {

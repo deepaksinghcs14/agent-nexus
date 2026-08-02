@@ -4,6 +4,7 @@ package openai
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -88,7 +89,16 @@ func buildParams(req provider.CompletionRequest) sdk.ChatCompletionNewParams {
 		case "system":
 			params.Messages = append(params.Messages, sdk.SystemMessage(msg.Content))
 		case "user":
-			params.Messages = append(params.Messages, sdk.UserMessage(msg.Content))
+			if len(msg.Images) == 0 {
+				params.Messages = append(params.Messages, sdk.UserMessage(msg.Content))
+			} else {
+				parts := []sdk.ChatCompletionContentPartUnionParam{sdk.TextContentPart(msg.Content)}
+				for _, img := range msg.Images {
+					dataURL := "data:" + img.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(img.Data)
+					parts = append(parts, sdk.ImageContentPart(sdk.ChatCompletionContentPartImageImageURLParam{URL: dataURL}))
+				}
+				params.Messages = append(params.Messages, sdk.UserMessage(parts))
+			}
 		case "assistant":
 			if len(msg.ToolCalls) == 0 {
 				params.Messages = append(params.Messages, sdk.AssistantMessage(msg.Content))

@@ -123,14 +123,20 @@ func (h *InvokeHandler) launchMapGenerationRun(ctx context.Context, ws, uid, age
 	}
 
 	go func() {
-		bgCtx := context.Background()
+		// The session wait below can run for the length of a full survey
+		// session; register it so the Cancel endpoint can stop it. The
+		// finalizing write stays on Background so it still lands after a
+		// cancel — status<>'cancelled' below then keeps it from resurrecting
+		// a run the user already cancelled.
+		runCtx, releaseRunCancel := registerRunCancel(context.Background(), runID)
+		defer releaseRunCancel()
 		execCtx := tools.ExecutionContext{
 			WorkspaceID:    ws,
 			RunID:          runID,
 			WaitForSession: h.blockingSessionWait(runID, nil),
 		}
 		launchTool := native.NewLaunchRepoSessionTool(h.pool, h.cfg)
-		out, err := launchTool.ExecuteWithContext(bgCtx, execCtx, map[string]any{
+		out, err := launchTool.ExecuteWithContext(runCtx, execCtx, map[string]any{
 			"repo":             repo,
 			"ticket_key":       mapGenerationTicketKey,
 			"task_description": task,
@@ -141,8 +147,8 @@ func (h *InvokeHandler) launchMapGenerationRun(ctx context.Context, ws, uid, age
 		} else if b, mErr := json.Marshal(out); mErr == nil {
 			output = string(b)
 		}
-		if _, err := h.pool.Exec(bgCtx,
-			`UPDATE runs SET status=$2, output=$3, completed_at=NOW() WHERE id=$1::uuid`,
+		if _, err := h.pool.Exec(context.Background(),
+			`UPDATE runs SET status=$2, output=$3, completed_at=NOW() WHERE id=$1::uuid AND status<>'cancelled'`,
 			runID, status, output); err != nil {
 			slog.Warn("repo map: failed to finalize generation run", "run_id", runID, "repo", repo, "error", err)
 		}

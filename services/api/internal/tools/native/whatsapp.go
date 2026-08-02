@@ -519,8 +519,9 @@ func (t *whatsAppMediaStatusTool) Definition() domain.Tool {
 
 func (t *whatsAppMediaStatusTool) Execute(input map[string]any) (any, error) {
 	return map[string]any{
-		"supported": false,
-		"message":   "Media extraction is not available yet. Ask the user to provide text or a caption.",
+		"supported": true,
+		"message": "Images and voice notes sent in the current message are forwarded to you directly (voice only on providers with native audio input — Gemini; other providers get the caption/placeholder text). " +
+			"Documents and media from earlier in the conversation are not available — only the caption/placeholder text was kept. Ask the user to resend it if you need to see/hear it.",
 	}, nil
 }
 

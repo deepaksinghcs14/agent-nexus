@@ -59,7 +59,7 @@ func All(pool *pgxpool.Pool, cfg *config.Config) []tools.NativeTool {
 	}
 	out = append(out, NewWhatsAppTools(pool, cfg)...)
 	if !cfg.DemoMode {
-		out = append(out, NewWriteFileTool(cfg.StoragePath), NewHTTPRequestTool())
+		out = append(out, NewWriteFileTool(cfg.StoragePath), NewHTTPRequestTool(cfg.HTTPToolAllowHosts))
 	}
 	return out
 }

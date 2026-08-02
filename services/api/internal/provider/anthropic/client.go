@@ -6,6 +6,7 @@ package anthropic
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -101,7 +102,15 @@ func buildParams(req provider.CompletionRequest) sdk.MessageNewParams {
 			}
 			i++
 		case "user":
-			params.Messages = append(params.Messages, sdk.NewUserMessage(sdk.NewTextBlock(msg.Content)))
+			if len(msg.Images) == 0 {
+				params.Messages = append(params.Messages, sdk.NewUserMessage(sdk.NewTextBlock(msg.Content)))
+			} else {
+				blocks := []sdk.ContentBlockParamUnion{sdk.NewTextBlock(msg.Content)}
+				for _, img := range msg.Images {
+					blocks = append(blocks, sdk.NewImageBlockBase64(img.MIMEType, base64.StdEncoding.EncodeToString(img.Data)))
+				}
+				params.Messages = append(params.Messages, sdk.NewUserMessage(blocks...))
+			}
 			i++
 		case "assistant":
 			if len(msg.ToolCalls) == 0 {

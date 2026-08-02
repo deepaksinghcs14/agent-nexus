@@ -277,10 +277,7 @@ func (h *WebhookIngressHandler) Receive(w http.ResponseWriter, r *http.Request) 
 	// Fire-and-forget — don't block the HTTP response on DB update.
 	go repo.IncrementTriggerCount(context.Background(), trig.ID) //nolint:errcheck
 
-	ip := r.Header.Get("X-Forwarded-For")
-	if ip == "" {
-		ip = r.RemoteAddr
-	}
+	ip := clientIP(r)
 	go writeSystemAudit(context.Background(), h.pool, trig.WorkspaceID, trig.CreatedBy, "", "webhook_trigger.fired", "webhook_trigger", trig.ID, ip)
 
 	errs.WriteJSON(w, http.StatusAccepted, map[string]any{

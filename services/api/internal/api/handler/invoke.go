@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -253,6 +254,11 @@ type invokeOpts struct {
 	// disableUserInput removes the WaitForUserInput capability (runs that can
 	// never pause for a human, e.g. workflow supervisor nodes).
 	disableUserInput bool
+	// MediaImages/MediaAudio attach inline media to this turn's triggering
+	// user message only (e.g. a WhatsApp inbound image/voice note) — see the
+	// splice onto the last history message in executeRun.
+	MediaImages []provider.MediaBlock
+	MediaAudio  []provider.MediaBlock
 }
 
 // progressLabel returns a short human-readable status for a tool that is about to execute.
@@ -462,6 +468,19 @@ func (h *InvokeHandler) cleanupEphemeralResources(ctx context.Context, runID str
 		WHERE source_run_id IN (SELECT id FROM run_tree) AND ephemeral=true`, runID)
 }
 
+// conversationLocks serialises executeRun per conversation: one run at a time
+// per conversationID → *sync.Mutex, same shape as mcpOAuthLocks. Without it,
+// two quick gateway messages (or a gateway message racing a resumed
+// approval/session-parked run) launch two concurrent executeRun on the same
+// conversation — torn message ordering, and the second run's compaction
+// write silently discards the first's. Locking inside executeRun itself
+// (rather than at gateway dispatch) also covers ResumeApprovedRun /
+// ResumeSessionRun, which re-enter executeRun on the same conversation with
+// no other guard. Entries are never evicted (deleting one races a holder of
+// the stale pointer) and the guarantee is per-replica — same assumption the
+// rate limiter and runner session idempotency already make.
+var conversationLocks sync.Map // conversationID → *sync.Mutex
+
 // executeRun runs the full agent loop with tool calling. When emit is nil (background mode),
 // progress is only written to the database. When emit is non-nil, SSE events are also sent.
 // delegateHandlers, if non-nil, maps tool names to functions that execute a delegate agent and
@@ -474,6 +493,28 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 	// while still bounding resource lifetime if something hangs.
 	dbCtx, dbCancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer dbCancel()
+
+	// A cancel from the API must actually stop this goroutine: model calls,
+	// tool execution and the approval/session/user-input waits all hang off
+	// ctx. dbCtx stays independent (above) so terminal status writes still
+	// land after a cancel.
+	ctx, releaseRunCancel := registerRunCancel(ctx, runID)
+	defer releaseRunCancel()
+
+	// One run at a time per conversation. Registered as cancellable above so
+	// a run queued here can still be stopped: it won't unblock mid-wait (a
+	// mutex can't select on ctx.Done), but the status<>'cancelled' claim
+	// below means a cancel that lands while queued is honored the instant
+	// this run's turn comes, instead of proceeding anyway.
+	muAny, _ := conversationLocks.LoadOrStore(convID, &sync.Mutex{})
+	convMu := muAny.(*sync.Mutex)
+	convMu.Lock()
+	defer convMu.Unlock()
+	if t, err := h.pool.Exec(dbCtx, `UPDATE runs SET status='running' WHERE id=$1::uuid AND status<>'cancelled'`, runID); err != nil {
+		slog.Error("failed to claim run before execution", "run_id", runID, "error", err)
+	} else if t.RowsAffected() == 0 {
+		return // cancelled while queued behind another run on this conversation
+	}
 
 	resuming := opts.resume != nil
 
@@ -513,7 +554,11 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 	var connSettings connectorSettings
 	if a.ContextRetrievalEnabled {
-		connSettings, _ = h.runs.agentConnectorSettings(ctx, a.ID)
+		var err error
+		if connSettings, err = h.runs.agentConnectorSettings(ctx, a.ID); err != nil {
+			slog.Error("connector settings lookup failed; run proceeds without retrieved context",
+				"run_id", runID, "agent_id", a.ID, "error", err)
+		}
 	}
 
 	if a.ContextRetrievalEnabled && !a.AgenticRAG && !resuming {
@@ -572,6 +617,14 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		// Reverse: query returned newest-first, LLM needs oldest-first.
 		for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
 			history[i], history[j] = history[j], history[i]
+		}
+		// Attach this turn's inline media to the triggering message only — the
+		// row just loaded back from `messages` is the caller's fresh INSERT of
+		// msg.Body (placeholder/caption text), never persisted with media, so a
+		// later turn reloading the same row from the DB gets text-only again.
+		if last := len(history) - 1; last >= 0 && history[last].Role == "user" && (len(opts.MediaImages) > 0 || len(opts.MediaAudio) > 0) {
+			history[last].Images = opts.MediaImages
+			history[last].Audio = opts.MediaAudio
 		}
 	}
 
@@ -836,6 +889,12 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		case answer := <-ch:
 			h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, capturedRunID) //nolint:errcheck
 			return answer, nil
+		case <-ctx.Done():
+			// Cancel already wrote status='cancelled'; don't flip it back to
+			// running. UnregisterUserInputWait so a late SubmitUserInput finds
+			// no channel instead of leaking one.
+			UnregisterUserInputWait(capturedRunID)
+			return "", ctx.Err()
 		case <-time.After(30 * time.Minute):
 			UnregisterUserInputWait(capturedRunID)
 			h.pool.Exec(ctx, `UPDATE runs SET status='running' WHERE id=$1::uuid`, capturedRunID) //nolint:errcheck
@@ -918,8 +977,11 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 		sseEmitOrNil(sse.SessionWait(runID, sessionKey))
 
 		// Sessions run for minutes to hours; block only briefly for fast stubs
-		// and tests, then park. The runner's callback resumes the run.
-		content, got := awaitSessionResult(runID, ch, 60*time.Second)
+		// and tests, then park. The runner's callback resumes the run. A
+		// cancel also falls out here as an unparked clean return — Cancel
+		// already wrote status='cancelled' and deletes the wait state, so
+		// there's nothing to resume.
+		content, got := awaitSessionResult(waitCtx, runID, ch, 60*time.Second)
 		if !got {
 			return "", tools.ErrRunParked
 		}
@@ -1062,7 +1124,8 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 				runCompleted = true
 				costUSD := cost.Estimate(a.Provider, a.Model, totalInput, totalOutput)
 				h.pool.Exec(dbCtx, //nolint:errcheck
-					`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
+					// Cancel is terminal: never resurrect a cancelled run with a later status write.
+					`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid AND status<>'cancelled'`,
 					runID, reply, totalInput, totalOutput, costUSD)
 				sseEmitOrNil(sse.RunCompleted(runID, totalInput, totalOutput, costUSD))
 				// Memory extraction runs after marking run complete so gateway delivery
@@ -1160,6 +1223,14 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 
 		curBatch = pendingCalls
 		for callIdx := startIdx; callIdx < len(pendingCalls); callIdx++ {
+			// A cancelled run must not keep executing the rest of the batch: a
+			// woken wait (native_ask_user, approval, session) returns an error
+			// that the code below would otherwise turn into a tool result and
+			// march on to the next call.
+			if ctx.Err() != nil {
+				runErrMsg = "run cancelled"
+				return
+			}
 			call := pendingCalls[callIdx]
 			curCallIdx = callIdx
 
@@ -1289,7 +1360,7 @@ func (h *InvokeHandler) executeRun(ctx context.Context, a *domain.Agent, ws, uid
 					sseEmitOrNil(sse.ApprovalRequired(call.Name, call.Input, arID))
 
 					var got bool
-					decision, got = awaitApprovalDecision(runID, ch, 10*time.Minute)
+					decision, got = awaitApprovalDecision(ctx, runID, ch, 10*time.Minute)
 					if !got {
 						if opts.invokeDepth == 0 && !opts.noApprovalPark {
 							// Park: free this goroutine and leave the run in approval_wait
@@ -1477,17 +1548,35 @@ func (h *InvokeHandler) executeGroupRun(
 		}
 	}
 
+	// A cancel from the API must stop the walk: ctx.Done() is checked at the
+	// top of walkBranch's loop below, and this ctx also flows into every
+	// sub-run this workflow launches (executeRun re-registers its own cancel
+	// keyed by its own sub-run id, so cancelling the parent cascades).
+	ctx, releaseRunCancel := registerRunCancel(ctx, parentRunID)
+	defer releaseRunCancel()
+
 	// Ensure the run is always marked terminal, even on unexpected exit / panic.
 	// The checkpoint row is deleted here too — reached on every in-process
 	// terminal path (success, explicit fail, panic), so it is only ever left
 	// behind when the process itself dies mid-run, which is exactly the
 	// signal RecoverInterruptedWorkflowRuns needs to know a resume is possible.
-	runMarked := false
+	var runMarked atomic.Bool
+	// failWorkflow is the only terminal-failure path: it marks the run settled
+	// (walkBranch below is a closure — its returns unwind the branch, not the
+	// walk, so every failure site must go through here or fall into the
+	// success write after the top-level walkBranch call) and writes the
+	// status. Always context.Background(): ctx is dead exactly when the walk
+	// aborts on client disconnect. Atomic because sibling parallel branches
+	// both write it (the "agent"/"supervisor" cases below).
+	failWorkflow := func(msg string) {
+		runMarked.Store(true)
+		h.runs.failRun(context.Background(), parentRunID, msg) //nolint:errcheck
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			sseEmit(sse.Error(fmt.Sprintf("workflow panic: %v", r)))
 		}
-		if !runMarked {
+		if !runMarked.Load() {
 			h.runs.failRun(context.Background(), parentRunID, "workflow terminated unexpectedly") //nolint:errcheck
 		}
 		h.pool.Exec(context.Background(), `DELETE FROM workflow_checkpoints WHERE run_id=$1::uuid`, parentRunID) //nolint:errcheck
@@ -1523,7 +1612,7 @@ func (h *InvokeHandler) executeGroupRun(
 		workflowID)
 	if err != nil {
 		sseEmit(sse.Error("failed to load workflow nodes"))
-		h.runs.failRun(ctx, parentRunID, "failed to load workflow nodes") //nolint:errcheck
+		failWorkflow("failed to load workflow nodes")
 		return
 	}
 	defer nodeRows.Close()
@@ -1577,7 +1666,7 @@ func (h *InvokeHandler) executeGroupRun(
 		workflowID)
 	if err != nil {
 		sseEmit(sse.Error("failed to load workflow edges"))
-		h.runs.failRun(ctx, parentRunID, "failed to load workflow edges") //nolint:errcheck
+		failWorkflow("failed to load workflow edges")
 		return
 	}
 	defer edgeRows.Close()
@@ -1618,7 +1707,7 @@ func (h *InvokeHandler) executeGroupRun(
 	}
 	if startNode == nil {
 		sseEmit(`{"type":"error","error":"workflow has no start node"}`)
-		h.runs.failRun(ctx, parentRunID, "workflow has no start node") //nolint:errcheck
+		failWorkflow("workflow has no start node")
 		return
 	}
 
@@ -1701,9 +1790,20 @@ func (h *InvokeHandler) executeGroupRun(
 		prevNodeName := ""
 
 		for len(queue) > 0 {
+			// A failure in this or a sibling parallel branch aborts the whole
+			// walk. ponytail: node-boundary granularity — an in-flight sibling
+			// sub-run still finishes its current model call, and the parallel
+			// node it hung off still paints node_completed. Needs a per-walk
+			// cancel to do better.
+			if runMarked.Load() {
+				return
+			}
 			// Stop if the request was cancelled (client disconnect / timeout).
+			// Marked failed here rather than left to the defer: the walk did
+			// not finish, and "success with partial output" would be a lie.
 			select {
 			case <-ctx.Done():
+				failWorkflow("workflow cancelled")
 				return
 			default:
 			}
@@ -1714,7 +1814,7 @@ func (h *InvokeHandler) executeGroupRun(
 			stepsMu.Unlock()
 			if exceeded {
 				sseEmit(sse.Error(fmt.Sprintf("workflow exceeded maximum steps (%d) — possible infinite loop", maxTotalSteps)))
-				h.runs.failRun(ctx, parentRunID, fmt.Sprintf("workflow exceeded maximum steps (%d)", maxTotalSteps)) //nolint:errcheck
+				failWorkflow(fmt.Sprintf("workflow exceeded maximum steps (%d)", maxTotalSteps))
 				return
 			}
 
@@ -1907,8 +2007,7 @@ func (h *InvokeHandler) executeGroupRun(
 					// node_completed and march on with empty output.
 					msg := fmt.Sprintf("%s failed: %s", nodeName, subErrMsg)
 					sseEmit(sse.ErrorForNode(node.ID, msg))
-					runMarked = true
-					h.runs.failRun(context.Background(), parentRunID, msg) //nolint:errcheck
+					failWorkflow(msg)
 					return
 				}
 
@@ -2284,8 +2383,7 @@ func (h *InvokeHandler) executeGroupRun(
 					// node_completed and march on with empty output.
 					msg := fmt.Sprintf("%s failed: %s", nodeName, subErrMsg)
 					sseEmit(sse.ErrorForNode(node.ID, msg))
-					runMarked = true
-					h.runs.failRun(context.Background(), parentRunID, msg) //nolint:errcheck
+					failWorkflow(msg)
 					return
 				}
 
@@ -2329,6 +2427,13 @@ func (h *InvokeHandler) executeGroupRun(
 
 	walkBranch(startNode, input, nil)
 
+	// walkBranch's returns unwind only the closure — a failed node (or any
+	// other failWorkflow call) would otherwise fall straight into the success
+	// write below.
+	if runMarked.Load() {
+		return
+	}
+
 	// Mark the parent run as successful
 	finalOutput := input
 	for _, n := range nodeMap {
@@ -2347,9 +2452,10 @@ func (h *InvokeHandler) executeGroupRun(
 		 FROM runs WHERE trace_id=$1::uuid AND id!=$1::uuid`,
 		parentRunID).Scan(&totalInputTokens, &totalOutputTokens, &totalCostUSD)
 
-	runMarked = true
+	runMarked.Store(true)
 	h.pool.Exec(context.Background(), //nolint:errcheck
-		`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid`,
+		// Cancel is terminal: never resurrect a cancelled run with a later status write.
+		`UPDATE runs SET output=$2,status='success',completed_at=NOW(),total_input_tokens=$3,total_output_tokens=$4,cost_estimate=$5 WHERE id=$1::uuid AND status<>'cancelled'`,
 		parentRunID, finalOutput, totalInputTokens, totalOutputTokens, totalCostUSD)
 
 	sseEmit(sse.RunCompleted(parentRunID, totalInputTokens, totalOutputTokens, totalCostUSD))

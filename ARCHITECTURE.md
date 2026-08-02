@@ -583,7 +583,7 @@ The invoke path uses the same `ExecutionContext` and run loop as playground runs
 - `POST /send` — send a text message to a JID
 - On inbound message: POSTs to `GATEWAY_API_URL/gateway/whatsapp/{channelId}`
 - Auth data persisted at `WHATSAPP_AUTH_ROOT` (mounted as a Docker volume)
-- WhatsApp credentials encrypted and stored via the internal `/internal/whatsapp/{accountId}/credentials` API (no JWT — adapter-only)
+- WhatsApp credentials encrypted and stored via the internal `/internal/whatsapp/{accountId}/credentials` API (no JWT — the caller is the adapter process, not a user; authenticated with `WHATSAPP_INTERNAL_TOKEN` via `X-WhatsApp-Token`)
 
 ### HTTP Channel
 - `POST /gateway/http/{channelId}` — accepts `{"input": "...", "session_id": "..."}` → 202 `{run_id, session_id, conversation_id, status}`
@@ -874,10 +874,13 @@ GET    /api/v1/admin/usage
 GET    /api/v1/admin/policies
 PUT    /api/v1/admin/policies
 
-# Internal (no JWT — adapter / process only)
-GET    /internal/whatsapp/{accountId}/credentials
-PUT    /internal/whatsapp/{accountId}/credentials
-DELETE /internal/whatsapp/{accountId}/credentials
+# Internal (no JWT — adapter / process only; each verifies a shared secret)
+GET    /internal/whatsapp/{accountId}/credentials   # X-WhatsApp-Token
+PUT    /internal/whatsapp/{accountId}/credentials   # X-WhatsApp-Token
+DELETE /internal/whatsapp/{accountId}/credentials   # X-WhatsApp-Token
+PUT    /internal/whatsapp/{accountId}/lid-map       # X-WhatsApp-Token
+POST   /internal/sessions/callback                  # X-Runner-Secret
+POST   /internal/service-logs/ingest                # X-Log-Stream-Token
 ```
 
 ---

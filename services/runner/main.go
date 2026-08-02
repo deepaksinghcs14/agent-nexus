@@ -18,8 +18,10 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -69,6 +71,11 @@ type session struct {
 	req         launchRequest
 	subscribers []subscriber
 	done        bool
+	// cancel stops the claude subprocess for this session (via the ctx
+	// runSession derives its exec.CommandContext calls from). Set once, right
+	// after runSession creates it — nil until then, so a cancel request that
+	// lands in that brief window is a no-op rather than a nil-pointer panic.
+	cancel context.CancelFunc
 }
 
 // sessionKey is the dedup identity of a session. Review sessions get their own
@@ -105,6 +112,10 @@ type server struct {
 	sessionTimeout time.Duration
 	stubDelay      time.Duration
 	stubStatus     string
+	// callbackSecret authenticates incoming API→runner calls (cancel). Same
+	// shared secret already used for the reverse direction (runner→API
+	// callbacks carry it too) — one secret, not two.
+	callbackSecret string
 }
 
 type result struct {
@@ -126,6 +137,7 @@ func main() {
 		sessionTimeout: time.Duration(getEnvInt("SESSION_TIMEOUT_MIN", 120)) * time.Minute,
 		stubDelay:      time.Duration(getEnvInt("STUB_DELAY_MS", 2000)) * time.Millisecond,
 		stubStatus:     getEnv("STUB_STATUS", "success"),
+		callbackSecret: getEnv("RUNNER_CALLBACK_SECRET", ""),
 	}
 	if err := os.MkdirAll(s.workDir, 0o755); err != nil {
 		slog.Error("failed to create work dir", "error", err)
@@ -150,6 +162,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /sessions", s.handleLaunch)
+	mux.HandleFunc("POST /sessions/cancel", s.handleCancel)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -213,6 +226,41 @@ func (s *server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 
 	go s.runSession(sess)
 	writeJSON(w, http.StatusAccepted, map[string]any{"session": key, "status": "started"})
+}
+
+// handleCancel stops the claude subprocess for a session, if one is
+// currently running. Idempotent and always 200: a session that already
+// finished or was never known is a no-op, not an error — the caller (the
+// API's Cancel endpoint) already committed to cancelling on its side and
+// this is best-effort follow-through, not a two-phase commit.
+func (s *server) handleCancel(w http.ResponseWriter, r *http.Request) {
+	if s.callbackSecret == "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Runner-Secret")), []byte(s.callbackSecret)) != 1 {
+		httpErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	var req struct {
+		SessionKey string `json:"session_key"`
+	}
+	if json.NewDecoder(r.Body).Decode(&req) != nil || req.SessionKey == "" {
+		httpErr(w, http.StatusBadRequest, "session_key is required")
+		return
+	}
+
+	s.mu.Lock()
+	sess, ok := s.sessions[req.SessionKey]
+	cancelled := false
+	if ok && !sess.done && sess.cancel != nil {
+		sess.cancel()
+		cancelled = true
+	}
+	s.mu.Unlock()
+
+	if ok {
+		slog.Info("session cancel requested", "session", req.SessionKey, "cancelled", cancelled)
+	} else {
+		slog.Info("session cancel requested for unknown session", "session", req.SessionKey)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"cancelled": cancelled})
 }
 
 // ── crash-recovery journal ────────────────────────────────────────────────────
@@ -285,6 +333,9 @@ func (s *server) runSession(sess *session) {
 	slog.Info("session started", "session", sess.key, "executor", s.executor, "run_id", sess.req.RunID)
 	ctx, cancel := context.WithTimeout(context.Background(), s.sessionTimeout)
 	defer cancel()
+	s.mu.Lock()
+	sess.cancel = cancel
+	s.mu.Unlock()
 
 	var res result
 	if s.executor == "stub" {
@@ -302,9 +353,9 @@ func (s *server) runSession(sess *session) {
 			res.Summary = `{"verdict":"approve","blocking_issues":[],"non_blocking_notes":["SIMULATED REVIEW (runner is in stub mode — no diff was inspected)"],"pr_description_notes":"Simulated review — stub mode validates pipeline plumbing only."}`
 		}
 	} else if sess.req.Mode == "review" {
-		res = s.runReviewSession(ctx, sess.req)
+		res = s.runReviewSession(ctx, sess)
 	} else {
-		res = s.runClaudeSession(ctx, sess.req)
+		res = s.runClaudeSession(ctx, sess)
 	}
 
 	s.mu.Lock()
@@ -335,9 +386,65 @@ const codeQualityPrompt = `Code quality rules for this session:
 - For non-trivial new logic, leave one minimal runnable check (a small test or assert) in the repo's existing test style. No new test frameworks.
 - If the task is ambiguous, implement the smallest reasonable interpretation and note the ambiguity in your final summary instead of building every variant.`
 
+// pushTimeout bounds the post-session salvage push. Deliberately not an env
+// knob: it only ever has to cover one push of a shallow branch, on its own
+// fresh context — the session ctx is already expired on exactly the path
+// that matters (a SESSION_TIMEOUT_MIN kill via exec.CommandContext), so
+// reusing it would kill git the instant it started.
+const pushTimeout = 5 * time.Minute
+
+// salvagePush commits whatever the session left uncommitted and pushes the
+// branch, reporting whether it actually reached the remote. Runs regardless
+// of how the session ended — a killed or crashed session's partial work is
+// the whole point of the fallback, and the caller's deferred os.RemoveAll is
+// about to delete the only copy.
+func salvagePush(dir, branch, baseSHA, githubToken string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), pushTimeout)
+	defer cancel()
+
+	// The prompt told the session to commit everything it changed, so a dirty
+	// tree here means it was killed mid-edit or disobeyed — either way the
+	// diff is the deliverable and the alternative is losing it outright.
+	// ponytail: sweeps untracked scratch files too; .gitignore is the only
+	// filter, and the review session is what catches the rest.
+	if st, err := runCmd(ctx, dir, nil, "git", "status", "--porcelain"); err != nil {
+		slog.Warn("salvage: git status failed, skipping uncommitted-work sweep", "branch", branch, "error", err)
+	} else if strings.TrimSpace(st) != "" {
+		if out, err := runCmd(ctx, dir, nil, "git", "add", "-A"); err != nil {
+			slog.Warn("salvage: git add failed", "branch", branch, "error", err, "detail", truncate(out, 300))
+		} else if out, err := runCmd(ctx, dir, nil, "git", "commit", "-m", "wip: session ended before it could commit"); err != nil {
+			slog.Warn("salvage: wip commit failed", "branch", branch, "error", err, "detail", truncate(out, 300))
+		}
+	}
+
+	head, err := runCmd(ctx, dir, nil, "git", "rev-parse", "HEAD")
+	if err != nil {
+		slog.Error("salvage: cannot read HEAD, nothing pushed", "branch", branch, "error", err, "detail", truncate(head, 300))
+		return false
+	}
+	if strings.TrimSpace(head) == baseSHA {
+		return false // nothing was committed
+	}
+	// --force: the branch is derived from the ticket key, so the
+	// orchestrator's "crashed → retry once" relaunches into this same ref —
+	// without --force the retry's own (successful) push is rejected
+	// non-fast-forward and reports as lost.
+	// ponytail: safe while nexus/<ticket> is runner-owned; switch to
+	// --force-with-lease (needs a fetch of the remote ref first) if humans
+	// ever push to these branches directly.
+	if out, err := runCmd(ctx, dir, nil, "git", "push", "--force", "-u", "origin", branch); err != nil {
+		slog.Error("salvage: push failed, session work stays only in the clone about to be deleted",
+			"branch", branch, "error", err, "detail", redactToken(out, githubToken))
+		return false
+	}
+	return true
+}
+
 // runClaudeSession clones the repo, runs headless Claude Code on a fresh
 // branch, pushes it, and classifies the outcome.
-func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result {
+func (s *server) runClaudeSession(ctx context.Context, sess *session) result {
+	req := sess.req
+	onProgress := s.newProgressReporter(sess)
 	crash := func(stage string, err error, detail string) result {
 		slog.Error("session stage failed", "ticket", req.TicketKey, "repo", req.Repo, "stage", stage, "error", err, "detail", detail)
 		return result{Status: "crashed", Summary: fmt.Sprintf("%s failed: %v: %s", stage, err, truncate(detail, 500))}
@@ -369,6 +476,13 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 	if out, err := runCmd(ctx, dir, nil, "git", "checkout", "-B", branch); err != nil {
 		return crash("branch", err, out)
 	}
+	// Baseline for "did this session commit anything": an empty branch pushed
+	// to the remote would falsely signal to the orchestrator that work landed.
+	baseSHA, err := runCmd(ctx, dir, nil, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return crash("branch", err, baseSHA)
+	}
+	baseSHA = strings.TrimSpace(baseSHA)
 	for _, kv := range [][2]string{{"user.name", "Agent Nexus"}, {"user.email", "nexus@bureau.id"}} {
 		runCmd(ctx, dir, nil, "git", "config", kv[0], kv[1]) //nolint:errcheck
 	}
@@ -380,10 +494,11 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 			"Do not push — the harness pushes your branch when you finish.",
 		req.TicketKey, req.Repo, req.TaskDescription)
 
-	claudeOut, claudeErr := runCmd(ctx, dir, claudeEnv(req.ClaudeToken),
+	claudeOut, claudeErr := runClaudeStreaming(ctx, dir, claudeEnv(req.ClaudeToken), onProgress,
 		"claude", "-p", prompt,
 		"--append-system-prompt", codeQualityPrompt,
-		"--output-format", "json",
+		"--output-format", "stream-json",
+		"--verbose",
 		"--max-turns", strconv.Itoa(s.maxTurns),
 		"--dangerously-skip-permissions")
 
@@ -396,17 +511,23 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 		TotalCostUSD float64 `json:"total_cost_usd"`
 	}
 	parseErr := json.Unmarshal([]byte(lastJSONObject(claudeOut)), &cli)
-	if claudeErr != nil && parseErr != nil {
-		return crash("claude", claudeErr, truncate(claudeOut, 800))
-	}
 
-	// Push whatever was committed, even on budget-exceeded — partial progress
-	// on the branch is the whole point of the fallback.
-	pushed := false
-	if out, err := runCmd(ctx, dir, nil, "git", "push", "-u", "origin", branch); err != nil {
-		slog.Warn("push failed", "ticket", req.TicketKey, "error", err, "detail", redactToken(out, githubToken))
-	} else {
-		pushed = true
+	// Push whatever was committed regardless of how the session ended — even
+	// a killed or crashed session's partial work is the whole point of the
+	// fallback, and the deferred RemoveAll above is about to delete the only
+	// copy. Must run before the crash return below, not after: a killed
+	// session (SESSION_TIMEOUT_MIN) emits no parseable JSON, and that early
+	// return used to skip the push entirely.
+	pushed := salvagePush(dir, branch, baseSHA, githubToken)
+
+	if claudeErr != nil && parseErr != nil {
+		res := crash("claude", claudeErr, truncate(claudeOut, 800))
+		if pushed {
+			res.Branch = branch
+			res.Summary = "[session did not finish — its partial, INCOMPLETE work was force-pushed to " + branch +
+				" for inspection; do not open a PR from it. A retry for this ticket restarts from the base branch and overwrites it] " + res.Summary
+		}
+		return res
 	}
 
 	res := result{Branch: branch, Summary: truncate(cli.Result, 4000), CostUSD: cli.TotalCostUSD}
@@ -420,7 +541,8 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 		res.Status = "success"
 	}
 	if !pushed {
-		res.Summary = "[branch push failed — changes not on remote] " + res.Summary
+		res.Branch = ""
+		res.Summary = "[no branch on the remote — the session committed nothing, or the push failed] " + res.Summary
 	}
 	return res
 }
@@ -428,7 +550,9 @@ func (s *server) runClaudeSession(ctx context.Context, req launchRequest) result
 // runReviewSession checks out an existing branch, diffs it against base, and
 // runs headless Claude Code as a read-only reviewer over the checkout. Nothing
 // is committed or pushed; the reviewer's verdict JSON is the result summary.
-func (s *server) runReviewSession(ctx context.Context, req launchRequest) result {
+func (s *server) runReviewSession(ctx context.Context, sess *session) result {
+	req := sess.req
+	onProgress := s.newProgressReporter(sess)
 	crash := func(stage string, err error, detail string) result {
 		slog.Error("review stage failed", "ticket", req.TicketKey, "repo", req.Repo, "stage", stage, "error", err, "detail", detail)
 		return result{Status: "crashed", Summary: fmt.Sprintf("%s failed: %v: %s", stage, err, truncate(detail, 500))}
@@ -499,9 +623,10 @@ func (s *server) runReviewSession(ctx context.Context, req launchRequest) result
 		req.TaskDescription,
 		base, req.Head, diff)
 
-	claudeOut, claudeErr := runCmd(ctx, dir, claudeEnv(req.ClaudeToken),
+	claudeOut, claudeErr := runClaudeStreaming(ctx, dir, claudeEnv(req.ClaudeToken), onProgress,
 		"claude", "-p", prompt,
-		"--output-format", "json",
+		"--output-format", "stream-json",
+		"--verbose",
 		"--max-turns", strconv.Itoa(s.maxTurns),
 		"--dangerously-skip-permissions")
 
@@ -628,6 +753,130 @@ func runCmd(ctx context.Context, dir string, env []string, name string, args ...
 	cmd.Stderr = &buf
 	err := cmd.Run()
 	return buf.String(), err
+}
+
+// runClaudeStreaming runs the claude CLI with --output-format stream-json,
+// invoking onLine for each NDJSON line as it arrives (for live progress
+// reporting) while still accumulating the full stdout so the final "result"
+// object can be parsed exactly as lastJSONObject already does — unlike
+// runCmd (used for git and everything else), this needs line-by-line
+// visibility, not just the final buffer.
+func runClaudeStreaming(ctx context.Context, dir string, env []string, onLine func(line string), name string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = dir
+	if env != nil {
+		cmd.Env = env
+	}
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+
+	var out bytes.Buffer
+	scanner := bufio.NewScanner(stdout)
+	// A stream-json line can embed a large tool input/output; the default
+	// 64KB scanner limit is too easy to hit. 1MB matches the ceiling nothing
+	// in this codebase's tool outputs is expected to exceed.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		out.WriteString(line)
+		out.WriteByte('\n')
+		if onLine != nil {
+			onLine(line)
+		}
+	}
+	scanErr := scanner.Err()
+	waitErr := cmd.Wait()
+	out.Write(stderrBuf.Bytes())
+
+	if waitErr != nil {
+		return out.String(), waitErr
+	}
+	return out.String(), scanErr
+}
+
+// summarizeStreamEvent extracts a coarse "what's happening" string from one
+// stream-json line, or "" if the line has nothing progress-worthy — init,
+// hook, and rate-limit events are skipped, and the final result line gets
+// its own terminal callback rather than a progress update.
+func summarizeStreamEvent(line string) string {
+	var evt struct {
+		Type    string `json:"type"`
+		Message struct {
+			Content []struct {
+				Type string `json:"type"`
+				Name string `json:"name"`
+			} `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal([]byte(line), &evt) != nil || evt.Type != "assistant" {
+		return ""
+	}
+	for _, block := range evt.Message.Content {
+		if block.Type == "tool_use" && block.Name != "" {
+			return "using " + block.Name
+		}
+	}
+	if len(evt.Message.Content) > 0 {
+		return "writing a response"
+	}
+	return ""
+}
+
+// progressInterval bounds how often a session reports progress. A coarse
+// "still alive and roughly where it is" signal, not a transcript — no
+// caller needs one POST per tool call on a session that can run for hours.
+const progressInterval = 5 * time.Second
+
+// newProgressReporter returns a callback for runClaudeStreaming's onLine
+// that debounces to at most one report per progressInterval. Single call
+// path (the scanner loop in runClaudeStreaming runs on one goroutine), so no
+// lock is needed around `last`.
+func (s *server) newProgressReporter(sess *session) func(line string) {
+	var last time.Time
+	return func(line string) {
+		summary := summarizeStreamEvent(line)
+		if summary == "" || time.Since(last) < progressInterval {
+			return
+		}
+		last = time.Now()
+		s.reportProgress(sess, summary)
+	}
+}
+
+// reportProgress posts a progress update to every subscriber of sess, the
+// same fan-out deliverCallback uses for the terminal result. Best-effort and
+// fire-and-forget: a progress update is never worth blocking or failing the
+// session for, and the stale-session watchdog is the real backstop if the
+// API never hears from the runner again.
+func (s *server) reportProgress(sess *session, summary string) {
+	s.mu.Lock()
+	subs := append([]subscriber(nil), sess.subscribers...)
+	s.mu.Unlock()
+	for _, sub := range subs {
+		progressURL := strings.TrimSuffix(sub.CallbackURL, "/internal/sessions/callback") + "/internal/sessions/progress"
+		payload, _ := json.Marshal(map[string]any{"run_id": sub.RunID, "summary": summary})
+		go func(url, secret, runID string) {
+			req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
+			if err != nil {
+				return
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Runner-Secret", secret)
+			resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+			if err != nil {
+				slog.Warn("progress report failed", "run_id", runID, "error", err)
+				return
+			}
+			resp.Body.Close()
+		}(progressURL, sub.CallbackSecret, sub.RunID)
+	}
 }
 
 // lastJSONObject extracts the last top-level {...} object from mixed output.

@@ -376,6 +376,12 @@ cp services/api/.env.example services/api/.env
 | `SESSION_CALLBACK_URL` | no | Callback URL the runner uses to reach this API when it differs from `PUBLIC_API_URL` (e.g. `http://api:8080` inside Docker, private domains on Railway) |
 | `GITHUB_TOKEN` | no | Single-tenant fallback token for GitHub tools and runner sessions — a workspace token set in Settings → Claude Code always takes precedence |
 | `GITHUB_API_URL` | no | GitHub API base URL, default `https://api.github.com` (override for GHE or tests) |
+| `WHATSAPP_INTERNAL_TOKEN` | no | Shared secret the WhatsApp adapter presents on `/internal/whatsapp/*` (which store and return Baileys session credentials). Auto-generated per container by `start-api.sh`, so set it only when running the adapter outside the API container |
+| `REQUIRE_SESSION_APPROVAL` | no | `true` gates `native_launch_repo_session` and `native_create_pull_request` behind a human approval. Default `false` — the per-repo sessions toggle is the human gate, and the Jira→PR pipeline is designed to run unattended |
+| `HTTP_TOOL_ALLOW_HOSTS` | no | Comma-separated hostnames `native_http_request` may reach even though they resolve to a private/loopback address. Empty by default: all private, loopback and link-local destinations are blocked (SSRF guard) |
+| `RATE_LIMIT_AUTH_PER_MIN` | no | Per-client requests/min on login, register, refresh and OAuth callbacks (default `20`; `0` disables) |
+| `RATE_LIMIT_INGRESS_PER_MIN` | no | Per-client requests/min on the public webhook and gateway ingress endpoints (default `120`; `0` disables) |
+| `TRUSTED_PROXY_COUNT` | no | Reverse proxies in front of the API, default `1` (Railway and most PaaS). **Set to `0` when the API is exposed directly** — otherwise a caller can forge `X-Forwarded-For` to dodge rate limits and fake audit-log IPs |
 
 ### `apps/web/.env.local` (local dev)
 

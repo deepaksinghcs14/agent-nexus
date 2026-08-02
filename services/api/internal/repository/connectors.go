@@ -10,11 +10,11 @@ type ConnectorRepository struct{ pool *pgxpool.Pool }
 
 func NewConnectorRepository(p *pgxpool.Pool) *ConnectorRepository { return &ConnectorRepository{p} }
 
-const connectorCols = `id::text,workspace_id::text,name,provider,type,auth_type,status,config,created_by::text,created_at,updated_at`
+const connectorCols = `id::text,workspace_id::text,name,provider,type,auth_type,status,config,created_by::text,created_at,updated_at,last_synced_at`
 
 func scanConnector(r interface{ Scan(...any) error }) (domain.Connector, error) {
 	var x domain.Connector
-	e := r.Scan(&x.ID, &x.WorkspaceID, &x.Name, &x.Provider, &x.Type, &x.AuthType, &x.Status, &x.Config, &x.CreatedBy, &x.CreatedAt, &x.UpdatedAt)
+	e := r.Scan(&x.ID, &x.WorkspaceID, &x.Name, &x.Provider, &x.Type, &x.AuthType, &x.Status, &x.Config, &x.CreatedBy, &x.CreatedAt, &x.UpdatedAt, &x.LastSyncedAt)
 	return x, e
 }
 func (r *ConnectorRepository) Get(c context.Context, id string) (*domain.Connector, error) {

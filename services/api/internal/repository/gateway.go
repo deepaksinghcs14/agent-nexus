@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -186,27 +187,28 @@ func (r *GatewayRepository) DeleteSession(ctx context.Context, id, workspaceID s
 	return err
 }
 
-func (r *GatewayRepository) CreateEvent(ctx context.Context, e *domain.GatewayEvent) error {
+// CreateEvent returns inserted=false when a row with the same
+// (channel_id, provider_message_id) already exists — the partial unique
+// index gateway_events_message_dedup (provider_message_id IS NOT NULL) makes
+// this the atomic dedup claim: ON CONFLICT DO NOTHING means a losing insert
+// returns zero rows instead of erroring, so a plain pgx.ErrNoRows is "someone
+// else already claimed this message", not a real failure.
+func (r *GatewayRepository) CreateEvent(ctx context.Context, e *domain.GatewayEvent) (bool, error) {
 	payload := e.Payload
 	if len(payload) == 0 {
 		payload = json.RawMessage(`{}`)
 	}
-	return r.pool.QueryRow(ctx, `
+	err := r.pool.QueryRow(ctx, `
 		INSERT INTO gateway_events(workspace_id,channel_id,session_id,run_id,event_type,provider_message_id,payload)
 		VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7)
 		ON CONFLICT(channel_id, provider_message_id) WHERE provider_message_id IS NOT NULL DO NOTHING
 		RETURNING id::text, created_at`,
 		e.WorkspaceID, e.ChannelID, nullableString(e.SessionID), nullableString(e.RunID), e.EventType, nullableString(e.ProviderMessageID), payload,
 	).Scan(&e.ID, &e.CreatedAt)
-}
-
-func (r *GatewayRepository) HasEventForProviderMessage(ctx context.Context, channelID, providerMessageID string) (bool, error) {
-	if providerMessageID == "" {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
-	var exists bool
-	err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM gateway_events WHERE channel_id=$1::uuid AND provider_message_id=$2)`, channelID, providerMessageID).Scan(&exists)
-	return exists, err
+	return err == nil, err
 }
 
 func (r *GatewayRepository) ListEvents(ctx context.Context, workspaceID, channelID string, limit int) ([]domain.GatewayEvent, error) {

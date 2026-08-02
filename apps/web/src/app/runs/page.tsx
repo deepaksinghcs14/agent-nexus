@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { PageHeader } from '@/components/ui/PageHeader'
 import type { Agent, PaginatedRuns, Run, WebhookTrigger, Workflow } from '@/types'
 
-const ACTIVE = new Set(['pending', 'running', 'approval_wait', 'session_wait'])
+const ACTIVE = new Set(['pending', 'running', 'approval_wait', 'session_wait', 'user_input_wait'])
 
 export default function RunsPage() {
   const [agent, setAgent] = useState('')

@@ -14,7 +14,7 @@ type RunDetail = Run & { steps?: RunStep[]; workflow_id?: string; approval_reque
 
 const ROW_GRID = 'grid items-center gap-x-3 px-4' as const
 const GRID_COLS = 'grid-cols-[20px_1fr_80px_48px_64px_56px]' as const
-const ACTIVE_RUN_STATUSES = new Set(['pending', 'running', 'approval_wait', 'session_wait'])
+const ACTIVE_RUN_STATUSES = new Set(['pending', 'running', 'approval_wait', 'session_wait', 'user_input_wait'])
 
 function SubRunRow({ subRun, agentName }: { subRun: Run; agentName?: string }) {
   const [open, setOpen] = useState(false)
@@ -153,7 +153,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
         <Link href="/runs" className="text-[12px] text-muted-foreground hover:text-foreground dark:hover:text-faint inline-flex items-center gap-1">
           <ArrowLeft className="w-3 h-3" /> Runs
         </Link>
-        {detail && ['pending', 'running', 'approval_wait', 'session_wait'].includes(detail.status) && (
+        {isActive && (
           <button
             onClick={() => cancel.mutate()}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-crit/30 text-crit text-[12px] rounded-lg"
@@ -206,6 +206,12 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
           {detail.status === 'session_wait' && (
             <div className="mb-5 rounded-xl border border-accent/30 bg-accent/10/60 p-4 text-[12px] text-accent dark:text-accent-bright">
               A repo coding session is running for this run. It resumes automatically when the session completes — this can take minutes to hours.
+              {detail.metadata?.session_progress && (
+                <div className="mt-2 flex items-center gap-1.5 font-medium">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {detail.metadata.session_progress}
+                </div>
+              )}
             </div>
           )}
 

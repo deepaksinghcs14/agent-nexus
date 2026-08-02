@@ -5,6 +5,7 @@ import { Writable } from 'node:stream'
 import { Boom } from '@hapi/boom'
 import makeWASocket, {
   DisconnectReason,
+  downloadMediaMessage,
   fetchLatestBaileysVersion,
   useMultiFileAuthState
 } from '@whiskeysockets/baileys'
@@ -12,9 +13,17 @@ import pino from 'pino'
 import QRCode from 'qrcode'
 
 const PORT = Number(process.env.PORT || 18901)
+// Images and voice notes only (see messageText/forwardMessage) — well under
+// WhatsApp's own ~16MB media ceiling, and matched by MAX_GATEWAY_MEDIA_BYTES
+// on the Go side (which must cover this raw size plus base64 inflation).
+const MAX_MEDIA_BYTES = 8 * 1024 * 1024
 const AUTH_ROOT = process.env.AUTH_ROOT || '/data/whatsapp-auth'
 const API_INTERNAL_URL = process.env.API_INTERNAL_URL || 'http://127.0.0.1:8080'
 const LOG_STREAM_INGEST_TOKEN = process.env.LOG_STREAM_INGEST_TOKEN || ''
+// Shared secret for /internal/whatsapp/* — generated per container in
+// start-api.sh, which starts this process alongside the API.
+const WHATSAPP_INTERNAL_TOKEN = process.env.WHATSAPP_INTERNAL_TOKEN || ''
+const internalHeaders = (extra = {}) => ({ ...extra, 'X-WhatsApp-Token': WHATSAPP_INTERNAL_TOKEN })
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' }, createLogStream())
 const accounts = new Map()
 
@@ -192,7 +201,7 @@ async function backupAuthState(accountId) {
     if (Object.keys(files).length === 0) return
     const res = await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ files })
     })
     if (!res.ok) throw new Error(`backup PUT returned ${res.status}`)
@@ -212,7 +221,9 @@ function scheduleBackup(accountId) {
 
 async function restoreAuthState(accountId) {
   try {
-    const res = await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`)
+    const res = await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`, {
+      headers: internalHeaders()
+    })
     if (!res.ok) return false
     const { files } = await res.json()
     if (!files || Object.keys(files).length === 0) return false
@@ -232,7 +243,10 @@ async function restoreAuthState(accountId) {
 
 async function deleteAuthStateFromDB(accountId) {
   try {
-    await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`, { method: 'DELETE' })
+    await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/credentials`, {
+      method: 'DELETE',
+      headers: internalHeaders()
+    })
   } catch (_) {}
 }
 
@@ -326,7 +340,7 @@ async function startAccount(accountId, opts = {}) {
     if (pairs.length > 0) {
       fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/lid-map`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ contacts: pairs })
       }).catch(err => logger.warn({ err, accountId }, 'lid-map DB sync failed'))
     }
@@ -466,6 +480,37 @@ async function startAccount(accountId, opts = {}) {
   return state
 }
 
+// downloadInboundMedia forwards images and voice notes as base64 for the
+// current message only — never re-fetched or cached for later. Regular
+// audio (ptt=false), documents, video, and stickers stay placeholder-only
+// (messageText already renders those as "[Document: ...]" etc); adding them
+// is a separate scope decision, not an oversight.
+async function downloadInboundMedia(accountId, msg) {
+  const img = msg.message?.imageMessage
+  const aud = msg.message?.audioMessage
+  let type, mimetype
+  if (img) {
+    type = 'image'
+    mimetype = img.mimetype || 'image/jpeg'
+  } else if (aud?.ptt) {
+    type = 'audio'
+    mimetype = aud.mimetype || 'audio/ogg; codecs=opus'
+  } else {
+    return []
+  }
+  try {
+    const buf = await downloadMediaMessage(msg, 'buffer', {}, { logger })
+    if (buf.length > MAX_MEDIA_BYTES) {
+      logger.warn({ accountId, type, size: buf.length }, 'inbound media exceeds size cap, forwarding placeholder only')
+      return []
+    }
+    return [{ type, mimetype, data_base64: buf.toString('base64') }]
+  } catch (err) {
+    logger.warn({ err, accountId, type }, 'failed to download inbound media, forwarding placeholder only')
+    return []
+  }
+}
+
 async function forwardMessage(accountId, state, msg) {
   if (!state.callbackUrl) return
   const remoteJid = msg.key.remoteJid || ''
@@ -514,7 +559,7 @@ async function forwardMessage(accountId, state, msg) {
     },
     body: text,
     from_me: !!msg.key.fromMe,
-    media: [],
+    media: await downloadInboundMedia(accountId, msg),
     received_at: new Date(Number(msg.messageTimestamp || Date.now() / 1000) * 1000).toISOString()
   }
   try {
@@ -707,7 +752,7 @@ async function route(req, res) {
     if (pairs.length > 0) {
       await fetch(`${API_INTERNAL_URL}/internal/whatsapp/${encodeURIComponent(accountId)}/lid-map`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: internalHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ contacts: pairs })
       })
     }

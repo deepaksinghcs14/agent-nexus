@@ -147,9 +147,14 @@ func (p *Pipeline) Sync(
 		hasCheckpoint := len(cp) > 2 // more than just '{}'
 		log.Info("starting streaming sync", "has_checkpoint", hasCheckpoint)
 
+		var lastSyncedAt time.Time
+		if conn.LastSyncedAt != nil {
+			lastSyncedAt = *conn.LastSyncedAt
+		}
 		opts := FetchOpts{
 			Checkpoint:     cp,
 			SaveCheckpoint: rep.Checkpoint,
+			LastSyncedAt:   lastSyncedAt,
 		}
 		if err := sp.FetchStream(ctx, cfg, opts, emit); err != nil {
 			return fmt.Errorf("pipeline: fetch stream: %w", err)

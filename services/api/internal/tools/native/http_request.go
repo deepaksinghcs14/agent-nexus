@@ -15,8 +15,12 @@ type HTTPRequestTool struct {
 	client *http.Client
 }
 
-func NewHTTPRequestTool() *HTTPRequestTool {
-	return &HTTPRequestTool{client: &http.Client{Timeout: 30 * time.Second}}
+// NewHTTPRequestTool builds the tool with an SSRF-guarded client: the URL comes
+// from the model, which may be repeating instructions injected into
+// RAG-retrieved content, so the destination is validated at dial time (see
+// ssrf.go).
+func NewHTTPRequestTool(allowHosts []string) *HTTPRequestTool {
+	return &HTTPRequestTool{client: safeHTTPClient(allowHosts, 30*time.Second)}
 }
 
 func (t *HTTPRequestTool) Definition() domain.Tool {

@@ -64,14 +64,17 @@ func (r *ProviderRepository) Create(ctx context.Context, p *domain.ProviderCrede
 	return err
 }
 
-func (r *ProviderRepository) Get(ctx context.Context, id string) (*domain.ProviderCredential, string, error) {
+// Get returns a credential only if it belongs to workspaceID. Callers pass the
+// workspace from the authenticated context — a credential is a decryptable
+// secret, so an unscoped lookup by URL id is a cross-tenant read.
+func (r *ProviderRepository) Get(ctx context.Context, id, workspaceID string) (*domain.ProviderCredential, string, error) {
 	var c domain.ProviderCredential
 	var encKey string
 	err := r.pool.QueryRow(ctx,
 		`SELECT id::text, workspace_id::text, provider, display_name, encrypted_key, base_url, is_active,
 		        COALESCE(auth_type,'api_key'), oauth_token_expiry,
 		        created_by::text, created_at, updated_at
-		 FROM provider_credentials WHERE id = $1::uuid`, id).
+		 FROM provider_credentials WHERE id = $1::uuid AND workspace_id = $2::uuid`, id, workspaceID).
 		Scan(&c.ID, &c.WorkspaceID, &c.Provider, &c.DisplayName, &encKey, &c.BaseURL, &c.IsActive,
 			&c.AuthType, &c.OAuthTokenExpiry, &c.CreatedBy, &c.CreatedAt, &c.UpdatedAt)
 	if err == pgx.ErrNoRows {
@@ -99,16 +102,27 @@ func (r *ProviderRepository) GetActiveByProvider(ctx context.Context, workspaceI
 	return &c, encKey, err
 }
 
+// Update is scoped by p.WorkspaceID, which is only trustworthy because it comes
+// from the workspace-scoped Get above — defence in depth, not the primary gate.
+//
+// An empty encryptedKey means "leave the key alone", not "clear it": callers
+// pass "" whenever the request didn't resupply the secret, so writing it
+// straight through would let a rename or an is_active toggle destroy the
+// credential. Clearing is only ever done by UpsertOAuthCredential, which sets
+// the column explicitly.
 func (r *ProviderRepository) Update(ctx context.Context, p *domain.ProviderCredential, encryptedKey string) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE provider_credentials SET display_name=$2, encrypted_key=$3, base_url=$4, is_active=$5, updated_at=NOW()
-		 WHERE id=$1::uuid`,
-		p.ID, p.DisplayName, encryptedKey, p.BaseURL, p.IsActive)
+		`UPDATE provider_credentials
+		 SET display_name=$2, encrypted_key=COALESCE(NULLIF($3,''), encrypted_key),
+		     base_url=$4, is_active=$5, updated_at=NOW()
+		 WHERE id=$1::uuid AND workspace_id=$6::uuid`,
+		p.ID, p.DisplayName, encryptedKey, p.BaseURL, p.IsActive, p.WorkspaceID)
 	return err
 }
 
-func (r *ProviderRepository) Delete(ctx context.Context, id string) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM provider_credentials WHERE id = $1::uuid`, id)
+func (r *ProviderRepository) Delete(ctx context.Context, id, workspaceID string) error {
+	_, err := r.pool.Exec(ctx,
+		`DELETE FROM provider_credentials WHERE id = $1::uuid AND workspace_id = $2::uuid`, id, workspaceID)
 	return err
 }
 

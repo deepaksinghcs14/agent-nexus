@@ -186,6 +186,7 @@ export interface Run {
   workflow_node_id?: string
   trace_id?: string
   channel_session_id?: string
+  metadata?: { session_progress?: string; session_progress_at?: string; [key: string]: unknown }
 }
 
 export interface ServiceLogEntry {

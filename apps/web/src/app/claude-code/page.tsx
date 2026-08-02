@@ -7,6 +7,7 @@ import { Activity, GitBranch, Loader2, Plus, RefreshCw, Search, Trash2 } from 'l
 import { agentsAPI, pipelineAPI, repoCatalogAPI, runnerCredsAPI, runsAPI, webhookTriggersAPI } from '@/lib/api'
 import { relativeTime, statusColor, cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth'
+import { toast } from '@/store/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Agent, Run } from '@/types'
@@ -97,6 +98,11 @@ export default function ClaudeCodePage() {
     queryKey: ['claude-code-sessions', orchestrator?.id],
     queryFn: () => runsAPI.listPage({ agent_id: orchestrator!.id }) as Promise<{ data: Run[] }>,
     enabled: !!orchestrator?.id,
+    // Was a static snapshot until refreshed by hand. Sessions can run for
+    // hours, so poll while any of the visible ones are still active —
+    // matches the run detail page's 2s poll while a run is live.
+    refetchInterval: (query) =>
+      (query.state.data?.data ?? []).some((r) => ['pending', 'running', 'session_wait'].includes(r.status)) ? 2000 : false,
   })
   const sessions = (sessionsData?.data ?? []).slice(0, 8)
 
@@ -135,6 +141,7 @@ export default function ClaudeCodePage() {
     onSuccess: () => {
       setLessonsRepo(null)
       queryClient.invalidateQueries({ queryKey: ['repo-catalog'] })
+      toast('Lessons saved', 'success')
     },
   })
   // Repo map: cached architecture summary that replaces cold exploration on
@@ -146,6 +153,7 @@ export default function ClaudeCodePage() {
     onSuccess: () => {
       setMapRepo(null)
       queryClient.invalidateQueries({ queryKey: ['repo-catalog'] })
+      toast('Repo map saved', 'success')
     },
   })
   // Generate now: queues a real Claude Code survey session in the background.
@@ -497,9 +505,14 @@ export default function ClaudeCodePage() {
                   return (
                     <Link key={run.id} href={`/runs/${run.id}`} className="grid grid-cols-[3px_1fr_auto] gap-3 items-center px-3.5 py-3 hover:bg-muted transition-colors">
                       <span className={cn('self-stretch w-[3px] rounded-full', stripe)} />
-                      <div className="min-w-0 flex items-center gap-3">
-                        <span className="font-mono text-[12px] text-foreground">{run.id.slice(0, 8)}</span>
-                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${statusColor(run.status)}`}>{run.status}</span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-[12px] text-foreground">{run.id.slice(0, 8)}</span>
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${statusColor(run.status)}`}>{run.status}</span>
+                        </div>
+                        {run.status === 'session_wait' && run.metadata?.session_progress && (
+                          <p className="text-[10px] text-faint truncate mt-0.5">{run.metadata.session_progress}</p>
+                        )}
                       </div>
                       <span className="font-mono text-[10px] text-faint whitespace-nowrap">{relativeTime(run.started_at)}</span>
                     </Link>

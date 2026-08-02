@@ -180,13 +180,14 @@ type Message struct {
 type RunStatus string
 
 const (
-	RunStatusPending      RunStatus = "pending"
-	RunStatusRunning      RunStatus = "running"
-	RunStatusSuccess      RunStatus = "success"
-	RunStatusFailed       RunStatus = "failed"
-	RunStatusCancelled    RunStatus = "cancelled"
-	RunStatusApprovalWait RunStatus = "approval_wait"
-	RunStatusSessionWait  RunStatus = "session_wait"
+	RunStatusPending       RunStatus = "pending"
+	RunStatusRunning       RunStatus = "running"
+	RunStatusSuccess       RunStatus = "success"
+	RunStatusFailed        RunStatus = "failed"
+	RunStatusCancelled     RunStatus = "cancelled"
+	RunStatusApprovalWait  RunStatus = "approval_wait"
+	RunStatusSessionWait   RunStatus = "session_wait"
+	RunStatusUserInputWait RunStatus = "user_input_wait"
 )
 
 type Run struct {
@@ -209,6 +210,7 @@ type Run struct {
 	WorkflowNodeID    string     `json:"workflow_node_id,omitempty"`
 	TraceID           string     `json:"trace_id,omitempty"`
 	ChannelSessionID  string     `json:"channel_session_id,omitempty"`
+	Metadata          json.RawMessage `json:"metadata,omitempty"`
 }
 
 type StepType string
@@ -494,17 +496,18 @@ type Memory struct {
 // ============================================================
 
 type Connector struct {
-	ID          string          `json:"id"`
-	WorkspaceID string          `json:"workspace_id"`
-	Name        string          `json:"name"`
-	Provider    string          `json:"provider"`
-	Type        string          `json:"type"`
-	AuthType    string          `json:"auth_type"`
-	Status      string          `json:"status"`
-	Config      json.RawMessage `json:"config,omitempty"`
-	CreatedBy   string          `json:"created_by"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	ID           string          `json:"id"`
+	WorkspaceID  string          `json:"workspace_id"`
+	Name         string          `json:"name"`
+	Provider     string          `json:"provider"`
+	Type         string          `json:"type"`
+	AuthType     string          `json:"auth_type"`
+	Status       string          `json:"status"`
+	Config       json.RawMessage `json:"config,omitempty"`
+	CreatedBy    string          `json:"created_by"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+	LastSyncedAt *time.Time      `json:"last_synced_at,omitempty"`
 }
 
 type ConnectorSyncJob struct {
