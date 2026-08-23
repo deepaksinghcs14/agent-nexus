@@ -167,6 +167,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Post("/mcp-servers/{id}/sync", h.MCP.Sync)
 			r.Post("/mcp-servers/{id}/oauth/start", h.MCP.OAuthStart)
 			r.Get("/mcp-servers/{id}/tools", h.MCP.ListTools)
+			r.Post("/mcp-servers/{id}/tools/test", h.MCP.TestTool)
 			r.Patch("/mcp-servers/{id}/tools/{toolId}", h.MCP.UpdateToolRisk)
 
 			// Connectors

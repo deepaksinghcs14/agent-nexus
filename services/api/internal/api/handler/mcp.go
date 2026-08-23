@@ -223,6 +223,51 @@ func (h *MCPHandler) UpdateToolRisk(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// TestTool handles POST /mcp-servers/{id}/tools/test — calls a real tool on
+// the MCP server with user-supplied input and returns its raw result. Lets a
+// user confirm a tool works right after authenticating a server, instead of
+// only finding out via a failed agent run.
+func (h *MCPHandler) TestTool(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.DemoMode {
+		errs.Write(w, errs.Forbidden("MCP tool testing is not available in demo mode"))
+		return
+	}
+	serverID := chi.URLParam(r, "id")
+	wsID := middleware.WorkspaceIDFromCtx(r.Context())
+
+	var req struct {
+		Name  string          `json:"name"`
+		Input json.RawMessage `json:"input"`
+	}
+	if json.NewDecoder(r.Body).Decode(&req) != nil || req.Name == "" {
+		errs.Write(w, errs.BadRequest("name is required"))
+		return
+	}
+	if len(req.Input) == 0 {
+		req.Input = json.RawMessage(`{}`)
+	}
+
+	// Tenant guard: executeMCPTool's own server lookup has no workspace_id
+	// filter, so this is the only check standing between a caller and a
+	// foreign workspace's authenticated MCP server.
+	var name string
+	if err := h.pool.QueryRow(r.Context(),
+		`SELECT mt.name FROM mcp_tools mt JOIN mcp_servers ms ON ms.id = mt.server_id
+		 WHERE mt.server_id=$1::uuid AND ms.workspace_id=$2::uuid AND mt.name=$3`,
+		serverID, wsID, req.Name).Scan(&name); err != nil {
+		errs.Write(w, errs.NotFound("tool not found"))
+		return
+	}
+
+	dbTool := domain.Tool{
+		Name:      name,
+		TimeoutMs: 30000,
+		Config:    json.RawMessage(`{"server_id":"` + serverID + `"}`),
+	}
+	res := executeMCPTool(r.Context(), h.pool, h.cfg, dbTool, req.Input)
+	errs.WriteJSON(w, http.StatusOK, map[string]any{"output": res.Output, "error": res.Error, "latency_ms": res.LatencyMs})
+}
+
 func (h *MCPHandler) ListTools(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.pool.Query(r.Context(), `SELECT mt.id::text,mt.server_id::text,mt.name,mt.description,mt.input_schema,mt.risk_level,mt.enabled FROM mcp_tools mt JOIN mcp_servers ms ON ms.id=mt.server_id WHERE mt.server_id=$1::uuid AND ms.workspace_id=$2::uuid ORDER BY mt.name`, chi.URLParam(r, "id"), middleware.WorkspaceIDFromCtx(r.Context()))
 	if err != nil {

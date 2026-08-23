@@ -164,6 +164,49 @@ func seedSkill(t *testing.T, pool *pgxpool.Pool, tn tenant, name, content string
 	return id
 }
 
+func seedMCPTool(t *testing.T, pool *pgxpool.Pool, tn tenant, toolName string) (serverID string) {
+	t.Helper()
+	serverID = uuid.NewString()
+	if _, err := pool.Exec(context.Background(),
+		`INSERT INTO mcp_servers(id,workspace_id,name,url,created_by) VALUES($1::uuid,$2::uuid,'Victim Server','http://victim.example',$3::uuid)`,
+		serverID, tn.wsID, tn.userID); err != nil {
+		t.Fatalf("seed mcp server: %v", err)
+	}
+	if _, err := pool.Exec(context.Background(),
+		`INSERT INTO mcp_tools(server_id,name) VALUES($1::uuid,$2)`, serverID, toolName); err != nil {
+		t.Fatalf("seed mcp tool: %v", err)
+	}
+	return serverID
+}
+
+func TestMCPToolTestIsWorkspaceScoped(t *testing.T) {
+	pool := testPool(t)
+	victim, attacker := newTenant(t, pool), newTenant(t, pool)
+	serverID := seedMCPTool(t, pool, victim, "victim_tool")
+
+	h := NewMCPHandler(pool, &config.Config{EncryptionKey: testEncKey})
+
+	rec := httptest.NewRecorder()
+	h.TestTool(rec, attacker.request(http.MethodPost, "/mcp-servers/"+serverID+"/tools/test",
+		"id", serverID, `{"name":"victim_tool","input":{}}`))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("got %d, want 404: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	h.TestTool(rec, victim.request(http.MethodPost, "/mcp-servers/"+serverID+"/tools/test",
+		"id", serverID, `{"name":"victim_tool","input":{}}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("owner got %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(rec.Body.Bytes(), &out) != nil || out.Error == "" {
+		t.Fatalf("expected an execution error (unreachable fake server), got: %s", rec.Body.String())
+	}
+}
+
 func TestAgentSkillsAreWorkspaceScoped(t *testing.T) {
 	pool := testPool(t)
 	victim, attacker := newTenant(t, pool), newTenant(t, pool)
