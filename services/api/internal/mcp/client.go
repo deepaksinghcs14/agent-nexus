@@ -241,16 +241,17 @@ func (c *Client) doHTTP(ctx context.Context, req rpcReq, sessionID string) (rpcR
 		return rpcResp{}, newSessionID, reqBody, bodyBytes, fmt.Errorf("mcp server returned %d: %.300s", resp.StatusCode, bodyBytes)
 	}
 
-	// SSE responses start with "data:" — parse the first event's data.
-	ct := resp.Header.Get("Content-Type")
-	var rawBody []byte
-	if strings.Contains(ct, "text/event-stream") {
+	// Content-Type isn't trustworthy here — some servers declare
+	// text/event-stream (echoing our Accept header) but actually respond
+	// with a single plain JSON object, not real SSE framing. Try the body
+	// as-is first; only fall back to SSE data-line extraction if it isn't
+	// valid JSON on its own.
+	rawBody := bodyBytes
+	if !json.Valid(bodyBytes) {
 		rawBody, err = extractSSEData(bytes.NewReader(bodyBytes))
-	} else {
-		rawBody = bodyBytes
-	}
-	if err != nil {
-		return rpcResp{}, newSessionID, reqBody, bodyBytes, fmt.Errorf("read body: %w", err)
+		if err != nil {
+			return rpcResp{}, newSessionID, reqBody, bodyBytes, fmt.Errorf("read body: %w", err)
+		}
 	}
 
 	var r rpcResp
