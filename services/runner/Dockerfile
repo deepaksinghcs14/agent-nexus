@@ -3,7 +3,7 @@
 #   GITHUB_TOKEN        — repo clone/push over HTTPS
 #   ANTHROPIC_API_KEY   — consumed by the claude CLI
 #   RUNNER_EXECUTOR     — claude (default) | stub
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod main.go ./
 RUN CGO_ENABLED=0 go build -o /runner .
