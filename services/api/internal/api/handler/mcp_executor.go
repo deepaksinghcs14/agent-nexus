@@ -15,7 +15,10 @@ import (
 // to its MCP server. The tool's config carries {"server_id": ...} (written by
 // the sync handler); the server row supplies URL, transport, and auth — for
 // oauth servers a fresh access token is resolved (refreshing if expired).
-func executeMCPTool(ctx context.Context, pool *pgxpool.Pool, appCfg *config.Config, dbTool domain.Tool, input json.RawMessage) *tools.ExecutionResult {
+// Also returns the raw JSON-RPC request/response exchanged (nil unless the
+// call reached the CallTool step), for the tool-test UI to show what was
+// actually sent and received when debugging a broken integration.
+func executeMCPTool(ctx context.Context, pool *pgxpool.Pool, appCfg *config.Config, dbTool domain.Tool, input json.RawMessage) (result *tools.ExecutionResult, reqJSON, respJSON []byte) {
 	start := time.Now()
 	fail := func(msg string) *tools.ExecutionResult {
 		return &tools.ExecutionResult{Error: msg, LatencyMs: int(time.Since(start).Milliseconds())}
@@ -25,7 +28,7 @@ func executeMCPTool(ctx context.Context, pool *pgxpool.Pool, appCfg *config.Conf
 		ServerID string `json:"server_id"`
 	}
 	if err := json.Unmarshal(dbTool.Config, &cfg); err != nil || cfg.ServerID == "" {
-		return fail("mcp tool is missing server_id in config")
+		return fail("mcp tool is missing server_id in config"), nil, nil
 	}
 
 	var url, transport, authType string
@@ -33,7 +36,7 @@ func executeMCPTool(ctx context.Context, pool *pgxpool.Pool, appCfg *config.Conf
 	if err := pool.QueryRow(ctx,
 		`SELECT url, transport, COALESCE(auth_type,'config'), COALESCE(config,'{}'::jsonb) FROM mcp_servers WHERE id=$1::uuid`,
 		cfg.ServerID).Scan(&url, &transport, &authType, &serverCfg); err != nil {
-		return fail("mcp server not found for tool " + dbTool.Name)
+		return fail("mcp server not found for tool " + dbTool.Name), nil, nil
 	}
 
 	timeout := time.Duration(dbTool.TimeoutMs) * time.Millisecond
@@ -45,11 +48,11 @@ func executeMCPTool(ctx context.Context, pool *pgxpool.Pool, appCfg *config.Conf
 
 	client, err := mcpClientForServer(callCtx, pool, appCfg, cfg.ServerID, url, transport, authType, serverCfg)
 	if err != nil {
-		return fail(err.Error())
+		return fail(err.Error()), nil, nil
 	}
-	out, err := client.CallTool(callCtx, dbTool.Name, input)
+	out, reqJSON, respJSON, err := client.CallTool(callCtx, dbTool.Name, input)
 	if err != nil {
-		return fail(err.Error())
+		return fail(err.Error()), reqJSON, respJSON
 	}
-	return &tools.ExecutionResult{Output: out, LatencyMs: int(time.Since(start).Milliseconds())}
+	return &tools.ExecutionResult{Output: out, LatencyMs: int(time.Since(start).Milliseconds())}, reqJSON, respJSON
 }

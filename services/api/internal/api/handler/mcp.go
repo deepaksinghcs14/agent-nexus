@@ -264,8 +264,11 @@ func (h *MCPHandler) TestTool(w http.ResponseWriter, r *http.Request) {
 		TimeoutMs: 30000,
 		Config:    json.RawMessage(`{"server_id":"` + serverID + `"}`),
 	}
-	res := executeMCPTool(r.Context(), h.pool, h.cfg, dbTool, req.Input)
-	errs.WriteJSON(w, http.StatusOK, map[string]any{"output": res.Output, "error": res.Error, "latency_ms": res.LatencyMs})
+	res, reqJSON, respJSON := executeMCPTool(r.Context(), h.pool, h.cfg, dbTool, req.Input)
+	errs.WriteJSON(w, http.StatusOK, map[string]any{
+		"output": res.Output, "error": res.Error, "latency_ms": res.LatencyMs,
+		"request": string(reqJSON), "response": string(respJSON),
+	})
 }
 
 func (h *MCPHandler) ListTools(w http.ResponseWriter, r *http.Request) {

@@ -195,7 +195,7 @@ export const mcpAPI = {
   updateToolRisk: (serverId: string, toolId: string, riskLevel: string) =>
     api.patch(`/mcp-servers/${serverId}/tools/${toolId}`, { risk_level: riskLevel }),
   testTool: (serverId: string, name: string, input: unknown) =>
-    api.post<{ output: unknown; error: string; latency_ms: number }>(
+    api.post<{ output: unknown; error: string; latency_ms: number; request: string; response: string }>(
       `/mcp-servers/${serverId}/tools/test`, { name, input }
     ),
   delete: (id: string) => api.delete(`/mcp-servers/${id}`),
