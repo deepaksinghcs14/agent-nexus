@@ -1346,6 +1346,7 @@ const TIER_PATTERNS: Record<string, Record<ModelTier, RegExp[]>> = {
   anthropic: { heavy: [/opus/], balanced: [/sonnet/], light: [/haiku/] },
   openai: { heavy: [/^o1(?!-mini)/, /gpt-4o(?!-mini)/], balanced: [/gpt-4o(?!-mini)/, /gpt-4/], light: [/mini/, /gpt-3\.5/] },
   gemini: { heavy: [/pro/], balanced: [/flash/], light: [/flash-lite/, /flash/] },
+  nvidia: { heavy: [/405b|70b/], balanced: [/34b|8b/], light: [/1b|2b|3b/] },
 }
 
 function modelVersion(id: string): number {

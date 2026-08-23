@@ -12,6 +12,9 @@ var providerDefaults = map[string][2]float64{
 	"openai":    {2.50, 10.00},
 	"gemini":    {1.25, 5.00},
 	"ollama":    {0, 0},
+	// NVIDIA NIM pricing varies widely per model (open-weight models are
+	// often well under $1/Mtok); this is a rough placeholder, not a quote.
+	"nvidia": {0.20, 0.20},
 }
 
 // Estimate returns the estimated cost in USD for a completed run.

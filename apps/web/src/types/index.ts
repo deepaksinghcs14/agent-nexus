@@ -43,7 +43,7 @@ export interface WorkspaceMember {
 export interface ProviderCredential {
   id: string
   workspace_id: string
-  provider: 'anthropic' | 'openai' | 'gemini' | 'ollama'
+  provider: 'anthropic' | 'openai' | 'gemini' | 'nvidia' | 'ollama'
   display_name: string
   base_url: string
   is_active: boolean

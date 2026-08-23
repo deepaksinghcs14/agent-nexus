@@ -331,6 +331,12 @@ func staticModels(providerName string) []map[string]any {
 		}
 	case "ollama":
 		return []map[string]any{}
+	case "nvidia":
+		return []map[string]any{
+			{"id": "meta/llama-3.1-70b-instruct", "name": "Llama 3.1 70B Instruct", "context_window": 128000, "supports_tools": true},
+			{"id": "meta/llama-3.1-8b-instruct", "name": "Llama 3.1 8B Instruct", "context_window": 128000, "supports_tools": true},
+			{"id": "nvidia/llama-3.1-nemotron-70b-instruct", "name": "Llama 3.1 Nemotron 70B Instruct", "context_window": 128000, "supports_tools": true},
+		}
 	}
 	return []map[string]any{}
 }

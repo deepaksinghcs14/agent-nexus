@@ -11,6 +11,7 @@ const PROVIDER_OPTIONS = [
   { value: 'anthropic', label: 'Anthropic', color: 'bg-warn/10 text-warn' },
   { value: 'openai', label: 'OpenAI', color: 'bg-good/10 text-good' },
   { value: 'gemini', label: 'Google Gemini', color: 'bg-info/10 text-info' },
+  { value: 'nvidia', label: 'NVIDIA NIM', color: 'bg-crit/10 text-crit' },
   { value: 'ollama', label: 'Ollama (local)', color: 'bg-accent/10 text-accent dark:text-accent-bright' },
 ]
 
@@ -219,14 +220,14 @@ export default function ProvidersPage() {
               )}
             </div>
           )}
-          {(form.provider === 'ollama') && (
+          {(form.provider === 'ollama' || form.provider === 'nvidia') && (
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Base URL</label>
+              <label className="block text-xs text-muted-foreground mb-1">Base URL{form.provider === 'nvidia' && ' (optional — for self-hosted NIM)'}</label>
               <input
                 type="text"
                 value={form.base_url}
                 onChange={e => setForm(f => ({ ...f, base_url: e.target.value }))}
-                placeholder="http://localhost:11434"
+                placeholder={form.provider === 'nvidia' ? 'https://integrate.api.nvidia.com (default)' : 'http://localhost:11434'}
                 className="w-full text-xs px-2 py-1.5 border border-border-strong rounded-lg bg-surface focus:outline-none focus:ring-1 focus:ring-accent"
               />
             </div>
