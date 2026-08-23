@@ -499,6 +499,7 @@ What's working today vs. what's coming next:
 | API rate limiting per workspace | 🔜 Planned |
 | Run failure notifications (email, webhook) | 🔜 Planned |
 | Frontend component tests | 🔜 Planned |
+| Tool-calling fallback for non-tool-call models (e.g. Ollama models without native function calling) | ⚠️ Known gap |
 
 ---
 

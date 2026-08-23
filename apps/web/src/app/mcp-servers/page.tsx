@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Globe, KeyRound, Package, Plug, Plus, RefreshCw, Terminal, Trash2, Wrench, X } from 'lucide-react'
+import { AlertTriangle, Globe, KeyRound, Package, Play, Plug, Plus, RefreshCw, Terminal, Trash2, Wrench, X } from 'lucide-react'
 import { mcpAPI } from '@/lib/api'
+import { McpToolTester } from '@/components/McpToolTester'
 import { MCP_PRESETS, type MCPPreset } from '@/lib/mcp-presets'
 import { relativeTime, riskColor, statusColor } from '@/lib/utils'
 import { useDemoMode } from '@/context/demo-mode'
@@ -275,6 +276,7 @@ type RiskLevel = typeof RISK_LEVELS[number]
 
 function RiskRow({ tool, serverId, onRiskChange }: { tool: MCPTool; serverId: string; onRiskChange: () => void }) {
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
 
   const handleRisk = async (level: RiskLevel) => {
     setSaving(true)
@@ -287,26 +289,44 @@ function RiskRow({ tool, serverId, onRiskChange }: { tool: MCPTool; serverId: st
   }
 
   return (
-    <tr className="border-b last:border-b-0 border-border hover:bg-muted/50">
-      <td className="px-4 py-2.5">
-        <p className="text-[12px] font-medium text-foreground font-mono">{tool.name}</p>
-      </td>
-      <td className="px-4 py-2.5">
-        <p className="text-[11px] text-muted-foreground truncate max-w-xs">{tool.description || '—'}</p>
-      </td>
-      <td className="px-4 py-2.5">
-        <select
-          value={tool.risk_level}
-          disabled={saving}
-          onChange={(e) => handleRisk(e.target.value as RiskLevel)}
-          className={`text-[10px] px-1.5 py-0.5 rounded border bg-transparent cursor-pointer disabled:opacity-50 ${riskColor(tool.risk_level)}`}
-        >
-          {RISK_LEVELS.map((l) => (
-            <option key={l} value={l}>{l}</option>
-          ))}
-        </select>
-      </td>
-    </tr>
+    <>
+      <tr className="border-b last:border-b-0 border-border hover:bg-muted/50">
+        <td className="px-4 py-2.5">
+          <p className="text-[12px] font-medium text-foreground font-mono">{tool.name}</p>
+        </td>
+        <td className="px-4 py-2.5">
+          <p className="text-[11px] text-muted-foreground truncate max-w-xs">{tool.description || '—'}</p>
+        </td>
+        <td className="px-4 py-2.5">
+          <select
+            value={tool.risk_level}
+            disabled={saving}
+            onChange={(e) => handleRisk(e.target.value as RiskLevel)}
+            className={`text-[10px] px-1.5 py-0.5 rounded border bg-transparent cursor-pointer disabled:opacity-50 ${riskColor(tool.risk_level)}`}
+          >
+            {RISK_LEVELS.map((l) => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+        </td>
+        <td className="px-4 py-2.5 text-right">
+          <button
+            onClick={() => setTesting((v) => !v)}
+            className="p-1 text-faint hover:text-accent"
+            title={testing ? 'Hide test panel' : 'Test this tool'}
+          >
+            <Play size={13} />
+          </button>
+        </td>
+      </tr>
+      {testing && (
+        <tr className="border-b last:border-b-0 border-border">
+          <td colSpan={4} className="px-4 py-3 bg-muted/40">
+            <McpToolTester serverId={serverId} name={tool.name} riskLevel={tool.risk_level} inputSchema={tool.input_schema} />
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
 
@@ -596,6 +616,7 @@ export default function MCPServersPage() {
                   <th className="text-left font-mono text-[10px] uppercase tracking-[0.09em] font-semibold text-faint px-4 py-3">Tool name</th>
                   <th className="text-left font-mono text-[10px] uppercase tracking-[0.09em] font-semibold text-faint px-4 py-3">Description</th>
                   <th className="text-left font-mono text-[10px] uppercase tracking-[0.09em] font-semibold text-faint px-4 py-3 w-32">Risk</th>
+                  <th className="text-right font-mono text-[10px] uppercase tracking-[0.09em] font-semibold text-faint px-4 py-3 w-20">Test</th>
                 </tr>
               </thead>
               <tbody>

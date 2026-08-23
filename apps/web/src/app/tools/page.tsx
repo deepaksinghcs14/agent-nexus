@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp, ExternalLink, Globe, Lock, Pencil, Play, Plus, 
 import Link from 'next/link'
 import { toolsAPI } from '@/lib/api'
 import { riskColor } from '@/lib/utils'
+import { McpToolTester } from '@/components/McpToolTester'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DataTable, Row, Cell } from '@/components/ui/DataTable'
 import { toolCategory } from '@/lib/tool-category'
@@ -168,8 +169,11 @@ function ToolRow({ tool, onToggle, onDelete, onEdit }: {
   const [open, setOpen] = useState(false)
   const ti = typeInfo(tool.type)
   const isSystem = tool.type === 'native' || tool.type === 'mcp'
-  const cfg = tool.config ? (() => { try { return JSON.parse(tool.config as unknown as string) } catch { return null } })() : null
-  const canExpand = (tool.type === 'http' && cfg?.url) || tool.type === 'code'
+  // tool.config arrives as a real object (the backend's json.RawMessage marshals
+  // inline, never as a quoted string) — parsing it as JSON text always threw and
+  // silently nulled cfg for every http/mcp tool. Use it directly.
+  const cfg = (tool.config as Record<string, any> | undefined) ?? null
+  const canExpand = (tool.type === 'http' && cfg?.url) || tool.type === 'code' || (tool.type === 'mcp' && cfg?.server_id)
 
   return (
     <>
@@ -222,6 +226,11 @@ function ToolRow({ tool, onToggle, onDelete, onEdit }: {
                 <p><span className="text-faint">URL</span>  {cfg.method} {cfg.url}</p>
                 {cfg.body_mode && <p><span className="text-faint">body</span>  {cfg.body_mode === 'template' ? 'template' : 'free-form (LLM constructs)'}</p>}
                 {cfg.body_template && <pre className="mt-1 bg-surface border border-border rounded p-2 overflow-x-auto whitespace-pre-wrap text-[10px]">{cfg.body_template}</pre>}
+              </div>
+            )}
+            {tool.type === 'mcp' && cfg?.server_id && (
+              <div className="p-4">
+                <McpToolTester serverId={cfg.server_id} name={tool.name} riskLevel={tool.risk_level} inputSchema={tool.input_schema} />
               </div>
             )}
             {tool.type === 'code' && cfg?.code && (
