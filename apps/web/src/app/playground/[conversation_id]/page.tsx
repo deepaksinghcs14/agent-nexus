@@ -845,7 +845,7 @@ function PlaygroundConversation({ params }: { params: { conversation_id: string 
             <AlertCircle size={13} /><span>{errorMessage}</span>
           </div>
         )}
-        <div className="flex items-end gap-2 rounded-xl border border-border-strong bg-muted px-3 py-2 focus-within:border-accent/50 focus-within:bg-white transition-colors">
+        <div className="flex items-end gap-2 rounded-xl border border-border-strong bg-muted px-3 py-2 focus-within:border-accent/50 focus-within:bg-surface transition-colors">
           <textarea
             ref={textareaRef}
             value={input}
