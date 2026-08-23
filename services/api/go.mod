@@ -5,7 +5,7 @@ go 1.26
 toolchain go1.26.6
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.61.0
+	github.com/anthropics/anthropic-sdk-go v1.66.0
 	github.com/dop251/goja v0.0.0-20260618133527-c9b2ea77db59
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/cors v1.2.1
@@ -14,7 +14,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/openai/openai-go/v3 v3.41.1
 	golang.org/x/crypto v0.53.0
-	google.golang.org/genai v1.66.0
+	google.golang.org/genai v1.69.0
 )
 
 require (
