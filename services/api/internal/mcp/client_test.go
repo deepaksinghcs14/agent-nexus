@@ -80,3 +80,43 @@ func TestDoHTTPParsesJSONResponse(t *testing.T) {
 		t.Fatalf("got result %q", r.Result)
 	}
 }
+
+// Some servers echo back Content-Type: text/event-stream (matching our
+// Accept header) but never actually stream — they just write one plain JSON
+// object with no "data:" framing at all. That must parse fine rather than
+// failing with "no data line in SSE response".
+func TestDoHTTPParsesPlainJSONDespiteEventStreamContentType(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_ = json.NewEncoder(w).Encode(rpcResp{Result: json.RawMessage(`{"ok":true}`)})
+	}))
+	defer srv.Close()
+
+	c := &Client{url: srv.URL, transport: "http"}
+	r, _, _, _, err := c.doHTTP(context.Background(), newReq("tools/call", map[string]any{}), "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(r.Result) != `{"ok":true}` {
+		t.Fatalf("got result %q", r.Result)
+	}
+}
+
+// Real SSE framing (a server that genuinely streams) must still work.
+func TestDoHTTPParsesRealSSEStream(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		body, _ := json.Marshal(rpcResp{Result: json.RawMessage(`{"ok":true}`)})
+		_, _ = w.Write([]byte("event: message\ndata: " + string(body) + "\n\n"))
+	}))
+	defer srv.Close()
+
+	c := &Client{url: srv.URL, transport: "http"}
+	r, _, _, _, err := c.doHTTP(context.Background(), newReq("tools/call", map[string]any{}), "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(r.Result) != `{"ok":true}` {
+		t.Fatalf("got result %q", r.Result)
+	}
+}
