@@ -271,6 +271,13 @@ func (c *Client) doHTTP(ctx context.Context, req rpcReq, sessionID string) (rpcR
 // that ends the event.
 func extractSSEData(r io.Reader) ([]byte, error) {
 	scanner := bufio.NewScanner(r)
+	// bufio.Scanner's default max line length is 64KB — a single "data:"
+	// line easily exceeds that once the payload is a real tool result (a
+	// task list, search results, etc.), not the toy fixtures this was
+	// tested against. Match the 1MB cap doHTTP already reads the body under,
+	// so a too-long line can only happen for a body that would've been
+	// truncated anyway.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	var data []string
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -283,6 +290,9 @@ func extractSSEData(r io.Reader) ([]byte, error) {
 	}
 	if len(data) > 0 {
 		return []byte(strings.Join(data, "\n")), nil
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("no data line in SSE response: %w", err)
 	}
 	return nil, fmt.Errorf("no data line in SSE response")
 }

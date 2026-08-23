@@ -41,6 +41,21 @@ func TestExtractSSEData(t *testing.T) {
 	}
 }
 
+// A real tool result (a task list, search results, ...) easily produces a
+// single "data:" line over bufio.Scanner's default 64KB max — that used to
+// fail with "no data line in SSE response" even though the data was right
+// there, just too long for the scanner's default buffer.
+func TestExtractSSEDataHandlesLinesOverDefaultScannerBuffer(t *testing.T) {
+	big := `{"a":"` + strings.Repeat("x", 100*1024) + `"}` // >64KB, <1MB
+	got, err := extractSSEData(strings.NewReader("event: message\ndata: " + big + "\n\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(got) != big {
+		t.Fatalf("got %d bytes, want %d", len(got), len(big))
+	}
+}
+
 // A 401/403 from the MCP server (the exact case the tool-test button exists
 // to surface) must not be reported as an SSE/JSON parse failure — the caller
 // needs the real rejection to fix their auth, not "no data line in SSE response".
