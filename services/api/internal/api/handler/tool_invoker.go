@@ -38,7 +38,8 @@ func invokeToolByType(
 		return tools.ExecuteHTTP(ctx, httpCfg, input, dbTool.TimeoutMs), nil
 
 	case toolExists && dbTool.Type == "mcp":
-		return executeMCPTool(ctx, pool, cfg, dbTool, input), nil
+		res, _, _ := executeMCPTool(ctx, pool, cfg, dbTool, input)
+		return res, nil
 
 	case toolExists && dbTool.Type == "code":
 		var codeCfg struct {

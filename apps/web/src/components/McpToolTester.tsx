@@ -23,6 +23,13 @@ function buildSkeleton(schema: Record<string, unknown> | undefined): string {
   return JSON.stringify(skeleton, null, 2)
 }
 
+// prettyOrRaw pretty-prints a string if it parses as JSON, otherwise returns
+// it as-is — the raw response isn't guaranteed to be JSON (an auth failure
+// or a malformed SSE stream can come back as plain text or an HTML page).
+function prettyOrRaw(s: string): string {
+  try { return JSON.stringify(JSON.parse(s), null, 2) } catch { return s }
+}
+
 export function McpToolTester({ serverId, name, riskLevel, inputSchema }: {
   serverId: string
   name: string
@@ -31,6 +38,7 @@ export function McpToolTester({ serverId, name, riskLevel, inputSchema }: {
 }) {
   const [input, setInput] = useState(() => buildSkeleton(inputSchema))
   const [result, setResult] = useState<string | null>(null)
+  const [wire, setWire] = useState<{ request: string; response: string } | null>(null)
   const [running, setRunning] = useState(false)
 
   const run = async () => {
@@ -40,12 +48,14 @@ export function McpToolTester({ serverId, name, riskLevel, inputSchema }: {
     }
     setRunning(true)
     setResult(null)
+    setWire(null)
     try {
       const parsed = JSON.parse(input)
       const res = await mcpAPI.testTool(serverId, name, parsed)
       setResult(res.error
         ? `Error: ${res.error}`
         : `${JSON.stringify(res.output, null, 2)}\n\n${res.latency_ms}ms`)
+      setWire({ request: res.request, response: res.response })
     } catch (e) {
       setResult(`Error: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
@@ -90,6 +100,23 @@ export function McpToolTester({ serverId, name, riskLevel, inputSchema }: {
       >
         <Play size={11} /> {running ? 'Running…' : 'Run test'}
       </button>
+
+      {wire && (wire.request || wire.response) && (
+        <div className="mt-3 pt-3 border-t border-border grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] text-muted-foreground mb-1">Request sent (tools/call)</label>
+            <pre className="h-[132px] text-[11px] font-mono px-3 py-2 border border-border-strong rounded-lg bg-surface overflow-auto whitespace-pre-wrap text-faint">
+              {wire.request ? prettyOrRaw(wire.request) : '—'}
+            </pre>
+          </div>
+          <div>
+            <label className="block text-[10px] text-muted-foreground mb-1">Raw response from server</label>
+            <pre className="h-[132px] text-[11px] font-mono px-3 py-2 border border-border-strong rounded-lg bg-surface overflow-auto whitespace-pre-wrap text-faint">
+              {wire.response ? prettyOrRaw(wire.response) : '—'}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

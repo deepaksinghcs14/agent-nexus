@@ -174,8 +174,10 @@ func (c *Client) ListTools(ctx context.Context) ([]domain.MCPTool, error) {
 }
 
 // CallTool connects, handshakes, and calls tools/call with the given name and
-// JSON-encoded arguments.
-func (c *Client) CallTool(ctx context.Context, toolName string, input json.RawMessage) (any, error) {
+// JSON-encoded arguments. Also returns the raw JSON-RPC request and response
+// exchanged for the tools/call step, so a caller debugging a broken
+// integration can see exactly what was sent and received.
+func (c *Client) CallTool(ctx context.Context, toolName string, input json.RawMessage) (result any, reqJSON, respJSON []byte, err error) {
 	if c.transport == "stdio" {
 		return c.callToolStdio(ctx, toolName, input)
 	}
@@ -189,12 +191,15 @@ var httpClient = &http.Client{Timeout: 30 * time.Second}
 // doHTTP sends a single JSON-RPC request via POST and returns the parsed response
 // plus any Mcp-Session-Id the server set (empty string if none).
 // Pass a non-empty sessionID to include it in the request headers.
-func (c *Client) doHTTP(ctx context.Context, req rpcReq, sessionID string) (rpcResp, string, error) {
-	body, _ := json.Marshal(req)
+// doHTTP also returns the raw request and response bytes exchanged, so a
+// caller debugging a broken MCP integration (the tool-test UI) can show
+// exactly what was sent and received, not just the parsed result.
+func (c *Client) doHTTP(ctx context.Context, req rpcReq, sessionID string) (rpcResp, string, []byte, []byte, error) {
+	reqBody, _ := json.Marshal(req)
 	resolvedURL := resolveURL(c.url)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, resolvedURL, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, resolvedURL, bytes.NewReader(reqBody))
 	if err != nil {
-		return rpcResp{}, "", err
+		return rpcResp{}, "", reqBody, nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json, text/event-stream")
@@ -218,71 +223,94 @@ func (c *Client) doHTTP(ctx context.Context, req rpcReq, sessionID string) (rpcR
 
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
-		return rpcResp{}, "", fmt.Errorf("http: %w", err)
+		return rpcResp{}, "", reqBody, nil, fmt.Errorf("http: %w", err)
 	}
 	defer resp.Body.Close()
 
 	newSessionID := resp.Header.Get("Mcp-Session-Id")
 
-	// SSE responses start with "data: " — parse the first data line.
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return rpcResp{}, newSessionID, reqBody, nil, fmt.Errorf("read body: %w", err)
+	}
+	// Check status before attempting to parse the body — an auth failure
+	// typically comes back with a short or empty body that isn't valid SSE
+	// or JSON-RPC, and would otherwise surface as a confusing parse error
+	// instead of the actual rejection.
+	if resp.StatusCode >= 400 {
+		return rpcResp{}, newSessionID, reqBody, bodyBytes, fmt.Errorf("mcp server returned %d: %.300s", resp.StatusCode, bodyBytes)
+	}
+
+	// SSE responses start with "data:" — parse the first event's data.
 	ct := resp.Header.Get("Content-Type")
 	var rawBody []byte
 	if strings.Contains(ct, "text/event-stream") {
-		rawBody, err = extractSSEData(io.LimitReader(resp.Body, 1<<20))
+		rawBody, err = extractSSEData(bytes.NewReader(bodyBytes))
 	} else {
-		rawBody, err = io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		rawBody = bodyBytes
 	}
 	if err != nil {
-		return rpcResp{}, newSessionID, fmt.Errorf("read body: %w", err)
+		return rpcResp{}, newSessionID, reqBody, bodyBytes, fmt.Errorf("read body: %w", err)
 	}
 
 	var r rpcResp
 	if err := json.Unmarshal(rawBody, &r); err != nil {
-		return rpcResp{}, newSessionID, fmt.Errorf("decode: %w (body: %.200s)", err, rawBody)
+		return rpcResp{}, newSessionID, reqBody, bodyBytes, fmt.Errorf("decode: %w (body: %.200s)", err, rawBody)
 	}
 	if r.Error != nil {
-		return rpcResp{}, newSessionID, fmt.Errorf("rpc error %d: %s", r.Error.Code, r.Error.Message)
+		return rpcResp{}, newSessionID, reqBody, bodyBytes, fmt.Errorf("rpc error %d: %s", r.Error.Code, r.Error.Message)
 	}
-	return r, newSessionID, nil
+	return r, newSessionID, reqBody, bodyBytes, nil
 }
 
-// extractSSEData reads the first "data: {...}" line from an SSE stream and
-// returns the JSON payload.
+// extractSSEData reads the first event's data field from an SSE stream and
+// returns the JSON payload. Per the SSE spec, a "data:" line's value may omit
+// the single space after the colon, and a single event's data may be split
+// across multiple "data:" lines (joined with "\n") before the blank line
+// that ends the event.
 func extractSSEData(r io.Reader) ([]byte, error) {
 	scanner := bufio.NewScanner(r)
+	var data []string
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "data: ") {
-			return []byte(strings.TrimPrefix(line, "data: ")), nil
+		switch {
+		case strings.HasPrefix(line, "data:"):
+			data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		case line == "" && len(data) > 0:
+			return []byte(strings.Join(data, "\n")), nil
 		}
+	}
+	if len(data) > 0 {
+		return []byte(strings.Join(data, "\n")), nil
 	}
 	return nil, fmt.Errorf("no data line in SSE response")
 }
 
 func (c *Client) listToolsHTTP(ctx context.Context) ([]domain.MCPTool, error) {
 	// initialize — capture the session ID the server assigns.
-	_, sessionID, _ := c.doHTTP(ctx, newReq("initialize", initParams), "")
+	_, sessionID, _, _, _ := c.doHTTP(ctx, newReq("initialize", initParams), "")
 
-	r, _, err := c.doHTTP(ctx, newReq("tools/list", map[string]any{}), sessionID)
+	r, _, _, _, err := c.doHTTP(ctx, newReq("tools/list", map[string]any{}), sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("tools/list: %w", err)
 	}
 	return parseToolsList(c.serverID, r.Result)
 }
 
-func (c *Client) callToolHTTP(ctx context.Context, toolName string, input json.RawMessage) (any, error) {
-	_, sessionID, _ := c.doHTTP(ctx, newReq("initialize", initParams), "")
+func (c *Client) callToolHTTP(ctx context.Context, toolName string, input json.RawMessage) (any, []byte, []byte, error) {
+	_, sessionID, _, _, _ := c.doHTTP(ctx, newReq("initialize", initParams), "")
 
 	var args any
 	json.Unmarshal(input, &args) //nolint:errcheck
-	r, _, err := c.doHTTP(ctx, newReq("tools/call", map[string]any{
+	r, _, reqBody, respBody, err := c.doHTTP(ctx, newReq("tools/call", map[string]any{
 		"name":      toolName,
 		"arguments": args,
 	}), sessionID)
 	if err != nil {
-		return nil, err
+		return nil, reqBody, respBody, err
 	}
-	return parseCallResult(r.Result)
+	result, err := parseCallResult(r.Result)
+	return result, reqBody, respBody, err
 }
 
 // ─── stdio transport ──────────────────────────────────────────────────────────
@@ -338,14 +366,16 @@ func (conn *stdioConn) send(req rpcReq) error {
 // recv reads lines from stdout until it finds a JSON-RPC response whose id
 // matches wantID. Non-JSON lines and server-initiated notifications are skipped.
 // The calling context's deadline governs the overall timeout via process kill.
-func (conn *stdioConn) recv(wantID int64) (rpcResp, error) {
+// Also returns the matched raw line, for callers that need to show the exact
+// wire response (the tool-test UI).
+func (conn *stdioConn) recv(wantID int64) (rpcResp, []byte, error) {
 	for {
 		line, err := conn.reader.ReadBytes('\n')
 		if err != nil && len(line) == 0 {
 			if err == io.EOF {
-				return rpcResp{}, fmt.Errorf("stdio: process closed stdout")
+				return rpcResp{}, nil, fmt.Errorf("stdio: process closed stdout")
 			}
-			return rpcResp{}, fmt.Errorf("stdio read: %w", err)
+			return rpcResp{}, nil, fmt.Errorf("stdio read: %w", err)
 		}
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 || line[0] != '{' {
@@ -359,9 +389,9 @@ func (conn *stdioConn) recv(wantID int64) (rpcResp, error) {
 			continue // notification or a response to a different request
 		}
 		if r.Error != nil {
-			return rpcResp{}, fmt.Errorf("rpc error %d: %s", r.Error.Code, r.Error.Message)
+			return rpcResp{}, line, fmt.Errorf("rpc error %d: %s", r.Error.Code, r.Error.Message)
 		}
-		return r, nil
+		return r, line, nil
 	}
 }
 
@@ -380,7 +410,7 @@ func (c *Client) stdioHandshake(conn *stdioConn) error {
 	if err := conn.send(req); err != nil {
 		return err
 	}
-	if _, err := conn.recv(*req.ID); err != nil {
+	if _, _, err := conn.recv(*req.ID); err != nil {
 		return fmt.Errorf("initialize: %w", err)
 	}
 	// Send initialized notification — no response expected.
@@ -404,25 +434,25 @@ func (c *Client) listToolsStdio(ctx context.Context) ([]domain.MCPTool, error) {
 	if err := conn.send(req); err != nil {
 		return nil, err
 	}
-	r, err := conn.recv(*req.ID)
+	r, _, err := conn.recv(*req.ID)
 	if err != nil {
 		return nil, fmt.Errorf("tools/list: %w", err)
 	}
 	return parseToolsList(c.serverID, r.Result)
 }
 
-func (c *Client) callToolStdio(ctx context.Context, toolName string, input json.RawMessage) (any, error) {
+func (c *Client) callToolStdio(ctx context.Context, toolName string, input json.RawMessage) (any, []byte, []byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	conn, err := c.dialStdio(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	defer conn.close()
 
 	if err := c.stdioHandshake(conn); err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	var args any
 	json.Unmarshal(input, &args) //nolint:errcheck
@@ -430,14 +460,16 @@ func (c *Client) callToolStdio(ctx context.Context, toolName string, input json.
 		"name":      toolName,
 		"arguments": args,
 	})
+	reqBody, _ := json.Marshal(req)
 	if err := conn.send(req); err != nil {
-		return nil, err
+		return nil, reqBody, nil, err
 	}
-	r, err := conn.recv(*req.ID)
+	r, respBody, err := conn.recv(*req.ID)
 	if err != nil {
-		return nil, fmt.Errorf("tools/call: %w", err)
+		return nil, reqBody, respBody, fmt.Errorf("tools/call: %w", err)
 	}
-	return parseCallResult(r.Result)
+	result, err := parseCallResult(r.Result)
+	return result, reqBody, respBody, err
 }
 
 // ─── result parsers ───────────────────────────────────────────────────────────
