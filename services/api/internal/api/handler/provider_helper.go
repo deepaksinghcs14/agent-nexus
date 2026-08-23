@@ -9,11 +9,16 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/anthropic"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/gemini"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/nvidia"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/ollama"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider/openai"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	"github.com/deepaksingh/agent-nexus/services/api/pkg/encrypt"
 )
+
+// nvidiaDefaultBaseURL is NVIDIA's hosted NIM catalog. Self-hosted NIM
+// deployments override this via cred.BaseURL.
+const nvidiaDefaultBaseURL = "https://integrate.api.nvidia.com"
 
 // providerFromCredential is the single place a stored provider credential
 // becomes a client: gemini OAuth token exchange, keyless providers (ollama),
@@ -47,6 +52,12 @@ func providerFromCredential(ctx context.Context, cfg *config.Config, providers *
 		return anthropic.New(apiKey, cred.BaseURL), nil
 	case "openai":
 		return openai.New(apiKey, cred.BaseURL), nil
+	case "nvidia":
+		baseURL := cred.BaseURL
+		if baseURL == "" {
+			baseURL = nvidiaDefaultBaseURL
+		}
+		return nvidia.New(apiKey, baseURL), nil
 	case "gemini":
 		return gemini.New(apiKey, "api_key"), nil
 	case "ollama":

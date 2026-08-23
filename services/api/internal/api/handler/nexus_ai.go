@@ -80,7 +80,7 @@ You have access to these tools:
 
 Guidelines:
 - ALWAYS call list_available_models first — before creating any agent, you must know what providers and models are available in this workspace. Never assume a model exists; always verify.
-- Pick the best available model using this priority: prefer the newest/most capable model from each provider. Ranking by provider: Anthropic → claude-opus-4-8 > claude-sonnet-4-6 > claude-haiku-4-5; OpenAI → gpt-4o > gpt-4o-mini; Gemini → gemini-2.5-pro > gemini-2.5-flash; Ollama → use whatever is listed. Always use the model ID exactly as returned by list_available_models — never guess or invent a model ID.
+- Pick the best available model using this priority: prefer the newest/most capable model from each provider. Ranking by provider: Anthropic → claude-opus-4-8 > claude-sonnet-4-6 > claude-haiku-4-5; OpenAI → gpt-4o > gpt-4o-mini; Gemini → gemini-2.5-pro > gemini-2.5-flash; NVIDIA → meta/llama-3.1-70b-instruct > meta/llama-3.1-8b-instruct; Ollama → use whatever is listed. Always use the model ID exactly as returned by list_available_models — never guess or invent a model ID.
 - ALWAYS call list_agents before creating an agent — reuse an existing agent if one already fits the user's requirements rather than creating a duplicate. If the user asks for "a research agent" and one already exists, use it.
 - ALWAYS call list_workflows before creating a workflow — if one exists that matches the user's intent, ask the user: "A workflow called '<name>' already exists. Do you want to update it, or create a new one?" and wait for their answer before proceeding.
 - Use distinct, descriptive names for every resource (agent or workflow) that reflect its specific purpose. Never use generic names like "Research Agent" or "Pipeline" — be specific, e.g. "Market Research Agent", "Daily News Pipeline".
@@ -223,7 +223,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"name":{"type":"string","description":"Short, descriptive name for the agent"},
 				"description":{"type":"string","description":"One-sentence description of what this agent does"},
 				"instructions":{"type":"string","description":"Full system prompt — the agent's core instructions and behaviour"},
-				"provider":{"type":"string","enum":["anthropic","openai","gemini","ollama"],"description":"LLM provider to use"},
+				"provider":{"type":"string","enum":["anthropic","openai","gemini","nvidia","ollama"],"description":"LLM provider to use"},
 				"model":{"type":"string","description":"Model ID, e.g. claude-sonnet-4-6, gpt-4o, gemini-2.5-flash. Always use the exact model ID from list_available_models."},
 				"temperature":{"type":"number","description":"Sampling temperature 0-2, default 0.7"},
 				"max_tokens":{"type":"integer","description":"Max output tokens, default 4096"},
@@ -254,7 +254,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 				"name":{"type":"string","description":"Short, descriptive name for the agent"},
 				"description":{"type":"string","description":"One-sentence description of what this agent does"},
 				"instructions":{"type":"string","description":"Full system prompt — the agent's core instructions and behaviour"},
-				"provider":{"type":"string","enum":["anthropic","openai","gemini","ollama"],"description":"LLM provider to use"},
+				"provider":{"type":"string","enum":["anthropic","openai","gemini","nvidia","ollama"],"description":"LLM provider to use"},
 				"model":{"type":"string","description":"Model ID from list_available_models. If omitted, a sensible default for the provider is used."},
 				"temperature":{"type":"number","description":"Sampling temperature 0-2, default 0.7"},
 				"max_tokens":{"type":"integer","description":"Max output tokens, default 4096"},
@@ -507,7 +507,7 @@ var nexusToolDefs = []provider.ToolDefinition{
 }
 
 // providerPriority determines the preferred provider when multiple are configured.
-var providerPriority = []string{"anthropic", "openai", "gemini", "ollama"}
+var providerPriority = []string{"anthropic", "openai", "gemini", "nvidia", "ollama"}
 
 // defaultModel returns the best default model for a given provider name.
 func defaultModel(providerName string) string {
@@ -518,6 +518,8 @@ func defaultModel(providerName string) string {
 		return "gpt-4o"
 	case "gemini":
 		return "gemini-2.5-flash"
+	case "nvidia":
+		return "meta/llama-3.1-70b-instruct"
 	default:
 		return "llama3"
 	}

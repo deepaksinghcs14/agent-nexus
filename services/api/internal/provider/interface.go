@@ -17,7 +17,7 @@ type Provider interface {
 	// Models returns the list of models available for this provider credential.
 	Models(ctx context.Context) ([]ModelInfo, error)
 
-	// Name returns the canonical provider name (anthropic | openai | gemini | ollama).
+	// Name returns the canonical provider name (anthropic | openai | gemini | nvidia | ollama).
 	Name() string
 }
 

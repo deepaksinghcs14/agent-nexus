@@ -13,7 +13,7 @@ import { FIELD_HELP } from '@/lib/field-help'
 const TABS = ['Basics', 'Model', 'Instructions', 'Skills', 'Tools', 'Context', 'Memory', 'Guardrails'] as const
 type Tab = typeof TABS[number]
 
-const PROVIDERS = ['anthropic', 'openai', 'gemini', 'ollama']
+const PROVIDERS = ['anthropic', 'openai', 'gemini', 'nvidia', 'ollama']
 
 const TOOL_GROUP_ORDER = ['Built-in', 'WhatsApp', 'MCP', 'HTTP', 'Code'] as const
 type ToolGroup = typeof TOOL_GROUP_ORDER[number]
@@ -479,7 +479,7 @@ export default function AgentBuilderPage({ agentId }: { agentId?: string }) {
             <Field label="Provider">
               <select value={provider} onChange={e => { setProvider(e.target.value); setModel('') }}
                 className="w-full text-[13px] px-3 py-2 border border-border-strong rounded-lg bg-surface focus:outline-none">
-                {PROVIDERS.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
+                {PROVIDERS.map(p => <option key={p} value={p}>{p === 'nvidia' ? 'NVIDIA' : p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
               </select>
             </Field>
             <Field label="Model" hint={!activeCred ? `Add a ${provider} API key in Settings → Providers` : undefined}>

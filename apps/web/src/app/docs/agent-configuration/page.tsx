@@ -6,7 +6,7 @@ const FIELDS = [
   { field: 'name', type: 'string', desc: 'Display name for the agent.' },
   { field: 'description', type: 'string', desc: 'Short description of what the agent does. Shown in the agent list.' },
   { field: 'instructions', type: 'string', desc: "System prompt. Defines the agent's personality, role, and constraints." },
-  { field: 'provider', type: 'anthropic | openai | gemini | ollama', desc: 'LLM provider. Must have a configured API key for the provider in your workspace.' },
+  { field: 'provider', type: 'anthropic | openai | gemini | nvidia | ollama', desc: 'LLM provider. Must have a configured API key for the provider in your workspace.' },
   { field: 'model', type: 'string', desc: 'Model ID (e.g. claude-sonnet-4-6, gpt-4o). Must match the chosen provider.' },
   { field: 'temperature', type: 'float 0–1', desc: 'Controls response randomness. 0 = deterministic, 1 = very creative.' },
   { field: 'max_tokens', type: 'integer', desc: 'Maximum tokens the model can generate in a single response.' },
