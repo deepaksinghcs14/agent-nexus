@@ -7,7 +7,7 @@ toolchain go1.26.6
 require (
 	github.com/anthropics/anthropic-sdk-go v1.71.0
 	github.com/dop251/goja v0.0.0-20260822123354-58e940e0d230
-	github.com/go-chi/chi/v5 v5.3.0
+	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-chi/cors v1.2.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
