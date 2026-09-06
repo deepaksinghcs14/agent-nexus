@@ -44,8 +44,12 @@ func substituteVars(s string, vars map[string]any) string {
 	})
 }
 
-// ExecuteHTTP runs an HTTP tool call using the stored config and the LLM-provided input.
-func ExecuteHTTP(ctx context.Context, cfg HTTPToolConfig, rawInput json.RawMessage, timeoutMs int) *ExecutionResult {
+// ExecuteHTTP runs an HTTP tool call using the stored config and the
+// LLM-provided input. client must be SSRF-guarded (see
+// tools/native.SafeHTTPClient) — the URL is workspace-editable config plus
+// model-supplied template values, the same threat model native_http_request
+// guards against.
+func ExecuteHTTP(ctx context.Context, client *http.Client, cfg HTTPToolConfig, rawInput json.RawMessage) *ExecutionResult {
 	start := time.Now()
 
 	var input map[string]any
@@ -96,7 +100,6 @@ func ExecuteHTTP(ctx context.Context, cfg HTTPToolConfig, rawInput json.RawMessa
 		bodyReader = nil
 	}
 
-	client := &http.Client{Timeout: time.Duration(timeoutMs) * time.Millisecond}
 	req, err := http.NewRequestWithContext(ctx, method, resolvedURL, bodyReader)
 	if err != nil {
 		return &ExecutionResult{LatencyMs: int(time.Since(start).Milliseconds()), Error: fmt.Sprintf("build request: %s", err)}

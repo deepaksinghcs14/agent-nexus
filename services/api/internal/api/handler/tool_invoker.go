@@ -35,7 +35,8 @@ func invokeToolByType(
 	case toolExists && dbTool.Type == "http":
 		var httpCfg tools.HTTPToolConfig
 		_ = json.Unmarshal(dbTool.Config, &httpCfg)
-		return tools.ExecuteHTTP(ctx, httpCfg, input, dbTool.TimeoutMs), nil
+		client := native.SafeHTTPClient(cfg.HTTPToolAllowHosts, time.Duration(dbTool.TimeoutMs)*time.Millisecond)
+		return tools.ExecuteHTTP(ctx, client, httpCfg, input), nil
 
 	case toolExists && dbTool.Type == "mcp":
 		res, _, _ := executeMCPTool(ctx, pool, cfg, dbTool, input)
