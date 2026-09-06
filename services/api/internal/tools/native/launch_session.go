@@ -113,13 +113,14 @@ func checkSessionsEnabled(ctx context.Context, pool *pgxpool.Pool, workspaceID, 
 // launchAndWait POSTs a launch payload to the runner and blocks (durably
 // parking, for top-level runs) until the session's completion callback,
 // returning the callback content as the tool output.
-func launchAndWait(ctx context.Context, pool *pgxpool.Pool, execCtx tools.ExecutionContext, runnerURL string, launch map[string]any, waitKey string) (any, error) {
+func launchAndWait(ctx context.Context, pool *pgxpool.Pool, execCtx tools.ExecutionContext, runnerURL, callbackSecret string, launch map[string]any, waitKey string) (any, error) {
 	payload, _ := json.Marshal(launch)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, runnerURL+"/sessions", bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Runner-Secret", callbackSecret)
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	res, err := client.Do(req)
@@ -253,5 +254,5 @@ func (t *LaunchRepoSessionTool) ExecuteWithContext(ctx context.Context, execCtx 
 	if githubToken != "" {
 		launch["github_token"] = githubToken
 	}
-	return launchAndWait(ctx, t.pool, execCtx, t.runnerURL, launch, ticketKey+"|"+repo)
+	return launchAndWait(ctx, t.pool, execCtx, t.runnerURL, t.callbackSecret, launch, ticketKey+"|"+repo)
 }
