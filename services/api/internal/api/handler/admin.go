@@ -216,8 +216,11 @@ func (h *AdminHandler) ServiceLogStream(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *AdminHandler) IngestServiceLog(w http.ResponseWriter, r *http.Request) {
+	// 404, not 403, on both branches — same fail-closed contract as the other
+	// /internal/* routes (whatsapp_creds.go, session_wait.go): an unauthenticated
+	// prober must not be able to distinguish "wrong token" from "route doesn't exist".
 	if h.cfg.LogStreamIngestToken == "" {
-		errs.Write(w, errs.Forbidden("log ingest is not configured"))
+		errs.Write(w, errs.NotFound("not found"))
 		return
 	}
 	token := r.Header.Get("X-Log-Stream-Token")
@@ -225,7 +228,7 @@ func (h *AdminHandler) IngestServiceLog(w http.ResponseWriter, r *http.Request) 
 		token = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	}
 	if subtle.ConstantTimeCompare([]byte(token), []byte(h.cfg.LogStreamIngestToken)) != 1 {
-		errs.Write(w, errs.Forbidden("invalid log ingest token"))
+		errs.Write(w, errs.NotFound("not found"))
 		return
 	}
 	if h.logHub == nil {
