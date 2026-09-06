@@ -696,7 +696,7 @@ func (t *DeleteWorkflowTool) Definition() domain.Tool {
 		InputSchema:      json.RawMessage(schema),
 		OutputSchema:     json.RawMessage(`{"type":"object"}`),
 		RiskLevel:        "high",
-		RequiresApproval: false,
+		RequiresApproval: true,
 		TimeoutMs:        5000,
 		Enabled:          true,
 	}
