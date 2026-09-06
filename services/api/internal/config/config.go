@@ -34,6 +34,7 @@ type Config struct {
 	HTTPToolAllowHosts      []string // hostnames native_http_request may reach despite resolving to a private/internal address
 	RateLimitAuthPerMin     int      // per-client requests/min on login, register, refresh and OAuth callbacks (0 = disabled)
 	RateLimitIngressPerMin  int      // per-client requests/min on public webhook and gateway ingress (0 = disabled)
+	RateLimitRunsPerMin     int      // per-client requests/min on run/invoke/eval-trigger endpoints — each one starts real LLM spend (0 = disabled)
 	TrustedProxyCount       int      // reverse proxies in front of this API; 0 = none, ignore X-Forwarded-For entirely
 	MaxGatewayMediaBytes    int      // request body cap for WhatsAppReceive; base64 media inflates ~33% over the raw file, so this must exceed the adapter's own per-item download cap
 }
@@ -64,6 +65,7 @@ func Load() (*Config, error) {
 		RequireSessionApproval:  getEnvBool("REQUIRE_SESSION_APPROVAL", false),
 		RateLimitAuthPerMin:     getEnvInt("RATE_LIMIT_AUTH_PER_MIN", 20),
 		RateLimitIngressPerMin:  getEnvInt("RATE_LIMIT_INGRESS_PER_MIN", 120),
+		RateLimitRunsPerMin:     getEnvInt("RATE_LIMIT_RUNS_PER_MIN", 60),
 		// Defaults to 1: the canonical deployment (Railway, and most PaaS) puts
 		// exactly one edge proxy in front, which appends the real client IP.
 		// Set to 0 when the API is exposed directly — otherwise a caller can

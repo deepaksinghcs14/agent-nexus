@@ -33,6 +33,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 	}
 	r.Use(mw.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(mw.SecurityHeaders)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.CORSOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -98,22 +99,29 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Post("/auth/logout", h.Auth.Logout)
 			r.Get("/auth/me", h.Auth.Me)
 
-			// Workspace (current workspace, scoped by JWT)
-			r.Get("/workspace", h.Workspace.Get)
-			r.Patch("/workspace", h.Workspace.Update)
-			r.Get("/workspace/runner-credentials", h.Workspace.GetRunnerCredentials)
-			r.Put("/workspace/runner-credentials", h.Workspace.PutRunnerCredentials)
-			r.Delete("/workspace/runner-credentials", h.Workspace.DeleteRunnerCredentials)
-			r.Get("/pipeline/status", h.Workspace.PipelineStatus)
-			r.Get("/repo-catalog", h.Workspace.ListRepoCatalog)
-			r.Post("/repo-catalog", h.Workspace.OnboardRepo)
-			r.Patch("/repo-catalog", h.Workspace.SetRepoSessions)
-			r.Delete("/repo-catalog", h.Workspace.RemoveRepo)
-			r.Post("/repo-catalog/generate-map", h.Workspace.GenerateRepoMap)
-			r.Get("/workspace/members", h.Workspace.ListMembers)
-			r.Post("/workspace/members", h.Workspace.AddMember)
-			r.Patch("/workspace/members/{id}", h.Workspace.UpdateMember)
-			r.Delete("/workspace/members/{id}", h.Workspace.RemoveMember)
+			// Workspace (current workspace, scoped by JWT). Member-management
+			// mutations are additionally gated by canManage (admin/owner) inside
+			// the handlers themselves; BlockViewerWrites covers the rest of this
+			// section (settings, repo-catalog) which had no gate at all.
+			r.Group(func(r chi.Router) {
+				r.Use(mw.BlockViewerWrites)
+
+				r.Get("/workspace", h.Workspace.Get)
+				r.Patch("/workspace", h.Workspace.Update)
+				r.Get("/workspace/runner-credentials", h.Workspace.GetRunnerCredentials)
+				r.Put("/workspace/runner-credentials", h.Workspace.PutRunnerCredentials)
+				r.Delete("/workspace/runner-credentials", h.Workspace.DeleteRunnerCredentials)
+				r.Get("/pipeline/status", h.Workspace.PipelineStatus)
+				r.Get("/repo-catalog", h.Workspace.ListRepoCatalog)
+				r.Post("/repo-catalog", h.Workspace.OnboardRepo)
+				r.Patch("/repo-catalog", h.Workspace.SetRepoSessions)
+				r.Delete("/repo-catalog", h.Workspace.RemoveRepo)
+				r.Post("/repo-catalog/generate-map", h.Workspace.GenerateRepoMap)
+				r.Get("/workspace/members", h.Workspace.ListMembers)
+				r.Post("/workspace/members", h.Workspace.AddMember)
+				r.Patch("/workspace/members/{id}", h.Workspace.UpdateMember)
+				r.Delete("/workspace/members/{id}", h.Workspace.RemoveMember)
+			})
 
 			// Workspaces (user's full list + create/switch)
 			r.Get("/workspaces", h.Workspace.List)
@@ -127,61 +135,71 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Delete("/api-tokens/{id}", h.APITokens.Revoke)
 
 			// Invoke (stateless agent/workflow execution via API token)
-			r.Post("/invoke/agents/{agentId}", h.Invoke.Agent)
-			r.Post("/invoke/workflows/{workflowId}", h.Invoke.Group)
+			runLimit := mw.RateLimit(cfg.RateLimitRunsPerMin, time.Minute)
+			r.With(runLimit).Post("/invoke/agents/{agentId}", h.Invoke.Agent)
+			r.With(runLimit).Post("/invoke/workflows/{workflowId}", h.Invoke.Group)
 
-			// Providers
-			r.Get("/providers", h.Providers.List)
-			r.Post("/providers", h.Providers.Create)
-			r.Put("/providers/{id}", h.Providers.Update)
-			r.Delete("/providers/{id}", h.Providers.Delete)
-			r.Get("/providers/{id}/models", h.Providers.ListModels)
-			r.Get("/providers/oauth/google/authorize", h.Providers.OAuthGoogleAuthorize)
+			// Providers, Agents, Tools, MCP Servers, Connectors: the workspace's
+			// configuration surface. Every mutation here had no per-role gate at
+			// all before BlockViewerWrites — any authenticated member, including
+			// an explicitly invited "viewer", could create/update/delete any of
+			// these. Reads stay open (the middleware no-ops on GET).
+			r.Group(func(r chi.Router) {
+				r.Use(mw.BlockViewerWrites)
 
-			// Agents
-			r.Get("/agents", h.Agents.List)
-			r.Post("/agents", h.Agents.Create)
-			r.Post("/agents/import", h.Agents.Import)
-			r.Get("/agents/{id}", h.Agents.Get)
-			r.Put("/agents/{id}", h.Agents.Update)
-			r.Delete("/agents/{id}", h.Agents.Delete)
-			r.Get("/agents/{id}/export", h.Agents.Export)
-			r.Get("/agents/{id}/tools", h.Agents.ListTools)
-			r.Put("/agents/{id}/tools", h.Agents.SetTools)
-			r.Get("/agents/{id}/connectors", h.Agents.ListConnectors)
-			r.Put("/agents/{id}/connectors", h.Agents.SetConnectors)
+				// Providers
+				r.Get("/providers", h.Providers.List)
+				r.Post("/providers", h.Providers.Create)
+				r.Put("/providers/{id}", h.Providers.Update)
+				r.Delete("/providers/{id}", h.Providers.Delete)
+				r.Get("/providers/{id}/models", h.Providers.ListModels)
+				r.Get("/providers/oauth/google/authorize", h.Providers.OAuthGoogleAuthorize)
 
-			// Tools
-			r.Get("/tools", h.Tools.List)
-			r.Post("/tools", h.Tools.Create)
-			r.Post("/tools/test-code", h.Tools.TestCode)
-			r.Get("/tools/{id}", h.Tools.Get)
-			r.Put("/tools/{id}", h.Tools.Update)
-			r.Delete("/tools/{id}", h.Tools.Delete)
+				// Agents
+				r.Get("/agents", h.Agents.List)
+				r.Post("/agents", h.Agents.Create)
+				r.Post("/agents/import", h.Agents.Import)
+				r.Get("/agents/{id}", h.Agents.Get)
+				r.Put("/agents/{id}", h.Agents.Update)
+				r.Delete("/agents/{id}", h.Agents.Delete)
+				r.Get("/agents/{id}/export", h.Agents.Export)
+				r.Get("/agents/{id}/tools", h.Agents.ListTools)
+				r.Put("/agents/{id}/tools", h.Agents.SetTools)
+				r.Get("/agents/{id}/connectors", h.Agents.ListConnectors)
+				r.Put("/agents/{id}/connectors", h.Agents.SetConnectors)
 
-			// MCP Servers
-			r.Get("/mcp-servers", h.MCP.List)
-			r.Post("/mcp-servers", h.MCP.Create)
-			r.Get("/mcp-servers/{id}", h.MCP.Get)
-			r.Delete("/mcp-servers/{id}", h.MCP.Delete)
-			r.Post("/mcp-servers/{id}/sync", h.MCP.Sync)
-			r.Post("/mcp-servers/{id}/oauth/start", h.MCP.OAuthStart)
-			r.Get("/mcp-servers/{id}/tools", h.MCP.ListTools)
-			r.Post("/mcp-servers/{id}/tools/test", h.MCP.TestTool)
-			r.Patch("/mcp-servers/{id}/tools/{toolId}", h.MCP.UpdateToolRisk)
+				// Tools
+				r.Get("/tools", h.Tools.List)
+				r.Post("/tools", h.Tools.Create)
+				r.Post("/tools/test-code", h.Tools.TestCode)
+				r.Get("/tools/{id}", h.Tools.Get)
+				r.Put("/tools/{id}", h.Tools.Update)
+				r.Delete("/tools/{id}", h.Tools.Delete)
 
-			// Connectors
-			r.Get("/connectors", h.Connectors.List)
-			r.Post("/connectors", h.Connectors.Create)
-			r.Get("/connectors/{id}", h.Connectors.Get)
-			r.Delete("/connectors/{id}", h.Connectors.Delete)
-			r.Post("/connectors/{id}/sync", h.Connectors.Sync)
-			r.Post("/connectors/{id}/sync/cancel", h.Connectors.CancelSync)
-			r.Get("/connectors/{id}/documents", h.Connectors.ListDocuments)
-			r.Get("/connectors/{id}/browse", h.Connectors.BrowseDocuments)
-			r.Get("/connectors/{id}/document-groups", h.Connectors.ListDocumentGroups)
-			r.Get("/connectors/{id}/sync-jobs", h.Connectors.ListSyncJobs)
-			r.Get("/filesystem/browse", h.Connectors.BrowseFilesystem)
+				// MCP Servers
+				r.Get("/mcp-servers", h.MCP.List)
+				r.Post("/mcp-servers", h.MCP.Create)
+				r.Get("/mcp-servers/{id}", h.MCP.Get)
+				r.Delete("/mcp-servers/{id}", h.MCP.Delete)
+				r.Post("/mcp-servers/{id}/sync", h.MCP.Sync)
+				r.Post("/mcp-servers/{id}/oauth/start", h.MCP.OAuthStart)
+				r.Get("/mcp-servers/{id}/tools", h.MCP.ListTools)
+				r.Post("/mcp-servers/{id}/tools/test", h.MCP.TestTool)
+				r.Patch("/mcp-servers/{id}/tools/{toolId}", h.MCP.UpdateToolRisk)
+
+				// Connectors
+				r.Get("/connectors", h.Connectors.List)
+				r.Post("/connectors", h.Connectors.Create)
+				r.Get("/connectors/{id}", h.Connectors.Get)
+				r.Delete("/connectors/{id}", h.Connectors.Delete)
+				r.Post("/connectors/{id}/sync", h.Connectors.Sync)
+				r.Post("/connectors/{id}/sync/cancel", h.Connectors.CancelSync)
+				r.Get("/connectors/{id}/documents", h.Connectors.ListDocuments)
+				r.Get("/connectors/{id}/browse", h.Connectors.BrowseDocuments)
+				r.Get("/connectors/{id}/document-groups", h.Connectors.ListDocumentGroups)
+				r.Get("/connectors/{id}/sync-jobs", h.Connectors.ListSyncJobs)
+				r.Get("/filesystem/browse", h.Connectors.BrowseFilesystem)
+			})
 
 			// Conversations
 			r.Get("/conversations", h.Conversations.List)
@@ -189,7 +207,7 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Delete("/conversations", h.Conversations.DeleteAll)
 			r.Get("/conversations/{id}", h.Conversations.Get)
 			r.Delete("/conversations/{id}", h.Conversations.Delete)
-			r.Post("/conversations/{id}/runs", h.Runs.Start) // SSE stream
+			r.With(runLimit).Post("/conversations/{id}/runs", h.Runs.Start) // SSE stream
 			r.Get("/conversations/{id}/runs", h.Runs.ListByConversation)
 
 			// Runs
@@ -201,104 +219,111 @@ func New(cfg *config.Config, h *handler.Handlers, pool *pgxpool.Pool) http.Handl
 			r.Post("/runs/{id}/input", h.Runs.SubmitUserInput)
 			r.Post("/runs/{id}/cancel", h.Runs.Cancel)
 
-			// Memory
-			r.Get("/memory", h.Memory.List)
-			r.Patch("/memory/{id}/approve", h.Memory.Approve)
-			r.Patch("/memory/{id}/reject", h.Memory.Reject)
-			r.Delete("/memory/{id}", h.Memory.Delete)
-			r.Delete("/memory", h.Memory.BulkDelete)
+			// Memory, webhook triggers, gateway channels: more workspace
+			// configuration surface with no prior per-role gate.
+			r.Group(func(r chi.Router) {
+				r.Use(mw.BlockViewerWrites)
 
-			// Webhook triggers
-			r.Get("/webhook-triggers", h.WebhookTriggers.List)
-			r.Post("/webhook-triggers", h.WebhookTriggers.Create)
-			r.Get("/webhook-triggers/{id}", h.WebhookTriggers.Get)
-			r.Put("/webhook-triggers/{id}", h.WebhookTriggers.Update)
-			r.Delete("/webhook-triggers/{id}", h.WebhookTriggers.Delete)
+				// Memory
+				r.Get("/memory", h.Memory.List)
+				r.Patch("/memory/{id}/approve", h.Memory.Approve)
+				r.Patch("/memory/{id}/reject", h.Memory.Reject)
+				r.Delete("/memory/{id}", h.Memory.Delete)
+				r.Delete("/memory", h.Memory.BulkDelete)
 
-			// Gateway channels
-			r.Route("/gateway", func(r chi.Router) {
-				r.Get("/channels", h.Gateway.ListChannels)
-				r.Post("/channels", h.Gateway.CreateChannel)
-				r.Get("/channels/{id}", h.Gateway.GetChannel)
-				r.Put("/channels/{id}", h.Gateway.UpdateChannel)
-				r.Delete("/channels/{id}", h.Gateway.DeleteChannel)
-				r.Get("/channels/{id}/adapter/status", h.Gateway.AdapterStatus)
-				r.Post("/channels/{id}/adapter/login/start", h.Gateway.AdapterLoginStart)
-				r.Get("/channels/{id}/adapter/login/qr", h.Gateway.AdapterQR)
-				r.Post("/channels/{id}/adapter/login/pairing-code", h.Gateway.AdapterPairingCode)
-				r.Post("/channels/{id}/adapter/logout", h.Gateway.AdapterLogout)
-				r.Post("/channels/{id}/adapter/sync-lids", h.Gateway.AdapterSyncLIDs)
-				r.Post("/channels/{id}/adapter/sync-contacts", h.Gateway.AdapterSyncContacts)
-				r.Get("/sessions", h.Gateway.ListSessions)
-				r.Delete("/sessions/{id}", h.Gateway.DeleteSession)
-				r.Get("/events", h.Gateway.ListEvents)
-				r.Get("/pairings", h.Gateway.ListPairings)
-				r.Post("/pairings/{id}/approve", h.Gateway.ApprovePairing)
-				r.Post("/pairings/{id}/reject", h.Gateway.RejectPairing)
-				r.Get("/outbox", h.Gateway.ListOutbox)
-				r.Get("/reminders", h.Gateway.ListReminders)
-				r.Post("/reminders", h.Gateway.CreateReminder)
-				r.Put("/reminders/{id}", h.Gateway.UpdateReminder)
-				r.Delete("/reminders/{id}", h.Gateway.DeleteReminder)
-				r.Get("/scheduled-messages", h.Gateway.ListScheduledMessages)
-				r.Post("/scheduled-messages", h.Gateway.CreateScheduledMessage)
-				r.Get("/scheduled-messages/{id}", h.Gateway.GetScheduledMessage)
-				r.Put("/scheduled-messages/{id}", h.Gateway.UpdateScheduledMessage)
-				r.Delete("/scheduled-messages/{id}", h.Gateway.DeleteScheduledMessage)
-				r.Get("/escalations", h.Gateway.ListEscalations)
-				r.Post("/escalations/{id}/approve", h.Gateway.ApproveEscalation)
-				r.Post("/escalations/{id}/reject", h.Gateway.RejectEscalation)
-				r.Get("/contacts", h.Gateway.ListContacts)
-				r.Post("/contacts", h.Gateway.CreateContact)
-				r.Put("/contacts/{id}", h.Gateway.UpdateContact)
-				r.Delete("/contacts/{id}", h.Gateway.DeleteContact)
+				// Webhook triggers
+				r.Get("/webhook-triggers", h.WebhookTriggers.List)
+				r.Post("/webhook-triggers", h.WebhookTriggers.Create)
+				r.Get("/webhook-triggers/{id}", h.WebhookTriggers.Get)
+				r.Put("/webhook-triggers/{id}", h.WebhookTriggers.Update)
+				r.Delete("/webhook-triggers/{id}", h.WebhookTriggers.Delete)
+
+				// Gateway channels
+				r.Route("/gateway", func(r chi.Router) {
+					r.Get("/channels", h.Gateway.ListChannels)
+					r.Post("/channels", h.Gateway.CreateChannel)
+					r.Get("/channels/{id}", h.Gateway.GetChannel)
+					r.Put("/channels/{id}", h.Gateway.UpdateChannel)
+					r.Delete("/channels/{id}", h.Gateway.DeleteChannel)
+					r.Get("/channels/{id}/adapter/status", h.Gateway.AdapterStatus)
+					r.Post("/channels/{id}/adapter/login/start", h.Gateway.AdapterLoginStart)
+					r.Get("/channels/{id}/adapter/login/qr", h.Gateway.AdapterQR)
+					r.Post("/channels/{id}/adapter/login/pairing-code", h.Gateway.AdapterPairingCode)
+					r.Post("/channels/{id}/adapter/logout", h.Gateway.AdapterLogout)
+					r.Post("/channels/{id}/adapter/sync-lids", h.Gateway.AdapterSyncLIDs)
+					r.Post("/channels/{id}/adapter/sync-contacts", h.Gateway.AdapterSyncContacts)
+					r.Get("/sessions", h.Gateway.ListSessions)
+					r.Delete("/sessions/{id}", h.Gateway.DeleteSession)
+					r.Get("/events", h.Gateway.ListEvents)
+					r.Get("/pairings", h.Gateway.ListPairings)
+					r.Post("/pairings/{id}/approve", h.Gateway.ApprovePairing)
+					r.Post("/pairings/{id}/reject", h.Gateway.RejectPairing)
+					r.Get("/outbox", h.Gateway.ListOutbox)
+					r.Get("/reminders", h.Gateway.ListReminders)
+					r.Post("/reminders", h.Gateway.CreateReminder)
+					r.Put("/reminders/{id}", h.Gateway.UpdateReminder)
+					r.Delete("/reminders/{id}", h.Gateway.DeleteReminder)
+					r.Get("/scheduled-messages", h.Gateway.ListScheduledMessages)
+					r.Post("/scheduled-messages", h.Gateway.CreateScheduledMessage)
+					r.Get("/scheduled-messages/{id}", h.Gateway.GetScheduledMessage)
+					r.Put("/scheduled-messages/{id}", h.Gateway.UpdateScheduledMessage)
+					r.Delete("/scheduled-messages/{id}", h.Gateway.DeleteScheduledMessage)
+					r.Get("/escalations", h.Gateway.ListEscalations)
+					r.Post("/escalations/{id}/approve", h.Gateway.ApproveEscalation)
+					r.Post("/escalations/{id}/reject", h.Gateway.RejectEscalation)
+					r.Get("/contacts", h.Gateway.ListContacts)
+					r.Post("/contacts", h.Gateway.CreateContact)
+					r.Put("/contacts/{id}", h.Gateway.UpdateContact)
+					r.Delete("/contacts/{id}", h.Gateway.DeleteContact)
+				})
+
+				// Skills
+				r.Get("/skills", h.Skills.List)
+				r.Post("/skills", h.Skills.Create)
+				r.Get("/skills/{id}", h.Skills.Get)
+				r.Put("/skills/{id}", h.Skills.Update)
+				r.Delete("/skills/{id}", h.Skills.Delete)
+				r.Get("/agents/{id}/skills", h.Skills.ListForAgent)
+				r.Put("/agents/{id}/skills", h.Skills.SetForAgent)
+
+				// Workflows
+				r.Get("/workflows", h.Workflows.List)
+				r.Post("/workflows", h.Workflows.Create)
+				r.Get("/workflows/{id}", h.Workflows.Get)
+				r.Put("/workflows/{id}", h.Workflows.Update)
+				r.Delete("/workflows/{id}", h.Workflows.Delete)
+				r.With(runLimit).Post("/workflows/{id}/runs", h.Workflows.Run)
+				r.Get("/workflows/{id}/graph", h.Workflows.GetGraph)
+				r.Put("/workflows/{id}/graph", h.Workflows.SaveGraph)
+
+				// Nexus AI meta-agent — can itself create/update/delete agents,
+				// tools, workflows, connectors; part of the config surface.
+				r.Post("/nexus-ai/chat", h.NexusAI.Chat)
+
+				// Eval framework
+				r.Route("/evals", func(r chi.Router) {
+					r.Get("/suites", h.Evals.ListSuites)
+					r.Post("/suites", h.Evals.CreateSuite)
+					r.Get("/suites/{id}", h.Evals.GetSuite)
+					r.Put("/suites/{id}", h.Evals.UpdateSuite)
+					r.Delete("/suites/{id}", h.Evals.DeleteSuite)
+					r.Post("/suites/{id}/cases", h.Evals.CreateCase)
+					r.Put("/suites/{id}/cases/{caseId}", h.Evals.UpdateCase)
+					r.Delete("/suites/{id}/cases/{caseId}", h.Evals.DeleteCase)
+					r.With(runLimit).Post("/suites/{id}/generate-cases", h.Evals.GenerateCases)
+					r.Get("/suites/{id}/cases/export", h.Evals.ExportCases)
+					r.Post("/suites/{id}/cases/import", h.Evals.ImportCases)
+					r.With(runLimit).Post("/suites/{id}/runs", h.Evals.TriggerRun)
+					r.Get("/suites/{id}/runs", h.Evals.ListRuns)
+					r.Get("/runs/{runId}", h.Evals.GetRun)
+					r.Post("/runs/{runId}/analyze", h.Evals.AnalyzeRun)
+					r.Patch("/runs/{runId}/results/{resultId}", h.Evals.OverrideResult)
+					r.Post("/runs/{runId}/results/{resultId}/fix-case", h.Evals.FixCase)
+				})
 			})
 
-			// Skills
-			r.Get("/skills", h.Skills.List)
-			r.Post("/skills", h.Skills.Create)
-			r.Get("/skills/{id}", h.Skills.Get)
-			r.Put("/skills/{id}", h.Skills.Update)
-			r.Delete("/skills/{id}", h.Skills.Delete)
-			r.Get("/agents/{id}/skills", h.Skills.ListForAgent)
-			r.Put("/agents/{id}/skills", h.Skills.SetForAgent)
-
-			// Workflows
-			r.Get("/workflows", h.Workflows.List)
-			r.Post("/workflows", h.Workflows.Create)
-			r.Get("/workflows/{id}", h.Workflows.Get)
-			r.Put("/workflows/{id}", h.Workflows.Update)
-			r.Delete("/workflows/{id}", h.Workflows.Delete)
-			r.Post("/workflows/{id}/runs", h.Workflows.Run)
-			r.Get("/workflows/{id}/graph", h.Workflows.GetGraph)
-			r.Put("/workflows/{id}/graph", h.Workflows.SaveGraph)
-
-			// Observability
+			// Observability (read-only, no gate needed)
 			r.Get("/observability/latency", h.Observability.Latency)
-
-			// Nexus AI meta-agent
-			r.Post("/nexus-ai/chat", h.NexusAI.Chat)
-
-			// Eval framework
-			r.Route("/evals", func(r chi.Router) {
-				r.Get("/suites", h.Evals.ListSuites)
-				r.Post("/suites", h.Evals.CreateSuite)
-				r.Get("/suites/{id}", h.Evals.GetSuite)
-				r.Put("/suites/{id}", h.Evals.UpdateSuite)
-				r.Delete("/suites/{id}", h.Evals.DeleteSuite)
-				r.Post("/suites/{id}/cases", h.Evals.CreateCase)
-				r.Put("/suites/{id}/cases/{caseId}", h.Evals.UpdateCase)
-				r.Delete("/suites/{id}/cases/{caseId}", h.Evals.DeleteCase)
-				r.Post("/suites/{id}/generate-cases", h.Evals.GenerateCases)
-				r.Get("/suites/{id}/cases/export", h.Evals.ExportCases)
-				r.Post("/suites/{id}/cases/import", h.Evals.ImportCases)
-				r.Post("/suites/{id}/runs", h.Evals.TriggerRun)
-				r.Get("/suites/{id}/runs", h.Evals.ListRuns)
-				r.Get("/runs/{runId}", h.Evals.GetRun)
-				r.Post("/runs/{runId}/analyze", h.Evals.AnalyzeRun)
-				r.Patch("/runs/{runId}/results/{resultId}", h.Evals.OverrideResult)
-				r.Post("/runs/{runId}/results/{resultId}/fix-case", h.Evals.FixCase)
-			})
 
 			// Admin (requires is_admin flag)
 			r.Group(func(r chi.Router) {

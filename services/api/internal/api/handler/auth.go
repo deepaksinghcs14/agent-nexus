@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -107,12 +108,15 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, hash, err := h.users.GetByEmail(r.Context(), strings.ToLower(req.Email))
+	email := strings.ToLower(req.Email)
+	user, hash, err := h.users.GetByEmail(r.Context(), email)
 	if err != nil {
+		writeSystemAudit(r.Context(), h.pool, "", "", email, "auth.login_failed", "user", "", clientIP(r))
 		errs.Write(w, errs.Unauthorized("invalid credentials"))
 		return
 	}
 	if err := authpkg.CheckPassword(hash, req.Password); err != nil {
+		writeSystemAudit(r.Context(), h.pool, "", user.ID, email, "auth.login_failed", "user", user.ID, clientIP(r))
 		errs.Write(w, errs.Unauthorized("invalid credentials"))
 		return
 	}
@@ -154,8 +158,9 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("refresh_token"); err == nil {
 		_ = h.users.DeleteRefreshToken(r.Context(), sha256Hex(cookie.Value))
 	}
-	http.SetCookie(w, &http.Cookie{Name: "refresh_token", Value: "", MaxAge: -1, Path: "/"})
-	http.SetCookie(w, &http.Cookie{Name: "has_session", Value: "", MaxAge: -1, Path: "/"})
+	secure := strings.HasPrefix(h.cfg.PublicAPIURL, "https://")
+	http.SetCookie(w, &http.Cookie{Name: "refresh_token", Value: "", MaxAge: -1, Path: "/", Secure: secure})
+	http.SetCookie(w, &http.Cookie{Name: "has_session", Value: "", MaxAge: -1, Path: "/", Secure: secure})
 	errs.WriteJSON(w, http.StatusOK, map[string]string{"message": "logged out"})
 }
 
@@ -171,13 +176,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.NotFound("workspace not found"))
 		return
 	}
-	role := ""
-	_ = h.pool.QueryRow(r.Context(),
-		`SELECT ro.name FROM user_roles ur JOIN roles ro ON ro.id=ur.role_id WHERE ur.user_id=$1::uuid AND ur.workspace_id=$2::uuid`,
-		userID, ws.ID).Scan(&role)
-	if role == "" && ws.OwnerID == userID {
-		role = "owner"
-	}
+	role := h.workspaceRole(r.Context(), userID, ws.ID)
 	workspaces, _ := h.users.GetWorkspacesForUser(r.Context(), userID)
 	if workspaces == nil {
 		workspaces = []domain.WorkspaceWithRole{}
@@ -215,7 +214,8 @@ func (h *AuthHandler) Switch(w http.ResponseWriter, r *http.Request) {
 		errs.Write(w, errs.Internal("failed to load user"))
 		return
 	}
-	accessToken, err := authpkg.SignAccessToken(h.cfg.JWTSecret, user.ID, req.WorkspaceID, user.Email, user.IsAdmin)
+	role := h.workspaceRole(r.Context(), user.ID, req.WorkspaceID)
+	accessToken, err := authpkg.SignAccessToken(h.cfg.JWTSecret, user.ID, req.WorkspaceID, user.Email, user.IsAdmin, role)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to sign token"))
 		return
@@ -227,7 +227,8 @@ func (h *AuthHandler) Switch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) issueTokens(w http.ResponseWriter, r *http.Request, user *domain.User, workspaceID string) {
-	accessToken, err := authpkg.SignAccessToken(h.cfg.JWTSecret, user.ID, workspaceID, user.Email, user.IsAdmin)
+	role := h.workspaceRole(r.Context(), user.ID, workspaceID)
+	accessToken, err := authpkg.SignAccessToken(h.cfg.JWTSecret, user.ID, workspaceID, user.Email, user.IsAdmin, role)
 	if err != nil {
 		errs.Write(w, errs.Internal("failed to sign access token"))
 		return
@@ -247,12 +248,18 @@ func (h *AuthHandler) issueTokens(w http.ResponseWriter, r *http.Request, user *
 		return
 	}
 
+	// Secure whenever the API is actually reachable over HTTPS (PUBLIC_API_URL
+	// must already be set to the real https:// URL for OAuth redirects to work
+	// at all) — false only for the http://localhost default in local dev,
+	// where a Secure cookie would silently never be sent.
+	secure := strings.HasPrefix(h.cfg.PublicAPIURL, "https://")
 	http.SetCookie(w, &http.Cookie{
 		Name:     "refresh_token",
 		Value:    rawToken,
 		Path:     "/",
 		Expires:  expiresAt,
 		HttpOnly: true,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 	http.SetCookie(w, &http.Cookie{
@@ -261,6 +268,7 @@ func (h *AuthHandler) issueTokens(w http.ResponseWriter, r *http.Request, user *
 		Path:     "/",
 		Expires:  expiresAt,
 		HttpOnly: false,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 
@@ -276,6 +284,25 @@ func (h *AuthHandler) issueTokens(w http.ResponseWriter, r *http.Request, user *
 		`INSERT INTO admin_audit_logs(id,workspace_id,actor_id,actor_email,action,resource_type,resource_id,ip_address)
 		 VALUES($1::uuid,$2::uuid,$3::uuid,$4,'user.login','user',$3::uuid,$5)`,
 		uuid.NewString(), workspaceID, user.ID, user.Email, ip)
+}
+
+// workspaceRole looks up userID's role in workspaceID, falling back to
+// "owner" when no explicit user_roles row exists but the user owns the
+// workspace. Mirrors WorkspaceHandler.roleFor's fallback.
+func (h *AuthHandler) workspaceRole(ctx context.Context, userID, workspaceID string) string {
+	var role string
+	err := h.pool.QueryRow(ctx,
+		`SELECT ro.name FROM user_roles ur JOIN roles ro ON ro.id=ur.role_id WHERE ur.user_id=$1::uuid AND ur.workspace_id=$2::uuid`,
+		userID, workspaceID).Scan(&role)
+	if err != nil {
+		var isOwner bool
+		_ = h.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workspaces WHERE id=$1::uuid AND owner_id=$2::uuid)`,
+			workspaceID, userID).Scan(&isOwner)
+		if isOwner {
+			return "owner"
+		}
+	}
+	return role
 }
 
 func sha256Hex(s string) string {
