@@ -199,7 +199,9 @@ func newLoopFixture(t *testing.T, turns []fakeTurn, agentPatch string) *loopFixt
 	mustExec(`INSERT INTO messages(id,conversation_id,role,content) VALUES($1::uuid,$2::uuid,'user','test input')`, uuid.NewString(), fx.convID)
 	mustExec(`INSERT INTO runs(id,workspace_id,agent_id,conversation_id,user_id,input,status) VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,'test input','running')`, fx.runID, fx.ws, agentID, fx.convID, fx.uid)
 
-	cfg := &config.Config{EncryptionKey: strings.Repeat("k", 32)}
+	// 127.0.0.1 allowlisted for the webhook node test's local httptest server —
+	// the SSRF guard otherwise blocks it as a loopback address.
+	cfg := &config.Config{EncryptionKey: strings.Repeat("k", 32), HTTPToolAllowHosts: []string{"127.0.0.1"}}
 	reg := tools.NewRegistry()
 	exec := tools.NewExecutor(reg)
 	runs := NewRunsHandler(pool, cfg, reg, exec)

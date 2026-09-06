@@ -20,7 +20,7 @@ type HTTPRequestTool struct {
 // RAG-retrieved content, so the destination is validated at dial time (see
 // ssrf.go).
 func NewHTTPRequestTool(allowHosts []string) *HTTPRequestTool {
-	return &HTTPRequestTool{client: safeHTTPClient(allowHosts, 30*time.Second)}
+	return &HTTPRequestTool{client: SafeHTTPClient(allowHosts, 30*time.Second)}
 }
 
 func (t *HTTPRequestTool) Definition() domain.Tool {

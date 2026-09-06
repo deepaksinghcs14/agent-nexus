@@ -13,6 +13,7 @@ import (
 
 	gatewayservice "github.com/deepaksingh/agent-nexus/services/api/internal/gateway"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
+	"github.com/deepaksingh/agent-nexus/services/api/internal/tools/native"
 )
 
 // Executors for the non-agent workflow nodes (webhook / gateway) and the end
@@ -131,7 +132,7 @@ func (h *InvokeHandler) executeWorkflowWebhook(ctx context.Context, cfg map[stri
 		}
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := native.SafeHTTPClient(h.cfg.HTTPToolAllowHosts, 30*time.Second)
 	res, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("webhook: %w", err)
