@@ -15,6 +15,7 @@ import (
 	"github.com/deepaksingh/agent-nexus/services/api/internal/provider"
 	"github.com/deepaksingh/agent-nexus/services/api/internal/repository"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -115,25 +116,36 @@ func (p *Pipeline) Sync(
 		p.pool.Exec(ctx, `DELETE FROM connector_chunks WHERE document_id=$1::uuid`, docID) //nolint:errcheck
 
 		chunks := chunkText(doc.Content, 2048, 256)
+		batch := &pgx.Batch{}
 		for i, chunkContent := range chunks {
 			chunkID := uuid.NewString()
 			if embedder != nil {
 				emb, embErr := embedder.Embed(ctx, chunkContent)
 				if embErr == nil && len(emb) > 0 {
-					vecStr := formatVector(emb)
-					p.pool.Exec(ctx, //nolint:errcheck
+					batch.Queue(
 						`INSERT INTO connector_chunks(id,document_id,chunk_index,content,embedding)
 						 VALUES($1::uuid,$2::uuid,$3,$4,$5::vector)
 						 ON CONFLICT(document_id,chunk_index) DO UPDATE SET content=$4,embedding=$5::vector`,
-						chunkID, docID, i, chunkContent, vecStr)
+						chunkID, docID, i, chunkContent, formatVector(emb))
 					continue
 				}
 			}
-			p.pool.Exec(ctx, //nolint:errcheck
+			batch.Queue(
 				`INSERT INTO connector_chunks(id,document_id,chunk_index,content)
 				 VALUES($1::uuid,$2::uuid,$3,$4)
 				 ON CONFLICT(document_id,chunk_index) DO UPDATE SET content=$4`,
 				chunkID, docID, i, chunkContent)
+		}
+		if batch.Len() > 0 {
+			br := p.pool.SendBatch(ctx, batch)
+			for range batch.Len() {
+				if _, execErr := br.Exec(); execErr != nil {
+					log.Warn("chunk insert failed", "document_id", docID, "error", execErr)
+				}
+			}
+			if err := br.Close(); err != nil {
+				log.Warn("chunk batch close failed", "document_id", docID, "error", err)
+			}
 		}
 
 		log.Debug("document indexed", "title", doc.Title, "chunks", len(chunks))

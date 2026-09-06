@@ -54,9 +54,13 @@ func safeControl(network, address string, _ syscall.RawConn) error {
 	return nil
 }
 
-// safeHTTPClient builds the client used by native_http_request. Hosts listed in
-// allowHosts bypass the IP check entirely and get a plain dialer.
-func safeHTTPClient(allowHosts []string, timeout time.Duration) *http.Client {
+// SafeHTTPClient builds an SSRF-guarded client: the dialer's Control hook
+// (safeControl) blocks private/internal addresses post-DNS, catching redirect
+// hops and DNS rebinding a URL-string check would miss. Hosts listed in
+// allowHosts bypass the IP check entirely and get a plain dialer. Used by
+// native_http_request; any other code path that fetches a caller-supplied URL
+// should reuse this rather than a bare http.Client.
+func SafeHTTPClient(allowHosts []string, timeout time.Duration) *http.Client {
 	allowed := make(map[string]bool, len(allowHosts))
 	for _, h := range allowHosts {
 		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {

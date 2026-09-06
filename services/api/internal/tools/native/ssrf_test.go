@@ -83,7 +83,7 @@ func TestSSRFAllowlistPermitsHost(t *testing.T) {
 		t.Fatalf("parse test server host: %v", err)
 	}
 
-	tool := &HTTPRequestTool{client: safeHTTPClient([]string{host}, 10*time.Second)}
+	tool := &HTTPRequestTool{client: SafeHTTPClient([]string{host}, 10*time.Second)}
 	out, err := tool.Execute(map[string]any{"url": srv.URL})
 	if err != nil {
 		t.Fatalf("allowlisted host should be reachable, got: %v", err)

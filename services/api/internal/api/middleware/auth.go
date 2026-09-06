@@ -20,6 +20,7 @@ const (
 	ContextKeyWorkspaceID contextKey = "workspace_id"
 	ContextKeyIsAdmin     contextKey = "is_admin"
 	ContextKeyEmail       contextKey = "email"
+	ContextKeyRole        contextKey = "role"
 )
 
 type Claims struct {
@@ -27,6 +28,7 @@ type Claims struct {
 	WorkspaceID string `json:"workspace_id"`
 	Email       string `json:"email"`
 	IsAdmin     bool   `json:"is_admin"`
+	Role        string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -82,6 +84,7 @@ func Authenticate(jwtSecret string, pool *pgxpool.Pool) func(http.Handler) http.
 				ctx = context.WithValue(ctx, ContextKeyWorkspaceID, workspaceID)
 				ctx = context.WithValue(ctx, ContextKeyIsAdmin, isAdmin)
 				ctx = context.WithValue(ctx, ContextKeyEmail, email)
+				ctx = context.WithValue(ctx, ContextKeyRole, workspaceRole(r.Context(), pool, userID, workspaceID))
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
@@ -108,10 +111,33 @@ func Authenticate(jwtSecret string, pool *pgxpool.Pool) func(http.Handler) http.
 			ctx = context.WithValue(ctx, ContextKeyWorkspaceID, claims.WorkspaceID)
 			ctx = context.WithValue(ctx, ContextKeyIsAdmin, claims.IsAdmin)
 			ctx = context.WithValue(ctx, ContextKeyEmail, claims.Email)
+			ctx = context.WithValue(ctx, ContextKeyRole, claims.Role)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// workspaceRole looks up userID's role in workspaceID (owner/admin/member/viewer),
+// falling back to "owner" when no explicit row exists but the user owns the
+// workspace — same fallback WorkspaceHandler.roleFor and AuthHandler.Me use.
+// A lookup failure or missing row for anyone else returns "" (unknown), which
+// BlockViewerWrites treats as unrestricted — never lock out a caller who was
+// never explicitly assigned "viewer".
+func workspaceRole(ctx context.Context, pool *pgxpool.Pool, userID, workspaceID string) string {
+	var role string
+	err := pool.QueryRow(ctx,
+		`SELECT ro.name FROM user_roles ur JOIN roles ro ON ro.id=ur.role_id
+		 WHERE ur.user_id=$1::uuid AND ur.workspace_id=$2::uuid`, userID, workspaceID).Scan(&role)
+	if err != nil {
+		var isOwner bool
+		_ = pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workspaces WHERE id=$1::uuid AND owner_id=$2::uuid)`,
+			workspaceID, userID).Scan(&isOwner)
+		if isOwner {
+			return "owner"
+		}
+	}
+	return role
 }
 
 // RequireAdmin rejects requests where the authenticated user is not an admin.
@@ -120,6 +146,20 @@ func RequireAdmin(next http.Handler) http.Handler {
 		isAdmin, _ := r.Context().Value(ContextKeyIsAdmin).(bool)
 		if !isAdmin {
 			errs.Write(w, errs.Forbidden("admin access required"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// BlockViewerWrites rejects mutating requests (any method but GET/HEAD/OPTIONS)
+// from a caller whose workspace role is explicitly "viewer". A caller with no
+// row in user_roles (role == "") is left unrestricted — see workspaceRole.
+func BlockViewerWrites(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if RoleFromCtx(r.Context()) == "viewer" &&
+			r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
+			errs.Write(w, errs.Forbidden("viewers have read-only access to this workspace"))
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -146,4 +186,11 @@ func IsAdminFromCtx(ctx context.Context) bool {
 func EmailFromCtx(ctx context.Context) string {
 	email, _ := ctx.Value(ContextKeyEmail).(string)
 	return email
+}
+
+// RoleFromCtx returns the caller's workspace role (owner/admin/member/viewer),
+// or "" if unknown (never assigned a role explicitly — treated as unrestricted).
+func RoleFromCtx(ctx context.Context) string {
+	role, _ := ctx.Value(ContextKeyRole).(string)
+	return role
 }

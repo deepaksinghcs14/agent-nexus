@@ -178,6 +178,10 @@ func main() {
 }
 
 func (s *server) handleLaunch(w http.ResponseWriter, r *http.Request) {
+	if s.callbackSecret == "" || subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Runner-Secret")), []byte(s.callbackSecret)) != 1 {
+		httpErr(w, http.StatusNotFound, "not found")
+		return
+	}
 	var req launchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpErr(w, http.StatusBadRequest, "invalid JSON body")
