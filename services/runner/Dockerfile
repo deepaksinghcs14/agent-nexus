@@ -8,7 +8,7 @@ WORKDIR /src
 COPY go.mod main.go ./
 RUN CGO_ENABLED=0 go build -o /runner .
 
-FROM node:22-slim
+FROM node:24-slim
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
