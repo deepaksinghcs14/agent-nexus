@@ -4,13 +4,6 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
-<a href="https://openinvoke.com/directory/?q=agent-nexus&utm_source=agent-nexus&utm_medium=badge&utm_campaign=owner-badge">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://openinvoke.com/badge/openinvoke-dark.svg">
-    <img alt="Listed on OpenInvoke" src="https://openinvoke.com/badge/openinvoke.svg" width="218" height="28">
-  </picture>
-</a>
-
 > Self-hosted, model-agnostic AI agent orchestration platform.
 
 **[Try the live demo →](https://web-production-ae380.up.railway.app)** — Sign up and explore instantly. MCP servers, connectors, and API tokens are restricted in demo mode; self-host for full access.
